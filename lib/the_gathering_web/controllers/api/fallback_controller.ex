@@ -15,6 +15,7 @@ defmodule TheGatheringWeb.API.FallbackController do
   """
   use TheGatheringWeb, :controller
 
+  alias Plug.Conn.Status
   alias TheGatheringWeb.ChangesetJSON
 
   # Routed requests (the JSON 404 below) still dispatch through Phoenix.
@@ -30,11 +31,9 @@ defmodule TheGatheringWeb.API.FallbackController do
       when status in [:bad_request, :unauthorized, :forbidden, :not_found] do
     conn
     |> put_status(status)
-    |> json(%{errors: %{detail: Plug.Conn.Status.reason_phrase(status_code(status))}})
+    |> json(%{errors: %{detail: status |> Status.code() |> Status.reason_phrase()}})
   end
 
   @doc "JSON 404 for API paths that match no route."
   def not_found(conn, _params), do: call(conn, {:error, :not_found})
-
-  defp status_code(status), do: Plug.Conn.Status.code(status)
 end
