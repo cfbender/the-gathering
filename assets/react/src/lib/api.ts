@@ -1,9 +1,9 @@
 /** Field errors as rendered by `TheGatheringWeb.ChangesetJSON`: `{ field: ["message"] }`. */
-export type FieldErrors = Record<string, string[] | Record<string, unknown>>
+export type FieldErrors = Record<string, string | string[] | Record<string, unknown> | undefined>
 
 /** Error body from the Phoenix API: `{ errors: { detail: "Not Found" } }` or field errors. */
 export interface ApiErrorBody {
-  errors: FieldErrors & { detail?: string }
+  errors: FieldErrors
 }
 
 export class ApiError extends Error {
@@ -56,6 +56,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token && method !== "GET" && method !== "HEAD") headers.set("x-csrf-token", token)
 
   const response = await fetch(path, { ...init, headers, credentials: "same-origin" })
+  const refreshedToken = response.headers.get("x-csrf-token")
+  const tokenMeta = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
+  if (refreshedToken && tokenMeta) tokenMeta.content = refreshedToken
+
   if (!response.ok) {
     const errors = await readErrorBody(response)
     const detail = typeof errors.detail === "string" ? errors.detail : response.statusText

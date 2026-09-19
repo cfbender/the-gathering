@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query"
 import { Link, Outlet, createRootRouteWithContext } from "@tanstack/react-router"
 import { Swords } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { UserMenu } from "@/components/user-menu"
 
 /** Router context available to every route's `loader` and `beforeLoad`. */
 export interface RouterContext {
@@ -42,6 +43,7 @@ function RootLayout() {
                 </Link>
               ))}
             </nav>
+            <UserMenu />
             <ThemeToggle />
           </div>
         </div>

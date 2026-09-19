@@ -9,6 +9,7 @@ defmodule TheGatheringWeb.API.FallbackController do
     * `{:error, :not_found}`        -> 404
     * `{:error, :unauthorized}`     -> 401 (not signed in)
     * `{:error, :forbidden}`        -> 403 (signed in, not allowed)
+    * `{:error, :sudo_required}`    -> 403 (recent password authentication required)
     * `{:error, :bad_request}`      -> 400
     * `{:error, :bad_gateway}`      -> 502 (upstream service failed)
 
@@ -33,6 +34,12 @@ defmodule TheGatheringWeb.API.FallbackController do
     conn
     |> put_status(status)
     |> json(%{errors: %{detail: status |> Status.code() |> Status.reason_phrase()}})
+  end
+
+  def call(conn, {:error, :sudo_required}) do
+    conn
+    |> put_status(:forbidden)
+    |> json(%{errors: %{code: "sudo_required", detail: "Reauthentication required"}})
   end
 
   @doc "JSON 404 for API paths that match no route."
