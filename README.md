@@ -67,6 +67,11 @@ The integrations use the upstream services' public interfaces:
 | `PHX_URL_PORT` | `443` for https, `80` for http | Public port. |
 | `PORT` | `4000` | Port the server binds inside the container. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
+| `DISCORD_BOT_TOKEN` | unset | Discord bot token; enables automatic SpellBot game tracking when set. |
+| `DISCORD_GUILD_ID` | unset | Optional development/server ID for immediate guild-scoped `/won` registration; without it the command is global. |
+| `DISCORD_SPELLBOT_USER_ID` | `725510263251402832` | Discord user ID accepted as SpellBot, useful when running a private SpellBot deployment. |
+
+See [Discord integration](docs/discord-integration.md) for bot creation, permissions, and current tracking behavior.
 
 ### Card catalog
 

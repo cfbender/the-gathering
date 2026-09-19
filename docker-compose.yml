@@ -15,3 +15,7 @@ services:
       PHX_HOST: ${PHX_HOST:-localhost}
       PHX_SCHEME: ${PHX_SCHEME:-http}
       PHX_URL_PORT: ${PHX_URL_PORT:-4000}
+      # Optional Discord game tracking. An empty token leaves the client disabled.
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      DISCORD_SPELLBOT_USER_ID: ${DISCORD_SPELLBOT_USER_ID:-725510263251402832}

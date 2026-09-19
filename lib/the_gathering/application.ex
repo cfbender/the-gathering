@@ -16,6 +16,7 @@ defmodule TheGathering.Application do
       {Phoenix.PubSub, name: TheGathering.PubSub},
       TheGathering.Catalog.Supervisor,
       TheGathering.Decklists.Cache,
+      TheGathering.Discord,
       # Start a worker by calling: TheGathering.Worker.start_link(arg)
       # {TheGathering.Worker, arg},
       # Start to serve requests, typically the last entry
