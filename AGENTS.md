@@ -59,6 +59,7 @@ Production/container commands are documented in `README.md`.
 - Use plural resource paths and standard REST actions (`GET /api/games`, `POST /api/games`, `GET /api/games/:id`, `PATCH`, `DELETE`). Paginate lists with `page`/`per_page` query params when they can grow unbounded.
 - The `/api` pipeline runs `protect_from_forgery`; the frontend `api()` helper in `assets/react/src/lib/api.ts` sends the CSRF token and rejects with `ApiError` (carrying `errors`) on non-2xx responses. Use it for all requests.
 - Server state in React goes through TanStack Query (`useQuery`/`useMutation`, `QueryClientProvider` in `main.tsx`; the `queryClient` is also in router context). Key queries by resource, for example `["games", id]`.
+- Authenticated API code reads the user from `conn.assigns.current_scope.user`. Protect scopes with `pipe_through [:api, :require_authenticated_user]`; admin-sensitive changes additionally use `:require_admin` and `:require_sudo_mode`.
 - Use `Req` for HTTP requests (Scryfall, Discord, deck-list sites). Avoid `:httpoison`, `:tesla`, and `:httpc`.
 - Follow existing Phoenix context and React component patterns. Keep changes small and focused.
 - Frontend styling uses Tailwind utilities and daisyUI component classes; theme tokens are defined in `assets/react/src/app.css`. Use `cn()` from `src/lib/cn.ts` to merge classes.
@@ -161,4 +162,3 @@ Production/container commands are documented in `README.md`.
 - Fields which are set programmatically, such as `user_id`, must not be listed in `cast` calls or similar for security purposes. Instead they must be explicitly set when creating the struct
 - **Always** invoke `mix ecto.gen.migration migration_name_using_underscores` when generating migration files, so the correct timestamp and conventions are applied
 <!-- phoenix:ecto-end -->
-

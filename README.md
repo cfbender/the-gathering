@@ -70,6 +70,30 @@ The integrations use the upstream services' public interfaces:
 | `DISCORD_BOT_TOKEN` | unset | Discord bot token; enables automatic SpellBot game tracking when set. |
 | `DISCORD_GUILD_ID` | unset | Optional development/server ID for immediate guild-scoped `/won` registration; without it the command is global. |
 | `DISCORD_SPELLBOT_USER_ID` | `725510263251402832` | Discord user ID accepted as SpellBot, useful when running a private SpellBot deployment. |
+| `THE_GATHERING_ADMIN_USERNAME` | unset | Creates this admin on container startup when paired with the password. |
+| `THE_GATHERING_ADMIN_PASSWORD` | unset | Password for container or Mix-task admin bootstrap. |
+
+### Accounts and registration
+
+The first account registered in the browser becomes the server administrator. Open registration
+then defaults to off; an administrator can enable it under **Admin → Users**. This flag is stored in
+the singleton `server_settings` row. Administrators can also create accounts directly.
+
+For headless container bootstrap, set `THE_GATHERING_ADMIN_USERNAME` and
+`THE_GATHERING_ADMIN_PASSWORD`. Startup creates the admin if absent and is idempotent on later
+restarts. In a source checkout, the equivalent task is:
+
+```sh
+THE_GATHERING_ADMIN_PASSWORD='use-a-long-password' mix the_gathering.create_admin USERNAME
+```
+
+Removing a user disables the account rather than deleting it, preserving references from game
+history. Disabled accounts cannot sign in and can be re-enabled by an administrator.
+
+Sessions use random tokens stored in the `users_tokens` table, following Phoenix's generated-auth
+design. Changing a password expires every existing session. Password changes and administrator
+actions require password authentication within the previous ten minutes; the SPA prompts for the
+password again when that window expires. Passwords must be 12–72 characters.
 
 See [Discord integration](docs/discord-integration.md) for bot creation, permissions, and current tracking behavior.
 
