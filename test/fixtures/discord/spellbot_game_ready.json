@@ -1,0 +1,40 @@
+{
+  "id": "999999999999999999",
+  "guild_id": "333333333333333333",
+  "channel_id": "444444444444444444",
+  "author": {
+    "id": "725510263251402832",
+    "username": "SpellBot",
+    "bot": true
+  },
+  "content": null,
+  "embeds": [
+    {
+      "type": "rich",
+      "color": 16297546,
+      "title": "**Your game is ready!**",
+      "description": "Please check your Direct Messages for your game details.",
+      "fields": [
+        {
+          "name": "Players",
+          "value": "• <@111111111111111111> (Aria)\n• ⭐ <@!222222222222222222> (Bryn)",
+          "inline": false
+        },
+        {
+          "name": "Format",
+          "value": "Commander",
+          "inline": true
+        },
+        {
+          "name": "Started at",
+          "value": "<t:1750000123>",
+          "inline": true
+        }
+      ],
+      "footer": {
+        "text": "SpellBot Game ID: #SB12345 — Service: Convoke"
+      }
+    }
+  ],
+  "components": []
+}

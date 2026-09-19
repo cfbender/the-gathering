@@ -17,6 +17,20 @@ config :the_gathering, TheGatheringWeb.Endpoint,
 catalog_sync_hours = String.to_integer(System.get_env("CATALOG_SYNC_INTERVAL_HOURS", "168"))
 config :the_gathering, :catalog_sync_interval_ms, catalog_sync_hours * 60 * 60 * 1_000
 
+if discord_bot_token = System.get_env("DISCORD_BOT_TOKEN") do
+  config :nostrum,
+    token: discord_bot_token,
+    gateway_intents: [:guilds, :guild_messages, :message_content],
+    ffmpeg: false,
+    youtubedl: false,
+    streamlink: false
+
+  config :the_gathering, TheGathering.Discord,
+    bot_token: discord_bot_token,
+    guild_id: System.get_env("DISCORD_GUILD_ID"),
+    spellbot_user_id: System.get_env("DISCORD_SPELLBOT_USER_ID", "725510263251402832")
+end
+
 if config_env() == :prod do
   data_dir = System.get_env("DATA_DIR", "/data")
   database_path = System.get_env("DATABASE_PATH", Path.join(data_dir, "the_gathering.db"))
