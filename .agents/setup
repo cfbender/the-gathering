@@ -101,6 +101,19 @@ export LC_ALL=C.UTF-8
 EOF
 fi
 
+# Commits must be authored by the thread's user only: no Amp co-author and no
+# Amp-Thread trailer. Set both the Amp settings and the equivalent environment
+# variables so the policy holds even if settings.json is later rewritten.
+commit_marker="# the-gathering commit trailers"
+if ! grep -Fqx "$commit_marker" "$HOME/.bash_profile" 2>/dev/null; then
+  cat >> "$HOME/.bash_profile" <<'EOF'
+
+# the-gathering commit trailers
+export AMP_DISABLE_AMP_COAUTHOR_TRAILER=1
+export AMP_DISABLE_AMP_THREAD_TRAILER=1
+EOF
+fi
+
 amp_settings="$HOME/.config/amp/settings.json"
 mkdir -p "$(dirname "$amp_settings")"
 python3 - "$amp_settings" <<'PY'
@@ -117,6 +130,7 @@ except FileNotFoundError:
     settings = {}
 
 settings["amp.git.commit.ampThread.enabled"] = False
+settings["amp.git.commit.coauthor.enabled"] = False
 directory = os.path.dirname(path)
 with tempfile.NamedTemporaryFile("w", dir=directory, delete=False, encoding="utf-8") as output:
     json.dump(settings, output, indent=2)
