@@ -24,6 +24,11 @@ export class ApiError extends Error {
     const value = this.errors[field]
     return Array.isArray(value) ? value : []
   }
+
+  /** The top-level `errors.detail` message, or `null` when the response only had field errors. */
+  get detail(): string | null {
+    return typeof this.errors.detail === "string" ? this.errors.detail : null
+  }
 }
 
 function csrfToken(): string | null {

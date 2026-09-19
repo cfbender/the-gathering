@@ -3,6 +3,8 @@ defmodule TheGatheringWeb.API.DecklistControllerTest do
 
   alias TheGathering.Decklists.Cache
 
+  setup :register_and_log_in_user
+
   setup do
     Cache.clear()
     Application.put_env(:the_gathering, :decklists_req_options, plug: {Req.Test, __MODULE__})
@@ -45,7 +47,7 @@ defmodule TheGatheringWeb.API.DecklistControllerTest do
 
   test "returns a field error for invalid and unsupported URLs", %{conn: conn} do
     for url <- ["not a URL", "https://example.com/a-deck"] do
-      response = conn |> recycle() |> post(~p"/api/decklists/resolve", %{url: url})
+      response = post(conn, ~p"/api/decklists/resolve", %{url: url})
 
       assert json_response(response, 422) == %{
                "errors" => %{"url" => ["is not a supported deck-list URL"]}

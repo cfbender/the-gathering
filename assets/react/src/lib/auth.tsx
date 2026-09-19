@@ -61,7 +61,7 @@ export function errorMessage(error: unknown, field?: string) {
   if (!(error instanceof ApiError)) return error instanceof Error ? error.message : null
   if (field) return error.fieldErrors(field)[0] ?? null
   if (error.status === 401) return "Username or password is incorrect."
-  return typeof error.errors.detail === "string" ? error.errors.detail : null
+  return error.detail
 }
 
 export function isSudoRequired(error: unknown) {

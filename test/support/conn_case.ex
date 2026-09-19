@@ -17,6 +17,10 @@ defmodule TheGatheringWeb.ConnCase do
 
   use ExUnit.CaseTemplate
 
+  alias TheGathering.Accounts
+  alias TheGathering.Accounts.Scope
+  alias TheGathering.AccountsFixtures
+
   using do
     quote do
       # The default endpoint for testing
@@ -34,5 +38,27 @@ defmodule TheGatheringWeb.ConnCase do
   setup tags do
     TheGathering.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
+  end
+
+  @doc """
+  Setup helper that registers and logs in users.
+
+      setup :register_and_log_in_user
+
+  It stores an updated connection and a registered user in the test context.
+  """
+  def register_and_log_in_user(%{conn: conn}) do
+    user = AccountsFixtures.user_fixture()
+    scope = Scope.for_user(user)
+    %{conn: log_in_user(conn, user), user: user, scope: scope}
+  end
+
+  @doc "Logs the given `user` into the `conn` with a tracked session token."
+  def log_in_user(conn, user) do
+    token = Accounts.generate_user_session_token(user)
+
+    conn
+    |> Phoenix.ConnTest.init_test_session(%{})
+    |> Plug.Conn.put_session(:user_token, token)
   end
 end
