@@ -49,7 +49,7 @@ defmodule TheGathering.MixProject do
       {:jason, "~> 1.2"},
       {:req, "~> 0.5"},
       {:nostrum, "~> 0.10.4", runtime: false},
-      {:dns_cluster, "~> 0.2.0"},
+      {:dns_cluster, "~> 0.3.0"},
       {:bandit, "~> 1.5"},
       {:bcrypt_elixir, "~> 3.3"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
