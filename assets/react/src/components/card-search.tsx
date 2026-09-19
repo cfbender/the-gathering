@@ -13,6 +13,7 @@ interface CardSearchProps {
   commanderOnly?: boolean
   placeholder?: string
   label: string
+  required?: boolean
 }
 
 export function CardSearch({
@@ -21,6 +22,7 @@ export function CardSearch({
   commanderOnly = false,
   placeholder = "Search cards by name…",
   label,
+  required = false,
 }: CardSearchProps) {
   const id = useId()
   const listboxId = `${id}-listbox`
@@ -76,7 +78,7 @@ export function CardSearch({
   }
 
   return (
-    <div className="form-control relative w-full">
+    <div className="form-control relative min-w-0 w-full">
       <label htmlFor={id} className="label pb-1 font-medium">
         {label}
       </label>
@@ -94,6 +96,7 @@ export function CardSearch({
           aria-activedescendant={active >= 0 ? `${id}-option-${active}` : undefined}
           autoComplete="off"
           value={query}
+          required={required}
           placeholder={placeholder}
           onFocus={() => setOpen(true)}
           onBlur={() => window.setTimeout(() => setOpen(false), 100)}
@@ -104,7 +107,7 @@ export function CardSearch({
             setActive(-1)
           }}
           onKeyDown={onKeyDown}
-          className="input input-bordered w-full pr-10 pl-9"
+          className="input input-bordered min-w-0 w-full pr-10 pl-9"
         />
         {(query || value) && (
           <button

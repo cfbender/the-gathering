@@ -1,21 +1,29 @@
+import { CardSearch } from "@/components/card-search"
+import type { CardSummary, SelectedCard } from "@/lib/cards"
+import { selectCatalogCard } from "@/lib/cards"
+
 interface CommanderFieldProps {
-  value: string
-  onChange: (value: string) => void
+  value: SelectedCard | null
+  onChange: (value: SelectedCard | null) => void
   required?: boolean
+  label?: string
 }
 
-/** Plain-text seam for the catalog thread to replace with CardSearch. */
-export function CommanderField({ value, onChange, required }: CommanderFieldProps) {
+export function CommanderField({
+  value,
+  onChange,
+  required,
+  label = "Commander",
+}: CommanderFieldProps) {
+  const change = (card: CardSummary | null) => onChange(card ? selectCatalogCard(card) : null)
   return (
-    <label className="form-control flex-1">
-      <span className="label-text mb-1 text-xs font-medium">Commander</span>
-      <input
-        className="input input-bordered input-sm w-full"
-        placeholder="Commander name"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        required={required}
-      />
-    </label>
+    <CardSearch
+      label={label}
+      value={value}
+      onChange={change}
+      commanderOnly
+      placeholder={`Search for a ${label.toLowerCase()}…`}
+      required={required}
+    />
   )
 }

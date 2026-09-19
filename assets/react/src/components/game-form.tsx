@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { ArrowDown, ArrowUp, Plus, Trash2, Trophy } from "lucide-react"
 import { useEffect, useState, type FormEvent } from "react"
-import { CommanderField } from "@/components/commander-field"
+import { DeckFormFields } from "@/components/deck-form-fields"
 import { blankSeat, moveSeat, resultsForSeats, type DraftSeat } from "@/components/game-form-logic"
 import { MvpCardField } from "@/components/mvp-card-field"
 import { api, ApiError } from "@/lib/api"
+import { cardSnapshot } from "@/lib/cards"
 import { getDecks, getPlayers, type Deck, type Game, type Player } from "@/lib/games"
 
 interface GameFormProps {
@@ -23,8 +24,15 @@ function draftsFromGame(game: Game): DraftSeat[] {
     id: seat.id,
     playerName: seat.player.name,
     deckName: seat.deck?.name ?? "",
-    commanderName: seat.deck?.commander_name ?? "",
-    mvpCardName: seat.mvp_card_name ?? "",
+    commander: cardSnapshot(
+      seat.deck?.commander_card_id,
+      seat.deck?.commander_name,
+      seat.deck?.color_identity.split("") ?? [],
+    ),
+    partner: cardSnapshot(seat.deck?.partner_card_id, seat.deck?.partner_name),
+    colorIdentity: seat.deck?.color_identity ?? "",
+    decklistUrl: seat.deck?.decklist_url ?? "",
+    mvpCard: cardSnapshot(seat.mvp_card_id, seat.mvp_card_name),
   }))
 }
 
@@ -51,7 +59,12 @@ async function ensureDeck(draft: DraftSeat, player: Player, decks: Deck[]) {
       deck: {
         player_id: player.id,
         name: draft.deckName.trim(),
-        commander_name: draft.commanderName.trim(),
+        commander_card_id: draft.commander?.catalog_id,
+        commander_name: draft.commander?.name,
+        partner_card_id: draft.partner?.catalog_id,
+        partner_name: draft.partner?.name,
+        color_identity: draft.colorIdentity,
+        decklist_url: draft.decklistUrl.trim() || null,
       },
     }),
   }).then((body) => body.data)
@@ -101,7 +114,8 @@ export function GameForm({ game }: GameFormProps) {
           deck_id: deck?.id ?? null,
           seat: index + 1,
           result: results[index],
-          mvp_card_name: draft.mvpCardName.trim() || null,
+          mvp_card_id: draft.mvpCard?.catalog_id,
+          mvp_card_name: draft.mvpCard?.name ?? null,
         })
       }
 
@@ -240,7 +254,10 @@ export function GameForm({ game }: GameFormProps) {
                           updateSeat(index, {
                             playerName: event.target.value,
                             deckName: "",
-                            commanderName: "",
+                            commander: null,
+                            partner: null,
+                            colorIdentity: "",
+                            decklistUrl: "",
                           })
                         }
                         required
@@ -253,14 +270,22 @@ export function GameForm({ game }: GameFormProps) {
                         list={`decks-${index}`}
                         placeholder="Choose or type a new deck"
                         value={seat.deckName}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const deck = playerDecks.find(
+                            (candidate) => candidate.name === event.target.value,
+                          )
                           updateSeat(index, {
                             deckName: event.target.value,
-                            commanderName:
-                              playerDecks.find((deck) => deck.name === event.target.value)
-                                ?.commander_name ?? "",
+                            commander: cardSnapshot(
+                              deck?.commander_card_id,
+                              deck?.commander_name,
+                              deck?.color_identity.split("") ?? [],
+                            ),
+                            partner: cardSnapshot(deck?.partner_card_id, deck?.partner_name),
+                            colorIdentity: deck?.color_identity ?? "",
+                            decklistUrl: deck?.decklist_url ?? "",
                           })
-                        }
+                        }}
                       />
                       <datalist id={`decks-${index}`}>
                         {playerDecks.map((deck) => (
@@ -271,15 +296,17 @@ export function GameForm({ game }: GameFormProps) {
                       </datalist>
                     </label>
                     {seat.deckName && !selectedDeck && (
-                      <CommanderField
-                        value={seat.commanderName}
-                        onChange={(commanderName) => updateSeat(index, { commanderName })}
-                        required
-                      />
+                      <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+                        <DeckFormFields
+                          value={seat}
+                          onChange={(patch) => updateSeat(index, patch)}
+                          onResolvedName={(deckName) => updateSeat(index, { deckName })}
+                        />
+                      </div>
                     )}
                     <MvpCardField
-                      value={seat.mvpCardName}
-                      onChange={(mvpCardName) => updateSeat(index, { mvpCardName })}
+                      value={seat.mvpCard}
+                      onChange={(mvpCard) => updateSeat(index, { mvpCard })}
                     />
                   </div>
                   {seat.playerName && !player && (

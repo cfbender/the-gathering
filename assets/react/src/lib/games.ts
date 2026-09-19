@@ -14,7 +14,9 @@ export interface Deck {
   id: number
   player_id: number
   name: string
+  commander_card_id: string | null
   commander_name: string
+  partner_card_id: string | null
   partner_name: string | null
   color_identity: string
   decklist_url: string | null
@@ -32,6 +34,7 @@ export interface Seat {
   deck_id: number | null
   seat: number
   result: "win" | "loss" | "draw"
+  mvp_card_id: string | null
   mvp_card_name: string | null
   notes: string | null
   player: Player

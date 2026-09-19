@@ -1,16 +1,24 @@
+import type { SelectedCard } from "@/lib/cards"
+
 export interface DraftSeat {
   id?: number
   playerName: string
   deckName: string
-  commanderName: string
-  mvpCardName: string
+  commander: SelectedCard | null
+  partner: SelectedCard | null
+  colorIdentity: string
+  decklistUrl: string
+  mvpCard: SelectedCard | null
 }
 
 export const blankSeat = (): DraftSeat => ({
   playerName: "",
   deckName: "",
-  commanderName: "",
-  mvpCardName: "",
+  commander: null,
+  partner: null,
+  colorIdentity: "",
+  decklistUrl: "",
+  mvpCard: null,
 })
 
 export function moveSeat(seats: DraftSeat[], index: number, direction: -1 | 1) {
