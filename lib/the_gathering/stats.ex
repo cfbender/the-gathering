@@ -1,0 +1,293 @@
+defmodule TheGathering.Stats do
+  @moduledoc "Read-only statistics derived from games and their normalized seats."
+
+  import Ecto.Query
+
+  alias TheGathering.Games.{Deck, Game, GamePlayer, Player}
+  alias TheGathering.Repo
+
+  def overview(params \\ %{}) do
+    games = games(params)
+    seats = Enum.flat_map(games, & &1.seats)
+
+    %{
+      games_count: length(games),
+      average_duration_minutes: average(games, & &1.duration_minutes),
+      average_turns: average(games, & &1.turns),
+      leaderboard: grouped_records(seats, & &1.player, & &1.player_id),
+      games_by_month:
+        games
+        |> Enum.group_by(&Calendar.strftime(&1.played_at, "%Y-%m"))
+        |> Enum.map(fn {month, rows} -> %{month: month, games: length(rows)} end)
+        |> Enum.sort_by(& &1.month),
+      seat_win_rates: grouped_records(seats, &%{id: &1.seat, name: "Seat #{&1.seat}"}, & &1.seat),
+      color_win_rates:
+        seats
+        |> Enum.reject(&is_nil(&1.deck))
+        |> grouped_records(
+          &%{id: &1.deck.color_identity, name: color_name(&1.deck.color_identity)},
+          fn seat ->
+            seat.deck.color_identity
+          end
+        ),
+      commanders:
+        seats
+        |> Enum.reject(&is_nil(&1.deck))
+        |> grouped_records(
+          &%{id: &1.deck.commander_name, name: &1.deck.commander_name},
+          fn seat ->
+            seat.deck.commander_name
+          end
+        )
+        |> Enum.take(8),
+      recent_games: games |> Enum.take(6) |> Enum.map(&recent_game/1)
+    }
+  end
+
+  def player(player_id, params \\ %{}) do
+    with %Player{} = player <- Repo.get(Player, player_id) do
+      games = games(params, player_id: player.id)
+      seats = Enum.map(games, &Enum.find(&1.seats, fn seat -> seat.player_id == player.id end))
+      results = seats |> Enum.reverse() |> Enum.map(& &1.result)
+
+      %{
+        player: %{id: player.id, name: player.name},
+        record: record(seats),
+        streaks: streaks(results),
+        recent_form: seats |> Enum.take(10) |> Enum.map(& &1.result),
+        win_rate_over_time: cumulative_win_rate(games, player.id),
+        decks:
+          seats
+          |> Enum.reject(&is_nil(&1.deck))
+          |> grouped_records(& &1.deck, & &1.deck_id),
+        head_to_head: head_to_head(games, player.id),
+        seat_win_rates:
+          grouped_records(seats, &%{id: &1.seat, name: "Seat #{&1.seat}"}, & &1.seat),
+        favorite_seat: favorite_seat(seats),
+        best_seat: best_seat(seats),
+        mvp_cards: mvp_cards(seats)
+      }
+    end
+  end
+
+  def deck(deck_id, params \\ %{}) do
+    with %Deck{} = deck <- Repo.get(Deck, deck_id) |> Repo.preload(:player) do
+      games = games(params, deck_id: deck.id)
+      seats = Enum.map(games, &Enum.find(&1.seats, fn seat -> seat.deck_id == deck.id end))
+
+      %{
+        deck: entity(deck),
+        player: entity(deck.player),
+        record: record(seats),
+        average_duration_minutes: average(games, & &1.duration_minutes),
+        average_turns: average(games, & &1.turns),
+        opponents: deck_opponents(games, deck.id),
+        recent_games: games |> Enum.take(10) |> Enum.map(&recent_game(&1, deck.id)),
+        win_rate_over_time: cumulative_win_rate(games, deck.player_id, deck.id)
+      }
+    end
+  end
+
+  defp games(params, filters \\ []) do
+    Game
+    |> maybe_date_from(value(params, :date_from))
+    |> maybe_date_to(value(params, :date_to))
+    |> maybe_player(filters[:player_id])
+    |> maybe_deck(filters[:deck_id])
+    |> order_by([game], desc: game.played_at, desc: game.id)
+    |> preload(seats: [:player, :deck])
+    |> Repo.all()
+  end
+
+  defp grouped_records(rows, entity_fun, key_fun) do
+    rows
+    |> Enum.group_by(key_fun)
+    |> Enum.map(fn {_key, group} -> Map.merge(entity(entity_fun.(hd(group))), record(group)) end)
+    |> Enum.sort_by(&{-&1.games, -&1.win_rate, String.downcase(&1.name)})
+  end
+
+  defp record(rows) do
+    wins = Enum.count(rows, &(&1.result == "win"))
+    losses = Enum.count(rows, &(&1.result == "loss"))
+    draws = Enum.count(rows, &(&1.result == "draw"))
+    games = length(rows)
+
+    %{games: games, wins: wins, losses: losses, draws: draws, win_rate: percentage(wins, games)}
+  end
+
+  defp cumulative_win_rate(games, player_id, deck_id \\ nil) do
+    games
+    |> Enum.reverse()
+    |> Enum.reduce({[], 0, 0}, fn game, {points, wins, total} ->
+      seat =
+        Enum.find(game.seats, fn seat ->
+          seat.player_id == player_id and (is_nil(deck_id) or seat.deck_id == deck_id)
+        end)
+
+      wins = wins + if(seat.result == "win", do: 1, else: 0)
+      total = total + 1
+
+      point = %{
+        date: Date.to_iso8601(DateTime.to_date(game.played_at)),
+        win_rate: percentage(wins, total)
+      }
+
+      {[point | points], wins, total}
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+  end
+
+  defp streaks(results) do
+    win_runs = results |> Enum.chunk_by(&(&1 == "win")) |> Enum.filter(&(hd(&1) == "win"))
+    current = results |> Enum.reverse() |> Enum.take_while(&(&1 == "win")) |> length()
+
+    %{
+      current_wins: current,
+      longest_wins: win_runs |> Enum.map(&length/1) |> Enum.max(fn -> 0 end)
+    }
+  end
+
+  defp head_to_head(games, player_id) do
+    games
+    |> Enum.flat_map(fn game ->
+      mine = Enum.find(game.seats, &(&1.player_id == player_id))
+
+      game.seats
+      |> Enum.reject(&(&1.player_id == player_id))
+      |> Enum.map(fn opponent ->
+        %{opponent: opponent.player, mine: mine.result, theirs: opponent.result}
+      end)
+    end)
+    |> Enum.group_by(& &1.opponent.id)
+    |> Enum.map(fn {_id, rows} ->
+      opponent = hd(rows).opponent
+
+      %{
+        id: opponent.id,
+        name: opponent.name,
+        games: length(rows),
+        wins: Enum.count(rows, &(&1.mine == "win")),
+        losses: Enum.count(rows, &(&1.theirs == "win")),
+        draws: Enum.count(rows, &(&1.mine == "draw"))
+      }
+    end)
+    |> Enum.sort_by(&{-&1.games, &1.name})
+  end
+
+  defp deck_opponents(games, deck_id) do
+    games
+    |> Enum.flat_map(fn game -> Enum.reject(game.seats, &(&1.deck_id == deck_id)) end)
+    |> Enum.reject(&is_nil(&1.player))
+    |> grouped_records(& &1.player, & &1.player_id)
+  end
+
+  defp mvp_cards(seats) do
+    seats
+    |> Enum.reject(&(is_nil(&1.mvp_card_name) or &1.mvp_card_name == ""))
+    |> Enum.group_by(&{&1.mvp_card_id, &1.mvp_card_name})
+    |> Enum.map(fn {{id, name}, rows} -> %{id: id, name: name, mentions: length(rows)} end)
+    |> Enum.sort_by(&{-&1.mentions, &1.name})
+    |> Enum.take(8)
+  end
+
+  defp favorite_seat([]), do: nil
+
+  defp favorite_seat(seats),
+    do: seats |> Enum.frequencies_by(& &1.seat) |> Enum.max_by(&elem(&1, 1)) |> elem(0)
+
+  defp best_seat([]), do: nil
+
+  defp best_seat(seats) do
+    seats
+    |> Enum.group_by(& &1.seat)
+    |> Enum.max_by(fn {_seat, rows} -> {record(rows).win_rate, length(rows)} end)
+    |> elem(0)
+  end
+
+  defp recent_game(game, deck_id \\ nil) do
+    winner = Enum.find(game.seats, &(&1.result == "win"))
+    tracked = deck_id && Enum.find(game.seats, &(&1.deck_id == deck_id))
+
+    %{
+      id: game.id,
+      played_at: game.played_at,
+      duration_minutes: game.duration_minutes,
+      turns: game.turns,
+      result: tracked && tracked.result,
+      winner: winner && entity(winner.player),
+      players: length(game.seats)
+    }
+  end
+
+  defp average(rows, fun) do
+    values = rows |> Enum.map(fun) |> Enum.reject(&is_nil/1)
+    if values == [], do: nil, else: Float.round(Enum.sum(values) / length(values), 1)
+  end
+
+  defp percentage(_part, 0), do: 0.0
+  defp percentage(part, total), do: Float.round(part * 100 / total, 1)
+
+  defp entity(%{id: id, name: name} = value),
+    do: %{id: id, name: name} |> maybe_put(:commander_name, Map.get(value, :commander_name))
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp color_name(""), do: "Colorless"
+  defp color_name(identity), do: identity
+
+  defp value(params, key), do: Map.get(params, key) || Map.get(params, Atom.to_string(key))
+
+  defp maybe_date_from(query, nil), do: query
+
+  defp maybe_date_from(query, value) do
+    case Date.from_iso8601(value) do
+      {:ok, date} ->
+        where(query, [game], game.played_at >= ^DateTime.new!(date, ~T[00:00:00], "Etc/UTC"))
+
+      _error ->
+        query
+    end
+  end
+
+  defp maybe_date_to(query, nil), do: query
+
+  defp maybe_date_to(query, value) do
+    case Date.from_iso8601(value) do
+      {:ok, date} ->
+        where(
+          query,
+          [game],
+          game.played_at < ^DateTime.new!(Date.add(date, 1), ~T[00:00:00], "Etc/UTC")
+        )
+
+      _error ->
+        query
+    end
+  end
+
+  defp maybe_player(query, nil), do: query
+
+  defp maybe_player(query, id),
+    do:
+      where(
+        query,
+        [game],
+        game.id in subquery(
+          from seat in GamePlayer, where: seat.player_id == ^id, select: seat.game_id
+        )
+      )
+
+  defp maybe_deck(query, nil), do: query
+
+  defp maybe_deck(query, id),
+    do:
+      where(
+        query,
+        [game],
+        game.id in subquery(
+          from seat in GamePlayer, where: seat.deck_id == ^id, select: seat.game_id
+        )
+      )
+end

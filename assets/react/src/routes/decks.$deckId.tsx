@@ -3,6 +3,7 @@ import { Link, createFileRoute } from "@tanstack/react-router"
 import { ExternalLink, Trophy } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { DeckFormFields, type DeckFormValue } from "@/components/deck-form-fields"
+import { DeckStats } from "@/components/stats/deck-stats"
 import { api, ApiError } from "@/lib/api"
 import { cardSnapshot } from "@/lib/cards"
 import { formatDate, getDeck, type Deck } from "@/lib/games"
@@ -51,6 +52,7 @@ function DeckDetailPage() {
           </div>
         </div>
       </div>
+      <DeckStats deckId={deckId} />
       <DeckEditForm key={deck.id} deck={deck} />
       <section>
         <h2 className="mb-3 text-xl font-bold">Recent games</h2>

@@ -1,0 +1,82 @@
+import { useQuery } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
+import { Flame, Medal, Target } from "lucide-react"
+import { BarChart, LineChart } from "./charts"
+import { StatCard } from "./stat-card"
+import { getPlayerStats } from "@/lib/stats"
+
+export function PlayerStats({ playerId }: { playerId: string }) {
+  const query = useQuery({
+    queryKey: ["stats", "players", playerId],
+    queryFn: () => getPlayerStats(playerId),
+  })
+  if (query.isPending) return <span className="loading loading-spinner" />
+  if (query.isError) return null
+  const stats = query.data
+  return (
+    <section className="space-y-4" aria-labelledby="player-stats-heading">
+      <div>
+        <p className="text-primary text-xs font-bold tracking-wider uppercase">Performance</p>
+        <h2 id="player-stats-heading" className="text-2xl font-black">
+          At the table
+        </h2>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          label="Win rate"
+          value={`${stats.record.win_rate}%`}
+          detail={`${stats.record.wins}–${stats.record.losses}–${stats.record.draws}`}
+          icon={<Target className="size-4" />}
+        />
+        <StatCard
+          label="Current streak"
+          value={stats.streaks.current_wins}
+          detail="consecutive wins"
+          icon={<Flame className="size-4" />}
+        />
+        <StatCard
+          label="Best streak"
+          value={stats.streaks.longest_wins}
+          detail="consecutive wins"
+          icon={<Medal className="size-4" />}
+        />
+        <StatCard
+          label="Best seat"
+          value={stats.best_seat ? `#${stats.best_seat}` : "—"}
+          detail={stats.favorite_seat ? `usually seat #${stats.favorite_seat}` : undefined}
+        />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+          <h3 className="mb-4 font-bold">Win rate over time</h3>
+          <LineChart points={stats.win_rate_over_time} />
+        </div>
+        <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+          <h3 className="mb-4 font-bold">Deck performance</h3>
+          <BarChart rows={stats.decks} />
+        </div>
+      </div>
+      <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+        <h3 className="mb-3 font-bold">Head to head</h3>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {stats.head_to_head.map((opponent) => (
+            <Link
+              key={opponent.id}
+              to="/players/$playerId"
+              params={{ playerId: String(opponent.id) }}
+              className="border-base-300 flex items-center justify-between rounded-lg border p-3"
+            >
+              <span>
+                {opponent.name}
+                <small className="text-base-content/50 block">{opponent.games} shared games</small>
+              </span>
+              <strong>
+                {opponent.wins}–{opponent.losses}
+              </strong>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}

@@ -52,6 +52,9 @@ defmodule TheGatheringWeb.Router do
     get "/cards", CardController, :index
     get "/cards/:id", CardController, :show
     get "/catalog", CatalogController, :show
+    get "/stats/overview", StatsController, :overview
+    get "/stats/players/:id", StatsController, :player
+    get "/stats/decks/:id", StatsController, :deck
     resources "/players", PlayerController, except: [:new, :edit]
     resources "/decks", DeckController, except: [:new, :edit]
     resources "/games", GameController, except: [:new, :edit]

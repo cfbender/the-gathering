@@ -1,108 +1,163 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { Activity, BarChart3, Bot, FileSpreadsheet, Library, Users } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { cn } from "@/lib/cn"
+import { Link, createFileRoute } from "@tanstack/react-router"
+import { Clock3, Crown, Gamepad2, RotateCcw, Trophy } from "lucide-react"
+import { BarChart } from "@/components/stats/charts"
+import { StatCard } from "@/components/stats/stat-card"
+import { formatDate } from "@/lib/games"
+import { getOverviewStats } from "@/lib/stats"
 
-export const Route = createFileRoute("/")({
-  component: HomePage,
-})
-
-interface Health {
-  status: "ok" | "error"
-}
-
-const planned = [
-  {
-    Icon: Users,
-    title: "Playgroup accounts",
-    body: "Everyone gets a login; the admin runs the server.",
-  },
-  {
-    Icon: FileSpreadsheet,
-    title: "CSV import",
-    body: "Bring your existing game history with you.",
-  },
-  {
-    Icon: Library,
-    title: "Scryfall catalog",
-    body: "Commander and MVP search backed by a local card index.",
-  },
-  { Icon: Bot, title: "Discord tracking", body: "Games logged automatically from SpellBot." },
-  { Icon: BarChart3, title: "Stats", body: "Win rates, matchups, and deck performance over time." },
-]
+export const Route = createFileRoute("/")({ component: HomePage })
 
 function HomePage() {
-  const query = useQuery({
-    queryKey: ["health"],
-    queryFn: () => api<Health>("/api/health"),
-    refetchInterval: 30_000,
-  })
-  const health =
-    query.status === "pending"
-      ? { kind: "loading" as const }
-      : query.status === "error"
-        ? { kind: "error" as const, message: query.error.message }
-        : query.data.status === "ok"
-          ? { kind: "ok" as const }
-          : { kind: "error" as const, message: "degraded" }
+  const query = useQuery({ queryKey: ["stats", "overview"], queryFn: getOverviewStats })
+  if (query.isPending)
+    return (
+      <div className="grid min-h-64 place-items-center">
+        <span className="loading loading-spinner loading-lg" />
+      </div>
+    )
+  if (query.isError)
+    return <div className="alert alert-error">Could not load playgroup statistics.</div>
+  const stats = query.data
+
+  if (stats.games_count === 0) return <EmptyDashboard />
+  const leader = [...stats.leaderboard].sort((a, b) => b.win_rate - a.win_rate)[0]
 
   return (
-    <div className="flex flex-col gap-10">
-      <section className="flex flex-col gap-4">
-        <p className="text-primary text-sm font-semibold tracking-wide uppercase">
-          Commander game tracker
-        </p>
-        <h1 className="max-w-2xl text-4xl font-bold tracking-tight text-balance sm:text-5xl">
-          Every game your playgroup has ever played, in one place.
+    <div className="flex flex-col gap-6 sm:gap-8">
+      <header>
+        <p className="text-primary text-xs font-bold tracking-[0.2em] uppercase">Playgroup pulse</p>
+        <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">
+          The table, by the numbers.
         </h1>
-        <p className="text-base-content/70 max-w-xl text-lg">
-          Self-hosted, one container, your data. Log games by hand, import a spreadsheet, or let
-          Discord do it for you.
+        <p className="text-base-content/60 mt-2">
+          Every rivalry, hot streak, and improbable topdeck.
         </p>
+      </header>
+
+      <section aria-label="Highlights" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          label="Games played"
+          value={stats.games_count}
+          detail="all time"
+          icon={<Gamepad2 className="size-4" />}
+        />
+        <StatCard
+          label="Top win rate"
+          value={`${leader?.win_rate ?? 0}%`}
+          detail={leader?.name}
+          icon={<Crown className="text-accent size-4" />}
+        />
+        <StatCard
+          label="Avg. length"
+          value={stats.average_duration_minutes ? `${stats.average_duration_minutes}m` : "—"}
+          detail="from first draw"
+          icon={<Clock3 className="size-4" />}
+        />
+        <StatCard
+          label="Avg. turns"
+          value={stats.average_turns ?? "—"}
+          detail="per game"
+          icon={<RotateCcw className="size-4" />}
+        />
       </section>
 
-      <section aria-labelledby="status-heading" className="card bg-base-200 border-base-300 border">
-        <div className="card-body flex-row items-center gap-4">
-          <span
-            className={cn(
-              "grid size-10 shrink-0 place-items-center rounded-full",
-              health.kind === "ok" && "bg-success/15 text-success",
-              health.kind === "error" && "bg-error/15 text-error",
-              health.kind === "loading" && "bg-base-300 text-base-content/60",
-            )}
-          >
-            <Activity className="size-5" aria-hidden="true" />
-          </span>
-          <div>
-            <h2 id="status-heading" className="font-semibold">
-              Server status
-            </h2>
-            <p className="text-base-content/70 text-sm" data-testid="health-status">
-              {health.kind === "loading" && "Checking the API…"}
-              {health.kind === "ok" && "API and database are reachable."}
-              {health.kind === "error" && `API unreachable: ${health.message}`}
-            </p>
+      <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+        <section className="border-base-300 bg-base-200/60 overflow-hidden rounded-xl border">
+          <div className="border-base-300 flex items-center justify-between border-b p-5">
+            <div>
+              <p className="text-primary text-xs font-bold uppercase">Standings</p>
+              <h2 className="text-xl font-bold">Playgroup leaderboard</h2>
+            </div>
+            <Trophy className="text-accent size-6" />
           </div>
+          <div className="divide-base-300 divide-y">
+            {[...stats.leaderboard]
+              .sort((a, b) => b.win_rate - a.win_rate)
+              .map((player, index) => (
+                <Link
+                  key={player.id}
+                  to="/players/$playerId"
+                  params={{ playerId: String(player.id) }}
+                  className="hover:bg-base-300/40 grid grid-cols-[2rem_1fr_auto] items-center gap-3 px-5 py-3 transition-colors"
+                >
+                  <span className="text-base-content/35 font-mono font-bold">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span>
+                    <strong className="block">{player.name}</strong>
+                    <small className="text-base-content/55">
+                      {player.wins}–{player.losses}–{player.draws} · {player.games} games
+                    </small>
+                  </span>
+                  <strong className="text-primary text-lg tabular-nums">{player.win_rate}%</strong>
+                </Link>
+              ))}
+          </div>
+        </section>
+
+        <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+          <p className="text-primary text-xs font-bold uppercase">The meta</p>
+          <h2 className="mb-5 text-xl font-bold">Most played commanders</h2>
+          <BarChart rows={stats.commanders.slice(0, 6)} value="games" />
+        </section>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+          <p className="text-primary text-xs font-bold uppercase">Opening advantage</p>
+          <h2 className="mb-5 text-xl font-bold">Wins by seat</h2>
+          <BarChart rows={stats.seat_win_rates} />
+        </section>
+        <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+          <p className="text-primary text-xs font-bold uppercase">Color check</p>
+          <h2 className="mb-5 text-xl font-bold">Color performance</h2>
+          <BarChart rows={stats.color_win_rates.slice(0, 6)} />
+        </section>
+      </div>
+
+      <section>
+        <div className="mb-3 flex items-end justify-between">
+          <div>
+            <p className="text-primary text-xs font-bold uppercase">Fresh from the table</p>
+            <h2 className="text-xl font-bold">Recent games</h2>
+          </div>
+          <Link to="/games" className="btn btn-ghost btn-sm">
+            View all
+          </Link>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {stats.recent_games.map((game) => (
+            <Link
+              key={game.id}
+              to="/games/$gameId"
+              params={{ gameId: String(game.id) }}
+              className="border-base-300 bg-base-200/60 hover:border-primary/40 rounded-xl border p-4 transition-colors"
+            >
+              <strong>{game.winner ? `${game.winner.name} won` : "Draw game"}</strong>
+              <p className="text-base-content/55 mt-1 text-sm">
+                {formatDate(game.played_at)} · {game.players} players
+                {game.duration_minutes ? ` · ${game.duration_minutes}m` : ""}
+              </p>
+            </Link>
+          ))}
         </div>
       </section>
-
-      <section aria-labelledby="planned-heading" className="flex flex-col gap-4">
-        <h2 id="planned-heading" className="text-base-content/60 text-sm font-semibold uppercase">
-          On the roadmap
-        </h2>
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {planned.map(({ Icon, title, body }) => (
-            <li key={title} className="card bg-base-200 border-base-300 border">
-              <div className="card-body gap-2">
-                <Icon className="text-accent size-5" aria-hidden="true" />
-                <h3 className="font-semibold">{title}</h3>
-                <p className="text-base-content/70 text-sm">{body}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
     </div>
+  )
+}
+
+function EmptyDashboard() {
+  return (
+    <section className="border-base-300 bg-base-200/60 mx-auto max-w-xl rounded-2xl border p-8 text-center sm:p-12">
+      <Gamepad2 className="text-primary mx-auto size-10" />
+      <h1 className="mt-4 text-3xl font-black">Your stats start at game one.</h1>
+      <p className="text-base-content/60 mt-2">
+        Record a game and this dashboard will turn it into standings, trends, and matchup history.
+      </p>
+      <Link to="/games/new" className="btn btn-primary mt-6">
+        Record a game
+      </Link>
+    </section>
   )
 }

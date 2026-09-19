@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { Trophy } from "lucide-react"
+import { PlayerStats } from "@/components/stats/player-stats"
 import { formatDate, getPlayer } from "@/lib/games"
 
 export const Route = createFileRoute("/players/$playerId")({ component: PlayerDetailPage })
@@ -27,6 +28,7 @@ function PlayerDetailPage() {
           </div>
         </div>
       </div>
+      <PlayerStats playerId={playerId} />
       <section>
         <h2 className="mb-3 text-xl font-bold">Decks</h2>
         {player.decks?.length === 0 && (
