@@ -24,7 +24,9 @@ defmodule TheGatheringWeb.AppController do
         <meta name="theme-color" content="#f5e6e2" media="(prefers-color-scheme: light)" />
         <meta name="theme-color" content="#180810" media="(prefers-color-scheme: dark)" />
         <title>The Gathering</title>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href="/favicon.ico" sizes="32x32" />
+        <link rel="icon" href="/images/logo.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/images/apple-touch-icon.png" />
         <script>
           (() => {
             const key = "the-gathering:theme"

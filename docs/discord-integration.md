@@ -15,7 +15,9 @@ Use the same Discord application for OAuth and the optional game-tracking bot:
 
 1. In the [Discord Developer Portal](https://discord.com/developers/applications),
    open the application and copy its **Application ID** and OAuth2 client secret
-   into `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`.
+   into `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`. For the **App Icon**,
+   upload `priv/static/images/discord-app-icon.png`; it is the app logo on a
+   full-bleed square because Discord applies its own circular crop.
 2. Under **OAuth2**, register
    `<PHX_SCHEME>://<PHX_HOST>:<PHX_URL_PORT>/auth/discord/callback`. Omit the port
    when it is the scheme default (for example,

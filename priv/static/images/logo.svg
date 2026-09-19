@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="The Gathering">
+  <!-- Four players seated around a table, gathered around a shared spark. -->
+  <rect width="512" height="512" rx="112" fill="#180810"/>
+  <!-- Table: a ring drawn as a filled annulus so it renders without stroke support. -->
+  <path fill="#d4a76a" fill-rule="evenodd" d="M256 96a160 160 0 1 0 0 320 160 160 0 1 0 0-320zm0 20a140 140 0 1 1 0 280 140 140 0 1 1 0-280z"/>
+  <g fill="#c75b7a">
+    <circle cx="256" cy="106" r="46"/>
+    <circle cx="406" cy="256" r="46"/>
+    <circle cx="256" cy="406" r="46"/>
+    <circle cx="106" cy="256" r="46"/>
+  </g>
+  <path fill="#d4a76a" d="M256 196c8 34 26 52 60 60-34 8-52 26-60 60-8-34-26-52-60-60 34-8 52-26 60-60z"/>
+</svg>

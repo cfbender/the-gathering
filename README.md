@@ -1,3 +1,5 @@
+<img src="priv/static/images/logo.svg" alt="" width="96" align="right" />
+
 # The Gathering
 
 A self-hosted tracker for Commander (Magic: The Gathering) games. Record who played, which commanders, who won, and how, then browse stats for your playgroup. One container, one SQLite file, no external services.
