@@ -1,0 +1,17 @@
+services:
+  the-gathering:
+    image: ghcr.io/cfbender/the-gathering:latest
+    container_name: the-gathering
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      # SQLite database and any uploaded/cached files live here.
+      - ./data:/data
+    environment:
+      # Generate with: openssl rand -base64 64 | tr -d '\n'
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?Set SECRET_KEY_BASE in .env}
+      # Public hostname (and scheme) users reach the app at, used for generated URLs.
+      PHX_HOST: ${PHX_HOST:-localhost}
+      PHX_SCHEME: ${PHX_SCHEME:-http}
+      PHX_URL_PORT: ${PHX_URL_PORT:-4000}
