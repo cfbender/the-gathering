@@ -26,6 +26,11 @@ config :logger, level: :warning
 # Tests invoke catalog sync explicitly with local fixtures.
 config :the_gathering, :catalog_sync_enabled, false
 
+# Every ConnTest request shares 127.0.0.1, so keep the shared bucket effectively
+# unlimited; the rate limit tests lower it for their own addresses.
+config :the_gathering, TheGatheringWeb.RateLimit,
+  credentials: [limit: 1_000_000, scale: :timer.minutes(5)]
+
 # Deck-list tests exercise ManaVault links against a stubbed self-hosted origin.
 config :the_gathering, TheGathering.Decklists, manavault_url: "https://manavault.example.com"
 

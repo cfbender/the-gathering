@@ -30,15 +30,26 @@ defmodule TheGatheringWeb.Router do
     plug TheGatheringWeb.UserAuth, :require_sudo_mode
   end
 
+  pipeline :rate_limit_credentials do
+    plug TheGatheringWeb.RateLimit, bucket: :credentials
+  end
+
   scope "/api", TheGatheringWeb.API do
     pipe_through :api
 
     get "/health", HealthController, :show
     get "/registration", RegistrationController, :show
-    post "/users", RegistrationController, :create
     get "/session", SessionController, :show
-    post "/session", SessionController, :create
     delete "/session", SessionController, :delete
+  end
+
+  # Password login and bootstrap registration are the only public endpoints
+  # that accept credentials, so throttle guessing per client address.
+  scope "/api", TheGatheringWeb.API do
+    pipe_through [:api, :rate_limit_credentials]
+
+    post "/users", RegistrationController, :create
+    post "/session", SessionController, :create
   end
 
   # Everything about the playgroup, including game history and the card

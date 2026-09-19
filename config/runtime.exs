@@ -23,6 +23,11 @@ if discord_client_id not in [nil, ""] and discord_client_secret not in [nil, ""]
     client_secret: discord_client_secret
 end
 
+# Behind a reverse proxy, identify clients for rate limiting by the proxy's
+# x-real-ip / x-forwarded-for headers instead of the proxy address.
+config :the_gathering, TheGatheringWeb.RateLimit,
+  trust_proxy_headers: System.get_env("TRUST_PROXY_HEADERS") in ["true", "1"]
+
 catalog_sync_hours = String.to_integer(System.get_env("CATALOG_SYNC_INTERVAL_HOURS", "168"))
 config :the_gathering, :catalog_sync_interval_ms, catalog_sync_hours * 60 * 60 * 1_000
 
