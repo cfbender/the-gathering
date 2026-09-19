@@ -23,6 +23,9 @@ config :the_gathering, TheGatheringWeb.ViteAssets, mode: :dev_server
 # Print only warnings and errors during test
 config :logger, level: :warning
 
+# Tests invoke catalog sync explicitly with local fixtures.
+config :the_gathering, :catalog_sync_enabled, false
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 

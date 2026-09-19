@@ -30,6 +30,7 @@ function RootLayout() {
                 ["/games", "Games"],
                 ["/players", "Players"],
                 ["/decks", "Decks"],
+                ["/cards", "Cards"],
               ].map(([to, label]) => (
                 <Link
                   key={to}
