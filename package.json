@@ -1,0 +1,42 @@
+{
+  "name": "the-gathering",
+  "version": "0.1.0",
+  "private": true,
+  "description": "React frontend for The Gathering, a self-hosted Commander game tracker.",
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "check": "vp check",
+    "lint": "vp lint",
+    "format": "vp fmt",
+    "test": "vp test run",
+    "precommit": "vp check && vp test run && vp build"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "^1.170.38",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.47.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/router-plugin": "^1.168.40",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "daisyui": "^5.7.42",
+    "jsdom": "^30.1.0",
+    "tailwindcss": "^4.3.3",
+    "vite": "npm:@voidzero-dev/vite-plus-core@^0.3.3",
+    "vite-plus": "^0.3.3"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@^0.3.3"
+  }
+}

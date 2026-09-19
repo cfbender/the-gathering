@@ -1,0 +1,29 @@
+# Elixir / Mix
+/_build/
+/cover/
+/deps/
+/doc/
+/.fetch
+erl_crash.dump
+*.ez
+the_gathering-*.tar
+.elixir_ls/
+
+# JavaScript
+/node_modules/
+
+# Generated Vite output and Phoenix digests
+/priv/static/assets/
+/priv/static/cache_manifest.json
+
+# Local SQLite databases and runtime data
+*.db
+*.db-*
+/data/
+
+# Temporary files, for example, from tests.
+/tmp/
+
+# Amp orb portal registrations
+.amp/portals/
+.env

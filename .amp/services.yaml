@@ -1,0 +1,9 @@
+services:
+  the-gathering-review:
+    # Phoenix listens on 31397; its `aube run dev` watcher starts Vite on 5173,
+    # which serves the React app with HMR and proxies everything else to Phoenix.
+    command: PORT=31397 mise exec -- mix phx.server
+    port: 5173
+    portal:
+      title: The Gathering
+      description: Review UI and UX changes here; leave this service running after verification.
