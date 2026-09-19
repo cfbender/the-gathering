@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query"
 import { Link, Outlet, createRootRouteWithContext } from "@tanstack/react-router"
-import { Swords, Upload } from "lucide-react"
+import { Upload } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { UserMenu } from "@/components/user-menu"
 import { requireUser, useCurrentUser } from "@/lib/auth"
@@ -31,9 +31,7 @@ function RootLayout() {
       <header className="border-base-300 bg-base-100/80 sticky top-0 z-10 border-b backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:gap-4">
           <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="bg-primary text-primary-content grid size-8 place-items-center rounded-lg">
-              <Swords className="size-4" aria-hidden="true" />
-            </span>
+            <img src="/images/logo.svg" alt="" className="size-8" width={32} height={32} />
             <span className="hidden sm:inline">The Gathering</span>
           </Link>
           <div className="flex items-center gap-1 sm:gap-3">
