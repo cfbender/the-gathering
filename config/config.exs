@@ -11,6 +11,15 @@ config :the_gathering,
   ecto_repos: [TheGathering.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# SQLite allows one writer at a time. Deferred transactions that read before
+# writing fail immediately with "Database busy" when another connection commits
+# in between (SQLITE_BUSY_SNAPSHOT), which is what happens when the catalog sync
+# runs while a user registers. Immediate transactions take the write lock up
+# front and wait up to busy_timeout instead.
+config :the_gathering, TheGathering.Repo,
+  default_transaction_mode: :immediate,
+  busy_timeout: 5_000
+
 # Configure the endpoint
 config :the_gathering, TheGatheringWeb.Endpoint,
   url: [host: "localhost"],
