@@ -24,8 +24,12 @@ defmodule TheGathering.Discord do
   @impl true
   def init(config) do
     with {:ok, _applications} <- Application.ensure_all_started(:nostrum) do
+      sink =
+        config[:sink] ||
+          Application.get_env(:the_gathering, :discord_sink, TheGathering.Discord.Sink.Games)
+
       children = [
-        {TheGathering.Discord.Tracker, sink: config[:sink]},
+        {TheGathering.Discord.Tracker, sink: sink},
         TheGathering.Discord.Consumer
       ]
 

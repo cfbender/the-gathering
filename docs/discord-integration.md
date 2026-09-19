@@ -141,10 +141,30 @@ membership check + ephemeral reply         │
 name/nullable commander, winner Discord IDs, and scrub-safe raw embed data.
 Commanders are `nil` because the ready embed does not contain them.
 
-The default sink logs only identifiers and counts. The observed roster cache is
-in memory, so a restart after game start currently makes `/won` return a clear
-“haven't seen that game” error. Persistence/backfill belongs in the games sink,
-where deduplication and player mapping live.
+The observed roster cache is in memory, so a restart after game start currently
+makes `/won` return a clear “haven't seen that game” error. Completed reports
+are persisted by the games sink described below.
+
+## Game tracking
+
+The Discord supervisor uses `TheGathering.Discord.Sink.Games` by default. A
+winnerless SpellBot start remains pending in the tracker's in-memory roster
+cache rather than being recorded as a draw. When a listed player uses `/won`,
+the sink creates or reuses players by Discord ID and records one `games` row
+with `source: "discord"`, the SpellBot ID as `external_id`, and seats in the
+order SpellBot listed them. The reporting player is the winner and every other
+seat is a loss.
+
+If a report supplies a commander, the sink creates or reuses a deck named for
+that commander. It leaves `commander_card_id` unset and the color identity empty;
+the ready embed currently supplies no commander, and this path does not query
+the card catalog.
+
+Repeated reports are idempotent by `{source, external_id}`. A completed replay
+replaces the existing game's timestamp, seats, decks, and results, so corrected
+seat order or winner data does not create a duplicate. Validation failures are
+logged without raw Discord payloads and returned to the tracker without
+crashing the gateway consumer.
 
 ## Configuration and self-host setup
 
@@ -173,20 +193,3 @@ where deduplication and player mapping live.
 A real Discord smoke test was not run in the orb because no throwaway
 application/server credentials were available. The test suite uses the scrubbed
 upstream-shaped payload and performs no network calls.
-
-## Games integration contract
-
-The future `TheGathering.Games` sink should:
-
-1. implement `TheGathering.Discord.Sink.handle_report/1` and configure it as
-   `:the_gathering, :discord_sink`;
-2. upsert by `{source, external_id}` so the initial roster and later winner are
-   one game, not duplicates;
-3. map each seat by `players.discord_id`, surfacing unmapped IDs for admin
-   resolution rather than silently dropping them;
-4. stage the winnerless start report, then create/update the game when a winner
-   report arrives (or explicitly support an unknown winner);
-5. preserve `played_at`, seat order, winner IDs, and raw provenance; and
-6. make repeated gateway events and repeated `/won` reports idempotent.
-
-No games modules or migrations are part of this Discord skeleton.

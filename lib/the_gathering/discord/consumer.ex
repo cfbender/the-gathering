@@ -25,8 +25,14 @@ defmodule TheGathering.Discord.Consumer do
 
   defp observe(message) do
     case SpellBotParser.parse(message) do
-      {:ok, report} -> Tracker.observe(report)
-      {:error, _reason} -> :ignore
+      {:ok, report} ->
+        case Tracker.observe(report) do
+          :ok -> :ok
+          {:error, reason} -> Logger.warning("Could not record Discord game: #{inspect(reason)}")
+        end
+
+      {:error, _reason} ->
+        :ignore
     end
   end
 end

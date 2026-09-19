@@ -69,7 +69,7 @@ The integrations use the upstream services' public interfaces:
 | `PORT` | `4000` | Port the server binds inside the container. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
 | `MANAVAULT_URL` | unset | Origin of a self-hosted ManaVault instance whose shared deck links are recognized and resolved. |
-| `DISCORD_BOT_TOKEN` | unset | Discord bot token; enables automatic SpellBot game tracking when set. |
+| `DISCORD_BOT_TOKEN` | unset | Discord bot token; enables automatic recording of completed SpellBot games when set. |
 | `DISCORD_GUILD_ID` | unset | Optional development/server ID for immediate guild-scoped `/won` registration; without it the command is global. |
 | `DISCORD_SPELLBOT_USER_ID` | `725510263251402832` | Discord user ID accepted as SpellBot, useful when running a private SpellBot deployment. |
 | `THE_GATHERING_ADMIN_USERNAME` | unset | Creates this admin on container startup when paired with the password. |

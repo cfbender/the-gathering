@@ -45,6 +45,9 @@ defmodule TheGathering.Discord.Command do
 
         {:error, :not_a_player} ->
           "You weren't listed as a player in that SpellBot game, so I didn't change it."
+
+        {:error, {:sink_failed, _reason}} ->
+          "I couldn't save that game. Please try again or ask an administrator to check the logs."
       end
 
     response(content)
