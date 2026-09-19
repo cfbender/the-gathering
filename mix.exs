@@ -54,6 +54,7 @@ defmodule TheGathering.MixProject do
       {:dns_cluster, "~> 0.3.0"},
       {:bandit, "~> 1.5"},
       {:bcrypt_elixir, "~> 3.3"},
+      {:hammer, "~> 7.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end

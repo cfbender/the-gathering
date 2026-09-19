@@ -65,6 +65,7 @@ export function errorMessage(error: unknown, field?: string) {
   if (!(error instanceof ApiError)) return error instanceof Error ? error.message : null
   if (field) return error.fieldErrors(field)[0] ?? null
   if (error.status === 401) return "Username or password is incorrect."
+  if (error.status === 429) return "Too many attempts. Wait a few minutes and try again."
   return error.detail
 }
 

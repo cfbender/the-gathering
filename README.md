@@ -67,6 +67,7 @@ The integrations use the upstream services' public interfaces:
 | `PHX_SCHEME` | `https` | Public scheme. |
 | `PHX_URL_PORT` | `443` for https, `80` for http | Public port. |
 | `PORT` | `4000` | Port the server binds inside the container. |
+| `TRUST_PROXY_HEADERS` | unset | Set to `true` behind a reverse proxy so rate limiting identifies clients by `x-real-ip` / `x-forwarded-for` instead of the proxy address. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
 | `MANAVAULT_URL` | unset | Origin of a self-hosted ManaVault instance whose shared deck links are recognized and resolved. |
 | `DISCORD_CLIENT_ID` | unset | Discord application client ID; enables member OAuth sign-in when paired with the secret. |
@@ -99,6 +100,12 @@ Sessions use random tokens stored in the `users_tokens` table, following Phoenix
 design. Changing the administrator password expires every existing session. Sensitive actions
 require authentication within the previous ten minutes; the SPA prompts the administrator for a
 password and Discord members to authorize with Discord again. Passwords must be 12–72 characters.
+
+Password login and bootstrap registration (`POST /api/session`, `POST /api/users`) are limited
+to 10 attempts per client address every 5 minutes; further attempts get `429 Too Many Requests`
+with a `retry-after` header. Behind a reverse proxy every request arrives from the proxy's
+address, so set `TRUST_PROXY_HEADERS=true` when your proxy sets `x-real-ip` or
+`x-forwarded-for`. Discord sign-in is not rate limited here.
 
 See [Discord integration](docs/discord-integration.md) for bot creation, permissions, and current tracking behavior.
 See [CSV game import](docs/csv-import.md) for the spreadsheet format, Mythic Track compatibility, and admin import flow.
