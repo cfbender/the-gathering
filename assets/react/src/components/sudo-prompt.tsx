@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query"
 import type { FormEvent } from "react"
 import { LockKeyhole } from "lucide-react"
+import { DiscordIcon } from "@/components/discord-icon"
 import { api } from "@/lib/api"
 import { errorMessage, isSudoRequired, useCurrentUser } from "@/lib/auth"
 import { formValue } from "@/lib/form"
@@ -38,8 +39,9 @@ export function SudoPrompt({ error, onSuccess }: { error: unknown; onSuccess: ()
           </div>
           <a
             href={`/auth/discord?${new URLSearchParams({ sudo: "1", returnTo }).toString()}`}
-            className="btn btn-warning btn-sm"
+            className="btn bg-discord hover:bg-discord-hover border-discord hover:border-discord-hover btn-sm text-white"
           >
+            <DiscordIcon className="size-4" />
             Continue with Discord
           </a>
         </div>

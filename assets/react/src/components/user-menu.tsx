@@ -1,23 +1,12 @@
 import { Link } from "@tanstack/react-router"
-import { LogIn, LogOut, Settings, Shield, UserRound } from "lucide-react"
+import { LogOut, Settings, Shield, UserRound } from "lucide-react"
 import { useCurrentUser, useLogout } from "@/lib/auth"
 
 export function UserMenu() {
   const session = useCurrentUser()
   const logout = useLogout()
 
-  if (!session.data) {
-    return (
-      <Link
-        to="/login"
-        search={{ returnTo: "/", error: undefined }}
-        className="btn btn-ghost btn-sm gap-2"
-      >
-        <LogIn className="size-4" aria-hidden="true" />
-        <span className="hidden sm:inline">Sign in</span>
-      </Link>
-    )
-  }
+  if (!session.data) return null
 
   const user = session.data
 

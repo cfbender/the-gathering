@@ -37,35 +37,40 @@ function RootLayout() {
             <span className="hidden sm:inline">The Gathering</span>
           </Link>
           <div className="flex items-center gap-1 sm:gap-3">
-            <nav aria-label="Main navigation" className="flex items-center">
-              {[
-                ["/games", "Games"],
-                ["/players", "Players"],
-                ["/decks", "Decks"],
-              ].map(([to, label]) => (
-                <Link
-                  key={to}
-                  to={to}
-                  className="btn btn-ghost btn-sm px-2 sm:px-3"
-                  activeProps={{ className: "text-primary bg-primary/10" }}
-                >
-                  {label}
-                </Link>
-              ))}
-              {session.data?.role === "admin" && (
-                <Link
-                  to="/import"
-                  aria-label="Import games"
-                  className="btn btn-ghost btn-sm px-2 sm:px-3"
-                  activeProps={{ className: "text-primary bg-primary/10" }}
-                >
-                  <Upload className="size-4 lg:hidden" aria-hidden="true" />
-                  <span className="hidden lg:inline">Import</span>
-                </Link>
-              )}
-            </nav>
-            <UserMenu />
-            <div className="hidden sm:block">
+            {/* Signed-out visitors only ever see the login/register pages, where navigation is noise. */}
+            {session.data && (
+              <>
+                <nav aria-label="Main navigation" className="flex items-center">
+                  {[
+                    ["/games", "Games"],
+                    ["/players", "Players"],
+                    ["/decks", "Decks"],
+                  ].map(([to, label]) => (
+                    <Link
+                      key={to}
+                      to={to}
+                      className="btn btn-ghost btn-sm px-2 sm:px-3"
+                      activeProps={{ className: "text-primary bg-primary/10" }}
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                  {session.data.role === "admin" && (
+                    <Link
+                      to="/import"
+                      aria-label="Import games"
+                      className="btn btn-ghost btn-sm px-2 sm:px-3"
+                      activeProps={{ className: "text-primary bg-primary/10" }}
+                    >
+                      <Upload className="size-4 lg:hidden" aria-hidden="true" />
+                      <span className="hidden lg:inline">Import</span>
+                    </Link>
+                  )}
+                </nav>
+                <UserMenu />
+              </>
+            )}
+            <div className={session.data ? "hidden sm:block" : undefined}>
               <ThemeToggle />
             </div>
           </div>
