@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import type { FormEvent } from "react"
-import { LogIn, MessageCircle } from "lucide-react"
+import { LogIn } from "lucide-react"
+import { DiscordIcon } from "@/components/discord-icon"
 import { errorMessage, registrationQueryOptions, safeReturnTo, useLogin } from "@/lib/auth"
 import { formValue } from "@/lib/form"
 
@@ -49,9 +50,9 @@ function LoginPage() {
           {registration.discord_configured && !registration.bootstrap && (
             <a
               href={`/auth/discord?${new URLSearchParams({ returnTo }).toString()}`}
-              className="btn btn-primary w-full"
+              className="btn bg-discord hover:bg-discord-hover border-discord hover:border-discord-hover w-full text-white shadow-sm"
             >
-              <MessageCircle className="size-5" aria-hidden="true" />
+              <DiscordIcon className="size-5" />
               Continue with Discord
             </a>
           )}
