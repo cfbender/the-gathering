@@ -11,6 +11,8 @@ defmodule TheGatheringWeb.API.GameController do
   end
 
   def create(conn, %{"game" => attrs}) do
+    attrs = Map.put(attrs, "created_by_user_id", conn.assigns.current_scope.user.id)
+
     with {:ok, game} <- Games.create_game(attrs) do
       conn |> put_status(:created) |> render(:show, game: game)
     end

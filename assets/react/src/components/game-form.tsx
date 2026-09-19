@@ -354,9 +354,7 @@ export function GameForm({ game }: GameFormProps) {
 
       {mutation.isError && (
         <div role="alert" className="alert alert-error">
-          <span>
-            {error?.errors.detail ?? "Could not save the game. Check the highlighted fields."}
-          </span>
+          <span>{error?.detail ?? "Could not save the game. Check the highlighted fields."}</span>
         </div>
       )}
       <div className="flex justify-end">

@@ -1,9 +1,13 @@
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { GameForm } from "@/components/game-form"
+import { requireUser } from "@/lib/auth"
 import { getGame } from "@/lib/games"
 
-export const Route = createFileRoute("/games/$gameId_/edit")({ component: EditGamePage })
+export const Route = createFileRoute("/games/$gameId_/edit")({
+  beforeLoad: ({ context, location }) => requireUser(context.queryClient, location.href),
+  component: EditGamePage,
+})
 
 function EditGamePage() {
   const { gameId } = Route.useParams()
