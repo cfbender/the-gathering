@@ -1,0 +1,89 @@
+import { api } from "@/lib/api"
+
+export interface Player {
+  id: number
+  name: string
+  archived_at: string | null
+  games_played?: number
+  wins?: number
+  decks?: Deck[]
+  recent_games?: RecentGame[]
+}
+
+export interface Deck {
+  id: number
+  player_id: number
+  name: string
+  commander_name: string
+  partner_name: string | null
+  color_identity: string
+  decklist_url: string | null
+  decklist_source: string | null
+  archived_at: string | null
+  player?: Player
+  games_played?: number
+  wins?: number
+  recent_games?: RecentGame[]
+}
+
+export interface Seat {
+  id: number
+  player_id: number
+  deck_id: number | null
+  seat: number
+  result: "win" | "loss" | "draw"
+  mvp_card_name: string | null
+  notes: string | null
+  player: Player
+  deck: Deck | null
+}
+
+export interface Game {
+  id: number
+  played_at: string
+  duration_minutes: number | null
+  turns: number | null
+  notes: string | null
+  source: "manual" | "csv" | "discord"
+  seats: Seat[]
+}
+
+export interface RecentGame {
+  id: number
+  played_at: string
+  result: Seat["result"]
+  deck: Deck | null
+}
+
+export interface Pagination {
+  page: number
+  per_page: number
+  total: number
+  total_pages: number
+}
+
+export const getPlayers = () => api<{ data: Player[] }>("/api/players").then((body) => body.data)
+export const getPlayer = (id: string) =>
+  api<{ data: Player }>(`/api/players/${id}`).then((body) => body.data)
+export const getDecks = (playerId?: number) =>
+  api<{ data: Deck[] }>(`/api/decks${playerId ? `?player_id=${playerId}` : ""}`).then(
+    (body) => body.data,
+  )
+export const getDeck = (id: string) =>
+  api<{ data: Deck }>(`/api/decks/${id}`).then((body) => body.data)
+export const getGame = (id: string) =>
+  api<{ data: Game }>(`/api/games/${id}`).then((body) => body.data)
+
+export function getGames(params: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") query.set(key, String(value))
+  })
+  return api<{ data: Game[]; pagination: Pagination }>(`/api/games?${query}`)
+}
+
+export function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
+    new Date(value),
+  )
+}

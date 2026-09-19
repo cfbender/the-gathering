@@ -24,7 +24,25 @@ function RootLayout() {
             </span>
             The Gathering
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-1 sm:gap-3">
+            <nav aria-label="Main navigation" className="flex items-center">
+              {[
+                ["/games", "Games"],
+                ["/players", "Players"],
+                ["/decks", "Decks"],
+              ].map(([to, label]) => (
+                <Link
+                  key={to}
+                  to={to}
+                  className="btn btn-ghost btn-sm px-2 sm:px-3"
+                  activeProps={{ className: "text-primary bg-primary/10" }}
+                >
+                  {label}
+                </Link>
+              ))}
+            </nav>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">

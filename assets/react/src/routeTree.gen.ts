@@ -10,33 +10,141 @@
 
 import { Route as rootRouteImport } from "./routes/__root"
 import { Route as IndexRouteImport } from "./routes/index"
+import { Route as DecksIndexRouteImport } from "./routes/decks.index"
+import { Route as DecksDeckIdRouteImport } from "./routes/decks.$deckId"
+import { Route as GamesIndexRouteImport } from "./routes/games.index"
+import { Route as GamesGameIdRouteImport } from "./routes/games.$gameId"
+import { Route as GamesNewRouteImport } from "./routes/games.new"
+import { Route as PlayersIndexRouteImport } from "./routes/players.index"
+import { Route as PlayersPlayerIdRouteImport } from "./routes/players.$playerId"
+import { Route as GamesGameIdEditRouteImport } from "./routes/games.$gameId_.edit"
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
   getParentRoute: () => rootRouteImport,
 } as any)
+const DecksIndexRoute = DecksIndexRouteImport.update({
+  id: "/decks/",
+  path: "/decks/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DecksDeckIdRoute = DecksDeckIdRouteImport.update({
+  id: "/decks/$deckId",
+  path: "/decks/$deckId",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GamesIndexRoute = GamesIndexRouteImport.update({
+  id: "/games/",
+  path: "/games/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GamesGameIdRoute = GamesGameIdRouteImport.update({
+  id: "/games/$gameId",
+  path: "/games/$gameId",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GamesNewRoute = GamesNewRouteImport.update({
+  id: "/games/new",
+  path: "/games/new",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlayersIndexRoute = PlayersIndexRouteImport.update({
+  id: "/players/",
+  path: "/players/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlayersPlayerIdRoute = PlayersPlayerIdRouteImport.update({
+  id: "/players/$playerId",
+  path: "/players/$playerId",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GamesGameIdEditRoute = GamesGameIdEditRouteImport.update({
+  id: "/games/$gameId_/edit",
+  path: "/games/$gameId/edit",
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
+  "/decks/$deckId": typeof DecksDeckIdRoute
+  "/games/$gameId": typeof GamesGameIdRoute
+  "/games/new": typeof GamesNewRoute
+  "/players/$playerId": typeof PlayersPlayerIdRoute
+  "/decks/": typeof DecksIndexRoute
+  "/games/": typeof GamesIndexRoute
+  "/players/": typeof PlayersIndexRoute
+  "/games/$gameId/edit": typeof GamesGameIdEditRoute
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
+  "/decks/$deckId": typeof DecksDeckIdRoute
+  "/games/$gameId": typeof GamesGameIdRoute
+  "/games/new": typeof GamesNewRoute
+  "/players/$playerId": typeof PlayersPlayerIdRoute
+  "/decks": typeof DecksIndexRoute
+  "/games": typeof GamesIndexRoute
+  "/players": typeof PlayersIndexRoute
+  "/games/$gameId/edit": typeof GamesGameIdEditRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/": typeof IndexRoute
+  "/decks/$deckId": typeof DecksDeckIdRoute
+  "/games/$gameId": typeof GamesGameIdRoute
+  "/games/new": typeof GamesNewRoute
+  "/players/$playerId": typeof PlayersPlayerIdRoute
+  "/decks/": typeof DecksIndexRoute
+  "/games/": typeof GamesIndexRoute
+  "/players/": typeof PlayersIndexRoute
+  "/games/$gameId_/edit": typeof GamesGameIdEditRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: "/"
+  fullPaths:
+    | "/"
+    | "/decks/$deckId"
+    | "/games/$gameId"
+    | "/games/new"
+    | "/players/$playerId"
+    | "/decks/"
+    | "/games/"
+    | "/players/"
+    | "/games/$gameId/edit"
   fileRoutesByTo: FileRoutesByTo
-  to: "/"
-  id: "__root__" | "/"
+  to:
+    | "/"
+    | "/decks/$deckId"
+    | "/games/$gameId"
+    | "/games/new"
+    | "/players/$playerId"
+    | "/decks"
+    | "/games"
+    | "/players"
+    | "/games/$gameId/edit"
+  id:
+    | "__root__"
+    | "/"
+    | "/decks/$deckId"
+    | "/games/$gameId"
+    | "/games/new"
+    | "/players/$playerId"
+    | "/decks/"
+    | "/games/"
+    | "/players/"
+    | "/games/$gameId_/edit"
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DecksDeckIdRoute: typeof DecksDeckIdRoute
+  GamesGameIdRoute: typeof GamesGameIdRoute
+  GamesNewRoute: typeof GamesNewRoute
+  PlayersPlayerIdRoute: typeof PlayersPlayerIdRoute
+  DecksIndexRoute: typeof DecksIndexRoute
+  GamesIndexRoute: typeof GamesIndexRoute
+  PlayersIndexRoute: typeof PlayersIndexRoute
+  GamesGameIdEditRoute: typeof GamesGameIdEditRoute
 }
 
 declare module "@tanstack/react-router" {
@@ -48,11 +156,75 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/decks/": {
+      id: "/decks/"
+      path: "/decks"
+      fullPath: "/decks/"
+      preLoaderRoute: typeof DecksIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/decks/$deckId": {
+      id: "/decks/$deckId"
+      path: "/decks/$deckId"
+      fullPath: "/decks/$deckId"
+      preLoaderRoute: typeof DecksDeckIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/games/": {
+      id: "/games/"
+      path: "/games"
+      fullPath: "/games/"
+      preLoaderRoute: typeof GamesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/games/$gameId": {
+      id: "/games/$gameId"
+      path: "/games/$gameId"
+      fullPath: "/games/$gameId"
+      preLoaderRoute: typeof GamesGameIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/games/new": {
+      id: "/games/new"
+      path: "/games/new"
+      fullPath: "/games/new"
+      preLoaderRoute: typeof GamesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/players/": {
+      id: "/players/"
+      path: "/players"
+      fullPath: "/players/"
+      preLoaderRoute: typeof PlayersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/players/$playerId": {
+      id: "/players/$playerId"
+      path: "/players/$playerId"
+      fullPath: "/players/$playerId"
+      preLoaderRoute: typeof PlayersPlayerIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/games/$gameId_/edit": {
+      id: "/games/$gameId_/edit"
+      path: "/games/$gameId/edit"
+      fullPath: "/games/$gameId/edit"
+      preLoaderRoute: typeof GamesGameIdEditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DecksDeckIdRoute: DecksDeckIdRoute,
+  GamesGameIdRoute: GamesGameIdRoute,
+  GamesNewRoute: GamesNewRoute,
+  PlayersPlayerIdRoute: PlayersPlayerIdRoute,
+  DecksIndexRoute: DecksIndexRoute,
+  GamesIndexRoute: GamesIndexRoute,
+  PlayersIndexRoute: PlayersIndexRoute,
+  GamesGameIdEditRoute: GamesGameIdEditRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
