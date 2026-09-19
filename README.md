@@ -101,6 +101,7 @@ require authentication within the previous ten minutes; the SPA prompts the admi
 password and Discord members to authorize with Discord again. Passwords must be 12–72 characters.
 
 See [Discord integration](docs/discord-integration.md) for bot creation, permissions, and current tracking behavior.
+See [CSV game import](docs/csv-import.md) for the spreadsheet format, Mythic Track compatibility, and admin import flow.
 
 ### Card catalog
 

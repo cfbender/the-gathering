@@ -62,6 +62,14 @@ defmodule TheGatheringWeb.Router do
   end
 
   scope "/api", TheGatheringWeb.API do
+    pipe_through [:api, :require_authenticated_user, :require_admin]
+
+    get "/imports/csv/sample", CSVImportController, :sample
+    post "/imports/csv/preview", CSVImportController, :preview
+    post "/imports/csv", CSVImportController, :create
+  end
+
+  scope "/api", TheGatheringWeb.API do
     pipe_through [:api, :require_authenticated_user, :require_sudo_mode]
 
     patch "/session/password", SessionController, :update_password
