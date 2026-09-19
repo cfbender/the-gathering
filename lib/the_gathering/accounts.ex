@@ -30,6 +30,21 @@ defmodule TheGathering.Accounts do
 
   def create_admin(attrs), do: attrs |> Map.put("role", "admin") |> create_user()
 
+  @doc """
+  Returns the first enabled administrator, creating a passwordless `dev` administrator
+  when none exists. Used only by the development auto sign-in (`:dev_auto_login`).
+  """
+  def get_or_create_dev_admin do
+    query =
+      from u in User,
+        where: u.role == "admin" and is_nil(u.disabled_at),
+        order_by: [asc: u.id],
+        limit: 1
+
+    Repo.one(query) ||
+      Repo.insert!(%User{username: "dev", display_name: "Developer", role: "admin"})
+  end
+
   def get_user_by_username_and_password(username, password)
       when is_binary(username) and is_binary(password) do
     user = Repo.get_by(User, username: username |> String.trim() |> String.downcase())

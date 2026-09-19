@@ -56,6 +56,11 @@ config :the_gathering, TheGatheringWeb.ViteAssets, mode: :dev_server
 # Enable dev routes for dashboard and mailbox
 config :the_gathering, dev_routes: true
 
+# Sign anonymous requests in as the first administrator (creating a passwordless
+# `dev` admin if needed) and skip sudo re-authentication. Set DEV_AUTO_LOGIN=false
+# to exercise the real login flow locally.
+config :the_gathering, dev_auto_login: System.get_env("DEV_AUTO_LOGIN", "true") != "false"
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

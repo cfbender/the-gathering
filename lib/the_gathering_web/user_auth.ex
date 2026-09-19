@@ -43,8 +43,27 @@ defmodule TheGatheringWeb.UserAuth do
       |> assign(:current_scope, Scope.for_user(user))
       |> maybe_reissue_user_session_token(user, token_inserted_at)
     else
-      _missing_or_invalid -> assign(conn, :current_scope, Scope.for_user(nil))
+      _missing_or_invalid ->
+        if dev_auto_login?() do
+          auto_log_in_dev_admin(conn)
+        else
+          assign(conn, :current_scope, Scope.for_user(nil))
+        end
     end
+  end
+
+  # Development only (`config :the_gathering, dev_auto_login: true`): sign every
+  # anonymous request in as an administrator so the app is usable without auth.
+  defp dev_auto_login?, do: Application.get_env(:the_gathering, :dev_auto_login, false)
+
+  defp auto_log_in_dev_admin(conn) do
+    user = Accounts.get_or_create_dev_admin()
+    authenticated_at = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    conn
+    |> assign(:current_scope, Scope.for_user(nil))
+    |> log_in_user(user)
+    |> assign(:current_scope, Scope.for_user(%{user | authenticated_at: authenticated_at}))
   end
 
   @doc "Requires an authenticated user and otherwise returns the API's 401 JSON response."
@@ -61,7 +80,7 @@ defmodule TheGatheringWeb.UserAuth do
 
   @doc "Requires a password authentication within the previous ten minutes."
   def require_sudo_mode(conn, _opts) do
-    if Accounts.sudo_mode?(conn.assigns.current_scope.user, -10) do
+    if dev_auto_login?() or Accounts.sudo_mode?(conn.assigns.current_scope.user, -10) do
       conn
     else
       conn |> FallbackController.call({:error, :sudo_required}) |> halt()
