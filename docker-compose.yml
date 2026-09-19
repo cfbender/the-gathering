@@ -17,6 +17,10 @@ services:
       PHX_URL_PORT: ${PHX_URL_PORT:-4000}
       # Optional self-hosted ManaVault origin whose shared deck links should resolve.
       MANAVAULT_URL: ${MANAVAULT_URL:-}
+
+      # Discord OAuth credentials enable member sign-in.
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
       # Optional Discord game tracking. An empty token leaves the client disabled.
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}

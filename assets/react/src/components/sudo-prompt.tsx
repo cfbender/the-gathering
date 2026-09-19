@@ -2,10 +2,11 @@ import { useMutation } from "@tanstack/react-query"
 import type { FormEvent } from "react"
 import { LockKeyhole } from "lucide-react"
 import { api } from "@/lib/api"
-import { errorMessage, isSudoRequired } from "@/lib/auth"
+import { errorMessage, isSudoRequired, useCurrentUser } from "@/lib/auth"
 import { formValue } from "@/lib/form"
 
 export function SudoPrompt({ error, onSuccess }: { error: unknown; onSuccess: () => void }) {
+  const session = useCurrentUser()
   const sudo = useMutation({
     mutationFn: (password: string) =>
       api("/api/session/sudo", { method: "POST", body: JSON.stringify({ password }) }),
@@ -13,6 +14,38 @@ export function SudoPrompt({ error, onSuccess }: { error: unknown; onSuccess: ()
   })
 
   if (!isSudoRequired(error)) return null
+
+  if (session.data && !session.data.has_password) {
+    const returnTo = `${window.location.pathname}${window.location.search}`
+
+    return (
+      <div
+        role="alertdialog"
+        aria-labelledby="sudo-heading"
+        className="card border-warning bg-base-200 border shadow-sm"
+      >
+        <div className="card-body gap-4 sm:flex-row sm:items-center">
+          <div className="flex flex-1 gap-3">
+            <LockKeyhole className="text-warning mt-1 size-5 shrink-0" aria-hidden="true" />
+            <div>
+              <h2 id="sudo-heading" className="font-semibold">
+                Confirm it’s you
+              </h2>
+              <p className="text-base-content/70 text-sm">
+                Continue with Discord to approve this sensitive action.
+              </p>
+            </div>
+          </div>
+          <a
+            href={`/auth/discord?${new URLSearchParams({ sudo: "1", returnTo }).toString()}`}
+            className="btn btn-warning btn-sm"
+          >
+            Continue with Discord
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

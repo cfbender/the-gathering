@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import type { FormEvent } from "react"
-import { KeyRound, Shield, UserPlus, Users } from "lucide-react"
+import { Shield, Users } from "lucide-react"
 import { SudoPrompt } from "@/components/sudo-prompt"
 import { api } from "@/lib/api"
 import { errorMessage, isSudoRequired, requireAdmin } from "@/lib/auth"
@@ -31,15 +31,6 @@ function AdminUsersPage() {
     queryKey: ["admin", "settings"],
     queryFn: async () => (await api<Data<AdminSettings>>("/api/admin/settings")).data,
   })
-  const createUser = useMutation({
-    mutationFn: (user: {
-      username: string
-      display_name: string
-      password: string
-      role: string
-    }) => api<Data<User>>("/api/admin/users", { method: "POST", body: JSON.stringify({ user }) }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["admin", "users"] }),
-  })
   const toggleRegistration = useMutation({
     mutationFn: (registration_enabled: boolean) =>
       api<Data<AdminSettings>>("/api/admin/settings", {
@@ -51,21 +42,7 @@ function AdminUsersPage() {
       void queryClient.invalidateQueries({ queryKey: ["registration"] })
     },
   })
-  const sudoError = users.error ?? settings.error ?? createUser.error ?? toggleRegistration.error
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = event.currentTarget
-    createUser.mutate(
-      {
-        username: formValue(form, "username"),
-        display_name: formValue(form, "display_name"),
-        password: formValue(form, "password"),
-        role: formValue(form, "role"),
-      },
-      { onSuccess: () => form.reset() },
-    )
-  }
+  const sudoError = users.error ?? settings.error ?? toggleRegistration.error
 
   if (isSudoRequired(sudoError)) {
     return (
@@ -105,59 +82,9 @@ function AdminUsersPage() {
         </label>
       </div>
 
-      <form className="card bg-base-200 border-base-300 border" onSubmit={submit}>
-        <div className="card-body gap-4">
-          <h2 className="card-title text-lg">
-            <UserPlus className="size-5" /> Add a user
-          </h2>
-          {createUser.error && (
-            <div className="alert alert-error text-sm">{errorMessage(createUser.error)}</div>
-          )}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="fieldset">
-              <span className="fieldset-legend">Username</span>
-              <input name="username" className="input w-full" required />
-              {errorMessage(createUser.error, "username") && (
-                <span className="label text-error">
-                  {errorMessage(createUser.error, "username")}
-                </span>
-              )}
-            </label>
-            <label className="fieldset">
-              <span className="fieldset-legend">Display name</span>
-              <input name="display_name" className="input w-full" required />
-            </label>
-            <label className="fieldset">
-              <span className="fieldset-legend">Temporary password</span>
-              <input
-                name="password"
-                type="password"
-                minLength={12}
-                maxLength={72}
-                className="input w-full"
-                required
-              />
-            </label>
-            <label className="fieldset">
-              <span className="fieldset-legend">Role</span>
-              <select name="role" className="select w-full" defaultValue="member">
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
-            </label>
-          </div>
-          <div className="card-actions justify-end">
-            <button className="btn btn-primary btn-sm" disabled={createUser.isPending}>
-              Create user
-            </button>
-          </div>
-        </div>
-      </form>
-
       <SudoPrompt
         error={sudoError}
         onSuccess={() => {
-          createUser.reset()
           toggleRegistration.reset()
           void queryClient.invalidateQueries({ queryKey: ["admin"] })
         }}
@@ -189,25 +116,10 @@ function UserCard({ user }: { user: User }) {
       }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["admin", "users"] }),
   })
-  const resetPassword = useMutation({
-    mutationFn: (password: string) =>
-      api<Data<User>>(`/api/admin/users/${user.id}/password`, {
-        method: "PATCH",
-        body: JSON.stringify({ password }),
-      }),
-  })
 
   function saveName(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     update.mutate({ display_name: formValue(event.currentTarget, "display_name") })
-  }
-
-  function reset(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = event.currentTarget
-    resetPassword.mutate(formValue(form, "password"), {
-      onSuccess: () => form.reset(),
-    })
   }
 
   return (
@@ -253,14 +165,13 @@ function UserCard({ user }: { user: User }) {
           </div>
         )}
         <SudoPrompt
-          error={update.error ?? resetPassword.error}
+          error={update.error}
           onSuccess={() => {
             update.reset()
-            resetPassword.reset()
             void queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
           }}
         />
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div>
           <form className="join" onSubmit={saveName}>
             <input
               name="display_name"
@@ -273,30 +184,7 @@ function UserCard({ user }: { user: User }) {
               Save name
             </button>
           </form>
-          <form className="join" onSubmit={reset}>
-            <label className="input input-sm join-item min-w-0 flex-1">
-              <KeyRound className="size-4 opacity-60" />
-              <input
-                name="password"
-                type="password"
-                minLength={12}
-                maxLength={72}
-                placeholder="New password"
-                aria-label={`New password for ${user.username}`}
-                required
-              />
-            </label>
-            <button className="btn btn-sm join-item" disabled={resetPassword.isPending}>
-              Reset
-            </button>
-          </form>
         </div>
-        {resetPassword.isSuccess && <p className="text-success text-sm">Password reset.</p>}
-        {resetPassword.error && (
-          <p className="text-error text-sm">
-            {errorMessage(resetPassword.error, "password") ?? errorMessage(resetPassword.error)}
-          </p>
-        )}
       </div>
     </div>
   )

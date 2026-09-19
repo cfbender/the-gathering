@@ -48,6 +48,7 @@ defmodule TheGathering.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:req, "~> 0.5"},
+      {:assent, "~> 0.3.1"},
       {:nostrum, "~> 0.10.4", runtime: false},
       {:dns_cluster, "~> 0.3.0"},
       {:bandit, "~> 1.5"},

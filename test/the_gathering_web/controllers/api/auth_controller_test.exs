@@ -20,7 +20,8 @@ defmodule TheGatheringWeb.API.AuthControllerTest do
       })
 
     assert %{"data" => %{"username" => "owner", "role" => "admin"}} = json_response(conn, 201)
-    refute conn.resp_body =~ "password"
+    refute conn.resp_body =~ "hashed_password"
+    refute conn.resp_body =~ Accounts.get_user_by_username("owner").hashed_password
     token = get_session(conn, :user_token)
     assert is_binary(token)
     refute get_session(conn, :user_id)
@@ -44,9 +45,9 @@ defmodule TheGatheringWeb.API.AuthControllerTest do
   end
 
   test "a member gets 403 on admin routes", %{conn: conn} do
-    create_user("member", "member")
+    member = create_user("member", "member")
 
-    conn = conn |> log_in("member") |> recycle() |> get(~p"/api/admin/users")
+    conn = conn |> log_in_user(member) |> get(~p"/api/admin/users")
 
     assert json_response(conn, 403) == %{"errors" => %{"detail" => "Forbidden"}}
   end

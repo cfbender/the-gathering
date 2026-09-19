@@ -1,20 +1,24 @@
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
+import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import type { FormEvent } from "react"
-import { LogIn } from "lucide-react"
-import { errorMessage, safeReturnTo, useLogin } from "@/lib/auth"
+import { LogIn, MessageCircle } from "lucide-react"
+import { errorMessage, registrationQueryOptions, safeReturnTo, useLogin } from "@/lib/auth"
 import { formValue } from "@/lib/form"
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>) => ({
     returnTo: safeReturnTo(search.returnTo),
+    error: typeof search.error === "string" ? search.error : undefined,
   }),
+  loader: ({ context }) => context.queryClient.ensureQueryData(registrationQueryOptions),
   component: LoginPage,
 })
 
 function LoginPage() {
   const login = useLogin()
   const navigate = useNavigate()
-  const { returnTo } = Route.useSearch()
+  const { returnTo, error } = Route.useSearch()
+  const registration = Route.useLoaderData()
+  const oauthError = discordError(error)
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -28,7 +32,7 @@ function LoginPage() {
   return (
     <section className="mx-auto max-w-md py-8 sm:py-16">
       <div className="card bg-base-200 border-base-300 border shadow-sm">
-        <form className="card-body gap-5" onSubmit={submit}>
+        <div className="card-body gap-5">
           <div>
             <span className="bg-primary text-primary-content mb-4 grid size-10 place-items-center rounded-lg">
               <LogIn className="size-5" aria-hidden="true" />
@@ -37,41 +41,76 @@ function LoginPage() {
             <p className="text-base-content/70 mt-1 text-sm">Sign in to your playgroup.</p>
           </div>
 
+          {oauthError && <div className="alert alert-error text-sm">{oauthError}</div>}
           {login.error && (
             <div className="alert alert-error text-sm">{errorMessage(login.error)}</div>
           )}
 
-          <label className="fieldset">
-            <span className="fieldset-legend">Username</span>
-            <input
-              name="username"
-              autoComplete="username"
-              className="input w-full"
-              required
-              autoFocus
-            />
-          </label>
-          <label className="fieldset">
-            <span className="fieldset-legend">Password</span>
-            <input
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              className="input w-full"
-              required
-            />
-          </label>
-          <button type="submit" className="btn btn-primary" disabled={login.isPending}>
-            {login.isPending ? "Signing in…" : "Sign in"}
-          </button>
-          <p className="text-base-content/70 text-center text-sm">
-            Need an account?{" "}
-            <Link to="/register" className="link link-primary">
-              Register
-            </Link>
-          </p>
-        </form>
+          {registration.discord_configured && !registration.bootstrap && (
+            <a
+              href={`/auth/discord?${new URLSearchParams({ returnTo }).toString()}`}
+              className="btn btn-primary w-full"
+            >
+              <MessageCircle className="size-5" aria-hidden="true" />
+              Continue with Discord
+            </a>
+          )}
+
+          {!registration.discord_configured && !registration.bootstrap && (
+            <div className="alert alert-warning text-sm">
+              Discord sign-in is not configured. Ask your server administrator for help.
+            </div>
+          )}
+
+          {registration.bootstrap && (
+            <a href="/register" className="btn btn-primary w-full">
+              Set up administrator account
+            </a>
+          )}
+
+          <details className="collapse-arrow bg-base-100 border-base-300 collapse border">
+            <summary className="collapse-title py-3 font-medium">Administrator sign in</summary>
+            <form className="collapse-content grid gap-4" onSubmit={submit}>
+              <label className="fieldset">
+                <span className="fieldset-legend">Username</span>
+                <input name="username" autoComplete="username" className="input w-full" required />
+              </label>
+              <label className="fieldset">
+                <span className="fieldset-legend">Password</span>
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  className="input w-full"
+                  required
+                />
+              </label>
+              <button type="submit" className="btn" disabled={login.isPending}>
+                {login.isPending ? "Signing in…" : "Sign in as administrator"}
+              </button>
+            </form>
+          </details>
+        </div>
       </div>
     </section>
   )
+}
+
+function discordError(error?: string) {
+  switch (error) {
+    case "registration_closed":
+      return "Registration is closed. Ask your administrator to enable new member registration."
+    case "account_disabled":
+      return "This account is disabled. Ask your administrator for help."
+    case "discord_sudo_mismatch":
+      return "Reauthentication must use the Discord account already linked to this user."
+    case "discord_sudo_unavailable":
+      return "Discord reauthentication is not available for this account."
+    case "discord_unavailable":
+      return "Discord sign-in is not configured."
+    case "discord_failed":
+      return "Discord sign-in could not be completed. Please try again."
+    default:
+      return null
+  }
 }

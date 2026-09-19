@@ -32,7 +32,7 @@ function RootLayout() {
             <span className="bg-primary text-primary-content grid size-8 place-items-center rounded-lg">
               <Swords className="size-4" aria-hidden="true" />
             </span>
-            The Gathering
+            <span className="hidden sm:inline">The Gathering</span>
           </Link>
           <div className="flex items-center gap-1 sm:gap-3">
             <nav aria-label="Main navigation" className="flex items-center">
@@ -53,7 +53,9 @@ function RootLayout() {
               ))}
             </nav>
             <UserMenu />
-            <ThemeToggle />
+            <div className="hidden sm:block">
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </header>

@@ -19,6 +19,11 @@ defmodule TheGathering.AccountsTest do
 
     assert {:error, :registration_closed} =
              Accounts.register_user(Map.put(@valid, "username", "another"))
+
+    assert {:ok, _settings} = Accounts.update_settings(%{"registration_enabled" => true})
+
+    assert {:error, :registration_closed} =
+             Accounts.register_user(Map.put(@valid, "username", "password-member"))
   end
 
   test "usernames are unique after case normalization" do

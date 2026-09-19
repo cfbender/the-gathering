@@ -9,6 +9,8 @@ defmodule TheGathering.Accounts.User do
     field :display_name, :string
     field :hashed_password, :string, redact: true
     field :password, :string, virtual: true, redact: true
+    field :discord_id, :string
+    field :avatar_url, :string
     field :role, :string, default: "member"
     field :disabled_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
@@ -35,6 +37,23 @@ defmodule TheGathering.Accounts.User do
     |> validate_account_fields()
     |> validate_password()
     |> unique_constraint(:username)
+  end
+
+  def discord_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:username, :display_name, :discord_id, :avatar_url])
+    |> normalize_username()
+    |> default_display_name()
+    |> put_change(:role, "member")
+    |> validate_account_fields()
+    |> validate_required([:discord_id])
+    |> unique_constraint(:username)
+    |> unique_constraint(:discord_id)
+  end
+
+  def discord_profile_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:avatar_url])
   end
 
   def profile_changeset(user, attrs) do

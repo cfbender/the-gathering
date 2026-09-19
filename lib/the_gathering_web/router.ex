@@ -6,6 +6,7 @@ defmodule TheGatheringWeb.Router do
     plug :fetch_session
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug TheGatheringWeb.UserAuth, :fetch_current_scope_for_user
   end
 
   # The SPA authenticates with the session cookie, so API mutations must carry
@@ -66,8 +67,7 @@ defmodule TheGatheringWeb.Router do
   scope "/api/admin", TheGatheringWeb.API do
     pipe_through [:api, :require_authenticated_user, :require_admin, :require_sudo_mode]
 
-    resources "/users", AdminUserController, only: [:index, :create, :update, :delete]
-    patch "/users/:id/password", AdminUserController, :reset_password
+    resources "/users", AdminUserController, only: [:index, :update, :delete]
     get "/settings", AdminSettingsController, :show
     patch "/settings", AdminSettingsController, :update
     post "/catalog/sync", CatalogController, :sync
@@ -85,6 +85,8 @@ defmodule TheGatheringWeb.Router do
   scope "/", TheGatheringWeb do
     pipe_through :browser
 
+    get "/auth/discord", DiscordAuthController, :request
+    get "/auth/discord/callback", DiscordAuthController, :callback
     get "/", AppController, :index
     get "/*path", AppController, :index
   end

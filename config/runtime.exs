@@ -14,6 +14,15 @@ end
 config :the_gathering, TheGatheringWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+discord_client_id = System.get_env("DISCORD_CLIENT_ID")
+discord_client_secret = System.get_env("DISCORD_CLIENT_SECRET")
+
+if discord_client_id not in [nil, ""] and discord_client_secret not in [nil, ""] do
+  config :the_gathering, :discord_oauth,
+    client_id: discord_client_id,
+    client_secret: discord_client_secret
+end
+
 catalog_sync_hours = String.to_integer(System.get_env("CATALOG_SYNC_INTERVAL_HOURS", "168"))
 config :the_gathering, :catalog_sync_interval_ms, catalog_sync_hours * 60 * 60 * 1_000
 
