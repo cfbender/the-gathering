@@ -80,4 +80,4 @@ Layout: `lib/the_gathering` (domain), `lib/the_gathering_web` (API and SPA shell
 
 ## License
 
-Not yet chosen.
+[Mozilla Public License 2.0](LICENSE).
