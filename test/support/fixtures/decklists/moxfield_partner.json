@@ -1,0 +1,20 @@
+{
+  "name": "Partner Commander",
+  "createdByUser": { "userName": "Goodybarsco", "displayName": "Goodybarsco" },
+  "boards": {
+    "commanders": {
+      "count": 2,
+      "cards": {
+        "E12Qm": {
+          "quantity": 1,
+          "card": { "name": "Kraum, Ludevic's Opus", "color_identity": ["R", "U"] }
+        },
+        "YB58v": {
+          "quantity": 1,
+          "card": { "name": "Malcolm, Keen-Eyed Navigator", "color_identity": ["U"] }
+        }
+      }
+    },
+    "mainboard": { "count": 98, "cards": {} }
+  }
+}

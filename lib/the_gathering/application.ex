@@ -15,6 +15,7 @@ defmodule TheGathering.Application do
       {DNSCluster, query: Application.get_env(:the_gathering, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: TheGathering.PubSub},
       TheGathering.Catalog.Supervisor,
+      TheGathering.Decklists.Cache,
       # Start a worker by calling: TheGathering.Worker.start_link(arg)
       # {TheGathering.Worker, arg},
       # Start to serve requests, typically the last entry

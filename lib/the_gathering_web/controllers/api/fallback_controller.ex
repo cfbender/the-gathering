@@ -10,6 +10,7 @@ defmodule TheGatheringWeb.API.FallbackController do
     * `{:error, :unauthorized}`     -> 401 (not signed in)
     * `{:error, :forbidden}`        -> 403 (signed in, not allowed)
     * `{:error, :bad_request}`      -> 400
+    * `{:error, :bad_gateway}`      -> 502 (upstream service failed)
 
   Also serves the JSON 404 for API paths that match no route.
   """
@@ -28,7 +29,7 @@ defmodule TheGatheringWeb.API.FallbackController do
   end
 
   def call(conn, {:error, status})
-      when status in [:bad_request, :unauthorized, :forbidden, :not_found] do
+      when status in [:bad_request, :unauthorized, :forbidden, :not_found, :bad_gateway] do
     conn
     |> put_status(status)
     |> json(%{errors: %{detail: status |> Status.code() |> Status.reason_phrase()}})

@@ -28,6 +28,7 @@ defmodule TheGatheringWeb.Router do
     resources "/players", PlayerController, except: [:new, :edit]
     resources "/decks", DeckController, except: [:new, :edit]
     resources "/games", GameController, except: [:new, :edit]
+    post "/decklists/resolve", DecklistController, :resolve
 
     # Keep unknown API paths out of the SPA catch-all below.
     match :*, "/*path", FallbackController, :not_found

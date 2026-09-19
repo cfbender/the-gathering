@@ -1,0 +1,15 @@
+{
+  "data": {
+    "deck": {
+      "name": "Shared Deck",
+      "cardCount": 100,
+      "commanderColorIdentity": ["W", "U"],
+      "deckCards": {
+        "edges": [
+          { "node": { "zone": "commander", "card": { "name": "Shorikai, Genesis Engine" } } },
+          { "node": { "zone": "mainboard", "card": { "name": "Sol Ring" } } }
+        ]
+      }
+    }
+  }
+}
