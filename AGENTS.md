@@ -50,6 +50,15 @@ Production/container commands are documented in `README.md`.
 ## Development Notes
 
 - The backend is API-only (`--no-html --no-live`): there are no LiveViews, layouts, or `core_components`. Render UI in React; serve data from `/api` controllers.
+
+### JSON API conventions
+
+- Controllers live in `lib/the_gathering_web/controllers/api/` under the `TheGatheringWeb.API` namespace and are routed inside the `scope "/api", TheGatheringWeb.API` block. Add new routes above the catch-all `match :*` line.
+- Every API controller declares `action_fallback TheGatheringWeb.API.FallbackController` and returns `{:error, %Ecto.Changeset{}}`, `{:error, :not_found}`, `{:error, :unauthorized}`, `{:error, :forbidden}`, or `{:error, :bad_request}` from actions instead of rendering errors by hand. Changeset errors render as `{"errors": {"field": ["message"]}}`; other errors as `{"errors": {"detail": "..."}}`.
+- Successful responses wrap the payload in `{"data": ...}` (single object or list). Render JSON with a `*JSON` module next to the controller (for example `GameJSON.show/1`, `GameJSON.index/1`) rather than building maps inline.
+- Use plural resource paths and standard REST actions (`GET /api/games`, `POST /api/games`, `GET /api/games/:id`, `PATCH`, `DELETE`). Paginate lists with `page`/`per_page` query params when they can grow unbounded.
+- The `/api` pipeline runs `protect_from_forgery`; the frontend `api()` helper in `assets/react/src/lib/api.ts` sends the CSRF token and rejects with `ApiError` (carrying `errors`) on non-2xx responses. Use it for all requests.
+- Server state in React goes through TanStack Query (`useQuery`/`useMutation`, `QueryClientProvider` in `main.tsx`; the `queryClient` is also in router context). Key queries by resource, for example `["games", id]`.
 - Use `Req` for HTTP requests (Scryfall, Discord, deck-list sites). Avoid `:httpoison`, `:tesla`, and `:httpc`.
 - Follow existing Phoenix context and React component patterns. Keep changes small and focused.
 - Frontend styling uses Tailwind utilities and daisyUI component classes; theme tokens are defined in `assets/react/src/app.css`. Use `cn()` from `src/lib/cn.ts` to merge classes.

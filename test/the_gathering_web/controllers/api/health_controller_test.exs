@@ -1,4 +1,4 @@
-defmodule TheGatheringWeb.HealthControllerTest do
+defmodule TheGatheringWeb.API.HealthControllerTest do
   use TheGatheringWeb.ConnCase, async: true
 
   test "GET /api/health reports the database as reachable", %{conn: conn} do

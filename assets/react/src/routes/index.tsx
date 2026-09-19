@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { Activity, BarChart3, Bot, FileSpreadsheet, Library, Users } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/cn"
 
@@ -11,8 +11,6 @@ export const Route = createFileRoute("/")({
 interface Health {
   status: "ok" | "error"
 }
-
-type HealthState = { kind: "loading" } | { kind: "ok" } | { kind: "error"; message: string }
 
 const planned = [
   {
@@ -35,23 +33,19 @@ const planned = [
 ]
 
 function HomePage() {
-  const [health, setHealth] = useState<HealthState>({ kind: "loading" })
-
-  useEffect(() => {
-    let cancelled = false
-    api<Health>("/api/health")
-      .then((result) => {
-        if (cancelled) return
-        setHealth(result.status === "ok" ? { kind: "ok" } : { kind: "error", message: "degraded" })
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return
-        setHealth({ kind: "error", message: error instanceof Error ? error.message : "unknown" })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const query = useQuery({
+    queryKey: ["health"],
+    queryFn: () => api<Health>("/api/health"),
+    refetchInterval: 30_000,
+  })
+  const health =
+    query.status === "pending"
+      ? { kind: "loading" as const }
+      : query.status === "error"
+        ? { kind: "error" as const, message: query.error.message }
+        : query.data.status === "ok"
+          ? { kind: "ok" as const }
+          : { kind: "error" as const, message: "degraded" }
 
   return (
     <div className="flex flex-col gap-10">
