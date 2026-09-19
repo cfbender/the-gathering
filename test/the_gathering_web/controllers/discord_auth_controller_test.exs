@@ -48,6 +48,27 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
     refute get_session(conn, :user_token)
   end
 
+  test "a rejected Discord account is created once the administrator opens registration", %{
+    conn: conn
+  } do
+    admin = create_admin()
+
+    conn = discord_callback(conn, "100000000000000007")
+    assert redirected_to(conn) == "/login?error=registration_closed"
+
+    admin_conn =
+      build_conn()
+      |> log_in_user(admin)
+      |> patch(~p"/api/admin/settings", %{settings: %{registration_enabled: true}})
+
+    assert json_response(admin_conn, 200) == %{"data" => %{"registration_enabled" => true}}
+
+    conn = discord_callback(build_conn(), "100000000000000007")
+
+    assert redirected_to(conn) == "/"
+    assert %{role: "member"} = Accounts.get_user_by_discord_id("100000000000000007")
+  end
+
   test "callback signs in an existing linked member while registration is closed", %{conn: conn} do
     create_admin()
     open_registration()

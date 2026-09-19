@@ -28,6 +28,28 @@ Use the same Discord application for OAuth and the optional game-tracking bot:
    email is not persisted.
 
 The callback links the Discord ID to both the account and its `players` row.
+
+If the login page shows **Discord sign-in is not configured**, the running
+container has no `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` pair. The app logs
+`Discord OAuth sign-in enabled; redirect URI is …` or `Discord OAuth sign-in
+disabled: …` at every start, and `docker compose exec the-gathering env | grep -c
+DISCORD_CLIENT` should print `2`. Common causes:
+
+- `docker-compose.yml` predates member sign-in and lacks the `DISCORD_CLIENT_ID`
+  and `DISCORD_CLIENT_SECRET` passthrough lines; copy the current file from the
+  repository. Compose only forwards variables listed under `environment`.
+- `.env` was edited after the container was created. `docker compose restart`
+  keeps the old environment; run `docker compose up -d` to recreate it.
+- Only one of the two variables is set. The app warns about this at boot.
+
+Sign-in failures redirect to `/login` with a one-time message; the message is
+dropped from the URL once shown, so a member who was turned away while
+registration was closed must click **Continue with Discord** again after the
+administrator opens it (reloading the old page does not retry). The server logs
+the cause of every rejected callback: `Discord sign-in rejected an unknown
+account because registration is closed` at `info`, and `Discord sign-in failed:
+…` (with Discord's error response) at `warning` for credential or redirect-URI
+problems.
 Discord reauthorization also supplies the ten-minute confirmation required for
 sensitive actions. `DISCORD_CLIENT_SECRET` and `DISCORD_BOT_TOKEN` are separate
 secrets even when they belong to the same application.
@@ -233,6 +255,7 @@ how far it got. Read the log from the top of the last start:
 | `Discord bot could not start … Authentication rejected, invalid token` | The token is wrong or was reset in the Developer Portal. The web app keeps running without Discord; fix the token and restart. |
 | `Shard websocket closed (errno 4014, …)` repeating, no `READY` | Discord rejected the requested intents. Enable **Message Content Intent** on the **Bot** page. |
 | `Discord bot connected as <bot> in 0 guild(s)` | The bot was never invited to the server. Use the invite URL from step 4. |
+| `Discord bot connected …` but the bot looks offline in Discord | The bot sets an online presence ("Watching SpellBot games") right after this line. If the member list still shows it offline, the gateway session dropped afterwards; look for `Shard websocket closed` lines below it. |
 | `Discord registered /won in guild …` but `/won` is missing in Discord | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
 | `Discord registered /won globally` but `/won` is missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
 | `Could not register the Discord /won command: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |

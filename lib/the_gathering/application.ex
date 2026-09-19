@@ -27,7 +27,12 @@ defmodule TheGathering.Application do
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: TheGathering.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    with {:ok, pid} <- Supervisor.start_link(children, opts) do
+      # After the Endpoint is up so the logged redirect URI reflects PHX_* settings.
+      TheGathering.DiscordOAuth.log_status()
+      {:ok, pid}
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration
