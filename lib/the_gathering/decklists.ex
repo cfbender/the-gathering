@@ -57,14 +57,25 @@ defmodule TheGathering.Decklists do
     end
   end
 
-  defp parse_uri(uri, host) when host in ["manavault.cfb.dev", "www.manavault.cfb.dev"] do
+  defp parse_uri(uri, host) do
+    case manavault_url() do
+      %URI{host: manavault_host} = manavault
+      when host == manavault_host or host == "www." <> manavault_host ->
+        parse_manavault_uri(uri, manavault)
+
+      _ ->
+        other(uri)
+    end
+  end
+
+  defp parse_manavault_uri(uri, manavault) do
     case path_segments(uri.path) do
       ["share", "decks", id | _] when byte_size(id) >= 20 ->
         {:ok,
          %{
            source: :manavault,
            id: id,
-           canonical_url: "https://manavault.cfb.dev/share/decks/#{id}"
+           canonical_url: "#{manavault}/share/decks/#{id}"
          }}
 
       _ ->
@@ -72,7 +83,20 @@ defmodule TheGathering.Decklists do
     end
   end
 
-  defp parse_uri(uri, _host), do: other(uri)
+  @doc """
+  The configured self-hosted ManaVault origin (`MANAVAULT_URL`) as a `URI`, or `nil` when
+  ManaVault links are not enabled. Only this origin is ever fetched, to avoid SSRF.
+  """
+  def manavault_url do
+    case Application.get_env(:the_gathering, __MODULE__, [])[:manavault_url] do
+      url when is_binary(url) and url != "" ->
+        uri = URI.parse(String.trim_trailing(url, "/"))
+        if is_binary(uri.host), do: %{uri | host: String.downcase(uri.host)}, else: nil
+
+      _ ->
+        nil
+    end
+  end
 
   defp other(uri) do
     canonical_url = URI.to_string(%{uri | fragment: nil})

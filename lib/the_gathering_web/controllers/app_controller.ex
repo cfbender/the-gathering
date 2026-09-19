@@ -20,6 +20,7 @@ defmodule TheGatheringWeb.AppController do
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="csrf-token" content="#{get_csrf_token()}" />
         <meta name="application-name" content="The Gathering" />
+        #{manavault_meta()}
         <meta name="theme-color" content="#f5e6e2" media="(prefers-color-scheme: light)" />
         <meta name="theme-color" content="#180810" media="(prefers-color-scheme: dark)" />
         <title>The Gathering</title>
@@ -40,5 +41,13 @@ defmodule TheGatheringWeb.AppController do
       </body>
     </html>
     """
+  end
+
+  # Lets the SPA label links to the configured self-hosted ManaVault (see `lib/decklists.ts`).
+  defp manavault_meta do
+    case TheGathering.Decklists.manavault_url() do
+      nil -> ""
+      uri -> ~s(<meta name="manavault-url" content="#{Plug.HTML.html_escape(to_string(uri))}" />)
+    end
   end
 end

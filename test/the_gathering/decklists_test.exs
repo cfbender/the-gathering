@@ -26,18 +26,28 @@ defmodule TheGathering.DecklistsTest do
        "https://archidekt.com/decks/123"},
       {"https://www.archidekt.com/decks/456/?foo=bar", :archidekt, "456",
        "https://archidekt.com/decks/456"},
-      {"https://manavault.cfb.dev/share/decks/AbCdEfGhIjKlMnOpQrStUvWx?view=grid", :manavault,
+      {"https://manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx?view=grid", :manavault,
        "AbCdEfGhIjKlMnOpQrStUvWx",
-       "https://manavault.cfb.dev/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"},
-      {"https://www.manavault.cfb.dev/share/decks/AbCdEfGhIjKlMnOpQrStUvWx/", :manavault,
+       "https://manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"},
+      {"https://www.manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx/", :manavault,
        "AbCdEfGhIjKlMnOpQrStUvWx",
-       "https://manavault.cfb.dev/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"}
+       "https://manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"}
     ]
 
     for {input, source, id, canonical_url} <- cases do
       assert {:ok, %{source: ^source, id: ^id, canonical_url: ^canonical_url}} =
                Decklists.parse_url(input)
     end
+  end
+
+  test "treats ManaVault links as other when no MANAVAULT_URL is configured" do
+    configured = Application.get_env(:the_gathering, Decklists)
+    Application.delete_env(:the_gathering, Decklists)
+    on_exit(fn -> Application.put_env(:the_gathering, Decklists, configured) end)
+
+    url = "https://manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"
+    assert {:ok, %{source: :other, canonical_url: ^url}} = Decklists.parse_url(url)
+    assert {:error, :unsupported_url} = Decklists.resolve(url)
   end
 
   test "returns other for valid unknown links and invalid_url for garbage" do
@@ -77,7 +87,7 @@ defmodule TheGathering.DecklistsTest do
   test "resolves a ManaVault shared deck" do
     stub_fixture("manavault.json")
 
-    url = "https://manavault.cfb.dev/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"
+    url = "https://manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"
     assert {:ok, deck} = Decklists.resolve(url)
     assert deck.name == "Shared Deck"
     assert deck.commanders == [%{name: "Shorikai, Genesis Engine"}]

@@ -22,7 +22,7 @@ defmodule TheGathering.Decklists.Sources.Manavault do
   def resolve(parsed) do
     body = %{query: @query, variables: %{id: parsed.id}}
 
-    case HTTP.post("https://manavault.cfb.dev/share/graphql", body) do
+    case HTTP.post("#{TheGathering.Decklists.manavault_url()}/share/graphql", body) do
       {:ok, %Req.Response{status: 200, body: %{"data" => %{"deck" => deck}}}}
       when is_map(deck) ->
         {:ok, from_response(deck, parsed)}

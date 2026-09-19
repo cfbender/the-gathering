@@ -38,7 +38,7 @@ Health check: `GET /api/health` returns `{"status":"ok"}` when the database is r
 ### Deck-list links
 
 `POST /api/decklists/resolve` accepts `{"url":"..."}` for a public Moxfield,
-Archidekt, or hosted ManaVault deck. Successful responses contain the canonical
+Archidekt, or self-hosted ManaVault deck (when `MANAVAULT_URL` is set). Successful responses contain the canonical
 URL, deck name, commanders, commander color identity, author when exposed, card
 count, and fetch timestamp under `data`. Successful lookups are cached in memory
 for five minutes; errors are never cached.
@@ -50,10 +50,11 @@ The integrations use the upstream services' public interfaces:
   third-party API contract and may reject server traffic with Cloudflare 403s.
 - Archidekt: `GET https://archidekt.com/api/decks/:id/`. No authentication or
   documented public rate limit is currently required.
-- ManaVault: `POST https://manavault.cfb.dev/share/graphql`. No authentication is
-  required; the hosted default limit is 120 requests per IP per minute. Author is
-  not exposed by its public schema. Only the official hosted domain is recognized;
-  arbitrary self-hosted origins are intentionally not fetched to avoid SSRF.
+- ManaVault: `POST $MANAVAULT_URL/share/graphql` against the ManaVault instance you
+  configure. No authentication is required; ManaVault's default limit is 120
+  requests per IP per minute. Author is not exposed by its public schema. Only the
+  configured origin is recognized; other origins are intentionally not fetched to
+  avoid SSRF. Without `MANAVAULT_URL`, ManaVault links are stored as plain deck links.
 
 ### Environment variables
 
@@ -67,6 +68,7 @@ The integrations use the upstream services' public interfaces:
 | `PHX_URL_PORT` | `443` for https, `80` for http | Public port. |
 | `PORT` | `4000` | Port the server binds inside the container. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
+| `MANAVAULT_URL` | unset | Origin of a self-hosted ManaVault instance whose shared deck links are recognized and resolved. |
 | `DISCORD_BOT_TOKEN` | unset | Discord bot token; enables automatic SpellBot game tracking when set. |
 | `DISCORD_GUILD_ID` | unset | Optional development/server ID for immediate guild-scoped `/won` registration; without it the command is global. |
 | `DISCORD_SPELLBOT_USER_ID` | `725510263251402832` | Discord user ID accepted as SpellBot, useful when running a private SpellBot deployment. |
