@@ -20,7 +20,8 @@ defmodule TheGatheringWeb.AppController do
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="csrf-token" content="#{get_csrf_token()}" />
         <meta name="application-name" content="The Gathering" />
-        <meta name="theme-color" content="#1c1917" />
+        <meta name="theme-color" content="#f5e6e2" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#180810" media="(prefers-color-scheme: dark)" />
         <title>The Gathering</title>
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <script>
