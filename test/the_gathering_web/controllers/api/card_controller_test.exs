@@ -5,6 +5,8 @@ defmodule TheGatheringWeb.API.CardControllerTest do
 
   @fixture Path.expand("../../../support/fixtures/scryfall_catalog.jsonl", __DIR__)
 
+  setup :register_and_log_in_user
+
   setup do
     assert {:ok, 2} = Sync.run(source: {:file, @fixture})
     :ok

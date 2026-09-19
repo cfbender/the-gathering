@@ -3,13 +3,22 @@ import { Link, Outlet, createRootRouteWithContext } from "@tanstack/react-router
 import { Swords } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { UserMenu } from "@/components/user-menu"
+import { requireUser } from "@/lib/auth"
 
 /** Router context available to every route's `loader` and `beforeLoad`. */
 export interface RouterContext {
   queryClient: QueryClient
 }
 
+/** Only the sign-in and sign-up pages are reachable without a session. */
+const publicPaths = new Set(["/login", "/register"])
+
 export const Route = createRootRouteWithContext<RouterContext>()({
+  beforeLoad: async ({ context, location }) => {
+    if (!publicPaths.has(location.pathname)) {
+      await requireUser(context.queryClient, location.href)
+    }
+  },
   component: RootLayout,
   notFoundComponent: NotFound,
 })

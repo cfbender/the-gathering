@@ -90,7 +90,8 @@ defmodule TheGatheringWeb.API.GameControllerTest do
     assert Games.list_games() == {[], %{page: 1, per_page: 20, total: 0, total_pages: 1}}
   end
 
-  test "GET /api/games/:id is public and returns the same nested resource shape", %{
+  test "GET /api/games/:id returns the same nested resource shape", %{
+    conn: conn,
     alice: alice,
     bob: bob,
     deck: deck
@@ -104,9 +105,16 @@ defmodule TheGatheringWeb.API.GameControllerTest do
         ]
       })
 
-    response = build_conn() |> get(~p"/api/games/#{game.id}") |> json_response(200)
+    response = conn |> get(~p"/api/games/#{game.id}") |> json_response(200)
     assert response["data"]["id"] == game.id
     assert Enum.map(response["data"]["seats"], & &1["player"]["name"]) == ["Alice", "Bob"]
     assert hd(response["data"]["seats"])["deck"]["name"] == "Birds"
+  end
+
+  test "game history is private to signed-in users" do
+    for path <- [~p"/api/games", ~p"/api/players", ~p"/api/decks", ~p"/api/cards?q=a"] do
+      conn = build_conn() |> get(path)
+      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+    end
   end
 end
