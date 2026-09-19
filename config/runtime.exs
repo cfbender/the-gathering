@@ -14,6 +14,9 @@ end
 config :the_gathering, TheGatheringWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+catalog_sync_hours = String.to_integer(System.get_env("CATALOG_SYNC_INTERVAL_HOURS", "168"))
+config :the_gathering, :catalog_sync_interval_ms, catalog_sync_hours * 60 * 60 * 1_000
+
 if config_env() == :prod do
   data_dir = System.get_env("DATA_DIR", "/data")
   database_path = System.get_env("DATABASE_PATH", Path.join(data_dir, "the_gathering.db"))

@@ -20,6 +20,10 @@ defmodule TheGatheringWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :show
+    get "/cards", CardController, :index
+    get "/cards/:id", CardController, :show
+    get "/catalog", CatalogController, :show
+    post "/catalog/sync", CatalogController, :sync
 
     resources "/players", PlayerController, except: [:new, :edit]
     resources "/decks", DeckController, except: [:new, :edit]
