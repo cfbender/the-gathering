@@ -1,6 +1,8 @@
 defmodule TheGatheringWeb.DiscordAuthController do
   use TheGatheringWeb, :controller
 
+  require Logger
+
   alias Assent.Strategy.Discord
   alias TheGathering.{Accounts, DiscordOAuth}
   alias TheGatheringWeb.UserAuth
@@ -44,10 +46,21 @@ defmodule TheGatheringWeb.DiscordAuthController do
       |> UserAuth.log_in_user(user)
       |> redirect(to: oauth_session.return_to)
     else
-      {:error, :registration_closed} -> login_error(conn, "registration_closed")
-      {:error, :disabled} -> login_error(conn, "account_disabled")
-      {:error, :wrong_sudo_user} -> login_error(conn, "discord_sudo_mismatch")
-      _error -> login_error(conn, "discord_failed")
+      {:error, :registration_closed} ->
+        Logger.info("Discord sign-in rejected an unknown account because registration is closed")
+        login_error(conn, "registration_closed")
+
+      {:error, :disabled} ->
+        login_error(conn, "account_disabled")
+
+      {:error, :wrong_sudo_user} ->
+        login_error(conn, "discord_sudo_mismatch")
+
+      error ->
+        # Assent errors carry Discord's error status and body, which is what an
+        # admin needs to debug misconfigured credentials or redirect URIs.
+        Logger.warning("Discord sign-in failed: #{inspect(error)}")
+        login_error(conn, "discord_failed")
     end
   end
 

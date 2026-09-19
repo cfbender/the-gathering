@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import type { FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { LogIn } from "lucide-react"
 import { DiscordIcon } from "@/components/discord-icon"
 import { errorMessage, registrationQueryOptions, safeReturnTo, useLogin } from "@/lib/auth"
@@ -19,7 +19,7 @@ function LoginPage() {
   const navigate = useNavigate()
   const { returnTo, error } = Route.useSearch()
   const registration = Route.useLoaderData()
-  const oauthError = discordError(error)
+  const oauthError = useOneShotDiscordError(error, returnTo)
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -97,10 +97,28 @@ function LoginPage() {
   )
 }
 
+/**
+ * The OAuth callback reports failures through `?error=`. Keep the message for this
+ * visit but drop it from the URL, so reloading or sharing the page after the
+ * administrator has fixed the cause does not keep showing a stale error.
+ */
+function useOneShotDiscordError(error: string | undefined, returnTo: string) {
+  const navigate = useNavigate()
+  const [message, setMessage] = useState(() => discordError(error))
+
+  useEffect(() => {
+    if (!error) return
+    setMessage(discordError(error))
+    void navigate({ to: "/login", search: { returnTo, error: undefined }, replace: true })
+  }, [error, returnTo, navigate])
+
+  return message
+}
+
 function discordError(error?: string) {
   switch (error) {
     case "registration_closed":
-      return "Registration is closed. Ask your administrator to enable new member registration."
+      return "Registration is closed. Ask your administrator to enable new member registration, then try Continue with Discord again."
     case "account_disabled":
       return "This account is disabled. Ask your administrator for help."
     case "discord_sudo_mismatch":

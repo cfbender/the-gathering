@@ -5,13 +5,20 @@ defmodule TheGathering.Discord.Consumer do
 
   require Logger
 
-  alias Nostrum.Api.Interaction
+  alias Nostrum.Api.{Interaction, Self}
   alias TheGathering.Discord.{Command, SpellBotParser, Tracker}
 
-  def handle_event({:READY, ready, _ws_state}) do
+  # Discord activity type 3 renders as "Watching …" under the bot's name.
+  @watching 3
+
+  def handle_event({:READY, ready, ws_state}) do
     Logger.info(
       "Discord bot connected as #{ready.user.username} in #{length(ready.guilds)} guild(s)"
     )
+
+    # Nostrum identifies without a presence, so announce one on this shard's
+    # session to show the bot as online and describe what it is doing.
+    Self.update_shard_status(ws_state.conn_pid, :online, "SpellBot games", @watching)
 
     case Command.register(ready.application.id) do
       {:ok, description} -> Logger.info("Discord #{description}")

@@ -17,10 +17,20 @@ config :the_gathering, TheGatheringWeb.Endpoint,
 discord_client_id = System.get_env("DISCORD_CLIENT_ID")
 discord_client_secret = System.get_env("DISCORD_CLIENT_SECRET")
 
-if discord_client_id not in [nil, ""] and discord_client_secret not in [nil, ""] do
-  config :the_gathering, :discord_oauth,
-    client_id: discord_client_id,
-    client_secret: discord_client_secret
+case {discord_client_id not in [nil, ""], discord_client_secret not in [nil, ""]} do
+  {true, true} ->
+    config :the_gathering, :discord_oauth,
+      client_id: discord_client_id,
+      client_secret: discord_client_secret
+
+  {false, false} ->
+    :ok
+
+  _one_of_two ->
+    IO.warn(
+      "Discord OAuth sign-in stays disabled: set both DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET",
+      []
+    )
 end
 
 # Behind a reverse proxy, identify clients for rate limiting by the proxy's
