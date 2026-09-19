@@ -24,7 +24,8 @@ defmodule TheGatheringWeb.API.FallbackControllerTest do
         {:bad_request, 400, "Bad Request"},
         {:unauthorized, 401, "Unauthorized"},
         {:forbidden, 403, "Forbidden"},
-        {:not_found, 404, "Not Found"}
+        {:not_found, 404, "Not Found"},
+        {:bad_gateway, 502, "Bad Gateway"}
       ] do
     test "maps {:error, #{inspect(status)}} to #{code}", %{conn: conn} do
       conn = FallbackController.call(conn, {:error, unquote(status)})

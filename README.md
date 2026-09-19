@@ -35,6 +35,26 @@ The app listens on port 4000 and stores its SQLite database and files under `./d
 
 Health check: `GET /api/health` returns `{"status":"ok"}` when the database is reachable.
 
+### Deck-list links
+
+`POST /api/decklists/resolve` accepts `{"url":"..."}` for a public Moxfield,
+Archidekt, or hosted ManaVault deck. Successful responses contain the canonical
+URL, deck name, commanders, commander color identity, author when exposed, card
+count, and fetch timestamp under `data`. Successful lookups are cached in memory
+for five minutes; errors are never cached.
+
+The integrations use the upstream services' public interfaces:
+
+- Moxfield: `GET https://api2.moxfield.com/v3/decks/all/:id`. The request sends a
+  descriptive User-Agent, but Moxfield does not publish API limits or a supported
+  third-party API contract and may reject server traffic with Cloudflare 403s.
+- Archidekt: `GET https://archidekt.com/api/decks/:id/`. No authentication or
+  documented public rate limit is currently required.
+- ManaVault: `POST https://manavault.cfb.dev/share/graphql`. No authentication is
+  required; the hosted default limit is 120 requests per IP per minute. Author is
+  not exposed by its public schema. Only the official hosted domain is recognized;
+  arbitrary self-hosted origins are intentionally not fetched to avoid SSRF.
+
 ### Environment variables
 
 | Variable | Default | Purpose |

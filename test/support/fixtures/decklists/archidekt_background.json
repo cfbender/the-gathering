@@ -1,0 +1,27 @@
+{
+  "id": 24907541,
+  "name": "I am a public servant",
+  "owner": { "username": "Will3545" },
+  "cards": [
+    {
+      "quantity": 1,
+      "categories": ["Commander"],
+      "card": { "oracleCard": { "name": "Noble Heritage", "colorIdentity": ["White"] } }
+    },
+    {
+      "quantity": 1,
+      "categories": ["Commander"],
+      "card": { "oracleCard": { "name": "Wilson, Refined Grizzly", "colorIdentity": ["Green"] } }
+    },
+    {
+      "quantity": 38,
+      "categories": ["Land"],
+      "card": { "oracleCard": { "name": "Forest", "colorIdentity": [] } }
+    },
+    {
+      "quantity": 60,
+      "categories": ["Mainboard"],
+      "card": { "oracleCard": { "name": "Other cards", "colorIdentity": [] } }
+    }
+  ]
+}
