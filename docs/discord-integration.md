@@ -1,7 +1,34 @@
-# Discord automatic game tracking
+# Discord integration
 
 This document records the September 2026 research behind the Discord client and
 the intended boundary with the games domain.
+
+## Member sign-in
+
+Members authenticate with Discord OAuth. The first, administrator account is
+bootstrapped with a username and password; after that, password registration is
+disabled. An unknown Discord identity creates a member only while **Admin →
+Users → Open registration** is enabled. Existing linked members can sign in
+while registration is closed, but disabled accounts cannot.
+
+Use the same Discord application for OAuth and the optional game-tracking bot:
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications),
+   open the application and copy its **Application ID** and OAuth2 client secret
+   into `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`.
+2. Under **OAuth2**, register
+   `<PHX_SCHEME>://<PHX_HOST>:<PHX_URL_PORT>/auth/discord/callback`. Omit the port
+   when it is the scheme default (for example,
+   `https://games.example.com/auth/discord/callback`). The application derives
+   this URL from the Phoenix endpoint settings.
+3. Restart the app. The login page shows **Continue with Discord** when both
+   credentials are present. Authorization requests the `identify email` scopes;
+   email is not persisted.
+
+The callback links the Discord ID to both the account and its `players` row.
+Discord reauthorization also supplies the ten-minute confirmation required for
+sensitive actions. `DISCORD_CLIENT_SECRET` and `DISCORD_BOT_TOKEN` are separate
+secrets even when they belong to the same application.
 
 ## Findings
 
@@ -170,6 +197,8 @@ crashing the gateway consumer.
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
+| `DISCORD_CLIENT_ID` | yes for member sign-in | Discord application ID. |
+| `DISCORD_CLIENT_SECRET` | yes for member sign-in | OAuth2 client secret. |
 | `DISCORD_BOT_TOKEN` | yes to enable | Secret bot token. Unset/empty means no Discord process starts. |
 | `DISCORD_GUILD_ID` | no | Register `/won` immediately in one server; omit for a global command, which can take up to an hour to appear. |
 | `DISCORD_SPELLBOT_USER_ID` | no | Trusted SpellBot bot user ID; defaults to production SpellBot (`725510263251402832`). |

@@ -6,7 +6,7 @@ A self-hosted tracker for Commander (Magic: The Gathering) games. Record who pla
 
 ## Planned features
 
-- Accounts with username/password; a server admin manages users and settings.
+- Discord sign-in for members; the server administrator uses username/password.
 - Log games by hand or import them from CSV.
 - Automatic game tracking from SpellBot / Discord.
 - Card search backed by a Scryfall catalog (latest printing per card) for commanders and MVP cards.
@@ -69,6 +69,8 @@ The integrations use the upstream services' public interfaces:
 | `PORT` | `4000` | Port the server binds inside the container. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
 | `MANAVAULT_URL` | unset | Origin of a self-hosted ManaVault instance whose shared deck links are recognized and resolved. |
+| `DISCORD_CLIENT_ID` | unset | Discord application client ID; enables member OAuth sign-in when paired with the secret. |
+| `DISCORD_CLIENT_SECRET` | unset | Discord application client secret. |
 | `DISCORD_BOT_TOKEN` | unset | Discord bot token; enables automatic recording of completed SpellBot games when set. |
 | `DISCORD_GUILD_ID` | unset | Optional development/server ID for immediate guild-scoped `/won` registration; without it the command is global. |
 | `DISCORD_SPELLBOT_USER_ID` | `725510263251402832` | Discord user ID accepted as SpellBot, useful when running a private SpellBot deployment. |
@@ -77,9 +79,10 @@ The integrations use the upstream services' public interfaces:
 
 ### Accounts and registration
 
-The first account registered in the browser becomes the server administrator. Open registration
-then defaults to off; an administrator can enable it under **Admin → Users**. This flag is stored in
-the singleton `server_settings` row. Administrators can also create accounts directly.
+The first account registered in the browser becomes the server administrator and is the only
+password account. After bootstrap, members sign in with Discord. New Discord identities are
+accepted only while **Open registration** is enabled under **Admin → Users**; existing linked
+members can always sign in. This flag is stored in the singleton `server_settings` row.
 
 For headless container bootstrap, set `THE_GATHERING_ADMIN_USERNAME` and
 `THE_GATHERING_ADMIN_PASSWORD`. Startup creates the admin if absent and is idempotent on later
@@ -93,9 +96,9 @@ Removing a user disables the account rather than deleting it, preserving referen
 history. Disabled accounts cannot sign in and can be re-enabled by an administrator.
 
 Sessions use random tokens stored in the `users_tokens` table, following Phoenix's generated-auth
-design. Changing a password expires every existing session. Password changes and administrator
-actions require password authentication within the previous ten minutes; the SPA prompts for the
-password again when that window expires. Passwords must be 12–72 characters.
+design. Changing the administrator password expires every existing session. Sensitive actions
+require authentication within the previous ten minutes; the SPA prompts the administrator for a
+password and Discord members to authorize with Discord again. Passwords must be 12–72 characters.
 
 See [Discord integration](docs/discord-integration.md) for bot creation, permissions, and current tracking behavior.
 

@@ -5,6 +5,7 @@ defmodule TheGathering.Accounts do
 
   alias Ecto.Multi
   alias TheGathering.Accounts.{ServerSettings, User, UserToken}
+  alias TheGathering.Games.Player
   alias TheGathering.Repo
 
   def registration_status do
@@ -12,7 +13,8 @@ defmodule TheGathering.Accounts do
 
     %{
       allowed: user_count == 0 or get_settings().registration_enabled,
-      bootstrap: user_count == 0
+      bootstrap: user_count == 0,
+      discord_configured: TheGathering.DiscordOAuth.configured?()
     }
   end
 
@@ -32,9 +34,10 @@ defmodule TheGathering.Accounts do
       when is_binary(username) and is_binary(password) do
     user = Repo.get_by(User, username: username |> String.trim() |> String.downcase())
 
-    if user && is_nil(user.disabled_at) && User.valid_password?(user, password),
-      do: user,
-      else: invalid_password(user, password)
+    if user && user.role == "admin" && is_nil(user.disabled_at) &&
+         User.valid_password?(user, password),
+       do: user,
+       else: invalid_password(user, password)
   end
 
   def get_user_by_username_and_password(_username, _password) do
@@ -43,6 +46,7 @@ defmodule TheGathering.Accounts do
   end
 
   def get_user(id), do: Repo.get(User, id)
+  def get_user_by_discord_id(discord_id), do: Repo.get_by(User, discord_id: discord_id)
   def get_user_by_username(username), do: Repo.get_by(User, username: String.downcase(username))
   def list_users, do: Repo.all(from u in User, order_by: [asc: u.username])
 
@@ -57,13 +61,14 @@ defmodule TheGathering.Accounts do
 
   def sudo_mode?(_user, _minutes), do: false
 
-  def update_user_password(user, attrs) do
+  def update_user_password(%User{role: "admin", hashed_password: hashed_password} = user, attrs)
+      when not is_nil(hashed_password) do
     user
     |> User.password_changeset(attrs)
     |> update_user_and_delete_all_tokens()
   end
 
-  def reset_password(user, attrs), do: update_user_password(user, attrs)
+  def update_user_password(_user, _attrs), do: {:error, :forbidden}
 
   def generate_user_session_token(user) do
     {token, user_token} = UserToken.build_session_token(user)
@@ -106,21 +111,121 @@ defmodule TheGathering.Accounts do
     |> Repo.update()
   end
 
+  def sign_in_with_discord(%{"sub" => discord_id} = claims) when is_binary(discord_id) do
+    Repo.transaction(fn ->
+      user =
+        case Repo.get_by(User, discord_id: discord_id) do
+          %User{disabled_at: disabled_at} when not is_nil(disabled_at) ->
+            Repo.rollback(:disabled)
+
+          %User{} = user ->
+            user
+            |> User.discord_profile_changeset(%{avatar_url: discord_avatar_url(claims)})
+            |> Repo.update!()
+
+          nil ->
+            create_discord_user(discord_id, claims)
+        end
+
+      link_discord_player(user)
+      user
+    end)
+  end
+
+  def sign_in_with_discord(_claims), do: {:error, :invalid_discord_user}
+
   defp register_when_allowed(%{allowed: false}, _attrs), do: Repo.rollback(:registration_closed)
+  defp register_when_allowed(%{bootstrap: false}, _attrs), do: Repo.rollback(:registration_closed)
 
-  defp register_when_allowed(status, attrs) do
-    role = if status.bootstrap, do: "admin", else: "member"
-
-    case %User{} |> User.registration_changeset(attrs, role) |> Repo.insert() do
+  defp register_when_allowed(_status, attrs) do
+    case %User{} |> User.registration_changeset(attrs, "admin") |> Repo.insert() do
       {:ok, user} -> user
       {:error, changeset} -> Repo.rollback(changeset)
     end
   end
 
   defp invalid_password(user, password) do
-    unless user && is_nil(user.disabled_at), do: User.valid_password?(nil, password)
+    unless user && user.role == "admin" && is_nil(user.disabled_at),
+      do: User.valid_password?(nil, password)
+
     nil
   end
+
+  defp create_discord_user(discord_id, claims) do
+    status = registration_status()
+    unless status.allowed and not status.bootstrap, do: Repo.rollback(:registration_closed)
+
+    username = available_discord_username(claims["preferred_username"], discord_id)
+
+    attrs = %{
+      username: username,
+      display_name: claims["preferred_username"] || username,
+      discord_id: discord_id,
+      avatar_url: discord_avatar_url(claims)
+    }
+
+    %User{}
+    |> User.discord_changeset(attrs)
+    |> Repo.insert!()
+  end
+
+  defp available_discord_username(preferred_username, discord_id) do
+    base =
+      preferred_username
+      |> to_string()
+      |> String.trim()
+      |> String.downcase()
+      |> String.replace(~r/[^a-z0-9_.-]/, "_")
+      |> String.trim("_.-")
+      |> String.slice(0, 32)
+
+    base = if String.length(base) >= 3, do: base, else: "discord"
+
+    if Repo.exists?(from user in User, where: user.username == ^base) do
+      "#{String.slice(base, 0, 19)}_#{String.slice(discord_id, 0, 20)}"
+    else
+      base
+    end
+  end
+
+  defp link_discord_player(user) do
+    case Repo.get_by(Player, discord_id: user.discord_id) do
+      nil ->
+        name = available_player_name(user.display_name, user.discord_id)
+
+        %Player{}
+        |> Player.changeset(%{name: name, user_id: user.id, discord_id: user.discord_id})
+        |> Repo.insert!()
+
+      %Player{user_id: nil} = player ->
+        player |> Player.changeset(%{user_id: user.id}) |> Repo.update!()
+
+      %Player{user_id: user_id} when user_id == user.id ->
+        :ok
+
+      _player ->
+        Repo.rollback(:discord_identity_conflict)
+    end
+  end
+
+  defp available_player_name(display_name, discord_id) do
+    name = String.trim(display_name)
+
+    if Repo.exists?(
+         from player in Player,
+           where: fragment("lower(?)", player.name) == ^String.downcase(name)
+       ) do
+      "#{String.slice(name, 0, 76)} (#{String.slice(discord_id, 0, 20)})"
+    else
+      name
+    end
+  end
+
+  defp discord_avatar_url(%{"picture" => picture}) when is_binary(picture) do
+    unless String.ends_with?(picture, "/nil"), do: picture
+  end
+
+  defp discord_avatar_url(_claims), do: nil
 
   defp update_user_and_delete_all_tokens(changeset) do
     Multi.new()

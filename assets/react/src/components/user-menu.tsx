@@ -8,7 +8,11 @@ export function UserMenu() {
 
   if (!session.data) {
     return (
-      <Link to="/login" search={{ returnTo: "/" }} className="btn btn-ghost btn-sm gap-2">
+      <Link
+        to="/login"
+        search={{ returnTo: "/", error: undefined }}
+        className="btn btn-ghost btn-sm gap-2"
+      >
         <LogIn className="size-4" aria-hidden="true" />
         <span className="hidden sm:inline">Sign in</span>
       </Link>
@@ -20,7 +24,16 @@ export function UserMenu() {
   return (
     <div className="dropdown dropdown-end">
       <button type="button" tabIndex={0} className="btn btn-ghost btn-sm gap-2">
-        <UserRound className="size-4" aria-hidden="true" />
+        {user.avatar_url ? (
+          <img
+            src={user.avatar_url}
+            alt=""
+            className="size-6 rounded-full"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <UserRound className="size-4" aria-hidden="true" />
+        )}
         <span className="max-w-28 truncate">{user.display_name}</span>
       </button>
       <ul

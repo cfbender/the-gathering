@@ -27,14 +27,18 @@ function RegisterPage() {
     )
   }
 
-  if (!status.allowed) {
+  if (!status.bootstrap) {
     return (
       <section className="mx-auto max-w-md py-16 text-center">
-        <h1 className="text-2xl font-bold">Registration is closed</h1>
+        <h1 className="text-2xl font-bold">Administrator setup is complete</h1>
         <p className="text-base-content/70 mt-2">
-          Ask your server admin to create an account for you.
+          Members sign in with Discord. New member access is controlled by the administrator.
         </p>
-        <Link to="/login" search={{ returnTo: "/" }} className="btn btn-primary mt-6">
+        <Link
+          to="/login"
+          search={{ returnTo: "/", error: undefined }}
+          className="btn btn-primary mt-6"
+        >
           Back to sign in
         </Link>
       </section>
@@ -49,13 +53,9 @@ function RegisterPage() {
             <span className="bg-primary text-primary-content mb-4 grid size-10 place-items-center rounded-lg">
               <UserPlus className="size-5" aria-hidden="true" />
             </span>
-            <h1 className="card-title text-2xl">
-              {status.bootstrap ? "Set up your server" : "Create your account"}
-            </h1>
+            <h1 className="card-title text-2xl">Set up your server</h1>
             <p className="text-base-content/70 mt-1 text-sm">
-              {status.bootstrap
-                ? "This first account will be the server administrator."
-                : "Join your playgroup on The Gathering."}
+              This first account will be the server administrator.
             </p>
           </div>
 

@@ -7,6 +7,9 @@ export interface User {
   id: number
   username: string
   display_name: string
+  discord_id: string | null
+  avatar_url: string | null
+  has_password: boolean
   role: "admin" | "member"
   disabled: boolean
   inserted_at: string
@@ -19,6 +22,7 @@ interface Data<T> {
 export interface RegistrationStatus {
   allowed: boolean
   bootstrap: boolean
+  discord_configured: boolean
 }
 
 export const sessionQueryOptions = queryOptions({
@@ -45,7 +49,7 @@ export async function requireUser(queryClient: QueryClient, returnTo: string) {
     return await queryClient.ensureQueryData(sessionQueryOptions)
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
-      throw redirect({ to: "/login", search: { returnTo } })
+      throw redirect({ to: "/login", search: { returnTo, error: undefined } })
     }
     throw error
   }

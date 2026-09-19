@@ -29,6 +29,11 @@ config :the_gathering, :catalog_sync_enabled, false
 # Deck-list tests exercise ManaVault links against a stubbed self-hosted origin.
 config :the_gathering, TheGathering.Decklists, manavault_url: "https://manavault.example.com"
 
+config :the_gathering, :discord_oauth,
+  client_id: "discord-client-id",
+  client_secret: "discord-client-secret",
+  http_adapter: {Assent.HTTPAdapter.Req, plug: {Req.Test, TheGathering.DiscordOAuth}}
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 

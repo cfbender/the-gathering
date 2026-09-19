@@ -59,7 +59,9 @@ function SettingsPage() {
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-base-content/70 mt-1">Manage your profile and password.</p>
+        <p className="text-base-content/70 mt-1">
+          Manage your profile{user.has_password ? " and password" : ""}.
+        </p>
       </div>
 
       <form className="card bg-base-200 border-base-300 border" onSubmit={updateProfile}>
@@ -94,53 +96,57 @@ function SettingsPage() {
         </div>
       </form>
 
-      <SudoPrompt error={password.error} onSuccess={() => password.reset()} />
+      {user.has_password && (
+        <SudoPrompt error={password.error} onSuccess={() => password.reset()} />
+      )}
 
-      <form className="card bg-base-200 border-base-300 border" onSubmit={updatePassword}>
-        <div className="card-body gap-4">
-          <h2 className="card-title text-lg">
-            <KeyRound className="size-5" /> Change password
-          </h2>
-          <label className="fieldset">
-            <span className="fieldset-legend">New password</span>
-            <input
-              name="password"
-              type="password"
-              minLength={12}
-              maxLength={72}
-              autoComplete="new-password"
-              className="input w-full"
-              required
-            />
-            {errorMessage(password.error, "password") && (
-              <span className="label text-error">{errorMessage(password.error, "password")}</span>
-            )}
-          </label>
-          <label className="fieldset">
-            <span className="fieldset-legend">Confirm new password</span>
-            <input
-              name="password_confirmation"
-              type="password"
-              minLength={12}
-              maxLength={72}
-              autoComplete="new-password"
-              className="input w-full"
-              required
-            />
-            {errorMessage(password.error, "password_confirmation") && (
-              <span className="label text-error">
-                {errorMessage(password.error, "password_confirmation")}
-              </span>
-            )}
-          </label>
-          <div className="card-actions items-center justify-end">
-            {password.isSuccess && <span className="text-success text-sm">Password updated</span>}
-            <button className="btn btn-primary btn-sm" disabled={password.isPending}>
-              Update password
-            </button>
+      {user.has_password && (
+        <form className="card bg-base-200 border-base-300 border" onSubmit={updatePassword}>
+          <div className="card-body gap-4">
+            <h2 className="card-title text-lg">
+              <KeyRound className="size-5" /> Change password
+            </h2>
+            <label className="fieldset">
+              <span className="fieldset-legend">New password</span>
+              <input
+                name="password"
+                type="password"
+                minLength={12}
+                maxLength={72}
+                autoComplete="new-password"
+                className="input w-full"
+                required
+              />
+              {errorMessage(password.error, "password") && (
+                <span className="label text-error">{errorMessage(password.error, "password")}</span>
+              )}
+            </label>
+            <label className="fieldset">
+              <span className="fieldset-legend">Confirm new password</span>
+              <input
+                name="password_confirmation"
+                type="password"
+                minLength={12}
+                maxLength={72}
+                autoComplete="new-password"
+                className="input w-full"
+                required
+              />
+              {errorMessage(password.error, "password_confirmation") && (
+                <span className="label text-error">
+                  {errorMessage(password.error, "password_confirmation")}
+                </span>
+              )}
+            </label>
+            <div className="card-actions items-center justify-end">
+              {password.isSuccess && <span className="text-success text-sm">Password updated</span>}
+              <button className="btn btn-primary btn-sm" disabled={password.isPending}>
+                Update password
+              </button>
+            </div>
           </div>
-        </div>
-      </form>
+        </form>
+      )}
     </div>
   )
 }
