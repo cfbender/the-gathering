@@ -1,19 +1,13 @@
+import { CardSearch } from "@/components/card-search"
+import type { CardSummary, SelectedCard } from "@/lib/cards"
+import { selectCatalogCard } from "@/lib/cards"
+
 interface MvpCardFieldProps {
-  value: string
-  onChange: (value: string) => void
+  value: SelectedCard | null
+  onChange: (value: SelectedCard | null) => void
 }
 
-/** Plain-text seam for the catalog thread to replace with CardSearch. */
 export function MvpCardField({ value, onChange }: MvpCardFieldProps) {
-  return (
-    <label className="form-control">
-      <span className="label-text mb-1 text-xs font-medium">MVP card (optional)</span>
-      <input
-        className="input input-bordered input-sm w-full"
-        placeholder="The card that mattered"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
-  )
+  const change = (card: CardSummary | null) => onChange(card ? selectCatalogCard(card) : null)
+  return <CardSearch label="MVP card (optional)" value={value} onChange={change} />
 }

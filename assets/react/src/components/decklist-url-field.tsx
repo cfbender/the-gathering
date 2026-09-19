@@ -63,13 +63,13 @@ export function DecklistUrlField({
         : null
 
   return (
-    <div className="flex flex-col gap-2">
-      <label className="form-control flex flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-2">
+      <label className="form-control min-w-0 flex flex-col gap-1.5">
         <span className="text-sm font-medium">{label}</span>
         <div className="relative">
           <input
             type="url"
-            className="input input-bordered w-full pr-32"
+            className="input input-bordered min-w-0 w-full pr-32"
             value={value}
             placeholder="https://moxfield.com/decks/…"
             aria-invalid={errorMessage ? "true" : undefined}

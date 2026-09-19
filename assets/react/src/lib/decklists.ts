@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { cardSnapshot, searchCards, selectCatalogCard, type SelectedCard } from "@/lib/cards"
 
 export type DecklistSource = "moxfield" | "archidekt" | "manavault" | "other"
 
@@ -57,6 +58,25 @@ export function useResolveDecklist() {
       return response.data
     },
   })
+}
+
+async function findCommander(name: string): Promise<SelectedCard> {
+  const cards = await searchCards(name)
+  const exact = cards.find((card) => card.name.toLowerCase() === name.toLowerCase())
+  return exact ? selectCatalogCard(exact) : cardSnapshot(null, name)!
+}
+
+export async function detailsFromDecklist(decklist: Decklist) {
+  const [commander = null, partner = null] = await Promise.all(
+    decklist.commanders.slice(0, 2).map(({ name }) => findCommander(name)),
+  )
+  return {
+    name: decklist.name,
+    commander,
+    partner,
+    colorIdentity: decklist.color_identity?.join("") ?? "",
+    decklistUrl: decklist.url,
+  }
 }
 
 export const decklistSourceLabels: Record<DecklistSource, string> = {
