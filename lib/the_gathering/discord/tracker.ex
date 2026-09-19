@@ -9,10 +9,10 @@ defmodule TheGathering.Discord.Tracker do
     GenServer.start_link(__MODULE__, options, name: __MODULE__)
   end
 
-  @spec observe(GameReport.t()) :: :ok
+  @spec observe(GameReport.t()) :: :ok | {:error, term()}
   def observe(report), do: GenServer.call(__MODULE__, {:observe, report})
 
-  @spec record_winner(String.t(), String.t()) :: {:ok, GameReport.t()} | {:error, atom()}
+  @spec record_winner(String.t(), String.t()) :: {:ok, GameReport.t()} | {:error, term()}
   def record_winner(game_id, discord_id) do
     GenServer.call(
       __MODULE__,
@@ -25,8 +25,10 @@ defmodule TheGathering.Discord.Tracker do
 
   @impl true
   def handle_call({:observe, report}, _from, state) do
-    :ok = dispatch(report, state.sink)
-    {:reply, :ok, put_in(state.reports[report.external_id], report)}
+    case Sink.dispatch(report, state.sink) do
+      :ok -> {:reply, :ok, put_in(state.reports[report.external_id], report)}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
   end
 
   def handle_call({:record_winner, external_id, discord_id}, _from, state) do
@@ -38,18 +40,16 @@ defmodule TheGathering.Discord.Tracker do
           raw: Map.put(report.raw, :winner_reported_by, discord_id)
       }
 
-      :ok = dispatch(completed, state.sink)
-      {:reply, {:ok, completed}, put_in(state.reports[external_id], completed)}
+      case Sink.dispatch(completed, state.sink) do
+        :ok ->
+          {:reply, {:ok, completed}, put_in(state.reports[external_id], completed)}
+
+        {:error, reason} ->
+          {:reply, {:error, {:sink_failed, reason}}, state}
+      end
     else
       nil -> {:reply, {:error, :unknown_game}, state}
       false -> {:reply, {:error, :not_a_player}, state}
-    end
-  end
-
-  defp dispatch(report, sink) do
-    case Sink.dispatch(report, sink) do
-      :ok -> :ok
-      {:error, reason} -> exit({:sink_failed, reason})
     end
   end
 

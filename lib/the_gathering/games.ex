@@ -165,6 +165,18 @@ defmodule TheGathering.Games do
     |> create_game()
   end
 
+  def upsert_game_by_external_id(source, external_id, attrs) do
+    attrs =
+      attrs
+      |> Map.new()
+      |> Map.merge(%{source: source, external_id: external_id})
+
+    case Repo.get_by(Game, source: source, external_id: external_id) do
+      nil -> insert_game(attrs, source, external_id)
+      game -> update_game(game, attrs)
+    end
+  end
+
   def update_game(%Game{} = game, attrs) do
     game
     |> Repo.preload(:seats)
