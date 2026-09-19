@@ -1,5 +1,5 @@
 defmodule TheGathering.StatsTest do
-  use TheGathering.DataCase, async: true
+  use TheGathering.DataCase, async: false
 
   alias TheGathering.{Games, Stats}
 
