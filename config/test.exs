@@ -26,6 +26,9 @@ config :logger, level: :warning
 # Tests invoke catalog sync explicitly with local fixtures.
 config :the_gathering, :catalog_sync_enabled, false
 
+# Deck-list tests exercise ManaVault links against a stubbed self-hosted origin.
+config :the_gathering, TheGathering.Decklists, manavault_url: "https://manavault.example.com"
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 

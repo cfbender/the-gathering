@@ -15,6 +15,20 @@ export interface Decklist {
   fetched_at: string
 }
 
+/**
+ * Hostname of the self-hosted ManaVault instance the server was configured with
+ * (`MANAVAULT_URL`), embedded by the SPA shell as `<meta name="manavault-url">`.
+ */
+export function manavaultHost(): string | null {
+  const content = document.querySelector<HTMLMetaElement>('meta[name="manavault-url"]')?.content
+  if (!content) return null
+  try {
+    return new URL(content).hostname.toLowerCase()
+  } catch {
+    return null
+  }
+}
+
 export function detectDecklistSource(value: string): DecklistSource | null {
   try {
     const url = new URL(value)
@@ -23,7 +37,8 @@ export function detectDecklistSource(value: string): DecklistSource | null {
     const host = url.hostname.replace(/^www\./, "").toLowerCase()
     if (host === "moxfield.com" && /^\/decks\/[^/]+/.test(url.pathname)) return "moxfield"
     if (host === "archidekt.com" && /^\/decks\/\d+/.test(url.pathname)) return "archidekt"
-    if (host === "manavault.cfb.dev" && /^\/share\/decks\/[^/]+/.test(url.pathname)) {
+    const manavault = manavaultHost()
+    if (manavault && host === manavault && /^\/share\/decks\/[^/]+/.test(url.pathname)) {
       return "manavault"
     }
     return "other"

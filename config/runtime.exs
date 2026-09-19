@@ -17,6 +17,12 @@ config :the_gathering, TheGatheringWeb.Endpoint,
 catalog_sync_hours = String.to_integer(System.get_env("CATALOG_SYNC_INTERVAL_HOURS", "168"))
 config :the_gathering, :catalog_sync_interval_ms, catalog_sync_hours * 60 * 60 * 1_000
 
+# Optional origin of a self-hosted ManaVault instance whose shared deck links should be
+# recognized and resolved, e.g. https://manavault.example.com. Unset disables ManaVault links.
+if manavault_url = System.get_env("MANAVAULT_URL") do
+  config :the_gathering, TheGathering.Decklists, manavault_url: manavault_url
+end
+
 if discord_bot_token = System.get_env("DISCORD_BOT_TOKEN") do
   config :nostrum,
     token: discord_bot_token,
