@@ -53,6 +53,16 @@ defmodule TheGathering.Discord.SpellBotParserTest do
     assert {:error, :invalid_started_at} = SpellBotParser.parse(message, @spellbot_id)
   end
 
+  test "reports a SpellBot message whose embeds Discord stripped" do
+    # Without the Message Content intent, Discord delivers other bots' messages
+    # with empty embeds; the consumer turns this reason into a setup warning.
+    assert {:error, :no_embeds} =
+             SpellBotParser.parse(%{fixture() | "embeds" => []}, @spellbot_id)
+
+    assert {:error, :no_embeds} =
+             SpellBotParser.parse(Map.delete(fixture(), "embeds"), @spellbot_id)
+  end
+
   defp fixture do
     "test/fixtures/discord/spellbot_game_ready.json"
     |> File.read!()
