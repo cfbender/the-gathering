@@ -8,18 +8,21 @@ defmodule TheGatheringWeb.Router do
     plug :put_secure_browser_headers
   end
 
+  # The SPA authenticates with the session cookie, so API mutations must carry
+  # the CSRF token the shell embeds (`x-csrf-token`, sent by `lib/api.ts`).
   pipeline :api do
     plug :accepts, ["json"]
     plug :fetch_session
+    plug :protect_from_forgery
   end
 
-  scope "/api", TheGatheringWeb do
+  scope "/api", TheGatheringWeb.API do
     pipe_through :api
 
     get "/health", HealthController, :show
 
     # Keep unknown API paths out of the SPA catch-all below.
-    match :*, "/*path", ApiFallbackController, :not_found
+    match :*, "/*path", FallbackController, :not_found
   end
 
   # Everything that is not an API route or a static file is a client-side

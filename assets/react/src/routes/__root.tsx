@@ -1,8 +1,14 @@
-import { Link, Outlet, createRootRoute } from "@tanstack/react-router"
+import type { QueryClient } from "@tanstack/react-query"
+import { Link, Outlet, createRootRouteWithContext } from "@tanstack/react-router"
 import { Swords } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 
-export const Route = createRootRoute({
+/** Router context available to every route's `loader` and `beforeLoad`. */
+export interface RouterContext {
+  queryClient: QueryClient
+}
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
   notFoundComponent: NotFound,
 })

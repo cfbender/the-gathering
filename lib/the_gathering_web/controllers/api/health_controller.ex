@@ -1,4 +1,4 @@
-defmodule TheGatheringWeb.HealthController do
+defmodule TheGatheringWeb.API.HealthController do
   use TheGatheringWeb, :controller
 
   alias Ecto.Adapters.SQL

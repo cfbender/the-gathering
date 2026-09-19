@@ -1,10 +1,28 @@
+/** Field errors as rendered by `TheGatheringWeb.ChangesetJSON`: `{ field: ["message"] }`. */
+export type FieldErrors = Record<string, string[] | Record<string, unknown>>
+
+/** Error body from the Phoenix API: `{ errors: { detail: "Not Found" } }` or field errors. */
+export interface ApiErrorBody {
+  errors: FieldErrors & { detail?: string }
+}
+
 export class ApiError extends Error {
+  readonly errors: ApiErrorBody["errors"]
+
   constructor(
     readonly status: number,
     message: string,
+    errors: ApiErrorBody["errors"] = {},
   ) {
     super(message)
     this.name = "ApiError"
+    this.errors = errors
+  }
+
+  /** Messages for a single field, empty when the field is valid or unknown. */
+  fieldErrors(field: string): string[] {
+    const value = this.errors[field]
+    return Array.isArray(value) ? value : []
   }
 }
 
@@ -12,9 +30,21 @@ function csrfToken(): string | null {
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? null
 }
 
+async function readErrorBody(response: Response): Promise<ApiErrorBody["errors"]> {
+  try {
+    const body = (await response.json()) as Partial<ApiErrorBody>
+    return body.errors ?? {}
+  } catch {
+    return {}
+  }
+}
+
 /**
  * Thin fetch wrapper for the Phoenix JSON API: same-origin cookies, JSON
  * bodies, and the CSRF token from the SPA shell on mutating requests.
+ *
+ * Non-2xx responses reject with an `ApiError` carrying the parsed `errors`
+ * object so forms can show per-field messages.
  */
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
@@ -27,7 +57,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const response = await fetch(path, { ...init, headers, credentials: "same-origin" })
   if (!response.ok) {
-    throw new ApiError(response.status, `${method} ${path} failed with ${response.status}`)
+    const errors = await readErrorBody(response)
+    const detail = typeof errors.detail === "string" ? errors.detail : response.statusText
+    throw new ApiError(response.status, `${method} ${path}: ${detail}`, errors)
   }
+  if (response.status === 204) return undefined as T
   return (await response.json()) as T
 }
