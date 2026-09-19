@@ -21,13 +21,32 @@ defmodule TheGathering.Discord.Command do
     }
   end
 
-  def register do
-    case Application.get_env(:the_gathering, TheGathering.Discord, [])[:guild_id] do
-      guild_id when is_binary(guild_id) and guild_id != "" ->
-        ApplicationCommand.create_guild_command(guild_id, definition())
+  @doc """
+  Registers `/won` for the application identified by the `READY` payload.
 
-      _ ->
-        ApplicationCommand.create_global_command(definition())
+  Returns `{:ok, description}` for logging, or the Nostrum API error.
+  """
+  def register(application_id) do
+    case guild_id() do
+      nil ->
+        with {:ok, _command} <-
+               ApplicationCommand.create_global_command(application_id, definition()) do
+          {:ok,
+           "registered /won globally; Discord can take up to an hour to show new global commands"}
+        end
+
+      guild_id ->
+        with {:ok, _command} <-
+               ApplicationCommand.create_guild_command(application_id, guild_id, definition()) do
+          {:ok, "registered /won in guild #{guild_id}"}
+        end
+    end
+  end
+
+  defp guild_id do
+    case Application.get_env(:the_gathering, TheGathering.Discord, [])[:guild_id] do
+      guild_id when is_binary(guild_id) and guild_id != "" -> guild_id
+      _ -> nil
     end
   end
 

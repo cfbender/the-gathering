@@ -217,9 +217,27 @@ crashing the gateway consumer.
    `https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=1024`.
 5. Put the token and optional IDs in `.env`, then restart the container. Never
    paste the token into logs or support messages.
-6. Start a SpellBot game and confirm the container logs receipt of
-   `spellbot:SB…` without raw message content. A listed player then runs `/won`
-   with that ID and should receive an ephemeral confirmation.
+6. Start a SpellBot game and confirm the container logs
+   `Discord observed SpellBot game spellbot:SB… with N player(s)`; raw message
+   content is never logged. A listed player then runs `/won` with that ID and
+   should receive an ephemeral confirmation.
+
+### Troubleshooting
+
+The bot logs each step at `info`, so `docker compose logs the-gathering` shows
+how far it got. Read the log from the top of the last start:
+
+| Log line | Meaning / fix |
+| --- | --- |
+| `Discord bot disabled: DISCORD_BOT_TOKEN is not set` | The token did not reach the container. Check `.env` and that `docker compose up` was re-run after editing it. |
+| `Discord bot could not start … Authentication rejected, invalid token` | The token is wrong or was reset in the Developer Portal. The web app keeps running without Discord; fix the token and restart. |
+| `Shard websocket closed (errno 4014, …)` repeating, no `READY` | Discord rejected the requested intents. Enable **Message Content Intent** on the **Bot** page. |
+| `Discord bot connected as <bot> in 0 guild(s)` | The bot was never invited to the server. Use the invite URL from step 4. |
+| `Discord registered /won in guild …` but `/won` is missing in Discord | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
+| `Discord registered /won globally` but `/won` is missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
+| `Could not register the Discord /won command: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |
+| `Discord delivered a SpellBot message without embeds` | Discord strips embeds from other bots' messages unless **Message Content Intent** is enabled. |
+| No `Discord observed SpellBot game …` line when a game starts | The bot cannot see the channel (grant **View Channels** there), or the message is from a different SpellBot deployment: set `DISCORD_SPELLBOT_USER_ID` to that bot's user ID. |
 
 A real Discord smoke test was not run in the orb because no throwaway
 application/server credentials were available. The test suite uses the scrubbed

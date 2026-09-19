@@ -46,6 +46,10 @@ defmodule TheGathering.Discord.SpellBotParser do
     end
   end
 
+  # Without the privileged Message Content intent, Discord strips embeds from
+  # every message the bot did not author, so this is the symptom to surface.
+  defp find_started_embed([]), do: {:error, :no_embeds}
+
   defp find_started_embed(embeds) when is_list(embeds) do
     Enum.find_value(embeds, {:error, :not_started_game}, fn embed ->
       footer = value(value(embed, :footer, %{}), :text, "")
@@ -60,7 +64,7 @@ defmodule TheGathering.Discord.SpellBotParser do
     end)
   end
 
-  defp find_started_embed(_), do: {:error, :not_started_game}
+  defp find_started_embed(_), do: {:error, :no_embeds}
 
   defp parse_played_at(embed) do
     with {:ok, value} <- field_value(embed, "Started at"),
