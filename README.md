@@ -135,6 +135,8 @@ mise exec -- mix phx.server   # http://localhost:5173
 
 `mix phx.server` starts Phoenix on `$PORT` (default 4000) and the Vite dev server on 5173. Open the Vite port: it serves the React app with hot reload and proxies API and page requests to Phoenix.
 
+In development every request is signed in automatically as the first administrator (a passwordless `dev` admin is created if none exists) and sudo re-authentication is skipped. Run with `DEV_AUTO_LOGIN=false` to exercise the real login flow; `/login` stays reachable either way.
+
 Other commands:
 
 ```sh
