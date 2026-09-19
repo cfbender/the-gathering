@@ -38,25 +38,22 @@ defmodule TheGatheringWeb.Router do
     get "/session", SessionController, :show
     post "/session", SessionController, :create
     delete "/session", SessionController, :delete
-
-    # Game history and the card catalog are readable without an account.
-    get "/cards", CardController, :index
-    get "/cards/:id", CardController, :show
-    get "/catalog", CatalogController, :show
-    resources "/players", PlayerController, only: [:index, :show]
-    resources "/decks", DeckController, only: [:index, :show]
-    resources "/games", GameController, only: [:index, :show]
   end
 
+  # Everything about the playgroup, including game history and the card
+  # catalog, is private to signed-in members.
   scope "/api", TheGatheringWeb.API do
     pipe_through [:api, :require_authenticated_user]
 
     patch "/session/user", SessionController, :update_profile
     post "/session/sudo", SessionController, :sudo
 
-    resources "/players", PlayerController, only: [:create, :update, :delete]
-    resources "/decks", DeckController, only: [:create, :update, :delete]
-    resources "/games", GameController, only: [:create, :update, :delete]
+    get "/cards", CardController, :index
+    get "/cards/:id", CardController, :show
+    get "/catalog", CatalogController, :show
+    resources "/players", PlayerController, except: [:new, :edit]
+    resources "/decks", DeckController, except: [:new, :edit]
+    resources "/games", GameController, except: [:new, :edit]
     post "/decklists/resolve", DecklistController, :resolve
   end
 

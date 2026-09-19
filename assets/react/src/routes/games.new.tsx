@@ -1,9 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { GameForm } from "@/components/game-form"
-import { requireUser } from "@/lib/auth"
 
 export const Route = createFileRoute("/games/new")({
-  beforeLoad: ({ context, location }) => requireUser(context.queryClient, location.href),
   component: NewGamePage,
 })
 
