@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import { cardSnapshot, type CardSummary } from "@/lib/cards"
+import { cardSnapshot, selectCatalogCard, type CardSummary } from "@/lib/cards"
 import { CommanderField } from "./commander-field"
 import { DeckFormFields, type DeckFormValue } from "./deck-form-fields"
 
@@ -56,6 +56,36 @@ afterEach(() => {
 })
 
 describe("deck card fields", () => {
+  it("removing a partner recomputes identity from the commander's catalog colors", () => {
+    const partner = { ...atraxa, id: "blue-partner", name: "Blue Partner", color_identity: ["U"] }
+
+    function ExistingDeckHarness() {
+      const [value, setValue] = useState<DeckFormValue>({
+        commander: selectCatalogCard({ ...atraxa, color_identity: ["G"] }),
+        partner: selectCatalogCard(partner),
+        colorIdentity: "UG",
+        decklistUrl: "",
+      })
+
+      return (
+        <>
+          <DeckFormFields
+            value={value}
+            onChange={(patch) => setValue((current) => ({ ...current, ...patch }))}
+          />
+          <output data-testid="colors">{value.colorIdentity}</output>
+        </>
+      )
+    }
+
+    renderWithQueryClient(<ExistingDeckHarness />)
+    const clearPartner = screen.getAllByRole("button", { name: "Clear card" })[1]
+    expect(clearPartner).toBeDefined()
+    fireEvent.click(clearPartner!)
+
+    expect(screen.getByTestId("colors").textContent).toBe("G")
+  })
+
   it("stores the selected commander ID and prefills color identity", async () => {
     vi.stubGlobal(
       "fetch",
@@ -235,6 +265,79 @@ describe("deck card fields", () => {
     expect(fetch).not.toHaveBeenCalledWith("/api/decklists/resolve", expect.anything())
   })
 
+  it("keeps a newer hosted-deck selection when an older lookup finishes last", async () => {
+    let resolveOlder!: (response: Response) => void
+    let resolveNewer!: (response: Response) => void
+    const older = new Promise<Response>((resolve) => (resolveOlder = resolve))
+    const newer = new Promise<Response>((resolve) => (resolveNewer = resolve))
+    const newerCard = { ...atraxa, id: "newer", name: "Newer Commander", color_identity: ["R"] }
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+        if (url === "/api/session/remote-decks") {
+          return jsonResponse({
+            decks: [
+              hostedDeck("Older deck", "Older Commander", "https://vault/decks/older"),
+              hostedDeck("Newer deck", newerCard.name, "https://vault/decks/newer"),
+            ],
+            sources: [{ source: "manavault", configured: true, error: null }],
+          })
+        }
+        if (url.includes("q=Older+Commander")) return older
+        if (url.includes("q=Newer+Commander")) return newer
+        return jsonResponse([])
+      }),
+    )
+    renderWithQueryClient()
+
+    const picker = await screen.findByRole("combobox", {
+      name: "Quick pick from my hosted decks",
+    })
+    fireEvent.change(picker, { target: { value: "https://vault/decks/older" } })
+    fireEvent.change(picker, { target: { value: "https://vault/decks/newer" } })
+    resolveNewer(jsonResponse([newerCard]))
+
+    await waitFor(() => expect(screen.getByTestId("deck-name").textContent).toBe("Newer deck"))
+    resolveOlder(jsonResponse([{ ...atraxa, name: "Older Commander" }]))
+    await waitFor(() => expect(screen.queryByText("Looking up commanders…")).toBeNull())
+
+    expect(screen.getByTestId("deck-name").textContent).toBe("Newer deck")
+    expect(screen.getByTestId("commander-id").textContent).toBe("newer")
+  })
+
+  it("shows an error when hosted-deck commander lookup fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+        if (url === "/api/session/remote-decks") {
+          return jsonResponse({
+            decks: [hostedDeck("Broken deck", "Missing", "https://vault/decks/broken")],
+            sources: [{ source: "manavault", configured: true, error: null }],
+          })
+        }
+        return new Response(JSON.stringify({ errors: { detail: "Catalog unavailable" } }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        })
+      }),
+    )
+    renderWithQueryClient()
+
+    fireEvent.change(
+      await screen.findByRole("combobox", { name: "Quick pick from my hosted decks" }),
+      { target: { value: "https://vault/decks/broken" } },
+    )
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "That deck's commander details could not be loaded. Try again.",
+    )
+  })
+
   it("renders a stored name when its card ID is unavailable", () => {
     renderWithQueryClient(
       <CommanderField
@@ -249,3 +352,21 @@ describe("deck card fields", () => {
     expect(screen.getByText("Stored card snapshot")).toBeTruthy()
   })
 })
+
+function hostedDeck(name: string, commander: string, url: string) {
+  return {
+    name,
+    commanders: [commander],
+    color_identity: ["R"],
+    url,
+    source: "manavault",
+    updated_at: "2026-09-20T12:00:00Z",
+  }
+}
+
+function jsonResponse(data: unknown) {
+  return new Response(JSON.stringify({ data }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  })
+}

@@ -8,9 +8,9 @@ import { DeckFormFields, type DeckFormValue } from "@/components/deck-form-field
 import { DeckStats } from "@/components/stats/deck-stats"
 import { Switch } from "@/components/ui/switch"
 import { api, ApiError } from "@/lib/api"
-import { cardSnapshot } from "@/lib/cards"
+import { cardSnapshot, getCard, selectCatalogCard, type CardSummary } from "@/lib/cards"
 import { useCurrentUser } from "@/lib/auth"
-import { canManageDeck, formatDate, getDeck, type Deck } from "@/lib/games"
+import { canManageDeck, formatDate, getDeck, invalidateGameRelated, type Deck } from "@/lib/games"
 
 export const Route = createFileRoute("/decks/$deckId")({ component: DeckDetailPage })
 
@@ -94,17 +94,56 @@ function DeckDetailPage() {
   )
 }
 
-function DeckEditForm({ deck }: { deck: Deck }) {
+export function DeckEditForm({ deck }: { deck: Deck }) {
+  const commander = useQuery({
+    queryKey: ["cards", deck.commander_card_id],
+    queryFn: () => getCard(deck.commander_card_id!),
+    enabled: Boolean(deck.commander_card_id),
+    retry: false,
+  })
+  const partner = useQuery({
+    queryKey: ["cards", deck.partner_card_id],
+    queryFn: () => getCard(deck.partner_card_id!),
+    enabled: Boolean(deck.partner_card_id),
+    retry: false,
+  })
+
+  if (
+    (deck.commander_card_id && commander.isPending) ||
+    (deck.partner_card_id && partner.isPending)
+  ) {
+    return <span className="loading loading-spinner" aria-label="Loading deck cards" />
+  }
+
+  return (
+    <DeckEditFormReady
+      deck={deck}
+      commander={selectedCard(commander.data, deck.commander_card_id, deck.commander_name)}
+      partner={selectedCard(partner.data, deck.partner_card_id, deck.partner_name)}
+    />
+  )
+}
+
+function selectedCard(card: CardSummary | undefined, id: string | null, name: string | null) {
+  return card ? selectCatalogCard(card) : cardSnapshot(id, name)
+}
+
+function DeckEditFormReady({
+  deck,
+  commander,
+  partner,
+}: {
+  deck: Deck
+  commander: DeckFormValue["commander"]
+  partner: DeckFormValue["partner"]
+}) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(deck.name)
+  const [nameEditVersion, setNameEditVersion] = useState(0)
   const [includedForPlay, setIncludedForPlay] = useState(deck.included_for_play ?? true)
   const [details, setDetails] = useState<DeckFormValue>({
-    commander: cardSnapshot(
-      deck.commander_card_id,
-      deck.commander_name,
-      deck.color_identity.split(""),
-    ),
-    partner: cardSnapshot(deck.partner_card_id, deck.partner_name),
+    commander,
+    partner,
     colorIdentity: deck.color_identity,
     decklistUrl: deck.decklist_url ?? "",
   })
@@ -117,8 +156,8 @@ function DeckEditForm({ deck }: { deck: Deck }) {
             name: name.trim(),
             commander_card_id: details.commander?.catalog_id,
             commander_name: details.commander?.name,
-            partner_card_id: details.partner?.catalog_id,
-            partner_name: details.partner?.name,
+            partner_card_id: details.partner?.catalog_id ?? null,
+            partner_name: details.partner?.name ?? null,
             color_identity: details.colorIdentity,
             decklist_url: details.decklistUrl.trim() || null,
             included_for_play: includedForPlay,
@@ -127,7 +166,7 @@ function DeckEditForm({ deck }: { deck: Deck }) {
       }).then((body) => body.data),
     onSuccess: (saved) => {
       queryClient.setQueryData(["decks", String(deck.id)], saved)
-      void queryClient.invalidateQueries({ queryKey: ["decks"] })
+      void invalidateGameRelated(queryClient)
     },
   })
   const error = mutation.error instanceof ApiError ? mutation.error : null
@@ -152,7 +191,10 @@ function DeckEditForm({ deck }: { deck: Deck }) {
             <input
               className="input input-bordered w-full"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                setName(event.target.value)
+                setNameEditVersion((version) => version + 1)
+              }}
               required
             />
           </label>
@@ -160,6 +202,7 @@ function DeckEditForm({ deck }: { deck: Deck }) {
             value={details}
             onChange={(patch) => setDetails((current) => ({ ...current, ...patch }))}
             onResolvedName={setName}
+            manualEditVersion={nameEditVersion}
           />
           <label className="flex items-center justify-between gap-4 sm:col-span-2">
             <span>
