@@ -32,6 +32,72 @@ defmodule TheGathering.Stats.Records do
     )
   end
 
+  @color_names %{"W" => "White", "U" => "Blue", "B" => "Black", "R" => "Red", "G" => "Green"}
+
+  @doc """
+  One record per WUBRG color counting every seat whose deck identity includes that
+  color (a Bant deck counts for white, blue, and green), always in WUBRG order.
+  `share` is the percentage of deck-bearing seats that ran the color.
+  """
+  def color_exposure(seats) do
+    with_decks = Enum.reject(seats, &is_nil(&1.deck))
+
+    for color <- ~w(W U B R G) do
+      rows =
+        Enum.filter(
+          with_decks,
+          &String.contains?(ColorIdentity.canonical(&1.deck.color_identity), color)
+        )
+
+      %{id: color, name: @color_names[color], share: percentage(length(rows), length(with_decks))}
+      |> Map.merge(record(rows))
+    end
+  end
+
+  @doc """
+  Every ordered pair of players who shared a table: the first player's record in the
+  games both sat in. Sorted by most shared games, then the players' names.
+  """
+  def matchups(games) do
+    games
+    |> Enum.flat_map(fn game ->
+      seats = Enum.uniq_by(game.seats, & &1.player_id)
+
+      for seat <- seats, opponent <- seats, seat.player_id != opponent.player_id do
+        {seat, opponent}
+      end
+    end)
+    |> Enum.group_by(fn {seat, opponent} -> {seat.player_id, opponent.player_id} end)
+    |> Enum.map(fn {_key, pairs} ->
+      {seat, opponent} = hd(pairs)
+
+      %{id: seat.player_id, name: seat.player.name, opponent_id: opponent.player_id}
+      |> Map.merge(record(Enum.map(pairs, &elem(&1, 0))))
+    end)
+    |> Enum.sort_by(&{-&1.games, String.downcase(&1.name), &1.opponent_id})
+  end
+
+  @doc """
+  Counts `values` (nil skipped) into consecutive `bin_size`-wide bins from the lowest
+  value's bin to the highest, including empty bins between them. Each bin is
+  `%{from, to, games}` where `to` is exclusive.
+  """
+  def histogram(values, bin_size) when bin_size > 0 do
+    case Enum.reject(values, &is_nil/1) do
+      [] ->
+        []
+
+      values ->
+        first = div(Enum.min(values), bin_size)
+        last = div(Enum.max(values), bin_size)
+        counts = Enum.frequencies_by(values, &div(&1, bin_size))
+
+        for bin <- first..last do
+          %{from: bin * bin_size, to: (bin + 1) * bin_size, games: Map.get(counts, bin, 0)}
+        end
+    end
+  end
+
   def record(rows) do
     wins = Enum.count(rows, &(&1.result == "win"))
     losses = Enum.count(rows, &(&1.result == "loss"))

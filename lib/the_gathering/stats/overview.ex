@@ -2,7 +2,7 @@ defmodule TheGathering.Stats.Overview do
   @moduledoc "Calculates the playgroup overview statistics view."
 
   alias TheGathering.{Accounts, Stats}
-  alias TheGathering.Stats.{Query, Records, Summaries}
+  alias TheGathering.Stats.{Elo, Query, Records, Summaries}
 
   def get(params \\ %{}) do
     games = Query.games(params)
@@ -16,7 +16,11 @@ defmodule TheGathering.Stats.Overview do
       games_count: length(games),
       average_duration_minutes: Records.average(detailed, & &1.duration_minutes),
       average_turns: Records.average(detailed, & &1.turns),
+      game_lengths: Summaries.game_lengths(detailed),
+      game_times: Enum.map(games, & &1.played_at),
       leaderboard: Records.grouped_records(seats, &Summaries.entity(&1.player), & &1.player_id),
+      elo: Elo.ratings(games),
+      matchups: Records.matchups(games),
       games_by_month:
         games
         |> Enum.group_by(&Calendar.strftime(&1.played_at, "%Y-%m"))

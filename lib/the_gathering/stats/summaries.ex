@@ -18,6 +18,36 @@ defmodule TheGathering.Stats.Summaries do
     }
   end
 
+  @duration_bin_minutes 15
+  @turn_bin 2
+
+  @doc """
+  How long games run: duration and turn histograms plus the fastest win and longest
+  game (as `recent_game/2` summaries, `nil` without timed games). `tracked_fun` picks
+  the tracked seat(s) of a game; when it returns `nil` any winner counts as a win.
+  """
+  def game_lengths(games, tracked_fun \\ fn _game -> nil end) do
+    timed = Enum.filter(games, & &1.duration_minutes)
+    won = Enum.filter(timed, &won?(&1, tracked_fun.(&1)))
+
+    %{
+      durations: Records.histogram(Enum.map(games, & &1.duration_minutes), @duration_bin_minutes),
+      turns: Records.histogram(Enum.map(games, & &1.turns), @turn_bin),
+      fastest_win:
+        won |> Enum.min_by(& &1.duration_minutes, fn -> nil end) |> maybe_recent_game(tracked_fun),
+      longest_game:
+        timed
+        |> Enum.max_by(& &1.duration_minutes, fn -> nil end)
+        |> maybe_recent_game(tracked_fun)
+    }
+  end
+
+  defp won?(game, nil), do: Enum.any?(game.seats, &(&1.result == "win"))
+  defp won?(_game, tracked), do: Records.tracked_result(tracked) == "win"
+
+  defp maybe_recent_game(nil, _tracked_fun), do: nil
+  defp maybe_recent_game(game, tracked_fun), do: recent_game(game, tracked_fun.(game))
+
   def entity(%{id: id, name: name} = value) do
     %{id: id, name: name}
     |> maybe_put(:commander_name, Map.get(value, :commander_name))
