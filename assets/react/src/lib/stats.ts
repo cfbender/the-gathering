@@ -148,6 +148,14 @@ export function leaderboardRows<T extends NamedRecordRow>(
     .sort((a, b) => b.win_rate - a.win_rate || b.games - a.games)
 }
 
+/** Best win rate first; ties fall back to name, so equal decks read alphabetically. */
+export function byWinRateThenName<T extends NamedRecordRow>(rows: T[]): T[] {
+  return [...rows].sort(
+    (a, b) =>
+      b.win_rate - a.win_rate || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+  )
+}
+
 export type ColorMetric = "games" | "win_rate"
 
 /**
