@@ -41,7 +41,7 @@ defmodule TheGatheringWeb.API.AdminUserController do
 
   def delete(conn, %{"id" => id}) do
     with {:ok, user} <- fetch_user(id),
-         {:ok, _user} <- Accounts.disable_user(user) do
+         {:ok, _user} <- Accounts.delete_user(user, conn.assigns.current_scope.user) do
       send_resp(conn, :no_content, "")
     end
   end

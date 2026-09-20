@@ -124,8 +124,10 @@ data your pod may not have recorded from the start: games before it still count 
 losses, but their seat positions, game length, turn counts, and MVP cards are left out. See
 [Statistics API](docs/stats.md).
 
-Removing a user disables the account rather than deleting it, preserving references from game
-history. Disabled accounts cannot sign in and can be re-enabled by an administrator.
+Administrators can disable and re-enable accounts, or permanently delete an account. Deleting an
+account revokes its sessions and unlinks its player while preserving the player, decks, and game
+history. A returning Discord member can register again and reclaim the player linked to the same
+Discord identity.
 
 Sessions use random tokens stored in the `users_tokens` table, following Phoenix's generated-auth
 design. Changing the administrator password expires every existing session. Sensitive actions

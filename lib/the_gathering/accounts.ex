@@ -119,6 +119,31 @@ defmodule TheGathering.Accounts do
     update_user(user, %{disabled_at: DateTime.utc_now() |> DateTime.truncate(:second)})
   end
 
+  def delete_user(%User{} = user, %User{} = actor) do
+    Multi.new()
+    |> Multi.run(:authorization, fn repo, _changes ->
+      authorize_user_deletion(repo, user, actor)
+    end)
+    |> Multi.update_all(
+      :players,
+      from(player in Player, where: player.user_id == ^user.id),
+      set: [user_id: nil]
+    )
+    |> Multi.update_all(
+      :games,
+      from(game in TheGathering.Games.Game, where: game.created_by_user_id == ^user.id),
+      set: [created_by_user_id: nil]
+    )
+    |> Multi.delete_all(:tokens, from(token in UserToken, where: token.user_id == ^user.id))
+    |> Multi.delete(:user, user)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{user: deleted}} -> {:ok, deleted}
+      {:error, :authorization, :forbidden, _changes} -> {:error, :forbidden}
+      {:error, _operation, reason, _changes} -> {:error, reason}
+    end
+  end
+
   def get_settings, do: Repo.get!(ServerSettings, 1)
 
   def update_settings(attrs) do
@@ -270,6 +295,16 @@ defmodule TheGathering.Accounts do
       {:error, :user, changeset, _changes} -> {:error, changeset}
     end
   end
+
+  defp authorize_user_deletion(_repo, %User{id: id}, %User{id: id}), do: {:error, :forbidden}
+
+  defp authorize_user_deletion(repo, %User{role: "admin", id: id}, _actor) do
+    if repo.exists?(from user in User, where: user.id != ^id and user.role == "admin"),
+      do: {:ok, :authorized},
+      else: {:error, :forbidden}
+  end
+
+  defp authorize_user_deletion(_repo, _user, _actor), do: {:ok, :authorized}
 
   defp ensure_enabled_admin(repo, user, changeset) do
     becoming_inactive? =
