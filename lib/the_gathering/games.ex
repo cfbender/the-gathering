@@ -37,9 +37,12 @@ defmodule TheGathering.Games do
   def get_player(id), do: Repo.get(Player, id)
 
   def create_player(attrs, user_id \\ nil) do
+    discord_id = value(attrs, :discord_id)
+
     %Player{}
     |> Player.changeset(attrs)
     |> Player.put_user(user_id)
+    |> Player.put_discord_id(discord_id)
     |> validate_user_exists(:user_id)
     |> Repo.insert()
   end
@@ -57,8 +60,15 @@ defmodule TheGathering.Games do
   def can_manage_player?(%User{id: id}, %Player{user_id: id}), do: true
   def can_manage_player?(_user, _player), do: false
 
-  def can_manage_deck?(%User{} = user, %Deck{player_id: player_id}),
-    do: can_manage_player?(user, Repo.get!(Player, player_id))
+  def can_manage_deck?(%User{role: "admin"}, %Deck{}), do: true
+
+  def can_manage_deck?(%User{id: user_id}, %Deck{player_id: player_id}) do
+    Repo.exists?(
+      from player in Player, where: player.id == ^player_id and player.user_id == ^user_id
+    )
+  end
+
+  def can_manage_deck?(_user, _deck), do: false
 
   def update_player(%Player{} = player, attrs),
     do: player |> Player.changeset(attrs) |> Repo.update()
@@ -254,7 +264,7 @@ defmodule TheGathering.Games do
     do: %Deck{} |> Deck.changeset(attrs) |> Repo.insert() |> preload_ok(:player)
 
   def update_deck(%Deck{} = deck, attrs),
-    do: deck |> Deck.changeset(attrs) |> Repo.update() |> preload_ok(:player)
+    do: deck |> Deck.update_changeset(attrs) |> Repo.update() |> preload_ok(:player)
 
   def delete_deck(%Deck{} = deck), do: Repo.delete(deck)
 
@@ -309,6 +319,20 @@ defmodule TheGathering.Games do
 
   def get_game(id), do: Repo.get(Game, id)
 
+  def can_manage_game?(%User{role: "admin"}, %Game{}), do: true
+  def can_manage_game?(%User{id: id}, %Game{created_by_user_id: id}), do: true
+
+  def can_manage_game?(%User{id: user_id}, %Game{id: game_id}) do
+    Repo.exists?(
+      from seat in GamePlayer,
+        join: player in Player,
+        on: player.id == seat.player_id,
+        where: seat.game_id == ^game_id and player.user_id == ^user_id
+    )
+  end
+
+  def can_manage_game?(_user, _game), do: false
+
   def create_game(attrs, created_by_user_id \\ nil) do
     case external_identity(attrs) do
       {source, external_id} when is_binary(external_id) and external_id != "" ->
@@ -357,6 +381,7 @@ defmodule TheGathering.Games do
       %Game{}
       |> Game.changeset(attrs)
       |> Game.put_created_by(created_by_user_id)
+      |> Game.put_external_identity(source, external_id)
       |> validate_user_exists(:created_by_user_id)
       |> validate_deck_ownership()
       |> Repo.insert()

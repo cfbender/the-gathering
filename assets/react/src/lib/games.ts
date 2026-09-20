@@ -54,6 +54,8 @@ export interface Game {
   turns: number | null
   notes: string | null
   source: "manual" | "csv" | "mythic_track" | "discord"
+  external_id: string | null
+  created_by_user_id: number | null
   seats: Seat[]
 }
 
@@ -78,6 +80,22 @@ export interface Pagination {
 export function canManagePlayer(viewer: { id: number; role: string } | undefined, player: Player) {
   if (!viewer) return false
   return viewer.role === "admin" || player.user_id === null || player.user_id === viewer.id
+}
+
+/** Mirrors `Games.can_manage_deck?`: guest decks have no member owner. */
+export function canManageDeck(viewer: { id: number; role: string } | undefined, deck: Deck) {
+  if (!viewer) return false
+  return viewer.role === "admin" || deck.player?.user_id === viewer.id
+}
+
+/** Mirrors `Games.can_manage_game?`: admins, creators, and seated linked players may edit. */
+export function canManageGame(viewer: { id: number; role: string } | undefined, game: Game) {
+  if (!viewer) return false
+  return (
+    viewer.role === "admin" ||
+    game.created_by_user_id === viewer.id ||
+    game.seats.some((seat) => seat.player.user_id === viewer.id)
+  )
 }
 
 export const getPlayers = () => api<{ data: Player[] }>("/api/players").then((body) => body.data)

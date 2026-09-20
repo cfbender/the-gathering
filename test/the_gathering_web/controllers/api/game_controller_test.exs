@@ -1,6 +1,7 @@
 defmodule TheGatheringWeb.API.GameControllerTest do
   use TheGatheringWeb.ConnCase, async: false
 
+  alias TheGathering.AccountsFixtures
   alias TheGathering.Catalog.Card
   alias TheGathering.Games
   alias TheGathering.Repo
@@ -72,6 +73,8 @@ defmodule TheGatheringWeb.API.GameControllerTest do
         duration_minutes: 57,
         turns: 9,
         notes: "Close finish",
+        source: "csv",
+        external_id: "forged-import-id",
         seats: [
           %{
             player_id: alice.id,
@@ -110,11 +113,115 @@ defmodule TheGatheringWeb.API.GameControllerTest do
 
     assert is_integer(id)
     assert created_by_user_id == user.id
+    assert response["data"]["external_id"] == nil
     assert alice_id == alice.id
     assert deck_id == deck.id
 
     assert get_in(response, ["data", "seats", Access.at(0), "deck", "commander_art_crop_url"]) ==
              "https://cards.example/kangee-art.jpg"
+  end
+
+  test "unrelated members cannot update or delete a game", %{
+    conn: conn,
+    user: user,
+    alice: alice,
+    bob: bob
+  } do
+    creator = AccountsFixtures.user_fixture()
+    {:ok, game} = Games.create_game(game_attrs(alice, bob), creator.id)
+
+    assert %{"errors" => %{"detail" => "Forbidden"}} =
+             conn
+             |> patch(~p"/api/games/#{game.id}", %{game: %{notes: "tampered"}})
+             |> json_response(403)
+
+    assert conn
+           |> recycle()
+           |> log_in_user(user)
+           |> delete(~p"/api/games/#{game.id}")
+           |> json_response(403)
+
+    assert Games.get_game(game.id)
+  end
+
+  test "the creator can update and delete a game without changing its provenance", %{
+    conn: conn,
+    user: user,
+    alice: alice,
+    bob: bob
+  } do
+    {:ok, update_game} = Games.create_game(game_attrs(alice, bob), user.id)
+
+    response =
+      conn
+      |> patch(~p"/api/games/#{update_game.id}", %{
+        game: %{notes: "creator edit", source: "discord", external_id: "forged"}
+      })
+      |> json_response(200)
+
+    assert response["data"]["notes"] == "creator edit"
+    assert response["data"]["source"] == "manual"
+    assert response["data"]["external_id"] == nil
+
+    {:ok, delete_game} = Games.create_game(game_attrs(alice, bob), user.id)
+
+    assert conn
+           |> recycle()
+           |> log_in_user(user)
+           |> delete(~p"/api/games/#{delete_game.id}")
+           |> response(204)
+
+    assert Games.get_game(delete_game.id) == nil
+  end
+
+  test "a seated linked player can update and delete a game", %{
+    conn: conn,
+    user: user,
+    alice: alice,
+    bob: bob
+  } do
+    creator = AccountsFixtures.user_fixture()
+    {:ok, alice} = Games.link_player_to_user(alice, user)
+    {:ok, update_game} = Games.create_game(game_attrs(alice, bob), creator.id)
+
+    response =
+      conn
+      |> patch(~p"/api/games/#{update_game.id}", %{game: %{notes: "participant edit"}})
+      |> json_response(200)
+
+    assert response["data"]["notes"] == "participant edit"
+
+    {:ok, delete_game} = Games.create_game(game_attrs(alice, bob), creator.id)
+
+    assert conn
+           |> recycle()
+           |> log_in_user(user)
+           |> delete(~p"/api/games/#{delete_game.id}")
+           |> response(204)
+
+    assert Games.get_game(delete_game.id) == nil
+  end
+
+  test "an administrator can update and delete any game", %{alice: alice, bob: bob} do
+    creator = AccountsFixtures.user_fixture()
+    admin = AccountsFixtures.admin_fixture()
+    {:ok, update_game} = Games.create_game(game_attrs(alice, bob), creator.id)
+    conn = build_conn() |> log_in_user(admin)
+
+    assert %{"data" => %{"notes" => "admin edit"}} =
+             conn
+             |> patch(~p"/api/games/#{update_game.id}", %{game: %{notes: "admin edit"}})
+             |> json_response(200)
+
+    {:ok, delete_game} = Games.create_game(game_attrs(alice, bob), creator.id)
+
+    assert conn
+           |> recycle()
+           |> log_in_user(admin)
+           |> delete(~p"/api/games/#{delete_game.id}")
+           |> response(204)
+
+    assert Games.get_game(delete_game.id) == nil
   end
 
   test "POST /api/games requires a signed-in user", %{alice: alice, bob: bob} do
@@ -159,5 +266,15 @@ defmodule TheGatheringWeb.API.GameControllerTest do
       conn = build_conn() |> get(path)
       assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
     end
+  end
+
+  defp game_attrs(alice, bob) do
+    %{
+      played_at: ~U[2026-09-20 12:00:00Z],
+      seats: [
+        %{player_id: alice.id, seat: 1, result: "win"},
+        %{player_id: bob.id, seat: 2, result: "loss"}
+      ]
+    }
   end
 end

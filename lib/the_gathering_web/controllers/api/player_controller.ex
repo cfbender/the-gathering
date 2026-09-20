@@ -6,13 +6,18 @@ defmodule TheGatheringWeb.API.PlayerController do
 
   action_fallback TheGatheringWeb.API.FallbackController
 
+  # Account and Discord identity are linked by trusted OAuth/import/admin paths.
+  @member_attrs ~w(name archived_at)
+
   def index(conn, params), do: render(conn, :index, players: Games.list_players(params))
 
-  def create(conn, %{"player" => attrs}) do
-    with {:ok, player} <- Games.create_player(attrs) do
+  def create(conn, %{"player" => attrs}) when is_map(attrs) do
+    with {:ok, player} <- Games.create_player(Map.take(attrs, @member_attrs)) do
       conn |> put_status(:created) |> render_player(Games.get_player!(player.id))
     end
   end
+
+  def create(_conn, _params), do: {:error, :bad_request}
 
   def show(conn, %{"id" => id}) do
     case Games.get_player(id) do
@@ -20,9 +25,6 @@ defmodule TheGatheringWeb.API.PlayerController do
       _player -> render_player(conn, Games.get_player!(id))
     end
   end
-
-  # Account and Discord identity are linked by administrators, never by payload.
-  @member_attrs ~w(name archived_at)
 
   def update(conn, %{"id" => id, "player" => attrs}) when is_map(attrs) do
     with player when not is_nil(player) <- Games.get_player(id),

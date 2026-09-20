@@ -27,6 +27,20 @@ defmodule TheGatheringWeb.API.PlayerControllerTest do
     assert Games.get_player!(ctx.drew.id).discord_id == nil
   end
 
+  test "members cannot claim an account or Discord identity through POST", ctx do
+    body =
+      ctx.conn
+      |> log_in_user(ctx.member)
+      |> post(~p"/api/players", %{
+        player: %{name: "Injected", user_id: ctx.member.id, discord_id: "victim-id"}
+      })
+      |> json_response(201)
+
+    player = Games.get_player!(body["data"]["id"])
+    assert player.user_id == nil
+    assert player.discord_id == nil
+  end
+
   test "members cannot rename another member's linked player", ctx do
     {:ok, _drew} = Games.link_player_to_user(ctx.drew, ctx.admin)
     conn = log_in_user(ctx.conn, ctx.member)

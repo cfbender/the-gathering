@@ -24,9 +24,7 @@ defmodule TheGathering.Games.Game do
       :played_at,
       :duration_minutes,
       :turns,
-      :notes,
-      :source,
-      :external_id
+      :notes
     ])
     |> validate_required([:played_at, :source])
     |> validate_inclusion(:source, ~w(manual csv mythic_track discord))
@@ -40,6 +38,14 @@ defmodule TheGathering.Games.Game do
 
   def put_created_by(changeset, user_id),
     do: put_change(changeset, :created_by_user_id, user_id)
+
+  def put_external_identity(changeset, nil, nil), do: changeset
+
+  def put_external_identity(changeset, source, external_id) do
+    changeset
+    |> put_change(:source, source)
+    |> put_change(:external_id, external_id)
+  end
 
   defp validate_seats(changeset) do
     seats = get_field(changeset, :seats, [])

@@ -14,12 +14,18 @@ The game tracker is owned by `TheGathering.Games`. One installation currently re
 | `archived_at` | Nullable UTC timestamp; archived players are hidden from normal lists. |
 
 A player does not require a user account, which supports guests and historical imports.
+Member API requests may set only guest-editable fields such as `name` and `archived_at`;
+`user_id` and `discord_id` are assigned only by trusted account, OAuth, import, and bot paths.
 
 ### `decks`
 
 Each deck belongs to a player. `name` is case-insensitively unique within that player. `commander_card_id` and `partner_card_id` hold Scryfall UUIDs without foreign keys until the catalog integration lands; the corresponding required `commander_name` and optional `partner_name` are durable display snapshots. `color_identity` is a compact, validated WUBRG string (for example `WUG` or the empty string), rather than catalog-derived JSON.
 
 `decklist_source` is derived from `decklist_url` as `moxfield`, `archidekt`, `manavault`, or `other`. `archived_at` has the same list semantics as players.
+
+Members may update or delete only decks owned by their linked player, and administrators may
+manage any deck. A deck's owner cannot be changed through the API update operation. Creating a
+deck for an unclaimed guest remains supported while logging a game.
 
 ### `games`
 
@@ -31,6 +37,11 @@ Each deck belongs to a player. `name` is case-insensitively unique within that p
 | `source` | `manual`, `csv`, or `discord`. |
 | `external_id` | Nullable; unique together with `source` for idempotent imports. |
 | `created_by_user_id` | Nullable foreign key to the user that created/imported the game; deletes are restricted. |
+
+Game updates and deletion are allowed for administrators, the creating user, and users whose
+linked player has a seat in the game. Other members receive `403 Forbidden`. Member create and
+update payloads cannot set `source` or `external_id`; import and Discord ingestion assign those
+provenance fields through trusted context operations.
 
 ### `game_players`
 
@@ -65,7 +76,6 @@ Create or update a game with nested seats:
     "duration_minutes": 57,
     "turns": 9,
     "notes": "Combat damage",
-    "source": "manual",
     "seats": [
       {
         "player_id": 1,

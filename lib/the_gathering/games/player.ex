@@ -18,7 +18,7 @@ defmodule TheGathering.Games.Player do
 
   def changeset(player, attrs) do
     player
-    |> cast(attrs, [:name, :discord_id, :archived_at])
+    |> cast(attrs, [:name, :archived_at])
     |> update_change(:name, &String.trim/1)
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 100)
@@ -30,4 +30,6 @@ defmodule TheGathering.Games.Player do
   end
 
   def put_user(changeset, user_id), do: put_change(changeset, :user_id, user_id)
+  def put_discord_id(changeset, nil), do: changeset
+  def put_discord_id(changeset, discord_id), do: put_change(changeset, :discord_id, discord_id)
 end

@@ -9,7 +9,7 @@ import { DeckStats } from "@/components/stats/deck-stats"
 import { api, ApiError } from "@/lib/api"
 import { cardSnapshot } from "@/lib/cards"
 import { useCurrentUser } from "@/lib/auth"
-import { canManagePlayer, formatDate, getDeck, type Deck } from "@/lib/games"
+import { canManageDeck, formatDate, getDeck, type Deck } from "@/lib/games"
 
 export const Route = createFileRoute("/decks/$deckId")({ component: DeckDetailPage })
 
@@ -59,11 +59,11 @@ function DeckDetailPage() {
         </div>
       </PageHeader>
       <DeckStats deckId={deckId} />
-      {deck.player && canManagePlayer(viewer.data, deck.player) ? (
+      {canManageDeck(viewer.data, deck) ? (
         <DeckEditForm key={deck.id} deck={deck} />
       ) : (
         <p className="text-base-content/60 text-sm">
-          Only {deck.player?.name ?? "the owner"} or an administrator can edit this deck.
+          Only the linked owner or an administrator can edit this deck.
         </p>
       )}
       <section>
