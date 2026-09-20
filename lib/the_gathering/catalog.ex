@@ -45,6 +45,34 @@ defmodule TheGathering.Catalog do
   def get_card!(id), do: Repo.get!(Card, id)
   def count_cards, do: Repo.aggregate(Card, :count)
 
+  def art_crop_urls(card_refs) do
+    ids = card_refs |> Enum.map(&elem(&1, 0)) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    names =
+      card_refs
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&CardData.normalize_name/1)
+      |> Enum.uniq()
+
+    Card
+    |> where([card], card.id in ^ids or card.normalized_name in ^names)
+    |> select([card], {card.id, card.normalized_name, card.image_uris})
+    |> Repo.all()
+    |> Enum.reduce(%{}, fn {id, normalized_name, image_uris}, urls ->
+      art_crop_url = Map.get(image_uris || %{}, "art_crop")
+
+      urls
+      |> Map.put({:id, id}, art_crop_url)
+      |> Map.put({:name, normalized_name}, art_crop_url)
+    end)
+  end
+
+  def art_crop_url(urls, id, name) do
+    Map.get(urls, {:id, id}) ||
+      (is_binary(name) && Map.get(urls, {:name, CardData.normalize_name(name)})) || nil
+  end
+
   def sync_status do
     Repo.one(from state in SyncState, order_by: [desc: state.id], limit: 1) || %SyncState{}
   end

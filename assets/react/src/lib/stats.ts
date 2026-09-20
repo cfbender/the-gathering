@@ -4,6 +4,7 @@ export interface RecordStat {
   id: number | string
   name: string
   commander_name?: string
+  art_crop_url?: string | null
   games: number
   wins: number
   losses: number
@@ -51,7 +52,7 @@ export interface PlayerStats {
   seat_win_rates: RecordStat[]
   favorite_seat: number | null
   best_seat: number | null
-  mvp_cards: { id: string | null; name: string; mentions: number }[]
+  mvp_cards: { id: string | null; name: string; mentions: number; art_crop_url: string | null }[]
 }
 
 export interface DeckStats {

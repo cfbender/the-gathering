@@ -4,6 +4,7 @@ import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { CalendarDays, Plus, Trophy } from "lucide-react"
 import { useState } from "react"
 import { formatDate, getGames, getPlayers } from "@/lib/games"
+import { CardArtBackground } from "@/components/card-art-background"
 
 export const Route = createFileRoute("/games/")({ component: GamesPage })
 
@@ -112,12 +113,15 @@ function GamesPage() {
                   {game.seats.map((seat) => (
                     <li
                       key={seat.id}
-                      className={`flex items-center gap-2 rounded-lg px-3 py-2 ${seat.result === "win" ? "bg-success/15 text-success" : "bg-base-100"}`}
+                      className={`relative flex items-center gap-2 overflow-hidden rounded-lg px-3 py-2 ${seat.result === "win" ? "border-success border bg-success/15" : "bg-base-100"}`}
                     >
-                      {seat.result === "win" && <Trophy className="size-4 shrink-0" />}
-                      <span className="min-w-0">
+                      <CardArtBackground imageUrl={seat.deck?.commander_art_crop_url} />
+                      {seat.result === "win" && (
+                        <Trophy className="text-success relative z-10 size-4 shrink-0" />
+                      )}
+                      <span className="text-base-content relative z-10 min-w-0">
                         <strong className="block truncate">{seat.player.name}</strong>
-                        <span className="text-base-content/60 block truncate text-xs">
+                        <span className="text-base-content/85 block truncate text-xs">
                           {seat.deck?.commander_name ?? "Unknown commander"}
                         </span>
                       </span>

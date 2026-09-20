@@ -29,6 +29,7 @@ function DeckDetailPage() {
         }
         title={deck.name}
         description={`${deck.commander_name ?? ""}${deck.partner_name ? ` + ${deck.partner_name}` : ""}`}
+        backgroundImageUrl={deck.commander_art_crop_url}
         actions={
           deck.decklist_url ? (
             <a

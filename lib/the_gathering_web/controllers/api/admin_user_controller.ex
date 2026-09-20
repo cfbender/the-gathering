@@ -1,7 +1,7 @@
 defmodule TheGatheringWeb.API.AdminUserController do
   use TheGatheringWeb, :controller
 
-  alias TheGathering.{Accounts, Games}
+  alias TheGathering.{Accounts, Catalog, Games}
   alias TheGatheringWeb.API.{PlayerJSON, UserJSON}
 
   action_fallback TheGatheringWeb.API.FallbackController
@@ -23,7 +23,14 @@ defmodule TheGatheringWeb.API.AdminUserController do
     with {:ok, user} <- fetch_user(id),
          player when not is_nil(player) <- Games.get_player(player_id),
          {:ok, player} <- Games.link_player_to_user(player, user) do
-      conn |> put_view(PlayerJSON) |> render(:show, player: Games.get_player!(player.id))
+      player = Games.get_player!(player.id)
+
+      conn
+      |> put_view(PlayerJSON)
+      |> render(:show,
+        player: player,
+        card_art: Catalog.art_crop_urls(PlayerJSON.card_refs(player))
+      )
     else
       nil -> {:error, :not_found}
       error -> error

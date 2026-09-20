@@ -1,7 +1,8 @@
 defmodule TheGatheringWeb.API.PlayerController do
   use TheGatheringWeb, :controller
 
-  alias TheGathering.Games
+  alias TheGathering.{Catalog, Games}
+  alias TheGatheringWeb.API.PlayerJSON
 
   action_fallback TheGatheringWeb.API.FallbackController
 
@@ -9,14 +10,14 @@ defmodule TheGatheringWeb.API.PlayerController do
 
   def create(conn, %{"player" => attrs}) do
     with {:ok, player} <- Games.create_player(attrs) do
-      conn |> put_status(:created) |> render(:show, player: Games.get_player!(player.id))
+      conn |> put_status(:created) |> render_player(Games.get_player!(player.id))
     end
   end
 
   def show(conn, %{"id" => id}) do
     case Games.get_player(id) do
       nil -> {:error, :not_found}
-      _player -> render(conn, :show, player: Games.get_player!(id))
+      _player -> render_player(conn, Games.get_player!(id))
     end
   end
 
@@ -26,7 +27,7 @@ defmodule TheGatheringWeb.API.PlayerController do
   def update(conn, %{"id" => id, "player" => attrs}) when is_map(attrs) do
     with player when not is_nil(player) <- Games.get_player(id),
          {:ok, player} <- Games.update_player(player, Map.take(attrs, @member_attrs)) do
-      render(conn, :show, player: Games.get_player!(player.id))
+      render_player(conn, Games.get_player!(player.id))
     else
       nil -> {:error, :not_found}
       error -> error
@@ -39,7 +40,7 @@ defmodule TheGatheringWeb.API.PlayerController do
     with source when not is_nil(source) <- Games.get_player(id),
          target when not is_nil(target) <- Games.get_player(target_id),
          {:ok, target} <- Games.merge_players(source, target) do
-      render(conn, :show, player: Games.get_player!(target.id))
+      render_player(conn, Games.get_player!(target.id))
     else
       nil -> {:error, :not_found}
       error -> error
@@ -56,5 +57,12 @@ defmodule TheGatheringWeb.API.PlayerController do
       nil -> {:error, :not_found}
       error -> error
     end
+  end
+
+  defp render_player(conn, player) do
+    render(conn, :show,
+      player: player,
+      card_art: Catalog.art_crop_urls(PlayerJSON.card_refs(player))
+    )
   end
 end
