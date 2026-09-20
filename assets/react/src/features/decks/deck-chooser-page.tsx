@@ -12,7 +12,7 @@ import {
   syncManaVaultDecks,
   type DeckPick,
   type ManaVaultSyncResult,
-} from "@/lib/deck-chooser"
+} from "@/features/decks/deck-chooser"
 
 export function DeckChooserPage() {
   const queryClient = useQueryClient()

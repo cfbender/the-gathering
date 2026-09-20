@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { moveSeat, resultsForSeats, type DraftSeat } from "./game-form-logic"
+import { moveSeat, resultsForSeats, type DraftSeat } from "./use-game-draft"
 
 const seats = ["Alice", "Bob", "Cara"].map(
   (playerName, index) => ({ draftId: `seat-${index}`, playerName }) as DraftSeat,

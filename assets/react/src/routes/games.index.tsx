@@ -4,7 +4,7 @@ import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { CalendarDays, Plus, Trophy } from "lucide-react"
 import { useState } from "react"
-import { formatDate, getGames, getPlayers } from "@/lib/games"
+import { formatDate, getGames, getPlayers } from "@/features/games/games"
 import { CardArtBackground } from "@/components/card-art-background"
 
 export const Route = createFileRoute("/games/")({ component: GamesPage })

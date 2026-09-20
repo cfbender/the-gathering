@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
-  canManageDeck,
   canManageGame,
   canManagePlayer,
-  type Deck,
   type Game,
-  type Player,
-} from "@/lib/games"
+  type PlayerSummary,
+} from "@/features/games/games"
+import { canManageDeck, type DeckSummary } from "@/features/decks/decks"
 
-const player = (user_id: number | null): Player => ({
+const player = (user_id: number | null): PlayerSummary => ({
   id: 7,
   name: "Drew",
   avatar_url: null,
@@ -32,7 +31,7 @@ describe("canManagePlayer", () => {
   })
 })
 
-const deck = (user_id: number | null): Deck => ({
+const deck = (user_id: number | null): DeckSummary => ({
   id: 3,
   player_id: 7,
   name: "Birds",
@@ -46,6 +45,8 @@ const deck = (user_id: number | null): Deck => ({
   decklist_url: null,
   decklist_source: null,
   archived_at: null,
+  skip_count: 0,
+  included_for_play: true,
   player: player(user_id),
 })
 

@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import type { Deck, Game, Player } from "@/lib/games"
+import type { Game, PlayerSummary } from "@/features/games/games"
+import type { DeckSummary } from "@/features/decks/decks"
 import { GameForm } from "./game-form"
 
 const navigate = vi.hoisted(() => vi.fn())
@@ -12,7 +13,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   useNavigate: () => navigate,
 }))
 
-const player = (id: number, name: string, archived = false): Player => ({
+const player = (id: number, name: string, archived = false): PlayerSummary => ({
   id,
   name,
   avatar_url: null,
@@ -23,7 +24,7 @@ const player = (id: number, name: string, archived = false): Player => ({
 const alice = player(1, "Alice")
 const bob = player(2, "Bob", true)
 const cara = player(3, "Cara")
-const archivedDeck: Deck = {
+const archivedDeck: DeckSummary = {
   id: 22,
   player_id: bob.id,
   name: "Retired artifacts",
@@ -37,6 +38,9 @@ const archivedDeck: Deck = {
   decklist_url: null,
   decklist_source: null,
   archived_at: "2026-01-01T00:00:00Z",
+  skip_count: 0,
+  included_for_play: true,
+  player: bob,
 }
 
 function gameFixture(): Game {

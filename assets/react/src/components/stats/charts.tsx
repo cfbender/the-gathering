@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { linePoints, type RecordStat, type TrendPoint } from "@/lib/stats"
+import { linePoints, type NamedRecordRow, type TrendPoint } from "@/lib/stats"
 import { CardArtBackground } from "@/components/card-art-background"
 
 export function BarChart({
@@ -7,9 +7,9 @@ export function BarChart({
   value = "win_rate",
   renderLabel,
 }: {
-  rows: RecordStat[]
+  rows: NamedRecordRow[]
   value?: "win_rate" | "games"
-  renderLabel?: (row: RecordStat) => ReactNode
+  renderLabel?: (row: NamedRecordRow) => ReactNode
 }) {
   const max = Math.max(...rows.map((row) => row[value]), 1)
   return (

@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
-import { GameForm } from "@/components/game-form"
-import { canManageGame, getGame } from "@/lib/games"
+import { GameForm } from "@/features/games/game-form"
+import { canManageGame, getGame } from "@/features/games/games"
 import { useCurrentUser } from "@/lib/auth"
 
 export const Route = createFileRoute("/games/$gameId_/edit")({

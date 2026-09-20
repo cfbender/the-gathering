@@ -4,13 +4,14 @@ import { PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { ExternalLink, Trophy } from "lucide-react"
 import { useState, type FormEvent } from "react"
-import { DeckFormFields, type DeckFormValue } from "@/components/deck-form-fields"
+import { DeckFormFields, type DeckFormValue } from "@/features/decks/deck-form-fields"
 import { DeckStats } from "@/components/stats/deck-stats"
 import { Switch } from "@/components/ui/switch"
 import { api, ApiError } from "@/lib/api"
 import { cardSnapshot, getCard, selectCatalogCard, type CardSummary } from "@/lib/cards"
 import { useCurrentUser } from "@/lib/auth"
-import { canManageDeck, formatDate, getDeck, invalidateGameRelated, type Deck } from "@/lib/games"
+import { formatDate, invalidateGameRelated } from "@/features/games/games"
+import { canManageDeck, getDeck, type DeckDetail } from "@/features/decks/decks"
 
 export const Route = createFileRoute("/decks/$deckId")({ component: DeckDetailPage })
 
@@ -94,7 +95,7 @@ function DeckDetailPage() {
   )
 }
 
-export function DeckEditForm({ deck }: { deck: Deck }) {
+export function DeckEditForm({ deck }: { deck: DeckDetail }) {
   const commander = useQuery({
     queryKey: ["cards", deck.commander_card_id],
     queryFn: () => getCard(deck.commander_card_id!),
@@ -133,7 +134,7 @@ function DeckEditFormReady({
   commander,
   partner,
 }: {
-  deck: Deck
+  deck: DeckDetail
   commander: DeckFormValue["commander"]
   partner: DeckFormValue["partner"]
 }) {
@@ -149,7 +150,7 @@ function DeckEditFormReady({
   })
   const mutation = useMutation({
     mutationFn: () =>
-      api<{ data: Deck }>(`/api/decks/${deck.id}`, {
+      api<{ data: DeckDetail }>(`/api/decks/${deck.id}`, {
         method: "PATCH",
         body: JSON.stringify({
           deck: {

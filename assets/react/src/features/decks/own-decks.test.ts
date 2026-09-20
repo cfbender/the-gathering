@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test"
-import type { Deck } from "@/lib/games"
-import { ownDecks } from "./decks.index"
+import type { DeckSummary } from "@/features/decks/decks"
+import { ownDecks } from "./own-decks"
 
-const deck = (id: number, user_id: number | null): Deck => ({
+const deck = (id: number, user_id: number | null): DeckSummary => ({
   id,
   player_id: id,
   name: `Deck ${id}`,
@@ -14,6 +14,8 @@ const deck = (id: number, user_id: number | null): Deck => ({
   decklist_url: null,
   decklist_source: null,
   archived_at: null,
+  skip_count: 0,
+  included_for_play: true,
   commander_art_crop_url: null,
   partner_art_crop_url: null,
   player: { id, name: `P${id}`, avatar_url: null, user_id, archived_at: null },

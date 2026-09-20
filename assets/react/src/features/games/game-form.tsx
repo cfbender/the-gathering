@@ -1,58 +1,38 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
-import { ArrowDown, ArrowUp, Plus, Trash2, Trophy } from "lucide-react"
-import { useState, type FormEvent } from "react"
-import { DeckFormFields } from "@/components/deck-form-fields"
-import { blankSeat, moveSeat, resultsForSeats, type DraftSeat } from "@/components/game-form-logic"
+import { Plus } from "lucide-react"
+import type { FormEvent } from "react"
+import { DeckFormFields } from "@/features/decks/deck-form-fields"
+import {
+  blankSeat,
+  moveSeat,
+  resultsForSeats,
+  useGameDraft,
+  type DraftSeat,
+} from "@/features/games/use-game-draft"
 import { MvpCardField } from "@/components/mvp-card-field"
 import { api, ApiError } from "@/lib/api"
 import { cardSnapshot } from "@/lib/cards"
 import {
-  getDecks,
   getPlayers,
   invalidateGameRelated,
-  type Deck,
   type Game,
-  type Player,
-} from "@/lib/games"
+  type PlayerSummary,
+} from "@/features/games/games"
+import { getDecks, type DeckSummary } from "@/features/decks/decks"
+import { SeatEditor } from "@/features/games/seat-editor"
 
 interface GameFormProps {
   game?: Game
 }
 
-function localDateTime(value?: string) {
-  const date = value ? new Date(value) : new Date()
-  const offset = date.getTimezoneOffset() * 60_000
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
-}
-
-function draftsFromGame(game: Game): DraftSeat[] {
-  return game.seats.map((seat) => ({
-    draftId: `persisted-seat-${seat.id}`,
-    id: seat.id,
-    playerId: seat.player_id,
-    playerName: seat.player.name,
-    deckId: seat.deck_id,
-    deckName: seat.deck?.name ?? "",
-    commander: cardSnapshot(
-      seat.deck?.commander_card_id,
-      seat.deck?.commander_name,
-      seat.deck?.color_identity.split("") ?? [],
-    ),
-    partner: cardSnapshot(seat.deck?.partner_card_id, seat.deck?.partner_name),
-    colorIdentity: seat.deck?.color_identity ?? "",
-    decklistUrl: seat.deck?.decklist_url ?? "",
-    mvpCard: cardSnapshot(seat.mvp_card_id, seat.mvp_card_name),
-  }))
-}
-
-async function ensurePlayer(draft: DraftSeat, players: Player[]) {
+async function ensurePlayer(draft: DraftSeat, players: PlayerSummary[]) {
   if (draft.playerId !== null) return draft.playerId
   const existing = players.find(
     (player) => player.name.toLowerCase() === draft.playerName.trim().toLowerCase(),
   )
   if (existing) return existing.id
-  const created = await api<{ data: Player }>("/api/players", {
+  const created = await api<{ data: PlayerSummary }>("/api/players", {
     method: "POST",
     body: JSON.stringify({ player: { name: draft.playerName.trim() } }),
   }).then((body) => body.data)
@@ -60,7 +40,7 @@ async function ensurePlayer(draft: DraftSeat, players: Player[]) {
   return created.id
 }
 
-async function ensureDeck(draft: DraftSeat, playerId: number, decks: Deck[]) {
+async function ensureDeck(draft: DraftSeat, playerId: number, decks: DeckSummary[]) {
   if (!draft.deckName.trim()) return null
   if (draft.deckId !== null) return draft.deckId
   const existing = decks.find(
@@ -69,7 +49,7 @@ async function ensureDeck(draft: DraftSeat, playerId: number, decks: Deck[]) {
       deck.name.toLowerCase() === draft.deckName.trim().toLowerCase(),
   )
   if (existing) return existing.id
-  const created = await api<{ data: Deck }>("/api/decks", {
+  const created = await api<{ data: DeckSummary }>("/api/decks", {
     method: "POST",
     body: JSON.stringify({
       deck: {
@@ -97,18 +77,21 @@ function GameFormDraft({ game }: GameFormProps) {
   const queryClient = useQueryClient()
   const playersQuery = useQuery({ queryKey: ["players"], queryFn: getPlayers })
   const decksQuery = useQuery({ queryKey: ["decks", {}], queryFn: () => getDecks() })
-  const [playedAt, setPlayedAt] = useState(() => localDateTime(game?.played_at))
-  const [seats, setSeats] = useState<DraftSeat[]>(() =>
-    game ? draftsFromGame(game) : [blankSeat(), blankSeat()],
-  )
-  const [winnerSeatId, setWinnerSeatId] = useState<string | null>(() => {
-    if (!game) return seats[0]?.draftId ?? null
-    const winner = game.seats.find((seat) => seat.result === "win")
-    return winner ? `persisted-seat-${winner.id}` : null
-  })
-  const [turns, setTurns] = useState(game?.turns?.toString() ?? "")
-  const [duration, setDuration] = useState(game?.duration_minutes?.toString() ?? "")
-  const [notes, setNotes] = useState(game?.notes ?? "")
+  const {
+    playedAt,
+    setPlayedAt,
+    seats,
+    setSeats,
+    winnerSeatId,
+    setWinnerSeatId,
+    turns,
+    setTurns,
+    duration,
+    setDuration,
+    notes,
+    setNotes,
+    updateSeat,
+  } = useGameDraft(game)
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -151,12 +134,6 @@ function GameFormDraft({ game }: GameFormProps) {
     },
   })
 
-  function updateSeat(index: number, patch: Partial<DraftSeat>) {
-    setSeats((current) =>
-      current.map((seat, seatIndex) => (seatIndex === index ? { ...seat, ...patch } : seat)),
-    )
-  }
-
   function submit(event: FormEvent) {
     event.preventDefault()
     mutation.mutate()
@@ -196,59 +173,22 @@ function GameFormDraft({ game }: GameFormProps) {
                 decksQuery.data?.filter((deck) => deck.player_id === seat.playerId) ?? []
               const selectedDeck = playerDecks.find((deck) => deck.id === seat.deckId)
               return (
-                <article
+                <SeatEditor
                   key={seat.draftId}
-                  className="border-base-300 bg-base-100 rounded-box border p-4"
+                  seat={seat}
+                  index={index}
+                  seatCount={seats.length}
+                  winner={winnerSeatId === seat.draftId}
+                  onChooseWinner={() => setWinnerSeatId(seat.draftId)}
+                  onMove={(direction) => setSeats((value) => moveSeat(value, index, direction))}
+                  onRemove={() => {
+                    const remaining = seats.filter((_, seatIndex) => seatIndex !== index)
+                    setSeats(remaining)
+                    if (winnerSeatId === seat.draftId) {
+                      setWinnerSeatId(remaining[0]?.draftId ?? null)
+                    }
+                  }}
                 >
-                  <div className="mb-3 flex items-center gap-2">
-                    <span className="bg-neutral text-neutral-content grid size-7 place-items-center rounded-full text-xs font-bold">
-                      {index + 1}
-                    </span>
-                    <label className="flex flex-1 items-center gap-2 font-semibold">
-                      <input
-                        type="radio"
-                        name="winner"
-                        className="radio radio-success radio-sm"
-                        checked={winnerSeatId === seat.draftId}
-                        onChange={() => setWinnerSeatId(seat.draftId)}
-                        aria-label={`${seat.playerName || `Seat ${index + 1}`} won`}
-                      />
-                      <Trophy className="text-success size-4" /> Winner
-                    </label>
-                    <button
-                      type="button"
-                      className="btn btn-square btn-ghost btn-xs"
-                      disabled={index === 0}
-                      onClick={() => setSeats((value) => moveSeat(value, index, -1))}
-                      aria-label="Move seat up"
-                    >
-                      <ArrowUp className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-square btn-ghost btn-xs"
-                      disabled={index === seats.length - 1}
-                      onClick={() => setSeats((value) => moveSeat(value, index, 1))}
-                      aria-label="Move seat down"
-                    >
-                      <ArrowDown className="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-square btn-ghost btn-xs text-error"
-                      disabled={seats.length <= 2}
-                      onClick={() => {
-                        const remaining = seats.filter((_, seatIndex) => seatIndex !== index)
-                        setSeats(remaining)
-                        if (winnerSeatId === seat.draftId) {
-                          setWinnerSeatId(remaining[0]?.draftId ?? null)
-                        }
-                      }}
-                      aria-label="Remove seat"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="form-control">
                       <span className="label-text mb-1 text-xs font-medium">Player</span>
@@ -331,7 +271,7 @@ function GameFormDraft({ game }: GameFormProps) {
                       A new player named “{seat.playerName}” will be created.
                     </p>
                   )}
-                </article>
+                </SeatEditor>
               )
             })}
           </div>

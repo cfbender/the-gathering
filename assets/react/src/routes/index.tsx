@@ -7,7 +7,7 @@ import { BarChart } from "@/components/stats/charts"
 import { StatCard } from "@/components/stats/stat-card"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/cn"
-import { formatDate } from "@/lib/games"
+import { formatDate } from "@/features/games/games"
 import {
   LEADERBOARD_MIN_GAMES,
   getOverviewStats,
@@ -15,7 +15,7 @@ import {
   sinceLabel,
   sortByMetric,
   type ColorMetric,
-  type RecordStat,
+  type NamedRecordRow,
 } from "@/lib/stats"
 
 export const Route = createFileRoute("/")({ component: HomePage })
@@ -177,7 +177,7 @@ const colorMetricLabels: Record<ColorMetric, string> = {
   win_rate: "Win rate",
 }
 
-function ColorSection({ rows }: { rows: RecordStat[] }) {
+function ColorSection({ rows }: { rows: NamedRecordRow[] }) {
   const [metric, setMetric] = useState<ColorMetric>("games")
   return (
     <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">

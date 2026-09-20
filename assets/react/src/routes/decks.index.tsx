@@ -8,16 +8,12 @@ import { CardArtBackground } from "@/components/card-art-background"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useCurrentUser } from "@/lib/auth"
 import { cn } from "@/lib/cn"
-import { getDecks, type Deck } from "@/lib/games"
+import { getDecks } from "@/features/decks/decks"
+import { ownDecks } from "@/features/decks/own-decks"
 
 export const Route = createFileRoute("/decks/")({ component: DecksPage })
 
 type Scope = "mine" | "all"
-
-/** Decks owned by the viewer's linked player. */
-export function ownDecks(decks: Deck[], viewerId: number | undefined) {
-  return decks.filter((deck) => viewerId !== undefined && deck.player?.user_id === viewerId)
-}
 
 function DecksPage() {
   const query = useQuery({ queryKey: ["decks", {}], queryFn: () => getDecks() })
