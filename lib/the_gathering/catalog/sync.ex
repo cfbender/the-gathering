@@ -26,6 +26,8 @@ defmodule TheGathering.Catalog.Sync do
       |> Enum.each(&stage_batch/1)
 
       count = Repo.aggregate(StagedCard, :count)
+      if count == 0, do: raise("staged catalog generation is empty")
+
       publish!()
       finish_state(state, count, source.updated_at)
       Backfill.run()
