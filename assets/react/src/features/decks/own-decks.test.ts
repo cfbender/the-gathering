@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import type { DeckSummary } from "@/features/decks/decks"
-import { ownDecks } from "./own-decks"
+import { ownDecks, parseDeckScope, resolveDeckScope } from "./own-decks"
 
 const deck = (id: number, user_id: number | null): DeckSummary => ({
   id,
@@ -29,5 +29,25 @@ describe("ownDecks", () => {
 
   it("matches nothing while the viewer is unknown, even for unclaimed players", () => {
     expect(ownDecks([deck(2, null)], undefined)).toEqual([])
+  })
+})
+
+describe("deck scope search param", () => {
+  it("accepts only the two known scopes", () => {
+    expect(parseDeckScope("mine")).toBe("mine")
+    expect(parseDeckScope("all")).toBe("all")
+    expect(parseDeckScope("MINE")).toBeUndefined()
+    expect(parseDeckScope(["mine"])).toBeUndefined()
+    expect(parseDeckScope(undefined)).toBeUndefined()
+  })
+
+  it("honours an explicit choice even when it would show an empty list", () => {
+    expect(resolveDeckScope("mine", 0)).toBe("mine")
+    expect(resolveDeckScope("all", 3)).toBe("all")
+  })
+
+  it("defaults to the viewer's decks only when they have some", () => {
+    expect(resolveDeckScope(undefined, 3)).toBe("mine")
+    expect(resolveDeckScope(undefined, 0)).toBe("all")
   })
 })
