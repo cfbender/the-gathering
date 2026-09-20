@@ -144,7 +144,9 @@ defmodule TheGatheringWeb.API.AuthControllerTest do
 
     assert %{
              "errors" => %{
-               "manavault_url" => ["must be a valid http(s) URL"],
+               "manavault_url" => [
+                 "must be an allowed origin (scheme, host, and optional port only)"
+               ],
                "moxfield_username" => ["must be a username, not a URL"]
              }
            } = json_response(conn, 422)

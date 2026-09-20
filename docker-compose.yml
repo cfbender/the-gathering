@@ -21,6 +21,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Optional self-hosted ManaVault origin whose shared deck links should resolve.
       MANAVAULT_URL: ${MANAVAULT_URL:-}
+      # Exact personal ManaVault hosts allowed on private networks (comma-separated).
+      MANAVAULT_ALLOWED_HOSTS: ${MANAVAULT_ALLOWED_HOSTS:-}
+      # Permit personal HTTP origins that otherwise resolve to public addresses.
+      MANAVAULT_ALLOW_INSECURE_URLS: ${MANAVAULT_ALLOW_INSECURE_URLS:-}
 
       # Discord OAuth credentials enable member sign-in.
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}

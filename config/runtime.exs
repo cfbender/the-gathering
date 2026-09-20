@@ -47,6 +47,16 @@ if manavault_url = System.get_env("MANAVAULT_URL") do
   config :the_gathering, TheGathering.Decklists, manavault_url: manavault_url
 end
 
+manavault_allowed_hosts =
+  System.get_env("MANAVAULT_ALLOWED_HOSTS", "")
+  |> String.split(",", trim: true)
+  |> Enum.map(&(String.trim(&1) |> String.downcase()))
+  |> Enum.reject(&(&1 == ""))
+
+config :the_gathering,
+  manavault_allowed_hosts: manavault_allowed_hosts,
+  manavault_allow_insecure_urls: System.get_env("MANAVAULT_ALLOW_INSECURE_URLS") in ["true", "1"]
+
 if discord_bot_token = System.get_env("DISCORD_BOT_TOKEN") do
   config :nostrum,
     token: discord_bot_token,

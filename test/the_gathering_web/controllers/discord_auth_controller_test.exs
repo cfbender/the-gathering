@@ -2,6 +2,7 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
   use TheGatheringWeb.ConnCase
 
   import Ecto.Query
+  import ExUnit.CaptureLog
 
   alias TheGathering.Accounts
   alias TheGathering.Accounts.UserToken
@@ -46,6 +47,25 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
     assert redirected_to(conn) == "/login?error=registration_closed"
     refute Accounts.get_user_by_discord_id("100000000000000002")
     refute get_session(conn, :user_token)
+  end
+
+  test "OAuth failures log only their class and status", %{conn: conn} do
+    sentinel = "sentinel-discord-oauth-body"
+
+    Req.Test.stub(TheGathering.DiscordOAuth, fn conn ->
+      conn
+      |> Map.put(:status, 400)
+      |> Req.Test.json(%{"error" => sentinel})
+    end)
+
+    log =
+      capture_log(fn ->
+        conn = discord_callback(conn, "100000000000000099")
+        assert redirected_to(conn) == "/login?error=discord_failed"
+      end)
+
+    refute log =~ sentinel
+    assert log =~ "Assent.InvalidResponseError status=400"
   end
 
   test "a rejected Discord account is created once the administrator opens registration", %{

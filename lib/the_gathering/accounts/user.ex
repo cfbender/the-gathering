@@ -2,6 +2,8 @@ defmodule TheGathering.Accounts.User do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias TheGathering.Decklists.Destination
+
   @roles ~w(admin member)
 
   schema "users" do
@@ -88,7 +90,7 @@ defmodule TheGathering.Accounts.User do
     |> validate_format(:archidekt_username, ~r/^[^\s\/]+$/,
       message: "must be a username, not a URL"
     )
-    |> validate_change(:manavault_url, &validate_http_url/2)
+    |> normalize_manavault_origin()
   end
 
   def password_changeset(user, attrs, opts \\ []) do
@@ -165,7 +167,7 @@ defmodule TheGathering.Accounts.User do
     changeset
     |> update_change(:moxfield_username, &trim/1)
     |> update_change(:archidekt_username, &trim/1)
-    |> update_change(:manavault_url, &(&1 |> trim() |> String.trim_trailing("/")))
+    |> update_change(:manavault_url, &trim/1)
     |> update_change(:manavault_api_key, &trim/1)
   end
 
@@ -188,10 +190,16 @@ defmodule TheGathering.Accounts.User do
     if String.trim(value) == "", do: Map.delete(attrs, key), else: attrs
   end
 
-  defp validate_http_url(field, value) do
-    case URI.parse(value) do
-      %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) -> []
-      _ -> [{field, "must be a valid http(s) URL"}]
+  defp normalize_manavault_origin(changeset) do
+    case get_change(changeset, :manavault_url) do
+      value when value in [nil, ""] ->
+        changeset
+
+      value ->
+        case Destination.normalize_origin(value) do
+          {:ok, origin} -> put_change(changeset, :manavault_url, origin)
+          {:error, message} -> add_error(changeset, :manavault_url, message)
+        end
     end
   end
 end

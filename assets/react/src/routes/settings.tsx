@@ -177,6 +177,10 @@ function SettingsPage() {
                 {errorMessage(profile.error, "manavault_url")}
               </span>
             )}
+            <span className="label text-base-content/60 whitespace-normal">
+              Enter only the instance origin (for example, https://vault.example.com). Private
+              network hosts must be allowed by the server operator.
+            </span>
           </label>
           <label className="fieldset min-w-0">
             <span className="fieldset-legend">ManaVault API key</span>
