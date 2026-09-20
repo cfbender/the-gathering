@@ -5,6 +5,7 @@ defmodule TheGathering.Accounts do
 
   alias Ecto.Multi
   alias TheGathering.Accounts.{ServerSettings, User, UserToken}
+  alias TheGathering.Games
   alias TheGathering.Games.Player
   alias TheGathering.Repo
 
@@ -240,7 +241,7 @@ defmodule TheGathering.Accounts do
     taken? = fn candidate ->
       Repo.exists?(
         from player in Player,
-          where: fragment("lower(?)", player.name) == ^String.downcase(candidate)
+          where: fragment("lower(?)", player.name) == ^Games.fold_name(candidate)
       )
     end
 

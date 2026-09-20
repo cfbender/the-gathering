@@ -1,6 +1,8 @@
 defmodule TheGathering.Imports.CSV do
   @moduledoc false
 
+  alias TheGathering.Games
+
   NimbleCSV.define(Parser, separator: ",", escape: "\"")
 
   @native_required ~w(gameid date player deck commander seat result)
@@ -175,7 +177,7 @@ defmodule TheGathering.Imports.CSV do
       "must contain between 2 and 6 players"
     )
     |> add_game_error(
-      duplicate?(seats, &String.downcase(&1.player)),
+      duplicate?(seats, &Games.fold_name(&1.player)),
       lines,
       "player",
       "cannot contain the same player twice"

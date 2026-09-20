@@ -4,6 +4,8 @@ defmodule TheGathering.GamesTest do
   alias TheGathering.Accounts.User
   alias TheGathering.AccountsFixtures
   alias TheGathering.Games
+  alias TheGathering.Games.Deck
+  alias TheGathering.Repo
 
   defp player(name), do: Games.create_player(%{name: name}) |> elem(1)
 
@@ -106,6 +108,30 @@ defmodule TheGathering.GamesTest do
     assert "has already been taken" in errors_on(changeset).name
     assert {:ok, found} = Games.find_or_create_player_by_name("alice")
     assert found.id == alice.id
+  end
+
+  test "name finders fold case like SQLite, so non-ASCII names are found instead of re-inserted" do
+    # SQLite's lower()/NOCASE leave É alone; Unicode downcase would turn it into é,
+    # miss the row, and the insert would then hit the unique index.
+    assert {:ok, eowyn} = Games.create_player(%{name: "Éowyn"})
+    assert {:ok, found} = Games.find_or_create_player_by_name("Éowyn")
+    assert found.id == eowyn.id
+
+    attrs = %{commander_name: "Éowyn, Shieldmaiden"}
+    assert {:ok, deck} = Games.find_or_create_deck(eowyn, "Éowyn, Shieldmaiden", attrs)
+    assert {:ok, same} = Games.find_or_create_deck(eowyn, "Éowyn, Shieldmaiden", attrs)
+    assert same.id == deck.id
+    assert Repo.aggregate(Deck, :count) == 1
+
+    # A collision that slips through must surface as a changeset error, not a raise.
+    assert {:error, changeset} =
+             Games.create_deck(%{
+               player_id: eowyn.id,
+               name: "Éowyn, Shieldmaiden",
+               commander_name: "x"
+             })
+
+    assert "has already been taken" in errors_on(changeset).name
   end
 
   test "players carry the linked user's avatar, and nil when unlinked or the user has none" do

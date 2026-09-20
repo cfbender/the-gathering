@@ -43,10 +43,22 @@ defmodule TheGathering.Games do
 
   def delete_player(%Player{} = player), do: Repo.delete(player)
 
+  @doc """
+  Case-folds a player or deck name the way SQLite compares them.
+
+  The `players_name_nocase_index` and `decks_player_name_nocase_index` unique
+  indexes use `COLLATE NOCASE`, and `lower()` in queries is likewise ASCII-only.
+  Unicode-aware `String.downcase/1` turns `Éowyn` into `éowyn` while the database
+  leaves it unchanged, so a lookup would miss the existing row and the insert would
+  then hit the index. Use this for every case-insensitive name comparison that has
+  to agree with the database.
+  """
+  def fold_name(name) when is_binary(name), do: name |> String.trim() |> String.downcase(:ascii)
+
   def find_or_create_player_by_name(name, attrs \\ %{}) when is_binary(name) do
     case Repo.one(
            from player in Player,
-             where: fragment("lower(?)", player.name) == ^String.downcase(String.trim(name))
+             where: fragment("lower(?)", player.name) == ^fold_name(name)
          ) do
       nil ->
         attrs
@@ -174,10 +186,10 @@ defmodule TheGathering.Games do
   defp move_decks(source, target) do
     target_decks =
       Repo.all(from deck in Deck, where: deck.player_id == ^target.id)
-      |> Map.new(&{String.downcase(&1.name), &1})
+      |> Map.new(&{fold_name(&1.name), &1})
 
     for deck <- Repo.all(from deck in Deck, where: deck.player_id == ^source.id) do
-      case Map.fetch(target_decks, String.downcase(deck.name)) do
+      case Map.fetch(target_decks, fold_name(deck.name)) do
         {:ok, existing} ->
           Repo.update_all(from(seat in GamePlayer, where: seat.deck_id == ^deck.id),
             set: [deck_id: existing.id]
@@ -230,7 +242,7 @@ defmodule TheGathering.Games do
     query =
       from deck in Deck,
         where: deck.player_id == ^player_id,
-        where: fragment("lower(?)", deck.name) == ^String.downcase(String.trim(name))
+        where: fragment("lower(?)", deck.name) == ^fold_name(name)
 
     case Repo.one(query) do
       nil ->
@@ -366,7 +378,7 @@ defmodule TheGathering.Games do
   defp recover_player({:error, _changeset} = error, name) do
     case Repo.one(
            from player in Player,
-             where: fragment("lower(?)", player.name) == ^String.downcase(String.trim(name))
+             where: fragment("lower(?)", player.name) == ^fold_name(name)
          ) do
       nil -> error
       player -> {:ok, player}
