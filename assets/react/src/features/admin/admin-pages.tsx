@@ -1,7 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { PageHeader } from "@/components/app-shell"
 import type { FormEvent } from "react"
-import { BarChart3, Bot, Link2, Shield, Sparkles, Trash2, Trophy, Users } from "lucide-react"
+import {
+  BarChart3,
+  Bot,
+  Link2,
+  LogOut,
+  Shield,
+  Sparkles,
+  Trash2,
+  Trophy,
+  Users,
+} from "lucide-react"
 import { useState } from "react"
 import { SudoPrompt } from "@/components/sudo-prompt"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -485,7 +495,10 @@ function UserCard({ user, players }: { user: User; players: PlayerSummary[] }) {
       void queryClient.invalidateQueries({ queryKey: ["games"] })
     },
   })
-  const mutationError = update.error ?? deleteUser.error
+  const revokeSessions = useMutation({
+    mutationFn: () => api<Data<User>>(`/api/admin/users/${user.id}/sessions`, { method: "DELETE" }),
+  })
+  const mutationError = update.error ?? deleteUser.error ?? revokeSessions.error
 
   function saveNames(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -536,8 +549,21 @@ function UserCard({ user, players }: { user: User; players: PlayerSummary[] }) {
             </button>
             <button
               type="button"
+              className="btn btn-outline btn-sm"
+              disabled={update.isPending || deleteUser.isPending || revokeSessions.isPending}
+              onClick={() => revokeSessions.mutate()}
+            >
+              <LogOut className="size-4" />
+              {revokeSessions.isPending
+                ? "Signing out…"
+                : revokeSessions.isSuccess
+                  ? "Signed out"
+                  : "Sign out everywhere"}
+            </button>
+            <button
+              type="button"
               className="btn btn-ghost btn-sm text-error"
-              disabled={update.isPending || deleteUser.isPending}
+              disabled={update.isPending || deleteUser.isPending || revokeSessions.isPending}
               onClick={() => setConfirmDelete(true)}
             >
               <Trash2 className="size-4" /> Delete user
@@ -554,6 +580,7 @@ function UserCard({ user, players }: { user: User; players: PlayerSummary[] }) {
           onSuccess={() => {
             if (update.isError && update.variables) update.mutate(update.variables)
             else if (deleteUser.isError) deleteUser.mutate()
+            else if (revokeSessions.isError) revokeSessions.mutate()
           }}
         />
         <form className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]" onSubmit={saveNames}>

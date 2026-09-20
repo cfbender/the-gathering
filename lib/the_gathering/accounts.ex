@@ -107,6 +107,11 @@ defmodule TheGathering.Accounts do
     :ok
   end
 
+  def revoke_all_sessions(%User{} = user) do
+    Repo.delete_all(all_user_tokens_query(user))
+    {:ok, user}
+  end
+
   def update_user(user, attrs) do
     changeset = User.admin_update_changeset(user, attrs)
 
@@ -140,7 +145,7 @@ defmodule TheGathering.Accounts do
       from(game in TheGathering.Games.Game, where: game.created_by_user_id == ^user.id),
       set: [created_by_user_id: nil]
     )
-    |> Multi.delete_all(:tokens, from(token in UserToken, where: token.user_id == ^user.id))
+    |> Multi.delete_all(:tokens, all_user_tokens_query(user))
     |> Multi.delete(:user, user)
     |> Repo.transaction()
     |> case do
@@ -182,7 +187,7 @@ defmodule TheGathering.Accounts do
     |> Multi.update(:user, changeset)
     |> Multi.run(:tokens, fn repo, %{user: user} ->
       tokens = repo.all_by(UserToken, user_id: user.id)
-      repo.delete_all(from token in UserToken, where: token.user_id == ^user.id)
+      repo.delete_all(all_user_tokens_query(user))
       {:ok, tokens}
     end)
     |> Repo.transaction()
@@ -190,6 +195,10 @@ defmodule TheGathering.Accounts do
       {:ok, %{user: user, tokens: tokens}} -> {:ok, {user, tokens}}
       {:error, :user, changeset, _changes} -> {:error, changeset}
     end
+  end
+
+  defp all_user_tokens_query(user) do
+    from token in UserToken, where: token.user_id == ^user.id
   end
 
   defp authorize_user_deletion(_repo, %User{id: id}, %User{id: id}), do: {:error, :forbidden}

@@ -5,6 +5,7 @@ defmodule TheGathering.AccountsTest do
 
   alias TheGathering.Accounts
   alias TheGathering.Accounts.UserToken
+  alias TheGathering.AccountsFixtures
   alias TheGathering.Games
   alias TheGathering.Repo
 
@@ -86,6 +87,22 @@ defmodule TheGathering.AccountsTest do
 
     fresh_token = Accounts.generate_user_session_token(fresh_user)
     assert Accounts.get_user_by_session_token(fresh_token)
+  end
+
+  test "revoking all sessions deletes only the target user's tokens" do
+    target = AccountsFixtures.user_fixture()
+    other_user = AccountsFixtures.user_fixture()
+
+    target_tokens = [
+      Accounts.generate_user_session_token(target),
+      Accounts.generate_user_session_token(target)
+    ]
+
+    other_token = Accounts.generate_user_session_token(other_user)
+
+    assert {:ok, ^target} = Accounts.revoke_all_sessions(target)
+    Enum.each(target_tokens, &refute(Accounts.get_user_by_session_token(&1)))
+    assert Accounts.get_user_by_session_token(other_token)
   end
 
   test "issuing a session prunes expired token rows" do
