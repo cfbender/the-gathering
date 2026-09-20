@@ -1,0 +1,422 @@
+[
+  {
+    "symbol": "{T}",
+    "filename": "T.svg",
+    "english": "tap this permanent"
+  },
+  {
+    "symbol": "{Q}",
+    "filename": "Q.svg",
+    "english": "untap this permanent"
+  },
+  {
+    "symbol": "{E}",
+    "filename": "E.svg",
+    "english": "an energy counter"
+  },
+  {
+    "symbol": "{P}",
+    "filename": "P.svg",
+    "english": "modal budget pawprint"
+  },
+  {
+    "symbol": "{PW}",
+    "filename": "PW.svg",
+    "english": "planeswalker"
+  },
+  {
+    "symbol": "{CHAOS}",
+    "filename": "CHAOS.svg",
+    "english": "chaos"
+  },
+  {
+    "symbol": "{A}",
+    "filename": "A.svg",
+    "english": "an acorn counter"
+  },
+  {
+    "symbol": "{TK}",
+    "filename": "TK.svg",
+    "english": "a ticket counter"
+  },
+  {
+    "symbol": "{X}",
+    "filename": "X.svg",
+    "english": "X generic mana"
+  },
+  {
+    "symbol": "{Y}",
+    "filename": "Y.svg",
+    "english": "Y generic mana"
+  },
+  {
+    "symbol": "{Z}",
+    "filename": "Z.svg",
+    "english": "Z generic mana"
+  },
+  {
+    "symbol": "{0}",
+    "filename": "0.svg",
+    "english": "zero mana"
+  },
+  {
+    "symbol": "{½}",
+    "filename": "HALF.svg",
+    "english": "one-half generic mana"
+  },
+  {
+    "symbol": "{1}",
+    "filename": "1.svg",
+    "english": "one generic mana"
+  },
+  {
+    "symbol": "{2}",
+    "filename": "2.svg",
+    "english": "two generic mana"
+  },
+  {
+    "symbol": "{3}",
+    "filename": "3.svg",
+    "english": "three generic mana"
+  },
+  {
+    "symbol": "{4}",
+    "filename": "4.svg",
+    "english": "four generic mana"
+  },
+  {
+    "symbol": "{5}",
+    "filename": "5.svg",
+    "english": "five generic mana"
+  },
+  {
+    "symbol": "{6}",
+    "filename": "6.svg",
+    "english": "six generic mana"
+  },
+  {
+    "symbol": "{7}",
+    "filename": "7.svg",
+    "english": "seven generic mana"
+  },
+  {
+    "symbol": "{8}",
+    "filename": "8.svg",
+    "english": "eight generic mana"
+  },
+  {
+    "symbol": "{9}",
+    "filename": "9.svg",
+    "english": "nine generic mana"
+  },
+  {
+    "symbol": "{10}",
+    "filename": "10.svg",
+    "english": "ten generic mana"
+  },
+  {
+    "symbol": "{11}",
+    "filename": "11.svg",
+    "english": "eleven generic mana"
+  },
+  {
+    "symbol": "{12}",
+    "filename": "12.svg",
+    "english": "twelve generic mana"
+  },
+  {
+    "symbol": "{13}",
+    "filename": "13.svg",
+    "english": "thirteen generic mana"
+  },
+  {
+    "symbol": "{14}",
+    "filename": "14.svg",
+    "english": "fourteen generic mana"
+  },
+  {
+    "symbol": "{15}",
+    "filename": "15.svg",
+    "english": "fifteen generic mana"
+  },
+  {
+    "symbol": "{16}",
+    "filename": "16.svg",
+    "english": "sixteen generic mana"
+  },
+  {
+    "symbol": "{17}",
+    "filename": "17.svg",
+    "english": "seventeen generic mana"
+  },
+  {
+    "symbol": "{18}",
+    "filename": "18.svg",
+    "english": "eighteen generic mana"
+  },
+  {
+    "symbol": "{19}",
+    "filename": "19.svg",
+    "english": "nineteen generic mana"
+  },
+  {
+    "symbol": "{20}",
+    "filename": "20.svg",
+    "english": "twenty generic mana"
+  },
+  {
+    "symbol": "{100}",
+    "filename": "100.svg",
+    "english": "one hundred generic mana"
+  },
+  {
+    "symbol": "{1000000}",
+    "filename": "1000000.svg",
+    "english": "one million generic mana"
+  },
+  {
+    "symbol": "{∞}",
+    "filename": "INFINITY.svg",
+    "english": "infinite generic mana"
+  },
+  {
+    "symbol": "{W/U}",
+    "filename": "WU.svg",
+    "english": "one white or blue mana"
+  },
+  {
+    "symbol": "{W/B}",
+    "filename": "WB.svg",
+    "english": "one white or black mana"
+  },
+  {
+    "symbol": "{B/R}",
+    "filename": "BR.svg",
+    "english": "one black or red mana"
+  },
+  {
+    "symbol": "{B/G}",
+    "filename": "BG.svg",
+    "english": "one black or green mana"
+  },
+  {
+    "symbol": "{U/B}",
+    "filename": "UB.svg",
+    "english": "one blue or black mana"
+  },
+  {
+    "symbol": "{U/R}",
+    "filename": "UR.svg",
+    "english": "one blue or red mana"
+  },
+  {
+    "symbol": "{R/G}",
+    "filename": "RG.svg",
+    "english": "one red or green mana"
+  },
+  {
+    "symbol": "{R/W}",
+    "filename": "RW.svg",
+    "english": "one red or white mana"
+  },
+  {
+    "symbol": "{G/W}",
+    "filename": "GW.svg",
+    "english": "one green or white mana"
+  },
+  {
+    "symbol": "{G/U}",
+    "filename": "GU.svg",
+    "english": "one green or blue mana"
+  },
+  {
+    "symbol": "{B/G/P}",
+    "filename": "BGP.svg",
+    "english": "one black mana, one green mana, or 2 life"
+  },
+  {
+    "symbol": "{B/R/P}",
+    "filename": "BRP.svg",
+    "english": "one black mana, one red mana, or 2 life"
+  },
+  {
+    "symbol": "{G/U/P}",
+    "filename": "GUP.svg",
+    "english": "one green mana, one blue mana, or 2 life"
+  },
+  {
+    "symbol": "{G/W/P}",
+    "filename": "GWP.svg",
+    "english": "one green mana, one white mana, or 2 life"
+  },
+  {
+    "symbol": "{R/G/P}",
+    "filename": "RGP.svg",
+    "english": "one red mana, one green mana, or 2 life"
+  },
+  {
+    "symbol": "{R/W/P}",
+    "filename": "RWP.svg",
+    "english": "one red mana, one white mana, or 2 life"
+  },
+  {
+    "symbol": "{U/B/P}",
+    "filename": "UBP.svg",
+    "english": "one blue mana, one black mana, or 2 life"
+  },
+  {
+    "symbol": "{U/R/P}",
+    "filename": "URP.svg",
+    "english": "one blue mana, one red mana, or 2 life"
+  },
+  {
+    "symbol": "{W/B/P}",
+    "filename": "WBP.svg",
+    "english": "one white mana, one black mana, or 2 life"
+  },
+  {
+    "symbol": "{W/U/P}",
+    "filename": "WUP.svg",
+    "english": "one white mana, one blue mana, or 2 life"
+  },
+  {
+    "symbol": "{C/W}",
+    "filename": "CW.svg",
+    "english": "one colorless mana or one white mana"
+  },
+  {
+    "symbol": "{C/U}",
+    "filename": "CU.svg",
+    "english": "one colorless mana or one blue mana"
+  },
+  {
+    "symbol": "{C/B}",
+    "filename": "CB.svg",
+    "english": "one colorless mana or one black mana"
+  },
+  {
+    "symbol": "{C/R}",
+    "filename": "CR.svg",
+    "english": "one colorless mana or one red mana"
+  },
+  {
+    "symbol": "{C/G}",
+    "filename": "CG.svg",
+    "english": "one colorless mana or one green mana"
+  },
+  {
+    "symbol": "{2/W}",
+    "filename": "2W.svg",
+    "english": "two generic mana or one white mana"
+  },
+  {
+    "symbol": "{2/U}",
+    "filename": "2U.svg",
+    "english": "two generic mana or one blue mana"
+  },
+  {
+    "symbol": "{2/B}",
+    "filename": "2B.svg",
+    "english": "two generic mana or one black mana"
+  },
+  {
+    "symbol": "{2/R}",
+    "filename": "2R.svg",
+    "english": "two generic mana or one red mana"
+  },
+  {
+    "symbol": "{2/G}",
+    "filename": "2G.svg",
+    "english": "two generic mana or one green mana"
+  },
+  {
+    "symbol": "{H}",
+    "filename": "H.svg",
+    "english": "one colored mana or two life"
+  },
+  {
+    "symbol": "{W/P}",
+    "filename": "WP.svg",
+    "english": "one white mana or two life"
+  },
+  {
+    "symbol": "{U/P}",
+    "filename": "UP.svg",
+    "english": "one blue mana or two life"
+  },
+  {
+    "symbol": "{B/P}",
+    "filename": "BP.svg",
+    "english": "one black mana or two life"
+  },
+  {
+    "symbol": "{R/P}",
+    "filename": "RP.svg",
+    "english": "one red mana or two life"
+  },
+  {
+    "symbol": "{G/P}",
+    "filename": "GP.svg",
+    "english": "one green mana or two life"
+  },
+  {
+    "symbol": "{C/P}",
+    "filename": "CP.svg",
+    "english": "one colorless mana or two life"
+  },
+  {
+    "symbol": "{HW}",
+    "filename": "HW.svg",
+    "english": "one-half white mana"
+  },
+  {
+    "symbol": "{HR}",
+    "filename": "HR.svg",
+    "english": "one-half red mana"
+  },
+  {
+    "symbol": "{W}",
+    "filename": "W.svg",
+    "english": "one white mana"
+  },
+  {
+    "symbol": "{U}",
+    "filename": "U.svg",
+    "english": "one blue mana"
+  },
+  {
+    "symbol": "{B}",
+    "filename": "B.svg",
+    "english": "one black mana"
+  },
+  {
+    "symbol": "{R}",
+    "filename": "R.svg",
+    "english": "one red mana"
+  },
+  {
+    "symbol": "{G}",
+    "filename": "G.svg",
+    "english": "one green mana"
+  },
+  {
+    "symbol": "{C}",
+    "filename": "C.svg",
+    "english": "one colorless mana"
+  },
+  {
+    "symbol": "{S}",
+    "filename": "S.svg",
+    "english": "one snow mana"
+  },
+  {
+    "symbol": "{L}",
+    "filename": "L.svg",
+    "english": "one mana from a legendary source"
+  },
+  {
+    "symbol": "{D}",
+    "filename": "D.svg",
+    "english": "one potential land drop"
+  }
+]

@@ -1,11 +1,14 @@
+import type { ReactNode } from "react"
 import { linePoints, type RecordStat, type TrendPoint } from "@/lib/stats"
 
 export function BarChart({
   rows,
   value = "win_rate",
+  renderLabel,
 }: {
   rows: RecordStat[]
   value?: "win_rate" | "games"
+  renderLabel?: (row: RecordStat) => ReactNode
 }) {
   const max = Math.max(...rows.map((row) => row[value]), 1)
   return (
@@ -13,7 +16,7 @@ export function BarChart({
       {rows.map((row) => (
         <div key={row.id}>
           <div className="mb-1 flex justify-between gap-3 text-sm">
-            <span className="truncate font-medium">{row.name}</span>
+            <span className="truncate font-medium">{renderLabel?.(row) ?? row.name}</span>
             <span className="text-base-content/60 tabular-nums">
               {value === "win_rate" ? `${row.win_rate}%` : row.games}
             </span>

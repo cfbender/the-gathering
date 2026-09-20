@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
+import { ColorIdentity } from "@/components/mana-symbols"
 import { ExternalLink, Trophy } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { DeckFormFields, type DeckFormValue } from "@/components/deck-form-fields"
@@ -44,6 +45,7 @@ function DeckDetailPage() {
           ) : undefined
         }
       >
+        <ColorIdentity colors={deck.color_identity} className="mt-4 text-lg" />
         <div className="stats border-base-300 bg-base-100/60 mt-5 border">
           <div className="stat">
             <div className="stat-title">Games</div>
