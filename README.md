@@ -96,6 +96,11 @@ restarts. In a source checkout, the equivalent task is:
 THE_GATHERING_ADMIN_PASSWORD='use-a-long-password' mix the_gathering.create_admin USERNAME
 ```
 
+**Detailed statistics from** on the same page sets a cutoff date for statistics that depend on
+data your pod may not have recorded from the start: games before it still count toward wins and
+losses, but their seat positions, game length, turn counts, and MVP cards are left out. See
+[Statistics API](docs/stats.md).
+
 Removing a user disables the account rather than deleting it, preserving references from game
 history. Disabled accounts cannot sign in and can be re-enabled by an administrator.
 

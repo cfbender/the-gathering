@@ -1,7 +1,7 @@
 defmodule TheGathering.StatsTest do
   use TheGathering.DataCase, async: false
 
-  alias TheGathering.{Games, Stats}
+  alias TheGathering.{Accounts, Games, Stats}
 
   setup do
     players =
@@ -96,6 +96,41 @@ defmodule TheGathering.StatsTest do
     assert stats.average_turns == 9.0
     assert Enum.map(stats.recent_games, & &1.result) == ~w(draw loss win win loss win)
     assert Enum.any?(stats.opponents, &(&1.name == "Bob" and &1.games == 6))
+  end
+
+  test "the detailed-stats cutoff keeps records but drops earlier seat, timing, and MVP data",
+       %{players: players, decks: decks} do
+    # Inclusive: the 2026-02-12 game counts, the 2026-02-01 game does not.
+    {:ok, _} = Accounts.update_settings(%{detailed_stats_from: ~D[2026-02-12]})
+
+    overview = Stats.overview()
+    assert overview.detailed_stats_from == ~D[2026-02-12]
+    assert overview.games_count == 6
+    alice = Enum.find(overview.leaderboard, &(&1.id == players["Alice"].id))
+    assert %{games: 6, wins: 3} = alice
+    # All six games seat 1 would be 3 wins of 6; only the three later games count here.
+    assert %{games: 3, wins: 1, win_rate: 33.3} =
+             Enum.find(overview.seat_win_rates, &(&1.id == 1))
+
+    player = Stats.player(players["Alice"].id)
+    assert player.record == %{games: 6, wins: 3, losses: 2, draws: 1, win_rate: 50.0}
+    assert player.streaks == %{current_wins: 0, longest_wins: 2}
+    assert %{games: 2, wins: 1} = Enum.find(player.seat_win_rates, &(&1.id == 1))
+    assert player.favorite_seat == 1
+    assert [%{name: "Swords to Plowshares", mentions: 1}] = player.mvp_cards
+
+    # Move the cutoff past every timed game: the record stays, the averages disappear.
+    {:ok, _} = Accounts.update_settings(%{detailed_stats_from: ~D[2026-03-05]})
+    deck = Stats.deck(decks["Alice"].id)
+    assert deck.record.games == 6
+    assert deck.average_duration_minutes == nil
+    assert deck.average_turns == nil
+    assert Stats.player(players["Alice"].id).mvp_cards == []
+
+    # Clearing the setting restores every figure.
+    {:ok, _} = Accounts.update_settings(%{detailed_stats_from: ""})
+    assert Stats.overview().detailed_stats_from == nil
+    assert Stats.deck(decks["Alice"].id).average_turns == 9.0
   end
 
   defp game(players, decks, played_at, winner, order) do

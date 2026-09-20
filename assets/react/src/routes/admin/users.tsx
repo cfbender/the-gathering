@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
 import type { FormEvent } from "react"
-import { Link2, Shield, Users } from "lucide-react"
+import { BarChart3, Link2, Shield, Users } from "lucide-react"
 import { useState } from "react"
 import { SudoPrompt } from "@/components/sudo-prompt"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -19,6 +19,7 @@ interface Data<T> {
 
 interface AdminSettings {
   registration_enabled: boolean
+  detailed_stats_from: string | null
 }
 
 export const Route = createFileRoute("/admin/users")({
@@ -71,7 +72,7 @@ function AdminUsersPage() {
       <PageHeader
         eyebrow="Administration"
         title="Users"
-        description="Accounts, access, and server registration."
+        description="Accounts, access, and server settings."
         actions={
           <label className="bg-base-100/60 border-base-300 rounded-field flex cursor-pointer items-center gap-3 border px-4 py-3">
             <span className="text-sm font-medium">Open registration</span>
@@ -94,6 +95,8 @@ function AdminUsersPage() {
         }}
       />
 
+      <StatsCutoff settings={settings.data} />
+
       <section aria-labelledby="accounts-heading">
         <h2 id="accounts-heading" className="mb-3 flex items-center gap-2 text-lg font-semibold">
           <Users className="size-5" /> Accounts
@@ -107,6 +110,76 @@ function AdminUsersPage() {
         </div>
       </section>
     </div>
+  )
+}
+
+/**
+ * Games before the cutoff still count toward win/loss records, but their seat,
+ * duration, turn, and MVP data are left out of statistics. For pods that only
+ * started recording those details partway through their history.
+ */
+function StatsCutoff({ settings }: { settings: AdminSettings | undefined }) {
+  const queryClient = useQueryClient()
+  const save = useMutation({
+    mutationFn: (detailed_stats_from: string | null) =>
+      api<Data<AdminSettings>>("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ settings: { detailed_stats_from } }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "settings"] })
+      void queryClient.invalidateQueries({ queryKey: ["stats"] })
+    },
+  })
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    save.mutate(formValue(event.currentTarget, "detailed_stats_from") || null)
+  }
+
+  return (
+    <section
+      className="card bg-base-200 border-base-300 border"
+      aria-labelledby="stats-cutoff-heading"
+    >
+      <form className="card-body gap-3 p-4 sm:p-5" onSubmit={submit}>
+        <h2 id="stats-cutoff-heading" className="flex items-center gap-2 text-lg font-semibold">
+          <BarChart3 className="size-5" /> Detailed statistics from
+        </h2>
+        <p className="text-base-content/70 text-sm">
+          Games before this date still count toward every win/loss record. Their seat positions,
+          game length, turn counts, and MVP cards are ignored, so a pod that only started recording
+          those later keeps its win rates without muddying the rest. Leave blank to use every game.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            key={settings?.detailed_stats_from ?? ""}
+            type="date"
+            name="detailed_stats_from"
+            aria-label="Detailed statistics from"
+            className="input min-w-0 flex-1"
+            defaultValue={settings?.detailed_stats_from ?? ""}
+            disabled={!settings || save.isPending}
+          />
+          <button type="submit" className="btn btn-primary" disabled={!settings || save.isPending}>
+            Save
+          </button>
+          {settings?.detailed_stats_from && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={save.isPending}
+              onClick={() => save.mutate(null)}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        {save.error && !isSudoRequired(save.error) && (
+          <p className="text-error text-sm">{errorMessage(save.error)}</p>
+        )}
+      </form>
+    </section>
   )
 }
 
