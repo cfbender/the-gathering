@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
+import { PageHeader } from "@/components/app-shell"
 import type { FormEvent } from "react"
 import { Shield, Users } from "lucide-react"
 import { SudoPrompt } from "@/components/sudo-prompt"
@@ -47,13 +48,11 @@ function AdminUsersPage() {
   if (isSudoRequired(sudoError)) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
-        <div>
-          <p className="text-primary text-sm font-semibold uppercase">Administration</p>
-          <h1 className="text-3xl font-bold tracking-tight">Users</h1>
-          <p className="text-base-content/70 mt-1">
-            Confirm your identity to manage server access.
-          </p>
-        </div>
+        <PageHeader
+          eyebrow="Administration"
+          title="Users"
+          description="Confirm your identity to manage server access."
+        />
         <SudoPrompt
           error={sudoError}
           onSuccess={() => void queryClient.invalidateQueries({ queryKey: ["admin"] })}
@@ -64,23 +63,23 @@ function AdminUsersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-primary text-sm font-semibold uppercase">Administration</p>
-          <h1 className="text-3xl font-bold tracking-tight">Users</h1>
-          <p className="text-base-content/70 mt-1">Accounts, access, and server registration.</p>
-        </div>
-        <label className="bg-base-200 border-base-300 flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3">
-          <span className="text-sm font-medium">Open registration</span>
-          <input
-            type="checkbox"
-            className="toggle toggle-primary"
-            checked={settings.data?.registration_enabled ?? false}
-            disabled={!settings.data || toggleRegistration.isPending}
-            onChange={(event) => toggleRegistration.mutate(event.target.checked)}
-          />
-        </label>
-      </div>
+      <PageHeader
+        eyebrow="Administration"
+        title="Users"
+        description="Accounts, access, and server registration."
+        actions={
+          <label className="bg-base-100/60 border-base-300 rounded-field flex cursor-pointer items-center gap-3 border px-4 py-3">
+            <span className="text-sm font-medium">Open registration</span>
+            <input
+              type="checkbox"
+              className="toggle toggle-primary"
+              checked={settings.data?.registration_enabled ?? false}
+              disabled={!settings.data || toggleRegistration.isPending}
+              onChange={(event) => toggleRegistration.mutate(event.target.checked)}
+            />
+          </label>
+        }
+      />
 
       <SudoPrompt
         error={sudoError}
@@ -96,7 +95,7 @@ function AdminUsersPage() {
         </h2>
         {users.isPending && <div className="skeleton h-32 w-full" />}
         {users.error && <div className="alert alert-error">{errorMessage(users.error)}</div>}
-        <div className="grid gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
           {users.data?.map((user) => (
             <UserCard key={user.id} user={user} />
           ))}
@@ -131,12 +130,14 @@ function UserCard({ user }: { user: User }) {
   }
 
   return (
-    <div className="card bg-base-200 border-base-300 border">
+    <div className="card bg-base-200 border-base-300 min-w-0 border">
       <div className="card-body gap-4 p-4 sm:p-5">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="truncate font-semibold">{user.display_name}</h3>
+              <h3 className="max-w-full min-w-0 truncate font-semibold" title={user.display_name}>
+                {user.display_name}
+              </h3>
               <span className="badge badge-outline badge-sm gap-1">
                 <Shield className="size-3" /> {user.role}
               </span>

@@ -1,9 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { ThemeProvider } from "@/lib/theme"
+import { AppearanceSection } from "./appearance-section"
 import { ThemeToggle } from "./theme-toggle"
 
 const STORAGE_KEY = "the-gathering:theme"
+const STYLE_STORAGE_KEY = "the-gathering:theme-style"
 
 function stubSystemTheme(theme: "light" | "dark") {
   vi.stubGlobal(
@@ -25,10 +27,19 @@ function renderToggle() {
   )
 }
 
+function renderStylePicker() {
+  return render(
+    <ThemeProvider>
+      <AppearanceSection />
+    </ThemeProvider>,
+  )
+}
+
 describe("ThemeToggle", () => {
   beforeEach(() => {
     localStorage.clear()
     delete document.documentElement.dataset.theme
+    delete document.documentElement.dataset.themeStyle
     stubSystemTheme("dark")
   })
 
@@ -59,6 +70,35 @@ describe("ThemeToggle", () => {
     expect(
       screen.getByRole("radio", { name: "Match system theme" }).getAttribute("aria-checked"),
     ).toBe("false")
+  })
+
+  it("defaults to the glass style and only persists the classic opt-out", () => {
+    renderStylePicker()
+
+    expect(document.documentElement.dataset.themeStyle).toBe("glass")
+    expect(screen.getByRole("button", { name: /Classic/ }).getAttribute("aria-pressed")).toBe(
+      "false",
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: /Classic/ }))
+
+    expect(document.documentElement.dataset.themeStyle).toBe("classic")
+    expect(localStorage.getItem(STYLE_STORAGE_KEY)).toBe("classic")
+
+    fireEvent.click(screen.getByRole("button", { name: /Liquid glass/ }))
+
+    expect(document.documentElement.dataset.themeStyle).toBe("glass")
+    expect(localStorage.getItem(STYLE_STORAGE_KEY)).toBeNull()
+  })
+
+  it("restores a stored classic style", () => {
+    localStorage.setItem(STYLE_STORAGE_KEY, "classic")
+    renderStylePicker()
+
+    expect(document.documentElement.dataset.themeStyle).toBe("classic")
+    expect(screen.getByRole("button", { name: /Classic/ }).getAttribute("aria-pressed")).toBe(
+      "true",
+    )
   })
 
   it("restores a stored preference and clears it when switching back to system", () => {

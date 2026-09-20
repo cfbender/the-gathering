@@ -34,6 +34,9 @@ defmodule TheGatheringWeb.AppController do
             try { stored = localStorage.getItem(key) } catch {}
             const system = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
             document.documentElement.dataset.theme = stored === "light" || stored === "dark" ? stored : system
+            let style = null
+            try { style = localStorage.getItem("the-gathering:theme-style") } catch {}
+            document.documentElement.dataset.themeStyle = style === "classic" ? "classic" : "glass"
           })()
         </script>
         #{ViteAssets.tags(conn)}

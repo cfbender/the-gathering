@@ -62,7 +62,7 @@ Production/container commands are documented in `README.md`.
 - Authenticated API code reads the user from `conn.assigns.current_scope.user`. Protect scopes with `pipe_through [:api, :require_authenticated_user]`; admin-sensitive changes additionally use `:require_admin` and `:require_sudo_mode`.
 - Use `Req` for HTTP requests (Scryfall, Discord, deck-list sites). Avoid `:httpoison`, `:tesla`, and `:httpc`.
 - Follow existing Phoenix context and React component patterns. Keep changes small and focused.
-- Frontend styling uses Tailwind utilities and daisyUI component classes; theme tokens are defined in `assets/react/src/app.css`. Use `cn()` from `src/lib/cn.ts` to merge classes.
+- Frontend styling uses Tailwind utilities and daisyUI component classes; theme tokens are defined in `assets/react/src/app.css`. Use `cn()` from `src/lib/cn.ts` to merge classes. Shared primitives (Button, Card, Dialog, DropdownMenu, Popover, Select, Tabs, Switch, ToggleGroup, ported from ManaVault on Radix) live in `src/components/ui/`; page scaffolding (`PageHeader`, `PageSection`, `EmptyPanel`) is in `src/components/app-shell.tsx`. The "liquid glass" look is keyed on `html[data-theme-style="glass"]` (default; users can pick Classic in Settings, persisted under `the-gathering:theme-style`), so glass rules in `app.css` must stay scoped to that attribute.
 - Run the narrowest relevant tests before reporting completion, and `mise exec -- mix precommit` when a change is complete.
 - For UI changes, verify the rendered result through the review portal and leave the service running.
 - Update documentation when project structure, setup, or runtime behavior changes.

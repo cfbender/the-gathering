@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
+import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { CalendarDays, Plus, Trophy } from "lucide-react"
 import { useState } from "react"
 import { formatDate, getGames, getPlayers } from "@/lib/games"
@@ -17,15 +18,15 @@ function GamesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <p className="text-primary text-sm font-semibold uppercase">Playgroup history</p>
-          <h1 className="text-3xl font-bold tracking-tight">Games</h1>
-        </div>
-        <Link to="/games/new" className="btn btn-primary">
-          <Plus className="size-4" /> Log game
-        </Link>
-      </div>
+      <PageHeader
+        eyebrow="Playgroup history"
+        title="Games"
+        actions={
+          <Link to="/games/new" className="btn btn-primary">
+            <Plus className="size-4" /> Log game
+          </Link>
+        }
+      />
 
       <section aria-label="Game filters" className="card border-base-300 bg-base-200 border">
         <div className="card-body grid gap-3 p-4 sm:grid-cols-3">
@@ -81,18 +82,16 @@ function GamesPage() {
       )}
       {games.isError && <div className="alert alert-error">Could not load games.</div>}
       {games.data?.data.length === 0 && (
-        <div className="hero border-base-300 bg-base-200 rounded-box border py-16 text-center">
-          <div className="hero-content flex-col">
-            <CalendarDays className="text-primary size-10" />
-            <h2 className="text-2xl font-bold">No games at this table yet</h2>
-            <p className="text-base-content/70">
-              Log the first game, or clear your filters to see more history.
-            </p>
-            <Link to="/games/new" className="btn btn-primary mt-2">
+        <EmptyPanel
+          icon={<CalendarDays className="size-10" />}
+          title="No games at this table yet"
+          description="Log the first game, or clear your filters to see more history."
+          action={
+            <Link to="/games/new" className="btn btn-primary">
               Log the first game
             </Link>
-          </div>
-        </div>
+          }
+        />
       )}
       <div className="grid gap-4 lg:grid-cols-2">
         {games.data?.data.map((game) => {
