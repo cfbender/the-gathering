@@ -10,7 +10,7 @@ Administrators can move a playgroup's history from [Mythic Track](https://www.my
 
 The endpoint only returns games the signed-in user played in. Have each member of the playgroup export and import their own file if you want complete coverage; games already present are skipped, so overlapping exports are safe.
 
-The API routes are `POST /api/imports/mythic_track/preview` and `POST /api/imports/mythic_track`, both accepting `{"json": "..."}` and restricted to administrators. The preview response has the same shape as the CSV preview plus a `warnings` list for games that are skipped rather than rejected.
+The API routes are `POST /api/imports/mythic_track/preview` and `POST /api/imports/mythic_track`, both accepting `{"json": "..."}` and restricted to administrators. Committing an import also requires reauthentication within the previous ten minutes. The preview response has the same shape as the CSV preview plus a `warnings` list for games that are skipped rather than rejected.
 
 ## Mapping
 

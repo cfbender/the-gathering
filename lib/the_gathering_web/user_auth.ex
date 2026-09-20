@@ -107,7 +107,10 @@ defmodule TheGatheringWeb.UserAuth do
 
   defp maybe_reissue_user_session_token(conn, user, token_inserted_at) do
     if DateTime.diff(DateTime.utc_now(), token_inserted_at, :day) >= @session_reissue_age_in_days do
-      create_or_extend_session(conn, user, %{})
+      old_token = get_session(conn, :user_token)
+      conn = create_or_extend_session(conn, user, %{})
+      Accounts.delete_user_session_token(old_token)
+      conn
     else
       conn
     end

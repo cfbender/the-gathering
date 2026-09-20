@@ -43,6 +43,13 @@ defmodule TheGathering.Accounts.UserToken do
     {:ok, query}
   end
 
+  @doc "Returns expired database-backed sessions for pruning."
+  def expired_session_tokens_query do
+    from token in UserToken,
+      where: token.context == "session",
+      where: token.inserted_at <= ago(@session_validity_in_days, "day")
+  end
+
   defp by_token_and_context_query(token, context) do
     from UserToken, where: [token: ^token, context: ^context]
   end

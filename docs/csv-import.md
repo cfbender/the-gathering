@@ -5,7 +5,7 @@ Administrators can import past games at **Import** in the main navigation. The f
 1. Upload a `.csv` file or paste its contents, then preview it. The preview identifies existing and new players/decks and reports errors by CSV line.
 2. Confirm a valid preview. The entire file is committed in one database transaction; if any game fails, none of its players, decks, or games are saved.
 
-The API routes are `POST /api/imports/csv/preview`, `POST /api/imports/csv`, and `GET /api/imports/csv/sample`. The POST routes accept JSON shaped as `{"csv":"..."}`. They are restricted to administrators.
+The API routes are `POST /api/imports/csv/preview`, `POST /api/imports/csv`, and `GET /api/imports/csv/sample`. The POST routes accept JSON shaped as `{"csv":"..."}`. They are restricted to administrators; committing an import also requires reauthentication within the previous ten minutes.
 
 ## Native format
 

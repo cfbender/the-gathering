@@ -87,9 +87,15 @@ defmodule TheGathering.Accounts do
   def update_user_password(_user, _attrs), do: {:error, :forbidden}
 
   def generate_user_session_token(user) do
+    prune_expired_user_session_tokens()
     {token, user_token} = UserToken.build_session_token(user)
     Repo.insert!(user_token)
     token
+  end
+
+  def prune_expired_user_session_tokens do
+    {count, _tokens} = Repo.delete_all(UserToken.expired_session_tokens_query())
+    count
   end
 
   def get_user_by_session_token(token) do
@@ -108,6 +114,7 @@ defmodule TheGathering.Accounts do
     Multi.new()
     |> Multi.run(:last_admin, fn repo, _changes -> ensure_enabled_admin(repo, user, changeset) end)
     |> Multi.update(:user, changeset)
+    |> maybe_revoke_disabled_sessions(user, changeset)
     |> Repo.transaction()
     |> case do
       {:ok, %{user: updated}} -> {:ok, updated}
@@ -305,6 +312,22 @@ defmodule TheGathering.Accounts do
   end
 
   defp authorize_user_deletion(_repo, _user, _actor), do: {:ok, :authorized}
+
+  defp maybe_revoke_disabled_sessions(multi, user, changeset) do
+    becoming_disabled? =
+      is_nil(user.disabled_at) and
+        not is_nil(Ecto.Changeset.get_field(changeset, :disabled_at))
+
+    if becoming_disabled? do
+      Multi.delete_all(
+        multi,
+        :tokens,
+        from(token in UserToken, where: token.user_id == ^user.id and token.context == "session")
+      )
+    else
+      multi
+    end
+  end
 
   defp ensure_enabled_admin(repo, user, changeset) do
     becoming_inactive? =

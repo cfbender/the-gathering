@@ -133,21 +133,26 @@ data your pod may not have recorded from the start: games before it still count 
 losses, but their seat positions, game length, turn counts, and MVP cards are left out. See
 [Statistics API](docs/stats.md).
 
-Administrators can disable and re-enable accounts, or permanently delete an account. Deleting an
-account revokes its sessions and unlinks its player while preserving the player, decks, and game
-history. A returning Discord member can register again and reclaim the player linked to the same
-Discord identity.
+Administrators can disable and re-enable accounts, or permanently delete an account. Disabling an
+account signs it out on every device; re-enabling it does not revive those sessions, so the user
+must sign in again. Deleting an account revokes its sessions and unlinks its player while preserving
+the player, decks, and game history. A returning Discord member can register again and reclaim the
+player linked to the same Discord identity.
 
 Sessions use random tokens stored in the `users_tokens` table, following Phoenix's generated-auth
-design. Changing the administrator password expires every existing session. Sensitive actions
-require authentication within the previous ten minutes; the SPA prompts the administrator for a
-password and Discord members to authorize with Discord again. Passwords must be 12–72 characters.
+design. Signing out ends only the current device's session. Changing the administrator password
+expires every session for that account, and expired session rows are pruned when a new session is
+issued. Sensitive actions—including import commits and player merges—require authentication within
+the previous ten minutes; previews and sample downloads remain available without reauthentication.
+The SPA prompts the administrator for a password and Discord members to authorize with Discord
+again. Passwords must be 12–72 characters.
 
 Password login and bootstrap registration (`POST /api/session`, `POST /api/users`) are limited
 to 10 attempts per client address every 5 minutes; further attempts get `429 Too Many Requests`
 with a `retry-after` header. Behind a reverse proxy every request arrives from the proxy's
 address, so set `TRUST_PROXY_HEADERS=true` when your proxy sets `x-real-ip` or
-`x-forwarded-for`. Discord sign-in is not rate limited here.
+`x-forwarded-for`. Password reauthentication is separately limited by account and client address,
+with a server-wide attempt budget. Discord sign-in is not rate limited here.
 
 See [Discord integration](docs/discord-integration.md) for bot creation, permissions, and current tracking behavior.
 See [CSV game import](docs/csv-import.md) for the spreadsheet format and admin import flow, and [Mythic Track import](docs/mythic-track-import.md) for moving an existing Mythic Track playgroup over.

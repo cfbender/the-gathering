@@ -2,6 +2,7 @@ defmodule TheGatheringWeb.RateLimitTest do
   # Mutates the application env, so it cannot run alongside other tests.
   use TheGatheringWeb.ConnCase, async: false
 
+  alias TheGathering.AccountsFixtures
   alias TheGatheringWeb.RateLimit
 
   @config Application.compile_env!(:the_gathering, RateLimit)
@@ -52,6 +53,44 @@ defmodule TheGatheringWeb.RateLimitTest do
     conn = conn |> from({10, 200, 1, 1}) |> get(~p"/api/health")
     assert conn.status == 200
     refute conn.halted
+  end
+
+  test "sudo has an account-and-client bucket and returns Retry-After independently", %{
+    conn: conn
+  } do
+    configure(sudo: [limit: 3, global_limit: 100, scale: :timer.minutes(5)])
+    admin = AccountsFixtures.admin_fixture()
+    attacker = {10, 201, 0, 1}
+
+    for _ <- 1..3 do
+      assert conn
+             |> from(attacker)
+             |> log_in_user(admin)
+             |> post(~p"/api/session/sudo", %{password: "wrong-password"})
+             |> json_response(401)
+    end
+
+    denied =
+      conn
+      |> from(attacker)
+      |> log_in_user(admin)
+      |> post(~p"/api/session/sudo", %{password: "wrong-password"})
+
+    assert json_response(denied, 429) == %{"errors" => %{"detail" => "Too Many Requests"}}
+    assert [retry_after] = get_resp_header(denied, "retry-after")
+    assert String.to_integer(retry_after) in 1..300
+
+    # The ordinary login bucket and another client remain available.
+    assert conn
+           |> from(attacker)
+           |> post(~p"/api/session", %{username: "missing", password: "wrong-password"})
+           |> json_response(401)
+
+    assert conn
+           |> from({10, 201, 0, 2})
+           |> log_in_user(admin)
+           |> post(~p"/api/session/sudo", %{password: "wrong-password"})
+           |> json_response(401)
   end
 
   describe "client_ip/1" do

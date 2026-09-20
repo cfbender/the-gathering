@@ -74,10 +74,9 @@ function AdminUsersPage() {
       void queryClient.invalidateQueries({ queryKey: ["registration"] })
     },
   })
-  const sudoError =
-    users.error ?? settings.error ?? pendingDiscordGames.error ?? toggleRegistration.error
+  const querySudoError = users.error ?? settings.error ?? pendingDiscordGames.error
 
-  if (isSudoRequired(sudoError)) {
+  if (isSudoRequired(querySudoError)) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
         <PageHeader
@@ -86,7 +85,7 @@ function AdminUsersPage() {
           description="Confirm your identity to manage server access."
         />
         <SudoPrompt
-          error={sudoError}
+          error={querySudoError}
           onSuccess={() => void queryClient.invalidateQueries({ queryKey: ["admin"] })}
         />
       </div>
@@ -114,10 +113,11 @@ function AdminUsersPage() {
       />
 
       <SudoPrompt
-        error={sudoError}
+        error={toggleRegistration.error}
         onSuccess={() => {
-          toggleRegistration.reset()
-          void queryClient.invalidateQueries({ queryKey: ["admin"] })
+          if (toggleRegistration.variables !== undefined) {
+            toggleRegistration.mutate(toggleRegistration.variables)
+          }
         }}
       />
 
@@ -205,6 +205,7 @@ function CatalogBackfill() {
         {run.error && !isSudoRequired(run.error) && (
           <p className="text-error text-sm">{errorMessage(run.error)}</p>
         )}
+        <SudoPrompt error={run.error} onSuccess={() => run.mutate()} />
       </div>
     </section>
   )
@@ -256,10 +257,10 @@ function PendingDiscordGameCard({ game }: { game: PendingDiscordGame }) {
     void queryClient.invalidateQueries({ queryKey: ["decks"] })
   }
   const resolve = useMutation({
-    mutationFn: () =>
+    mutationFn: (winnerDiscordId: string) =>
       api<void>(`/api/admin/discord/pending/${game.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ winner_discord_id: winner }),
+        body: JSON.stringify({ winner_discord_id: winnerDiscordId }),
       }),
     onSuccess: refresh,
   })
@@ -310,7 +311,7 @@ function PendingDiscordGameCard({ game }: { game: PendingDiscordGame }) {
             type="button"
             className="btn btn-primary btn-sm"
             disabled={!winner || resolve.isPending || discard.isPending}
-            onClick={() => resolve.mutate()}
+            onClick={() => resolve.mutate(winner)}
           >
             <Trophy className="size-4" /> Record winner
           </button>
@@ -323,7 +324,18 @@ function PendingDiscordGameCard({ game }: { game: PendingDiscordGame }) {
             <Trash2 className="size-4" /> Discard
           </button>
         </div>
-        {mutationError && <p className="text-error text-sm">{errorMessage(mutationError)}</p>}
+        {mutationError && !isSudoRequired(mutationError) && (
+          <p className="text-error text-sm">{errorMessage(mutationError)}</p>
+        )}
+        <SudoPrompt
+          error={mutationError}
+          onSuccess={() => {
+            if (isSudoRequired(resolve.error) && resolve.variables) {
+              resolve.mutate(resolve.variables)
+            }
+            if (isSudoRequired(discard.error)) discard.mutate()
+          }}
+        />
       </div>
       <ConfirmDialog
         open={confirmDiscard}
@@ -404,6 +416,7 @@ function StatsCutoff({ settings }: { settings: AdminSettings | undefined }) {
         {save.error && !isSudoRequired(save.error) && (
           <p className="text-error text-sm">{errorMessage(save.error)}</p>
         )}
+        <SudoPrompt error={save.error} onSuccess={() => save.mutate(save.variables ?? null)} />
       </form>
     </section>
   )
@@ -500,9 +513,8 @@ function UserCard({ user, players }: { user: User; players: Player[] }) {
         <SudoPrompt
           error={mutationError}
           onSuccess={() => {
-            update.reset()
-            deleteUser.reset()
-            void queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
+            if (update.isError && update.variables) update.mutate(update.variables)
+            else if (deleteUser.isError) deleteUser.mutate()
           }}
         />
         <form className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]" onSubmit={saveNames}>
@@ -598,11 +610,15 @@ function LinkedPlayer({ user, players }: { user: User; players: Player[] }) {
           ))}
         </select>
       </label>
-      {link.error && (
+      {link.error && !isSudoRequired(link.error) && (
         <p className="text-error text-sm">
           {errorMessage(link.error, "merge") ?? errorMessage(link.error)}
         </p>
       )}
+      <SudoPrompt
+        error={link.error}
+        onSuccess={() => link.variables && link.mutate(link.variables)}
+      />
       <ConfirmDialog
         open={pending !== null}
         onOpenChange={(open) => !open && setPending(null)}

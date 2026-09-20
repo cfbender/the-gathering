@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
+import { SudoPrompt } from "@/components/sudo-prompt"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   AlertTriangle,
@@ -14,7 +15,7 @@ import {
 } from "lucide-react"
 import { useState } from "react"
 import type { ChangeEvent } from "react"
-import { errorMessage, requireAdmin } from "@/lib/auth"
+import { errorMessage, isSudoRequired, requireAdmin } from "@/lib/auth"
 import {
   MYTHIC_TRACK_EXPORT_SNIPPET,
   commitImport,
@@ -125,7 +126,7 @@ function ImportPage() {
                 }
               />
             </label>
-            {(preview.error || commit.error) && (
+            {(preview.error || (commit.error && !isSudoRequired(commit.error))) && (
               <div className="alert alert-error text-sm">
                 {errorMessage(preview.error ?? commit.error) ?? "Import failed."}
               </div>
@@ -150,6 +151,11 @@ function ImportPage() {
       </Tabs>
 
       {data && <Preview preview={data} source={source} />}
+
+      <SudoPrompt
+        error={commit.error}
+        onSuccess={() => commit.variables && commit.mutate(commit.variables)}
+      />
 
       {data?.valid && !commit.data && (
         <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
