@@ -1,26 +1,40 @@
 defmodule TheGathering.Stats do
-  @moduledoc "Read-only statistics derived from games and their normalized seats."
+  @moduledoc """
+  Read-only statistics derived from games and their normalized seats.
+
+  Every win/loss/draw figure uses all games. Figures built from data a playgroup
+  may only have started recording later (seat positions, duration, turns, MVP
+  cards) use only games played on or after the administrator's
+  `detailed_stats_from` date; each payload reports that date so the UI can label
+  those figures.
+  """
 
   import Ecto.Query
 
+  alias TheGathering.Accounts
   alias TheGathering.Games.{Deck, Game, GamePlayer, Player}
   alias TheGathering.Repo
 
   def overview(params \\ %{}) do
     games = games(params)
     seats = Enum.flat_map(games, & &1.seats)
+    cutoff = detailed_stats_from()
+    detailed = detailed_games(games, cutoff)
+    detailed_seats = Enum.flat_map(detailed, & &1.seats)
 
     %{
+      detailed_stats_from: cutoff,
       games_count: length(games),
-      average_duration_minutes: average(games, & &1.duration_minutes),
-      average_turns: average(games, & &1.turns),
+      average_duration_minutes: average(detailed, & &1.duration_minutes),
+      average_turns: average(detailed, & &1.turns),
       leaderboard: grouped_records(seats, & &1.player, & &1.player_id),
       games_by_month:
         games
         |> Enum.group_by(&Calendar.strftime(&1.played_at, "%Y-%m"))
         |> Enum.map(fn {month, rows} -> %{month: month, games: length(rows)} end)
         |> Enum.sort_by(& &1.month),
-      seat_win_rates: grouped_records(seats, &%{id: &1.seat, name: "Seat #{&1.seat}"}, & &1.seat),
+      seat_win_rates:
+        grouped_records(detailed_seats, &%{id: &1.seat, name: "Seat #{&1.seat}"}, & &1.seat),
       color_win_rates:
         seats
         |> Enum.reject(&is_nil(&1.deck))
@@ -49,8 +63,15 @@ defmodule TheGathering.Stats do
       games = games(params, player_id: player.id)
       seats = Enum.map(games, &Enum.find(&1.seats, fn seat -> seat.player_id == player.id end))
       results = seats |> Enum.reverse() |> Enum.map(& &1.result)
+      cutoff = detailed_stats_from()
+
+      detailed_seats =
+        games
+        |> detailed_games(cutoff)
+        |> Enum.map(&Enum.find(&1.seats, fn seat -> seat.player_id == player.id end))
 
       %{
+        detailed_stats_from: cutoff,
         player: %{id: player.id, name: player.name},
         record: record(seats),
         streaks: streaks(results),
@@ -62,10 +83,10 @@ defmodule TheGathering.Stats do
           |> grouped_records(& &1.deck, & &1.deck_id),
         head_to_head: head_to_head(games, player.id),
         seat_win_rates:
-          grouped_records(seats, &%{id: &1.seat, name: "Seat #{&1.seat}"}, & &1.seat),
-        favorite_seat: favorite_seat(seats),
-        best_seat: best_seat(seats),
-        mvp_cards: mvp_cards(seats)
+          grouped_records(detailed_seats, &%{id: &1.seat, name: "Seat #{&1.seat}"}, & &1.seat),
+        favorite_seat: favorite_seat(detailed_seats),
+        best_seat: best_seat(detailed_seats),
+        mvp_cards: mvp_cards(detailed_seats)
       }
     end
   end
@@ -74,13 +95,16 @@ defmodule TheGathering.Stats do
     with %Deck{} = deck <- Repo.get(Deck, deck_id) |> Repo.preload(:player) do
       games = games(params, deck_id: deck.id)
       seats = Enum.map(games, &Enum.find(&1.seats, fn seat -> seat.deck_id == deck.id end))
+      cutoff = detailed_stats_from()
+      detailed = detailed_games(games, cutoff)
 
       %{
+        detailed_stats_from: cutoff,
         deck: entity(deck),
         player: entity(deck.player),
         record: record(seats),
-        average_duration_minutes: average(games, & &1.duration_minutes),
-        average_turns: average(games, & &1.turns),
+        average_duration_minutes: average(detailed, & &1.duration_minutes),
+        average_turns: average(detailed, & &1.turns),
         opponents: deck_opponents(games, deck.id),
         recent_games: games |> Enum.take(10) |> Enum.map(&recent_game(&1, deck.id)),
         win_rate_over_time: cumulative_win_rate(games, deck.player_id, deck.id)
@@ -97,6 +121,14 @@ defmodule TheGathering.Stats do
     |> order_by([game], desc: game.played_at, desc: game.id)
     |> preload(seats: [:player, :deck])
     |> Repo.all()
+  end
+
+  defp detailed_stats_from, do: Accounts.get_settings().detailed_stats_from
+
+  defp detailed_games(games, nil), do: games
+
+  defp detailed_games(games, %Date{} = cutoff) do
+    Enum.filter(games, &(Date.compare(DateTime.to_date(&1.played_at), cutoff) != :lt))
   end
 
   defp grouped_records(rows, entity_fun, key_fun) do

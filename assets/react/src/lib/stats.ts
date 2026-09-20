@@ -27,6 +27,8 @@ export interface RecentStatGame {
 }
 
 export interface OverviewStats {
+  /** ISO date; seat, timing, and MVP figures only include games from this date on. */
+  detailed_stats_from: string | null
   games_count: number
   average_duration_minutes: number | null
   average_turns: number | null
@@ -39,6 +41,7 @@ export interface OverviewStats {
 }
 
 export interface PlayerStats {
+  detailed_stats_from: string | null
   record: RecordStat
   streaks: { current_wins: number; longest_wins: number }
   recent_form: ("win" | "loss" | "draw")[]
@@ -52,6 +55,7 @@ export interface PlayerStats {
 }
 
 export interface DeckStats {
+  detailed_stats_from: string | null
   record: RecordStat
   average_duration_minutes: number | null
   average_turns: number | null
@@ -64,6 +68,15 @@ const data = <T>(path: string) => api<{ data: T }>(path).then((body) => body.dat
 export const getOverviewStats = () => data<OverviewStats>("/api/stats/overview")
 export const getPlayerStats = (id: string) => data<PlayerStats>(`/api/stats/players/${id}`)
 export const getDeckStats = (id: string) => data<DeckStats>(`/api/stats/decks/${id}`)
+
+/** Label for figures limited by the administrator's detailed-stats cutoff. */
+export function sinceLabel(detailedStatsFrom: string | null, fallback?: string) {
+  if (!detailedStatsFrom) return fallback
+  const date = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+    new Date(`${detailedStatsFrom}T00:00:00`),
+  )
+  return `since ${date}`
+}
 
 export function linePoints(values: number[], width = 300, height = 100): string {
   if (!values.length) return ""

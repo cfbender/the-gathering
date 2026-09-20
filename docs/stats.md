@@ -2,6 +2,12 @@
 
 All statistics routes require an authenticated session and return `{ "data": ... }`. Each accepts optional inclusive `date_from` and `date_to` query parameters in `YYYY-MM-DD` format. Historical rows remain included when a player or deck is archived.
 
+## Detailed-statistics cutoff
+
+An administrator can set **Detailed statistics from** under **Admin → Users** (stored as the nullable `server_settings.detailed_stats_from` date). Every payload echoes it as `detailed_stats_from` (`"YYYY-MM-DD"` or `null`).
+
+Games played before that date still count toward every win/loss/draw record: `games_count`, the leaderboard, player records, streaks, form, win rate over time, head-to-head, deck records, commander and color-identity records. Only the figures whose inputs a pod may not have recorded early on are limited to games played on or after the cutoff: seat win rates, favorite and best seat, average duration, average turns, and MVP cards. A `null` cutoff uses every game.
+
 ## `GET /api/stats/overview`
 
 Returns playgroup `games_count`, average duration and turns, `leaderboard`, monthly game counts, seat and color-identity win rates, most-played commanders, and recent games. Record rows contain `games`, `wins`, `losses`, `draws`, and `win_rate` (a percentage from 0–100).

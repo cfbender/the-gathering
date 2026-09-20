@@ -4,7 +4,7 @@ import { Clock3, Crown, Gamepad2, RotateCcw, Trophy } from "lucide-react"
 import { BarChart } from "@/components/stats/charts"
 import { StatCard } from "@/components/stats/stat-card"
 import { formatDate } from "@/lib/games"
-import { getOverviewStats } from "@/lib/stats"
+import { getOverviewStats, sinceLabel } from "@/lib/stats"
 
 export const Route = createFileRoute("/")({ component: HomePage })
 
@@ -22,6 +22,7 @@ function HomePage() {
 
   if (stats.games_count === 0) return <EmptyDashboard />
   const leader = [...stats.leaderboard].sort((a, b) => b.win_rate - a.win_rate)[0]
+  const since = sinceLabel(stats.detailed_stats_from)
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
@@ -51,13 +52,13 @@ function HomePage() {
         <StatCard
           label="Avg. length"
           value={stats.average_duration_minutes ? `${stats.average_duration_minutes}m` : "—"}
-          detail="from first draw"
+          detail={since ?? "from first draw"}
           icon={<Clock3 className="size-4" />}
         />
         <StatCard
           label="Avg. turns"
           value={stats.average_turns ?? "—"}
-          detail="per game"
+          detail={since ?? "per game"}
           icon={<RotateCcw className="size-4" />}
         />
       </section>
@@ -106,7 +107,12 @@ function HomePage() {
       <div className="grid gap-4 md:grid-cols-2">
         <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
           <p className="text-primary text-xs font-bold uppercase">Opening advantage</p>
-          <h2 className="mb-5 text-xl font-bold">Wins by seat</h2>
+          <h2 className="mb-5 text-xl font-bold">
+            Wins by seat
+            {since && (
+              <span className="text-base-content/50 ml-2 text-sm font-medium">{since}</span>
+            )}
+          </h2>
           <BarChart rows={stats.seat_win_rates} />
         </section>
         <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">

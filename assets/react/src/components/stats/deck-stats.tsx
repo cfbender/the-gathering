@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Clock3, RotateCcw, Target } from "lucide-react"
 import { BarChart, LineChart } from "./charts"
 import { StatCard } from "./stat-card"
-import { getDeckStats } from "@/lib/stats"
+import { getDeckStats, sinceLabel } from "@/lib/stats"
 
 export function DeckStats({ deckId }: { deckId: string }) {
   const query = useQuery({
@@ -12,6 +12,7 @@ export function DeckStats({ deckId }: { deckId: string }) {
   if (query.isPending) return <span className="loading loading-spinner" />
   if (query.isError) return null
   const stats = query.data
+  const since = sinceLabel(stats.detailed_stats_from)
   return (
     <section className="space-y-4" aria-labelledby="deck-stats-heading">
       <div>
@@ -30,11 +31,13 @@ export function DeckStats({ deckId }: { deckId: string }) {
         <StatCard
           label="Avg. length"
           value={stats.average_duration_minutes ? `${stats.average_duration_minutes}m` : "—"}
+          detail={since}
           icon={<Clock3 className="size-4" />}
         />
         <StatCard
           label="Avg. turns"
           value={stats.average_turns ?? "—"}
+          detail={since}
           icon={<RotateCcw className="size-4" />}
         />
       </div>

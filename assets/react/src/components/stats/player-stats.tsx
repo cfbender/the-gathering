@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router"
 import { Flame, Medal, Target } from "lucide-react"
 import { BarChart, LineChart } from "./charts"
 import { StatCard } from "./stat-card"
-import { getPlayerStats } from "@/lib/stats"
+import { getPlayerStats, sinceLabel } from "@/lib/stats"
 
 export function PlayerStats({ playerId }: { playerId: string }) {
   const query = useQuery({
@@ -13,6 +13,7 @@ export function PlayerStats({ playerId }: { playerId: string }) {
   if (query.isPending) return <span className="loading loading-spinner" />
   if (query.isError) return null
   const stats = query.data
+  const since = sinceLabel(stats.detailed_stats_from)
   return (
     <section className="space-y-4" aria-labelledby="player-stats-heading">
       <div>
@@ -43,7 +44,9 @@ export function PlayerStats({ playerId }: { playerId: string }) {
         <StatCard
           label="Best seat"
           value={stats.best_seat ? `#${stats.best_seat}` : "—"}
-          detail={stats.favorite_seat ? `usually seat #${stats.favorite_seat}` : undefined}
+          detail={[stats.favorite_seat && `usually seat #${stats.favorite_seat}`, since]
+            .filter(Boolean)
+            .join(", ")}
         />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">

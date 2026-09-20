@@ -61,7 +61,9 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
       |> log_in_user(admin)
       |> patch(~p"/api/admin/settings", %{settings: %{registration_enabled: true}})
 
-    assert json_response(admin_conn, 200) == %{"data" => %{"registration_enabled" => true}}
+    assert json_response(admin_conn, 200) == %{
+             "data" => %{"registration_enabled" => true, "detailed_stats_from" => nil}
+           }
 
     conn = discord_callback(build_conn(), "100000000000000007")
 

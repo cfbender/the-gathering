@@ -16,6 +16,11 @@ defmodule TheGatheringWeb.API.AdminSettingsController do
   def update(_conn, _params), do: {:error, :bad_request}
 
   defp render_settings(conn, settings) do
-    json(conn, %{data: %{registration_enabled: settings.registration_enabled}})
+    json(conn, %{
+      data: %{
+        registration_enabled: settings.registration_enabled,
+        detailed_stats_from: settings.detailed_stats_from
+      }
+    })
   end
 end
