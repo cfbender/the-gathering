@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Flame, Medal, Target } from "lucide-react"
+import { CardArtBackground } from "@/components/card-art-background"
 import { BarChart, LineChart } from "./charts"
 import { StatCard } from "./stat-card"
 import { getPlayerStats, sinceLabel } from "@/lib/stats"
@@ -59,6 +60,32 @@ export function PlayerStats({ playerId }: { playerId: string }) {
           <BarChart rows={stats.decks} />
         </div>
       </div>
+      {stats.mvp_cards.length > 0 && (
+        <div>
+          <h3 className="mb-3 font-bold">
+            MVP cards
+            {since && (
+              <span className="text-base-content/50 ml-2 text-sm font-medium">{since}</span>
+            )}
+          </h3>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {stats.mvp_cards.map((card) => (
+              <div
+                key={`${card.id ?? card.name}-${card.name}`}
+                className="border-base-300 bg-base-200 relative overflow-hidden rounded-lg border px-4 py-3"
+              >
+                <CardArtBackground imageUrl={card.art_crop_url} />
+                <div className="text-base-content relative z-10">
+                  <strong className="block truncate">{card.name}</strong>
+                  <span className="text-base-content/80 text-xs">
+                    {card.mentions} {card.mentions === 1 ? "mention" : "mentions"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
         <h3 className="mb-3 font-bold">Head to head</h3>
         <div className="grid gap-2 sm:grid-cols-2">

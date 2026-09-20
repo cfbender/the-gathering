@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import type { ComponentProps, ReactNode } from "react"
+import { CardArtBackground } from "@/components/card-art-background"
 import { cn } from "@/lib/cn"
 
 /** Card-framed page heading shared by every top-level route (ported from manavault). */
@@ -9,6 +10,7 @@ export function PageHeader({
   description,
   actions,
   eyebrow,
+  backgroundImageUrl,
   children,
 }: {
   title: ReactNode
@@ -16,11 +18,13 @@ export function PageHeader({
   description?: ReactNode
   actions?: ReactNode
   eyebrow?: ReactNode
+  backgroundImageUrl?: string | null
   children?: ReactNode
 }) {
   return (
-    <section className="card border-base-300 bg-base-200 relative border">
-      <div className="card-body gap-5 p-6 sm:p-8">
+    <section className="card border-base-300 bg-base-200 relative overflow-hidden border">
+      <CardArtBackground imageUrl={backgroundImageUrl} />
+      <div className="card-body text-base-content relative z-10 gap-5 p-6 sm:p-8">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
             {eyebrow ? (
@@ -28,7 +32,14 @@ export function PageHeader({
             ) : null}
             <h1 className="text-4xl font-black tracking-normal sm:text-5xl">{title}</h1>
             {description ? (
-              <p className="text-base-content/70 mt-4 max-w-4xl text-lg">{description}</p>
+              <p
+                className={cn(
+                  "mt-4 max-w-4xl text-lg",
+                  backgroundImageUrl ? "text-base-content/85" : "text-base-content/70",
+                )}
+              >
+                {description}
+              </p>
             ) : null}
             {children}
             {bottomActions ? (

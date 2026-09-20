@@ -8,6 +8,7 @@ import { Merge, Trophy } from "lucide-react"
 import { useState } from "react"
 import { PlayerStats } from "@/components/stats/player-stats"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { CardArtBackground } from "@/components/card-art-background"
 import { errorMessage, useCurrentUser } from "@/lib/auth"
 import { formatDate, getPlayer, getPlayers, mergePlayers } from "@/lib/games"
 import type { Player } from "@/lib/games"
@@ -51,14 +52,15 @@ function PlayerDetailPage() {
               key={deck.id}
               to="/decks/$deckId"
               params={{ deckId: String(deck.id) }}
-              className="card border-base-300 bg-base-200 border"
+              className="card group border-base-300 bg-base-200 hover:border-primary/40 relative overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-xl"
             >
-              <div className="card-body p-4">
+              <CardArtBackground imageUrl={deck.commander_art_crop_url} interactive />
+              <div className="card-body text-base-content relative z-10 p-4">
                 <span className="flex items-center justify-between gap-2">
                   <strong>{deck.name}</strong>
                   <ColorIdentity colors={deck.color_identity} />
                 </span>
-                <span className="text-base-content/60 text-sm">{deck.commander_name}</span>
+                <span className="text-base-content/85 text-sm">{deck.commander_name}</span>
               </div>
             </Link>
           ))}

@@ -1,11 +1,49 @@
 defmodule TheGatheringWeb.API.GameControllerTest do
   use TheGatheringWeb.ConnCase, async: false
 
+  alias TheGathering.Catalog.Card
   alias TheGathering.Games
+  alias TheGathering.Repo
 
   setup :register_and_log_in_user
 
   setup do
+    Repo.insert!(%Card{
+      id: "kangee",
+      oracle_id: "oracle-kangee",
+      name: "Kangee, Sky Warden",
+      normalized_name: "kangee, sky warden",
+      cmc: 0.0,
+      type_line: "Legendary Creature",
+      colors: [],
+      color_identity: [],
+      image_uris: %{"art_crop" => "https://cards.example/kangee-art.jpg"},
+      set_code: "tst",
+      collector_number: "1",
+      layout: "normal",
+      rarity: "rare",
+      commander_legal: true,
+      can_be_commander: true
+    })
+
+    Repo.insert!(%Card{
+      id: "swan-song",
+      oracle_id: "oracle-swan-song",
+      name: "Swan Song",
+      normalized_name: "swan song",
+      cmc: 1.0,
+      type_line: "Instant",
+      colors: [],
+      color_identity: [],
+      image_uris: %{"art_crop" => "https://cards.example/swan-song-art.jpg"},
+      set_code: "tst",
+      collector_number: "2",
+      layout: "normal",
+      rarity: "rare",
+      commander_legal: true,
+      can_be_commander: false
+    })
+
     {:ok, alice} = Games.create_player(%{name: "Alice"})
     {:ok, bob} = Games.create_player(%{name: "Bob"})
 
@@ -40,6 +78,7 @@ defmodule TheGatheringWeb.API.GameControllerTest do
             deck_id: deck.id,
             seat: 1,
             result: "win",
+            mvp_card_id: "swan-song",
             mvp_card_name: "Swan Song"
           },
           %{player_id: bob.id, seat: 2, result: "loss"}
@@ -61,7 +100,8 @@ defmodule TheGatheringWeb.API.GameControllerTest do
                    "result" => "win",
                    "player" => %{"id" => alice_id, "name" => "Alice"},
                    "deck" => %{"id" => deck_id, "commander_name" => "Kangee, Sky Warden"},
-                   "mvp_card_name" => "Swan Song"
+                   "mvp_card_name" => "Swan Song",
+                   "mvp_art_crop_url" => "https://cards.example/swan-song-art.jpg"
                  },
                  %{"seat" => 2, "result" => "loss", "player" => %{"name" => "Bob"}, "deck" => nil}
                ]
@@ -72,6 +112,9 @@ defmodule TheGatheringWeb.API.GameControllerTest do
     assert created_by_user_id == user.id
     assert alice_id == alice.id
     assert deck_id == deck.id
+
+    assert get_in(response, ["data", "seats", Access.at(0), "deck", "commander_art_crop_url"]) ==
+             "https://cards.example/kangee-art.jpg"
   end
 
   test "POST /api/games requires a signed-in user", %{alice: alice, bob: bob} do
