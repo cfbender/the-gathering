@@ -75,6 +75,60 @@ defmodule TheGatheringWeb.API.AdminUserControllerTest do
     assert Repo.get(User, admin.id)
   end
 
+  test "DELETE sessions revokes the target user's sessions", %{conn: conn} do
+    admin = AccountsFixtures.admin_fixture()
+    user = AccountsFixtures.user_fixture()
+    target_token = Accounts.generate_user_session_token(user)
+    admin_token = Accounts.generate_user_session_token(admin)
+
+    response =
+      conn
+      |> log_in_user(admin)
+      |> delete(~p"/api/admin/users/#{user.id}/sessions")
+      |> json_response(200)
+
+    assert response["data"]["id"] == user.id
+    assert response["data"]["disabled"] == false
+    refute Accounts.get_user_by_session_token(target_token)
+    assert Accounts.get_user_by_session_token(admin_token)
+  end
+
+  test "DELETE sessions returns 404 for an unknown user", %{conn: conn} do
+    admin = AccountsFixtures.admin_fixture()
+
+    response =
+      conn
+      |> log_in_user(admin)
+      |> delete(~p"/api/admin/users/0/sessions")
+      |> json_response(404)
+
+    assert response == %{"errors" => %{"detail" => "Not Found"}}
+  end
+
+  test "session revocation requires recent sudo authentication", %{conn: conn} do
+    admin = AccountsFixtures.admin_fixture()
+    member = AccountsFixtures.user_fixture()
+    conn = log_in_user(conn, admin)
+    token = get_session(conn, :user_token)
+
+    Repo.update_all(
+      from(user_token in UserToken, where: user_token.token == ^token),
+      set: [
+        authenticated_at:
+          DateTime.utc_now() |> DateTime.add(-11, :minute) |> DateTime.truncate(:second)
+      ]
+    )
+
+    response = conn |> delete(~p"/api/admin/users/#{member.id}/sessions") |> json_response(403)
+
+    assert response == %{
+             "errors" => %{
+               "code" => "sudo_required",
+               "detail" => "Reauthentication required"
+             }
+           }
+  end
+
   test "the last administrator cannot be deleted" do
     admin = AccountsFixtures.admin_fixture()
     member = AccountsFixtures.user_fixture()

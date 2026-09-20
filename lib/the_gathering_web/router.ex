@@ -113,6 +113,7 @@ defmodule TheGatheringWeb.Router do
     pipe_through [:api, :require_authenticated_user, :require_admin, :require_sudo_mode]
 
     resources "/users", AdminUserController, only: [:index, :update, :delete]
+    delete "/users/:id/sessions", AdminUserController, :revoke_sessions
     put "/users/:id/player", AdminUserController, :link_player
     get "/settings", AdminSettingsController, :show
     patch "/settings", AdminSettingsController, :update

@@ -39,6 +39,13 @@ defmodule TheGatheringWeb.API.AdminUserController do
 
   def link_player(_conn, _params), do: {:error, :bad_request}
 
+  def revoke_sessions(conn, %{"id" => id}) do
+    with {:ok, user} <- fetch_user(id),
+         {:ok, user} <- Accounts.revoke_all_sessions(user) do
+      conn |> put_view(UserJSON) |> render(:show, user: user)
+    end
+  end
+
   def delete(conn, %{"id" => id}) do
     with {:ok, user} <- fetch_user(id),
          {:ok, _user} <- Accounts.delete_user(user, conn.assigns.current_scope.user) do
