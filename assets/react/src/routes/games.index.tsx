@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
+import { ColorIdentity } from "@/components/mana-symbols"
 import { CalendarDays, Plus, Trophy } from "lucide-react"
 import { useState } from "react"
 import { formatDate, getGames, getPlayers } from "@/lib/games"
@@ -121,6 +122,7 @@ function GamesPage() {
                           {seat.deck?.commander_name ?? "Unknown commander"}
                         </span>
                       </span>
+                      {seat.deck && <ColorIdentity colors={seat.deck.color_identity} />}
                     </li>
                   ))}
                 </ul>

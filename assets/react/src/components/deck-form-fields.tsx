@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { CommanderField } from "@/components/commander-field"
 import { DecklistUrlField } from "@/components/decklist-url-field"
+import { ColorIdentity } from "@/components/mana-symbols"
 import { combinedColorIdentity, type SelectedCard } from "@/lib/cards"
 import { detailsFromDecklist, type Decklist } from "@/lib/decklists"
 
@@ -50,13 +51,19 @@ export function DeckFormFields({ value, onChange, onResolvedName }: DeckFormFiel
       />
       <label className="form-control min-w-0">
         <span className="label-text mb-1 text-sm font-medium">Color identity</span>
-        <input
-          className="input input-bordered min-w-0 w-full font-mono uppercase"
-          value={value.colorIdentity}
-          placeholder="WUBRG"
-          pattern="(?!.*(.).*\\1)[WUBRG]*"
-          onChange={(event) => onChange({ colorIdentity: event.target.value.toUpperCase() })}
-        />
+        <span className="relative">
+          <input
+            className="input input-bordered min-w-0 w-full pr-24 font-mono uppercase"
+            value={value.colorIdentity}
+            placeholder="WUBRG"
+            pattern="(?!.*(.).*\\1)[WUBRG]*"
+            onChange={(event) => onChange({ colorIdentity: event.target.value.toUpperCase() })}
+          />
+          <ColorIdentity
+            colors={value.colorIdentity}
+            className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-lg"
+          />
+        </span>
       </label>
       <div className="min-w-0 sm:col-span-2">
         <DecklistUrlField

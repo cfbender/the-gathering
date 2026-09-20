@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
+import { ColorIdentity } from "@/components/mana-symbols"
 import { Clock, Pencil, Trophy } from "lucide-react"
 import { formatDate, getGame } from "@/lib/games"
 
@@ -69,7 +70,10 @@ function GameDetailPage() {
                   params={{ deckId: String(seat.deck.id) }}
                   className="link-hover"
                 >
-                  <strong>{seat.deck.name}</strong>
+                  <span className="flex items-center justify-between gap-2">
+                    <strong>{seat.deck.name}</strong>
+                    <ColorIdentity colors={seat.deck.color_identity} />
+                  </span>
                   <span className="text-base-content/60 block text-sm">
                     {seat.deck.commander_name}
                     {seat.deck.partner_name && ` + ${seat.deck.partner_name}`}

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { Clock3, Crown, Gamepad2, RotateCcw, Trophy } from "lucide-react"
+import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart } from "@/components/stats/charts"
 import { StatCard } from "@/components/stats/stat-card"
 import { formatDate } from "@/lib/games"
@@ -118,7 +119,15 @@ function HomePage() {
         <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
           <p className="text-primary text-xs font-bold uppercase">Color check</p>
           <h2 className="mb-5 text-xl font-bold">Color performance</h2>
-          <BarChart rows={stats.color_win_rates.slice(0, 6)} />
+          <BarChart
+            rows={stats.color_win_rates.slice(0, 6)}
+            renderLabel={(row) => (
+              <span className="inline-flex items-center gap-2">
+                <ColorIdentity colors={String(row.id)} />
+                <span>{row.name}</span>
+              </span>
+            )}
+          />
         </section>
       </div>
 

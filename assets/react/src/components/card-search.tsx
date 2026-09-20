@@ -3,6 +3,7 @@ import { Search, X } from "lucide-react"
 import { useEffect, useId, useState } from "react"
 import type { KeyboardEvent } from "react"
 import { CardImage } from "./card-image"
+import { ManaCost } from "./mana-symbols"
 import type { CardSummary } from "@/lib/cards"
 import { searchCards } from "@/lib/cards"
 import { cn } from "@/lib/cn"
@@ -133,7 +134,7 @@ export function CardSearch({
             <span className="block truncate text-sm font-medium">{value.name}</span>
             <span className="text-base-content/60 block truncate text-xs">{value.type_line}</span>
           </span>
-          {value.mana_cost && <span className="font-mono text-xs">{value.mana_cost}</span>}
+          {value.mana_cost && <ManaCost cost={value.mana_cost} className="shrink-0" />}
         </div>
       )}
 
@@ -172,9 +173,7 @@ export function CardSearch({
                 <span className="block truncate font-medium">{card.name}</span>
                 <span className="block truncate text-xs opacity-70">{card.type_line}</span>
               </span>
-              {card.mana_cost && (
-                <span className="shrink-0 font-mono text-xs">{card.mana_cost}</span>
-              )}
+              {card.mana_cost && <ManaCost cost={card.mana_cost} className="shrink-0" />}
             </li>
           ))}
         </ul>
