@@ -37,7 +37,8 @@ export interface OverviewStats {
   games_by_month: { month: string; games: number }[]
   seat_win_rates: RecordStat[]
   color_win_rates: RecordStat[]
-  commanders: RecordStat[]
+  /** The top eight rows of `getCommanderStats()`, keyed by the same canonical IDs. */
+  commanders: CommanderSummary[]
   recent_games: RecentStatGame[]
 }
 

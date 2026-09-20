@@ -110,8 +110,12 @@ defmodule TheGathering.StatsTest do
     wu = Enum.find(stats.color_win_rates, &(&1.id == "WU"))
     assert %{name: "Azorius", games: 3, wins: 2, win_rate: 66.7} = wu
 
-    assert %{id: "Kangee, Sky Warden", art_crop_url: "https://cards.example/kangee-art.jpg"} =
-             Enum.find(stats.commanders, &(&1.id == "Kangee, Sky Warden"))
+    # Dashboard commanders carry the same canonical catalog ID the Commanders page uses,
+    # and honour the date range.
+    assert %{name: "Kangee, Sky Warden", art_crop_url: "https://cards.example/kangee-art.jpg"} =
+             kangee = Enum.find(stats.commanders, &(&1.id == "kangee"))
+
+    assert %{games: 3, wins: 2, losses: 1} = kangee
   end
 
   test "player stats compute ordered current and longest streaks plus head-to-head", %{
@@ -237,7 +241,9 @@ defmodule TheGathering.StatsTest do
     assert Enum.map(detail.decks, &{&1.name, &1.games}) == [{"Birds", 7}, {"Partners", 1}]
     assert [%{name: "Krenko, Mob Boss", games: 1, wins: 1}] = detail.partners
     assert Enum.any?(detail.opponents, &(&1.name == "Cara" and &1.games == 7))
+    # The mirror match counts both Kangee seats, so the trend ends at the record.
     assert length(detail.win_rate_over_time) == 7
+    assert List.last(detail.win_rate_over_time).win_rate == 50.0
     assert hd(detail.recent_games).result == "win"
 
     by_name = Stats.commander("krenko, mob boss")
@@ -246,6 +252,69 @@ defmodule TheGathering.StatsTest do
 
     assert Stats.commander("kangee", %{"date_from" => "2026-04-01"}).record.games == 2
     assert Stats.commander("00000000-0000-0000-0000-000000000000") == nil
+  end
+
+  test "commander identity is canonical across stored IDs, names, seat order, and the overview",
+       %{players: players, decks: decks} do
+    # Bob records Kangee by name only; Cara's deck still points at a printing the catalog
+    # no longer carries. Both must fold into the catalog card `kangee`.
+    {:ok, by_name} =
+      Games.create_deck(%{
+        player_id: players["Bob"].id,
+        name: "Name-only Kangee",
+        commander_name: "kangee, sky warden",
+        partner_name: "Tymna the Weaver",
+        color_identity: "WUB"
+      })
+
+    {:ok, old_printing} =
+      Games.create_deck(%{
+        player_id: players["Cara"].id,
+        name: "Old Kangee",
+        commander_card_id: "kangee-old-printing",
+        commander_name: "Kangee, Sky Warden",
+        color_identity: "WU"
+      })
+
+    mirror = %{decks | "Bob" => by_name, "Cara" => old_printing}
+    # Three Kangee seats in one game: Cara wins, Alice and Bob lose.
+    game(players, mirror, ~U[2026-05-01 12:00:00Z], "Cara", ["Bob", "Alice", "Cara"])
+
+    commanders = Stats.commanders()
+    kangee_rows = Enum.filter(commanders, &(&1.name == "Kangee, Sky Warden"))
+    assert [%{id: "kangee", games: 9, wins: 4, decks: 3, pilots: 3}] = kangee_rows
+
+    # Every published ID resolves to a detail page whose record matches the list row.
+    for row <- commanders do
+      detail = Stats.commander(row.id)
+      assert detail, "#{row.name} (#{row.id}) has no detail"
+      assert detail.commander.id == row.id
+      assert detail.record.games == row.games
+    end
+
+    # Legacy stored IDs and names still resolve, to the same canonical commander.
+    assert Stats.commander("kangee-old-printing").commander.id == "kangee"
+    assert Stats.commander("Kangee, Sky Warden").record.games == 9
+
+    detail = Stats.commander("kangee")
+    assert detail.record == %{games: 9, wins: 4, losses: 4, draws: 1, win_rate: 44.4}
+    assert List.last(detail.win_rate_over_time).win_rate == 44.4
+    assert hd(detail.recent_games).result == "win"
+    refute Enum.any?(detail.partners, &(&1.name == "Kangee, Sky Warden"))
+    assert Enum.any?(detail.partners, &(&1.name == "Tymna the Weaver" and &1.games == 1))
+
+    # The three-way mirror match is one appearance per seat regardless of seat order.
+    game(players, mirror, ~U[2026-05-02 12:00:00Z], "Alice", ["Cara", "Bob", "Alice"])
+    game(players, mirror, ~U[2026-05-03 12:00:00Z], "Bob", ["Alice", "Cara", "Bob"])
+    reordered = Stats.commander("kangee", %{"date_from" => "2026-05-01"})
+    assert reordered.record == %{games: 9, wins: 3, losses: 6, draws: 0, win_rate: 33.3}
+    assert Enum.map(reordered.win_rate_over_time, & &1.win_rate) == [33.3, 33.3, 33.3]
+
+    # The dashboard shares the same aggregation, so a partner-only commander appears there.
+    overview = Stats.overview()
+    assert overview.commanders == Enum.take(Stats.commanders(), 8)
+    assert Enum.any?(overview.commanders, &(&1.name == "Tymna the Weaver"))
+    assert Enum.find(overview.commanders, &(&1.id == "kangee")).games == 15
   end
 
   defp game(players, decks, played_at, winner, order) do
