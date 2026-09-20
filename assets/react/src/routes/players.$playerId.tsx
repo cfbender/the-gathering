@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
 import { PlayerAvatar } from "@/components/player-avatar"
+import { RemoteDeckList } from "@/components/remote-deck-list"
 import { Merge, Trophy } from "lucide-react"
 import { useState } from "react"
 import { PlayerStats } from "@/components/stats/player-stats"
@@ -37,6 +38,7 @@ function PlayerDetailPage() {
         </div>
       </PageHeader>
       <PlayerStats playerId={playerId} />
+      <MyRemoteDecks player={player} />
       <section>
         <h2 className="mb-3 text-xl font-bold">Decks</h2>
         {player.decks?.length === 0 && (
@@ -88,6 +90,18 @@ function PlayerDetailPage() {
       </section>
       <MergePlayer player={player} />
     </div>
+  )
+}
+
+function MyRemoteDecks({ player }: { player: Player }) {
+  const viewer = useCurrentUser()
+  if (viewer.data?.id !== player.user_id) return null
+
+  return (
+    <section>
+      <h2 className="mb-3 text-xl font-bold">My hosted decks</h2>
+      <RemoteDeckList />
+    </section>
   )
 }
 

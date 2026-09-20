@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import type { FormEvent } from "react"
-import { KeyRound, UserRound } from "lucide-react"
+import { KeyRound, Library, UserRound } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
 import { AppearanceSection } from "@/components/appearance-section"
 import { SudoPrompt } from "@/components/sudo-prompt"
@@ -23,14 +23,22 @@ function SettingsPage() {
   const user = Route.useRouteContext()
   const queryClient = useQueryClient()
   const profile = useMutation({
-    mutationFn: async (display_name: string) =>
+    mutationFn: async (values: {
+      display_name: string
+      moxfield_username: string
+      archidekt_username: string
+      manavault_url: string
+    }) =>
       (
         await api<Data<User>>("/api/session/user", {
           method: "PATCH",
-          body: JSON.stringify({ user: { display_name } }),
+          body: JSON.stringify({ user: values }),
         })
       ).data,
-    onSuccess: (updated) => queryClient.setQueryData(["session"], updated),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["session"], updated)
+      void queryClient.invalidateQueries({ queryKey: ["remote-decks"] })
+    },
   })
   const password = useMutation({
     mutationFn: (values: { password: string; password_confirmation: string }) =>
@@ -42,7 +50,13 @@ function SettingsPage() {
 
   function updateProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    profile.mutate(formValue(event.currentTarget, "display_name"))
+    const form = event.currentTarget
+    profile.mutate({
+      display_name: formValue(form, "display_name"),
+      moxfield_username: formValue(form, "moxfield_username"),
+      archidekt_username: formValue(form, "archidekt_username"),
+      manavault_url: formValue(form, "manavault_url"),
+    })
   }
 
   function updatePassword(event: FormEvent<HTMLFormElement>) {
@@ -58,7 +72,7 @@ function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+    <div className="mx-auto flex min-w-0 max-w-2xl flex-col gap-6">
       <PageHeader
         eyebrow="Account"
         title="Settings"
@@ -67,26 +81,82 @@ function SettingsPage() {
 
       <AppearanceSection />
 
-      <form className="card bg-base-200 border-base-300 border" onSubmit={updateProfile}>
-        <div className="card-body gap-4">
+      <form className="card bg-base-200 border-base-300 min-w-0 border" onSubmit={updateProfile}>
+        <div className="card-body min-w-0 gap-4">
           <h2 className="card-title text-lg">
             <UserRound className="size-5" /> Profile
           </h2>
-          <label className="fieldset">
+          <label className="fieldset min-w-0">
             <span className="fieldset-legend">Username</span>
-            <input className="input w-full" value={user.username} disabled />
+            <input className="input min-w-0 w-full" value={user.username} disabled />
           </label>
-          <label className="fieldset">
+          <label className="fieldset min-w-0">
             <span className="fieldset-legend">Display name</span>
             <input
               name="display_name"
-              className="input w-full"
+              className="input min-w-0 w-full"
               defaultValue={user.display_name}
               required
             />
             {errorMessage(profile.error, "display_name") && (
               <span className="label text-error">
                 {errorMessage(profile.error, "display_name")}
+              </span>
+            )}
+          </label>
+          <div className="divider my-0" />
+          <div>
+            <h3 className="flex items-center gap-2 font-semibold">
+              <Library className="size-4" /> Deck hosts
+            </h3>
+            <p className="text-base-content/60 mt-1 text-sm">
+              Add your public deck identities for quick access while logging games.
+            </p>
+          </div>
+          <label className="fieldset min-w-0">
+            <span className="fieldset-legend">Moxfield username</span>
+            <input
+              name="moxfield_username"
+              className="input min-w-0 w-full"
+              defaultValue={user.moxfield_username ?? ""}
+              placeholder="your-username"
+            />
+            {errorMessage(profile.error, "moxfield_username") && (
+              <span className="label text-error">
+                {errorMessage(profile.error, "moxfield_username")}
+              </span>
+            )}
+          </label>
+          <label className="fieldset min-w-0">
+            <span className="fieldset-legend">Archidekt username</span>
+            <input
+              name="archidekt_username"
+              className="input min-w-0 w-full"
+              defaultValue={user.archidekt_username ?? ""}
+              placeholder="your-username"
+            />
+            {errorMessage(profile.error, "archidekt_username") && (
+              <span className="label text-error">
+                {errorMessage(profile.error, "archidekt_username")}
+              </span>
+            )}
+          </label>
+          <label className="fieldset min-w-0">
+            <span className="fieldset-legend">ManaVault instance URL</span>
+            <input
+              name="manavault_url"
+              type="url"
+              className="input min-w-0 w-full"
+              defaultValue={user.manavault_url ?? ""}
+              placeholder="https://vault.example.com"
+            />
+            <span className="label text-base-content/60 whitespace-normal">
+              ManaVault currently has no public instance-wide deck list; public share links still
+              work individually.
+            </span>
+            {errorMessage(profile.error, "manavault_url") && (
+              <span className="label text-error">
+                {errorMessage(profile.error, "manavault_url")}
               </span>
             )}
           </label>
