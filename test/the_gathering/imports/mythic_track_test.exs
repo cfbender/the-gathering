@@ -176,4 +176,43 @@ defmodule TheGathering.Imports.MythicTrackTest do
 
     assert Repo.aggregate(Game, :count) == 1
   end
+
+  test "links the first key card to the winner as MVP and keeps the rest in notes" do
+    key_cards = [
+      %{"scryfallId" => "sf-craterhoof", "name" => "Craterhoof Behemoth", "colors" => ["G"]},
+      %{"scryfallId" => nil, "name" => "Finale of Devastation", "colors" => ["G"]}
+    ]
+
+    payload = json([game(%{"keyCards" => key_cards})])
+    assert %{valid: true, games: [parsed]} = Imports.preview(:mythic_track, payload)
+
+    # Daniel (seat 1) won; the losers must not receive an MVP card.
+    assert Enum.map(parsed.seats, &{&1.result, &1.mvp_card, &1.mvp_card_id}) == [
+             {"win", "Craterhoof Behemoth", "sf-craterhoof"},
+             {"loss", nil, nil},
+             {"loss", nil, nil}
+           ]
+
+    assert parsed.notes == "Close one\nKey cards: Finale of Devastation"
+
+    assert {:ok, %{created: 1, game_ids: [game_id]}} = Imports.import(:mythic_track, payload, 1)
+
+    winner =
+      game_id |> Games.get_game!() |> Map.fetch!(:seats) |> Enum.find(&(&1.result == "win"))
+
+    assert winner.mvp_card_name == "Craterhoof Behemoth"
+    assert winner.mvp_card_id == "sf-craterhoof"
+
+    # Without a winner there is no seat to link, so every key card stays in notes.
+    draw =
+      game(%{
+        "id" => "8f3a0a44-0000-4000-8000-000000000009",
+        "keyCards" => key_cards,
+        "players" => Enum.map(game()["players"], &Map.put(&1, "isWinner", false))
+      })
+
+    assert %{games: [drawn]} = Imports.preview(:mythic_track, json([draw]))
+    assert Enum.all?(drawn.seats, &is_nil(&1.mvp_card))
+    assert drawn.notes == "Close one\nKey cards: Craterhoof Behemoth, Finale of Devastation"
+  end
 end
