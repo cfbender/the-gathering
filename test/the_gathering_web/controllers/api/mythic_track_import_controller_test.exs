@@ -1,5 +1,5 @@
 defmodule TheGatheringWeb.API.MythicTrackImportControllerTest do
-  use TheGatheringWeb.ConnCase, async: true
+  use TheGatheringWeb.ConnCase, async: false
 
   alias TheGathering.AccountsFixtures
 

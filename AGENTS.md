@@ -64,6 +64,7 @@ Production/container commands are documented in `README.md`.
 - Follow existing Phoenix context and React component patterns. Keep changes small and focused.
 - Frontend styling uses Tailwind utilities and daisyUI component classes; theme tokens are defined in `assets/react/src/app.css`. Use `cn()` from `src/lib/cn.ts` to merge classes. Shared primitives (Button, Card, Dialog, DropdownMenu, Popover, Select, Tabs, Switch, ToggleGroup, ported from ManaVault on Radix) live in `src/components/ui/`; page scaffolding (`PageHeader`, `PageSection`, `EmptyPanel`) is in `src/components/app-shell.tsx`. The "liquid glass" look is keyed on `html[data-theme-style="glass"]` (default; users can pick Classic in Settings, persisted under `the-gathering:theme-style`), so glass rules in `app.css` must stay scoped to that attribute.
 - Run the narrowest relevant tests before reporting completion, and `mise exec -- mix precommit` when a change is complete.
+- Tests that write to the database must use `async: false`. SQLite allows one writer, and concurrent sandbox transactions fail with `Exqlite.Error: Database busy` on slow CI runners. Only pure or read-free tests may be `async: true`.
 - For UI changes, verify the rendered result through the review portal and leave the service running.
 - Update documentation when project structure, setup, or runtime behavior changes.
 
