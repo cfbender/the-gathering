@@ -3,22 +3,79 @@ import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Library } from "lucide-react"
+import { useState } from "react"
 import { CardArtBackground } from "@/components/card-art-background"
-import { getDecks } from "@/lib/games"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { useCurrentUser } from "@/lib/auth"
+import { cn } from "@/lib/cn"
+import { getDecks, type Deck } from "@/lib/games"
 
 export const Route = createFileRoute("/decks/")({ component: DecksPage })
 
+type Scope = "mine" | "all"
+
+/** Decks owned by the viewer's linked player. */
+export function ownDecks(decks: Deck[], viewerId: number | undefined) {
+  return decks.filter((deck) => viewerId !== undefined && deck.player?.user_id === viewerId)
+}
+
 function DecksPage() {
   const query = useQuery({ queryKey: ["decks", {}], queryFn: () => getDecks() })
+  const viewer = useCurrentUser()
+  const [choice, setChoice] = useState<Scope | null>(null)
+
+  const decks = query.data ?? []
+  const mine = ownDecks(decks, viewer.data?.id)
+  // Default to the viewer's decks; fall back to everyone's when they have none
+  // (no linked player yet, or nothing logged) so the page is never empty by default.
+  const scope: Scope = choice ?? (mine.length > 0 ? "mine" : "all")
+  const shown = scope === "mine" ? mine : decks
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader eyebrow="The arsenal" title="Decks" />
+      <PageHeader
+        eyebrow="The arsenal"
+        title="Decks"
+        actions={
+          query.data && (
+            <ToggleGroup
+              type="single"
+              value={scope}
+              onValueChange={(value) => value && setChoice(value as Scope)}
+              aria-label="Which decks to show"
+              className="join"
+            >
+              {(
+                [
+                  ["mine", `My decks (${mine.length})`],
+                  ["all", `Everyone (${decks.length})`],
+                ] as const
+              ).map(([value, label]) => (
+                <ToggleGroupItem
+                  key={value}
+                  value={value}
+                  className={cn(
+                    "btn btn-sm join-item",
+                    scope === value ? "btn-primary" : "btn-ghost",
+                  )}
+                >
+                  {label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          )
+        }
+      />
       {query.isPending && <span className="loading loading-spinner" />}
-      {query.data?.length === 0 && (
+      {query.data && shown.length === 0 && (
         <EmptyPanel
           icon={<Library className="size-10" />}
-          title="No decks yet"
-          description="Create a deck inline while logging a game."
+          title={scope === "mine" ? "No decks of yours yet" : "No decks yet"}
+          description={
+            scope === "mine"
+              ? "Decks you log under your linked player show up here."
+              : "Create a deck inline while logging a game."
+          }
           action={
             <Link to="/games/new" className="btn btn-primary">
               Log a game
@@ -27,7 +84,7 @@ function DecksPage() {
         />
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {query.data?.map((deck) => (
+        {shown.map((deck) => (
           <Link
             key={deck.id}
             to="/decks/$deckId"
