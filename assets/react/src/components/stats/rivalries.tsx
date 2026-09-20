@@ -1,38 +1,65 @@
 import { Link } from "@tanstack/react-router"
-import type { ReactNode } from "react"
 import { CardArtBackground } from "@/components/card-art-background"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { favoritePrey, favoriteVictim, nemesisCommander, nemesisPlayer } from "@/lib/rivals"
 import type { CommanderStats, HeadToHead, RivalCommander } from "@/lib/stats"
 
+type RivalryLink =
+  | { to: "/players/$playerId"; params: { playerId: string } }
+  | { to: "/commanders/$commanderId"; params: { commanderId: string } }
+
 export function RivalryCallout({
   label,
+  name,
   count,
   detail,
-  children,
+  link,
   artCropUrl,
   colorIdentity,
 }: {
   label: string
+  name: string
   count: number
   detail: string
-  children: ReactNode
+  link: RivalryLink
   artCropUrl?: string | null
   colorIdentity?: string | null
 }) {
+  const linkClassName =
+    "absolute inset-0 z-20 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+  const accessibleName = `${name}: ${count} ${detail}`
   return (
-    <div className="border-base-300 bg-base-200 group relative min-w-0 overflow-hidden rounded-xl border p-4">
+    <div className="border-base-300 bg-base-200 group hover:border-primary relative min-w-0 overflow-hidden rounded-xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg">
       <CardArtBackground imageUrl={artCropUrl} interactive />
-      <div className="relative z-10">
-        <div className="mb-3 flex items-start justify-between gap-2">
+      <div className="relative z-10 flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-2">
           <p className="text-primary text-xs font-bold tracking-wide uppercase">{label}</p>
           {colorIdentity && <ColorIdentity colors={colorIdentity} />}
         </div>
-        <strong className="block max-w-[85%] truncate">{children}</strong>
-        <span className="text-base-content/70 text-sm tabular-nums">
-          {count} {detail}
-        </span>
+        <div className="border-base-300/70 bg-base-100/75 rounded-box border px-3 py-2 shadow-sm backdrop-blur">
+          <strong className="text-base-content block truncate" title={name}>
+            {name}
+          </strong>
+          <span className="text-base-content/70 text-sm tabular-nums">
+            {count} {detail}
+          </span>
+        </div>
       </div>
+      {link.to === "/players/$playerId" ? (
+        <Link
+          to="/players/$playerId"
+          params={link.params}
+          className={linkClassName}
+          aria-label={accessibleName}
+        />
+      ) : (
+        <Link
+          to="/commanders/$commanderId"
+          params={link.params}
+          className={linkClassName}
+          aria-label={accessibleName}
+        />
+      )}
     </div>
   )
 }
@@ -97,29 +124,17 @@ export function Rivalries({
             <RivalryCallout
               key={label}
               label={label}
+              name={row.name}
               count={value}
               detail={value === 1 ? result[0] : result[1]}
               artCropUrl={commander?.art_crop_url}
               colorIdentity={commander?.color_identity}
-            >
-              {kind === "player" ? (
-                <Link
-                  to="/players/$playerId"
-                  params={{ playerId: String(row.id) }}
-                  className="bg-base-100/75 text-base-content block truncate rounded px-1.5 py-0.5 underline decoration-base-content/40 underline-offset-2"
-                >
-                  {row.name}
-                </Link>
-              ) : (
-                <Link
-                  to="/commanders/$commanderId"
-                  params={{ commanderId: String(row.id) }}
-                  className="bg-base-100/75 text-base-content block truncate rounded px-1.5 py-0.5 underline decoration-base-content/40 underline-offset-2"
-                >
-                  {row.name}
-                </Link>
-              )}
-            </RivalryCallout>
+              link={
+                kind === "player"
+                  ? { to: "/players/$playerId", params: { playerId: String(row.id) } }
+                  : { to: "/commanders/$commanderId", params: { commanderId: String(row.id) } }
+              }
+            />
           )
         })}
       </div>
@@ -170,32 +185,20 @@ export function CommanderRivalries({ opponents }: { opponents: CommanderStats["o
       {nemesis && (
         <RivalryCallout
           label="Nemesis"
+          name={nemesis.name}
           count={nemesis.wins}
           detail={nemesis.wins === 1 ? "win against this commander" : "wins against this commander"}
-        >
-          <Link
-            to="/players/$playerId"
-            params={{ playerId: String(nemesis.id) }}
-            className="text-primary underline decoration-primary/30 underline-offset-2"
-          >
-            {nemesis.name}
-          </Link>
-        </RivalryCallout>
+          link={{ to: "/players/$playerId", params: { playerId: String(nemesis.id) } }}
+        />
       )}
       {prey && (
         <RivalryCallout
           label="Favorite victim"
+          name={prey.name}
           count={prey.beaten}
           detail={prey.beaten === 1 ? "loss to this commander" : "losses to this commander"}
-        >
-          <Link
-            to="/players/$playerId"
-            params={{ playerId: String(prey.id) }}
-            className="text-primary underline decoration-primary/30 underline-offset-2"
-          >
-            {prey.name}
-          </Link>
-        </RivalryCallout>
+          link={{ to: "/players/$playerId", params: { playerId: String(prey.id) } }}
+        />
       )}
     </section>
   )
