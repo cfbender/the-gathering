@@ -67,6 +67,29 @@ defmodule TheGatheringWeb.API.AuthControllerTest do
     assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
   end
 
+  test "session renewal revokes only the superseded current-device token", %{conn: conn} do
+    user = create_user("owner", "admin")
+    other_device_token = Accounts.generate_user_session_token(user)
+    conn = log_in(conn, "owner")
+    old_token = get_session(conn, :user_token)
+
+    Repo.update_all(
+      from(user_token in UserToken, where: user_token.token == ^old_token),
+      set: [
+        inserted_at: DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
+      ]
+    )
+
+    conn = get(recycle(conn), ~p"/api/session")
+    assert %{"data" => %{"username" => "owner"}} = json_response(conn, 200)
+
+    new_token = get_session(conn, :user_token)
+    assert new_token != old_token
+    refute Accounts.get_user_by_session_token(old_token)
+    assert Accounts.get_user_by_session_token(new_token)
+    assert Accounts.get_user_by_session_token(other_device_token)
+  end
+
   test "updates and returns the signed-in user's deck sources", %{conn: conn} do
     user = create_user("owner", "admin")
     conn = log_in_user(conn, user)

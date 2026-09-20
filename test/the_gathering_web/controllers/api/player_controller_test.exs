@@ -1,8 +1,12 @@
 defmodule TheGatheringWeb.API.PlayerControllerTest do
   use TheGatheringWeb.ConnCase, async: false
 
+  import Ecto.Query
+
+  alias TheGathering.Accounts.UserToken
   alias TheGathering.AccountsFixtures
   alias TheGathering.Games
+  alias TheGathering.Repo
 
   setup %{conn: conn} do
     admin = AccountsFixtures.admin_fixture()
@@ -54,7 +58,7 @@ defmodule TheGatheringWeb.API.PlayerControllerTest do
     assert Games.get_player!(ctx.drew.id).name == "Drew"
   end
 
-  test "admins merge players; members receive 403", ctx do
+  test "admins inside the sudo window merge players; stale admins and members receive 403", ctx do
     conn = log_in_user(ctx.conn, ctx.member)
 
     assert %{"errors" => %{"detail" => "Forbidden"}} =
@@ -63,6 +67,15 @@ defmodule TheGatheringWeb.API.PlayerControllerTest do
              |> json_response(403)
 
     conn = log_in_user(recycle(conn), ctx.admin)
+
+    expire_sudo(conn, 602)
+
+    assert %{"errors" => %{"code" => "sudo_required"}} =
+             conn
+             |> post(~p"/api/players/#{ctx.wax.id}/merge", %{target_id: ctx.drew.id})
+             |> json_response(403)
+
+    expire_sudo(conn, 598)
 
     body =
       conn
@@ -105,5 +118,17 @@ defmodule TheGatheringWeb.API.PlayerControllerTest do
              |> log_in_user(ctx.admin)
              |> put(~p"/api/admin/users/#{other.id}/player", %{player_id: ctx.drew.id})
              |> json_response(422)
+  end
+
+  defp expire_sudo(conn, seconds_ago) do
+    token = get_session(conn, :user_token)
+
+    Repo.update_all(
+      from(user_token in UserToken, where: user_token.token == ^token),
+      set: [
+        authenticated_at:
+          DateTime.utc_now() |> DateTime.add(-seconds_ago, :second) |> DateTime.truncate(:second)
+      ]
+    )
   end
 end

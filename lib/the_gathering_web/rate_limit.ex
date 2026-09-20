@@ -1,6 +1,6 @@
 defmodule TheGatheringWeb.RateLimit do
   @moduledoc """
-  Per-client rate limiting for credential endpoints.
+  Rate limiting for credential endpoints.
 
       plug TheGatheringWeb.RateLimit, bucket: :credentials
 
@@ -29,7 +29,7 @@ defmodule TheGatheringWeb.RateLimit do
   def call(conn, bucket) do
     %{limit: limit, scale: scale} = bucket_config(bucket)
 
-    case RateLimiter.hit({bucket, client_ip(conn)}, scale, limit) do
+    case hit(bucket, conn, scale, limit) do
       {:allow, _count} ->
         conn
 
@@ -40,6 +40,20 @@ defmodule TheGatheringWeb.RateLimit do
         |> Phoenix.Controller.json(%{errors: %{detail: "Too Many Requests"}})
         |> halt()
     end
+  end
+
+  defp hit(:sudo, conn, scale, limit) do
+    %{global_limit: global_limit} = bucket_config(:sudo)
+    user_id = conn.assigns.current_scope.user.id
+
+    with {:allow, _count} <-
+           RateLimiter.hit({:sudo, user_id, client_ip(conn)}, scale, limit) do
+      RateLimiter.hit({:sudo, :global}, scale, global_limit)
+    end
+  end
+
+  defp hit(bucket, conn, scale, limit) do
+    RateLimiter.hit({bucket, client_ip(conn)}, scale, limit)
   end
 
   @doc "Address used to identify the client, honouring proxy headers when trusted."
@@ -67,7 +81,10 @@ defmodule TheGatheringWeb.RateLimit do
 
   defp bucket_config(bucket) do
     bucket_opts = Keyword.fetch!(config(), bucket)
-    %{limit: Keyword.fetch!(bucket_opts, :limit), scale: Keyword.fetch!(bucket_opts, :scale)}
+
+    bucket_opts
+    |> Map.new()
+    |> Map.take([:limit, :scale, :global_limit])
   end
 
   defp config, do: Application.fetch_env!(:the_gathering, __MODULE__)

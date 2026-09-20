@@ -1,7 +1,11 @@
 defmodule TheGatheringWeb.API.MythicTrackImportControllerTest do
   use TheGatheringWeb.ConnCase, async: false
 
+  import Ecto.Query
+
+  alias TheGathering.Accounts.UserToken
   alias TheGathering.AccountsFixtures
+  alias TheGathering.Repo
 
   @json Jason.encode!([
           %{
@@ -56,6 +60,26 @@ defmodule TheGatheringWeb.API.MythicTrackImportControllerTest do
     assert game.created_by_user_id == admin.id
   end
 
+  test "commit requires authentication inside the ten-minute sudo window", %{conn: conn} do
+    expire_sudo(conn, 602)
+
+    assert conn
+           |> post(~p"/api/imports/mythic_track/preview", %{json: @json})
+           |> json_response(200)
+
+    assert %{"errors" => %{"code" => "sudo_required"}} =
+             conn
+             |> post(~p"/api/imports/mythic_track", %{json: @json})
+             |> json_response(403)
+
+    expire_sudo(conn, 598)
+
+    assert %{"data" => %{"created" => 1}} =
+             conn
+             |> post(~p"/api/imports/mythic_track", %{json: @json})
+             |> json_response(200)
+  end
+
   test "invalid export returns 422 with the preview", %{conn: conn} do
     response =
       conn |> post(~p"/api/imports/mythic_track", %{json: "[]"}) |> json_response(422)
@@ -72,5 +96,17 @@ defmodule TheGatheringWeb.API.MythicTrackImportControllerTest do
       conn |> post(~p"/api/imports/mythic_track/preview", %{json: @json}) |> json_response(403)
 
     assert response == %{"errors" => %{"detail" => "Forbidden"}}
+  end
+
+  defp expire_sudo(conn, seconds_ago) do
+    token = get_session(conn, :user_token)
+
+    Repo.update_all(
+      from(user_token in UserToken, where: user_token.token == ^token),
+      set: [
+        authenticated_at:
+          DateTime.utc_now() |> DateTime.add(-seconds_ago, :second) |> DateTime.truncate(:second)
+      ]
+    )
   end
 end

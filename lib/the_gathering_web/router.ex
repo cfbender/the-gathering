@@ -34,6 +34,10 @@ defmodule TheGatheringWeb.Router do
     plug TheGatheringWeb.RateLimit, bucket: :credentials
   end
 
+  pipeline :rate_limit_sudo do
+    plug TheGatheringWeb.RateLimit, bucket: :sudo
+  end
+
   scope "/api", TheGatheringWeb.API do
     pipe_through :api
 
@@ -58,7 +62,6 @@ defmodule TheGatheringWeb.Router do
     pipe_through [:api, :require_authenticated_user]
 
     patch "/session/user", SessionController, :update_profile
-    post "/session/sudo", SessionController, :sudo
     get "/session/remote-decks", RemoteDeckController, :index
 
     get "/cards", CardController, :index
@@ -76,12 +79,23 @@ defmodule TheGatheringWeb.Router do
   end
 
   scope "/api", TheGatheringWeb.API do
+    pipe_through [:api, :require_authenticated_user, :rate_limit_sudo]
+
+    post "/session/sudo", SessionController, :sudo
+  end
+
+  scope "/api", TheGatheringWeb.API do
     pipe_through [:api, :require_authenticated_user, :require_admin]
 
     get "/imports/csv/sample", CSVImportController, :sample
     post "/imports/csv/preview", CSVImportController, :preview
-    post "/imports/csv", CSVImportController, :create
     post "/imports/mythic_track/preview", MythicTrackImportController, :preview
+  end
+
+  scope "/api", TheGatheringWeb.API do
+    pipe_through [:api, :require_authenticated_user, :require_admin, :require_sudo_mode]
+
+    post "/imports/csv", CSVImportController, :create
     post "/imports/mythic_track", MythicTrackImportController, :create
     post "/players/:id/merge", PlayerController, :merge
   end

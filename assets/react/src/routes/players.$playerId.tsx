@@ -4,12 +4,13 @@ import { PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { PlayerAvatar } from "@/components/player-avatar"
 import { RemoteDeckList } from "@/components/remote-deck-list"
+import { SudoPrompt } from "@/components/sudo-prompt"
 import { Merge, Trophy } from "lucide-react"
 import { useState } from "react"
 import { PlayerStats } from "@/components/stats/player-stats"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { CardArtBackground } from "@/components/card-art-background"
-import { errorMessage, useCurrentUser } from "@/lib/auth"
+import { errorMessage, isSudoRequired, useCurrentUser } from "@/lib/auth"
 import { formatDate, getPlayer, getPlayers, mergePlayers } from "@/lib/games"
 import type { Player } from "@/lib/games"
 
@@ -175,11 +176,15 @@ function MergePlayer({ player }: { player: Player }) {
             Merge
           </button>
         </div>
-        {merge.error && (
+        {merge.error && !isSudoRequired(merge.error) && (
           <p className="text-error text-sm">
             {errorMessage(merge.error, "merge") ?? errorMessage(merge.error)}
           </p>
         )}
+        <SudoPrompt
+          error={merge.error}
+          onSuccess={() => merge.variables && merge.mutate(merge.variables)}
+        />
       </div>
       <ConfirmDialog
         open={confirming}

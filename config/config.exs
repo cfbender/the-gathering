@@ -20,10 +20,12 @@ config :the_gathering, TheGathering.Repo,
   default_transaction_mode: :immediate,
   busy_timeout: 5_000
 
-# Per-client limits for the public credential endpoints (admin password login
-# and bootstrap registration). Runtime may set `trust_proxy_headers`.
+# Credential limits. Password sudo uses a tighter per-account-and-client limit
+# plus a global budget so distributed attempts cannot create unbounded bcrypt work.
+# Runtime may set `trust_proxy_headers`.
 config :the_gathering, TheGatheringWeb.RateLimit,
-  credentials: [limit: 10, scale: :timer.minutes(5)]
+  credentials: [limit: 10, scale: :timer.minutes(5)],
+  sudo: [limit: 5, global_limit: 100, scale: :timer.minutes(5)]
 
 # Configure the endpoint
 config :the_gathering, TheGatheringWeb.Endpoint,

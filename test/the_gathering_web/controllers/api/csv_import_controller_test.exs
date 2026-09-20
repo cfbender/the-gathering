@@ -1,7 +1,11 @@
 defmodule TheGatheringWeb.API.CSVImportControllerTest do
   use TheGatheringWeb.ConnCase, async: false
 
+  import Ecto.Query
+
+  alias TheGathering.Accounts.UserToken
   alias TheGathering.AccountsFixtures
+  alias TheGathering.Repo
 
   @csv """
   game_id,date,player,deck,commander,seat,result,mvp_card,duration_minutes,turns,notes
@@ -33,6 +37,20 @@ defmodule TheGatheringWeb.API.CSVImportControllerTest do
     assert game.created_by_user_id == admin.id
   end
 
+  test "commit requires authentication inside the ten-minute sudo window", %{conn: conn} do
+    expire_sudo(conn, 602)
+
+    assert conn |> post(~p"/api/imports/csv/preview", %{csv: @csv}) |> json_response(200)
+
+    assert %{"errors" => %{"code" => "sudo_required"}} =
+             conn |> post(~p"/api/imports/csv", %{csv: @csv}) |> json_response(403)
+
+    expire_sudo(conn, 598)
+
+    assert %{"data" => %{"created" => 1}} =
+             conn |> post(~p"/api/imports/csv", %{csv: @csv}) |> json_response(200)
+  end
+
   test "member receives 403", %{conn: conn} do
     member = AccountsFixtures.user_fixture()
     conn = conn |> recycle() |> log_in_user(member)
@@ -45,5 +63,17 @@ defmodule TheGatheringWeb.API.CSVImportControllerTest do
     conn = get(conn, ~p"/api/imports/csv/sample")
     assert response(conn, 200) =~ "game_id,date,player,deck,commander"
     assert get_resp_header(conn, "content-disposition") |> hd() =~ "the-gathering-games.csv"
+  end
+
+  defp expire_sudo(conn, seconds_ago) do
+    token = get_session(conn, :user_token)
+
+    Repo.update_all(
+      from(user_token in UserToken, where: user_token.token == ^token),
+      set: [
+        authenticated_at:
+          DateTime.utc_now() |> DateTime.add(-seconds_ago, :second) |> DateTime.truncate(:second)
+      ]
+    )
   end
 end
