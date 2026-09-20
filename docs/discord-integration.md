@@ -198,18 +198,22 @@ Winnerless reports are staged in SQLite, so `/won` continues to work after an
 application or Tracker restart. Re-observing the same SpellBot external ID
 updates its staged timestamp, roster, commander names, and scrub-safe normalized
 data rather than creating a duplicate. Without a `game` option, `/won` queries
-the staged report in the invoking channel with the latest SpellBot start time,
-so re-observing an edited older post never displaces a newer game; if the invoker
-was not in that game they are told to pass the ID. Completed reports are
-persisted by the games sink described below and removed from staging only after
-the sink succeeds.
+the latest staged report in the invoking channel that does not already have a
+recorded Discord game with the same external ID. This skips games whose winners
+were previously recorded but which a later SpellBot edit re-staged, and reports
+that no game is available when every staged game in the channel is already
+recorded. If the invoker was not in the latest winnerless game they are told to
+pass the ID. Completed reports are persisted by the games sink described below
+and removed from staging only after the sink succeeds.
 
 Administrators can review staged reports under **Admin → Pending Discord games**,
-choose any listed player as the winner, or discard a report that should not be
-recorded. The corresponding sudo-protected API is `GET
-/api/admin/discord/pending`, `PATCH /api/admin/discord/pending/:id`, and `DELETE
-/api/admin/discord/pending/:id`. Pending reports are retained for 30 days after
-their latest observation. `TheGathering.Discord.StageReport` owns staging,
+which applies the same winnerless filter so re-staged games that already have a
+recorded winner are hidden. They can choose any listed player as the winner, or
+discard a report that should not be recorded. The corresponding sudo-protected
+API is `GET /api/admin/discord/pending`, `PATCH
+/api/admin/discord/pending/:id`, and `DELETE /api/admin/discord/pending/:id`.
+Pending reports are retained for 30 days after their latest observation.
+`TheGathering.Discord.StageReport` owns staging,
 `ResolvePendingGame` owns resolution and discard, and the `Discord` context is
 the entry point used by both Tracker and the admin API. Tracker explicitly
 prunes stale rows after staging; reading the pending list never writes. Game

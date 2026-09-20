@@ -3,6 +3,7 @@ defmodule TheGathering.Discord.TrackerTest do
 
   alias TheGathering.Discord
   alias TheGathering.Discord.{Command, GameReport, PendingGame, Tracker}
+  alias TheGathering.Discord.Sink.Games, as: GamesSink
 
   defmodule TestSink do
     @behaviour TheGathering.Discord.Sink
@@ -154,6 +155,49 @@ defmodule TheGathering.Discord.TrackerTest do
 
     assert {:error, :not_a_player} = Tracker.record_latest_winner("444", "999")
     assert {:error, :no_game_in_channel} = Tracker.record_latest_winner("666", "111")
+  end
+
+  test "without a game ID, skips a re-staged game that already has a winner" do
+    stop_supervised(Tracker)
+    start_supervised!({Tracker, sink: GamesSink})
+
+    older = report()
+
+    newer = %GameReport{
+      report()
+      | external_id: "spellbot:SB20000",
+        played_at: ~U[2025-06-15 18:00:00Z]
+    }
+
+    assert :ok = Tracker.observe(older)
+    assert :ok = Tracker.observe(newer)
+
+    assert {:ok, %GameReport{external_id: "spellbot:SB20000"}} =
+             Tracker.record_winner("SB20000", "111")
+
+    assert :ok = Tracker.observe(newer)
+    assert %PendingGame{} = Discord.get_pending_by_external_id(newer.external_id)
+    assert [pending] = Discord.list_pending()
+    assert pending.external_id == older.external_id
+
+    assert {:ok, completed} = Tracker.record_latest_winner("444", "111")
+    assert completed.external_id == older.external_id
+  end
+
+  test "without a game ID, reports no game when every staged game already has a winner" do
+    stop_supervised(Tracker)
+    start_supervised!({Tracker, sink: GamesSink})
+
+    observed = report()
+    assert :ok = Tracker.observe(observed)
+
+    assert {:ok, %GameReport{external_id: "spellbot:SB12345"}} =
+             Tracker.record_winner("SB12345", "111")
+
+    assert :ok = Tracker.observe(observed)
+    assert %PendingGame{} = Discord.get_pending_by_external_id(observed.external_id)
+    assert Discord.list_pending() == []
+    assert {:error, :no_game_in_channel} = Tracker.record_latest_winner("444", "111")
   end
 
   test "slash command without options uses the invoking channel" do
