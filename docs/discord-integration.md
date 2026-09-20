@@ -180,7 +180,7 @@ Discord gateway (MESSAGE_UPDATE / MESSAGE_CREATE)
         │ author ID + embed contract validation
         ▼
 GameReport (winner_discord_ids: []) ───────┐
-        │ cached in memory                 │
+        │ staged in SQLite                 │
         │                                  ▼
 Player runs /won [game:SB12345]     pluggable Sink
         │                                  ▲
@@ -194,18 +194,31 @@ membership check + ephemeral reply         │
 name/nullable commander, winner Discord IDs, and scrub-safe raw embed data.
 Commanders are `nil` because the ready embed does not contain them.
 
-The observed roster cache is in memory, so a restart after game start currently
-makes `/won` return a clear “haven't seen that game” error. Without a `game`
-option, `/won` picks the report in the invoking channel with the latest SpellBot
-start time, so re-observing an edited older post never displaces a newer game;
-if the invoker was not in that game they are told to pass the ID. Completed reports
-are persisted by the games sink described below.
+Winnerless reports are staged in SQLite, so `/won` continues to work after an
+application or Tracker restart. Re-observing the same SpellBot external ID
+updates its staged timestamp, roster, commander names, and scrub-safe normalized
+data rather than creating a duplicate. Without a `game` option, `/won` queries
+the staged report in the invoking channel with the latest SpellBot start time,
+so re-observing an edited older post never displaces a newer game; if the invoker
+was not in that game they are told to pass the ID. Completed reports are
+persisted by the games sink described below and removed from staging only after
+the sink succeeds.
+
+Administrators can review staged reports under **Admin → Pending Discord games**,
+choose any listed player as the winner, or discard a report that should not be
+recorded. The corresponding sudo-protected API is `GET
+/api/admin/discord/pending`, `PATCH /api/admin/discord/pending/:id`, and `DELETE
+/api/admin/discord/pending/:id`. Pending reports are retained for 30 days after
+their latest observation and stale rows are pruned when a report is observed or
+the pending list is read. This bounds storage while leaving a month for `/won`
+or administrator recovery. The staged data is normalized; raw Discord payloads
+are never stored in full or logged.
 
 ## Game tracking
 
 The Discord supervisor uses `TheGathering.Discord.Sink.Games` by default. A
-winnerless SpellBot start remains pending in the tracker's in-memory roster
-cache rather than being recorded as a draw. When a listed player uses `/won`,
+winnerless SpellBot start remains in durable staging rather than being recorded
+as a draw. When a listed player uses `/won`,
 the sink creates or reuses players by Discord ID and records one `games` row
 with `source: "discord"`, the SpellBot ID as `external_id`, and seats in the
 order SpellBot listed them. The reporting player is the winner and every other

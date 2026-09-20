@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
 import type { FormEvent } from "react"
-import { BarChart3, Link2, Shield, Users } from "lucide-react"
+import { BarChart3, Bot, Link2, Shield, Trash2, Trophy, Users } from "lucide-react"
 import { useState } from "react"
 import { SudoPrompt } from "@/components/sudo-prompt"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -22,6 +22,19 @@ interface AdminSettings {
   detailed_stats_from: string | null
 }
 
+interface PendingDiscordGame {
+  id: number
+  external_id: string
+  guild_id: string
+  channel_id: string
+  played_at: string
+  players: Array<{
+    discord_id: string
+    display_name: string
+    commander_name: string | null
+  }>
+}
+
 export const Route = createFileRoute("/admin/users")({
   beforeLoad: ({ context, location }) => requireAdmin(context.queryClient, location.href),
   component: AdminUsersPage,
@@ -38,6 +51,10 @@ function AdminUsersPage() {
     queryKey: ["admin", "settings"],
     queryFn: async () => (await api<Data<AdminSettings>>("/api/admin/settings")).data,
   })
+  const pendingDiscordGames = useQuery({
+    queryKey: ["admin", "discord", "pending"],
+    queryFn: async () => (await api<Data<PendingDiscordGame[]>>("/api/admin/discord/pending")).data,
+  })
   const toggleRegistration = useMutation({
     mutationFn: (registration_enabled: boolean) =>
       api<Data<AdminSettings>>("/api/admin/settings", {
@@ -49,7 +66,8 @@ function AdminUsersPage() {
       void queryClient.invalidateQueries({ queryKey: ["registration"] })
     },
   })
-  const sudoError = users.error ?? settings.error ?? toggleRegistration.error
+  const sudoError =
+    users.error ?? settings.error ?? pendingDiscordGames.error ?? toggleRegistration.error
 
   if (isSudoRequired(sudoError)) {
     return (
@@ -95,6 +113,8 @@ function AdminUsersPage() {
         }}
       />
 
+      <PendingDiscordGames games={pendingDiscordGames.data} error={pendingDiscordGames.error} />
+
       <StatsCutoff settings={settings.data} />
 
       <section aria-labelledby="accounts-heading">
@@ -110,6 +130,135 @@ function AdminUsersPage() {
         </div>
       </section>
     </div>
+  )
+}
+
+function PendingDiscordGames({
+  games,
+  error,
+}: {
+  games: PendingDiscordGame[] | undefined
+  error: Error | null
+}) {
+  return (
+    <section aria-labelledby="pending-discord-heading">
+      <h2
+        id="pending-discord-heading"
+        className="mb-1 flex items-center gap-2 text-lg font-semibold"
+      >
+        <Bot className="size-5" /> Pending Discord games
+      </h2>
+      <p className="text-base-content/65 mb-3 text-sm">
+        SpellBot games awaiting a winner. Unresolved reports are kept for 30 days.
+      </p>
+      {error && !isSudoRequired(error) && (
+        <div className="alert alert-error mb-3">{errorMessage(error)}</div>
+      )}
+      {games && games.length === 0 && (
+        <div className="border-base-300 text-base-content/60 rounded-box border border-dashed p-5 text-sm">
+          No pending Discord games.
+        </div>
+      )}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {games?.map((game) => (
+          <PendingDiscordGameCard key={game.id} game={game} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function PendingDiscordGameCard({ game }: { game: PendingDiscordGame }) {
+  const queryClient = useQueryClient()
+  const [winner, setWinner] = useState("")
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["admin", "discord", "pending"] })
+    void queryClient.invalidateQueries({ queryKey: ["games"] })
+    void queryClient.invalidateQueries({ queryKey: ["players"] })
+    void queryClient.invalidateQueries({ queryKey: ["decks"] })
+  }
+  const resolve = useMutation({
+    mutationFn: () =>
+      api<void>(`/api/admin/discord/pending/${game.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ winner_discord_id: winner }),
+      }),
+    onSuccess: refresh,
+  })
+  const discard = useMutation({
+    mutationFn: () => api<void>(`/api/admin/discord/pending/${game.id}`, { method: "DELETE" }),
+    onSuccess: refresh,
+  })
+  const gameId = game.external_id.replace("spellbot:", "")
+  const mutationError = resolve.error ?? discard.error
+
+  return (
+    <article className="card bg-base-200 border-base-300 border">
+      <div className="card-body gap-4 p-4 sm:p-5">
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-semibold">{gameId}</h3>
+            <time className="text-base-content/60 text-xs" dateTime={game.played_at}>
+              {new Date(game.played_at).toLocaleString()}
+            </time>
+          </div>
+          <p className="text-base-content/55 mt-1 text-xs">Channel {game.channel_id}</p>
+        </div>
+        <ul className="grid gap-1 text-sm">
+          {game.players.map((player) => (
+            <li key={player.discord_id} className="flex justify-between gap-3">
+              <span>{player.display_name}</span>
+              {player.commander_name && (
+                <span className="text-base-content/60 truncate">{player.commander_name}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <select
+            className="select select-sm min-w-0 flex-1"
+            aria-label={`Winner for ${gameId}`}
+            value={winner}
+            onChange={(event) => setWinner(event.target.value)}
+          >
+            <option value="">Choose winner</option>
+            {game.players.map((player) => (
+              <option key={player.discord_id} value={player.discord_id}>
+                {player.display_name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={!winner || resolve.isPending || discard.isPending}
+            onClick={() => resolve.mutate()}
+          >
+            <Trophy className="size-4" /> Record winner
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm text-error"
+            disabled={resolve.isPending || discard.isPending}
+            onClick={() => setConfirmDiscard(true)}
+          >
+            <Trash2 className="size-4" /> Discard
+          </button>
+        </div>
+        {mutationError && <p className="text-error text-sm">{errorMessage(mutationError)}</p>}
+      </div>
+      <ConfirmDialog
+        open={confirmDiscard}
+        onOpenChange={setConfirmDiscard}
+        title={`Discard ${gameId}?`}
+        confirmLabel="Discard report"
+        destructive
+        onConfirm={() => discard.mutate()}
+      >
+        This removes the pending report without adding it to game history.
+      </ConfirmDialog>
+    </article>
   )
 }
 

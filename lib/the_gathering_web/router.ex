@@ -96,6 +96,9 @@ defmodule TheGatheringWeb.Router do
     put "/users/:id/player", AdminUserController, :link_player
     get "/settings", AdminSettingsController, :show
     patch "/settings", AdminSettingsController, :update
+    get "/discord/pending", AdminDiscordPendingController, :index
+    patch "/discord/pending/:id", AdminDiscordPendingController, :update
+    delete "/discord/pending/:id", AdminDiscordPendingController, :delete
     post "/catalog/sync", CatalogController, :sync
   end
 

@@ -1,7 +1,7 @@
 defmodule TheGathering.Discord.TrackerTest do
-  use ExUnit.Case
+  use TheGathering.DataCase, async: false
 
-  alias TheGathering.Discord.{Command, GameReport, Tracker}
+  alias TheGathering.Discord.{Command, GameReport, PendingGame, Tracker}
 
   defmodule TestSink do
     @behaviour TheGathering.Discord.Sink
@@ -30,6 +30,52 @@ defmodule TheGathering.Discord.TrackerTest do
     assert completed.winner_discord_ids == ["111"]
     assert completed.raw.winner_reported_by == "111"
     assert_receive {:report, ^completed}
+    assert PendingGame.get_by_external_id(report.external_id) == nil
+  end
+
+  test "staged reports survive a tracker restart" do
+    report = report()
+    assert :ok = Tracker.observe(report)
+    assert_receive {:report, ^report}
+
+    stop_supervised(Tracker)
+    start_supervised!({Tracker, sink: TestSink})
+
+    assert {:ok, completed} = Tracker.record_winner("SB12345", "111")
+    assert completed.external_id == report.external_id
+    assert_receive {:report, ^completed}
+  end
+
+  test "replaying a report updates its staged normalized data" do
+    assert :ok = Tracker.observe(report())
+    assert_receive {:report, _report}
+
+    replay = %GameReport{
+      report()
+      | played_at: ~U[2025-06-16 12:00:00Z],
+        players: [
+          %{discord_id: "111", display_name: "Aria Updated", commander_name: "Alela"},
+          %{discord_id: "222", display_name: "Bryn", commander_name: nil}
+        ]
+    }
+
+    assert :ok = Tracker.observe(replay)
+    assert_receive {:report, ^replay}
+
+    pending = PendingGame.get_by_external_id(replay.external_id)
+    assert pending.played_at == replay.played_at
+    assert PendingGame.to_report(pending).players == replay.players
+  end
+
+  test "pending reports expire 30 days after their latest observation" do
+    assert :ok = Tracker.observe(report())
+    assert_receive {:report, _report}
+
+    stale_at = DateTime.utc_now() |> DateTime.add(-31, :day) |> DateTime.truncate(:second)
+    Repo.update_all(PendingGame, set: [updated_at: stale_at])
+
+    assert Tracker.list_pending() == []
+    assert PendingGame.get_by_external_id("spellbot:SB12345") == nil
   end
 
   test "does not let a non-player report themselves as winner" do
