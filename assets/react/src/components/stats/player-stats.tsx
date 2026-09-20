@@ -4,6 +4,7 @@ import { Flame, Medal, Target } from "lucide-react"
 import { CardArtBackground } from "@/components/card-art-background"
 import { BarChart, LineChart } from "./charts"
 import { ColorSection } from "./color-section"
+import { GameLengths } from "./game-lengths"
 import { StatCard } from "./stat-card"
 import { byWinRateThenName, getPlayerStats, sinceLabel } from "@/lib/stats"
 
@@ -62,6 +63,12 @@ export function PlayerStats({ playerId }: { playerId: string }) {
         </div>
       </div>
       <ColorSection rows={stats.color_win_rates} eyebrow="Their colors" />
+      <GameLengths
+        gameLengths={stats.game_lengths}
+        averageDuration={stats.average_duration_minutes}
+        averageTurns={stats.average_turns}
+        since={since}
+      />
       {stats.mvp_cards.length > 0 && (
         <div>
           <h3 className="mb-3 font-bold">

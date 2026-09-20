@@ -39,13 +39,35 @@ export interface RecentStatGame {
   winner: { id: number; name: string } | null
 }
 
+export interface MatchupRow extends RecordCounts {
+  id: number
+  name: string
+  opponent_id: number
+}
+
+export interface HistogramBin {
+  from: number
+  to: number
+  games: number
+}
+
+export interface GameLengths {
+  durations: HistogramBin[]
+  turns: HistogramBin[]
+  fastest_win: RecentStatGame | null
+  longest_game: RecentStatGame | null
+}
+
 export interface OverviewStats {
   /** ISO date; seat, timing, and MVP figures only include games from this date on. */
   detailed_stats_from: string | null
   games_count: number
   average_duration_minutes: number | null
   average_turns: number | null
+  game_lengths: GameLengths
+  game_times: string[]
   leaderboard: NamedRecordRow[]
+  matchups: MatchupRow[]
   games_by_month: { month: string; games: number }[]
   seat_win_rates: NamedRecordRow[]
   color_win_rates: NamedRecordRow[]
@@ -57,6 +79,9 @@ export interface OverviewStats {
 export interface PlayerStats {
   detailed_stats_from: string | null
   record: RecordCounts
+  average_duration_minutes: number | null
+  average_turns: number | null
+  game_lengths: GameLengths
   streaks: { current_wins: number; longest_wins: number }
   recent_form: ("win" | "loss" | "draw")[]
   win_rate_over_time: TrendPoint[]
