@@ -5,7 +5,7 @@ import { CardArtBackground } from "@/components/card-art-background"
 import { BarChart, LineChart } from "./charts"
 import { ColorSection } from "./color-section"
 import { StatCard } from "./stat-card"
-import { getPlayerStats, sinceLabel } from "@/lib/stats"
+import { byWinRateThenName, getPlayerStats, sinceLabel } from "@/lib/stats"
 
 export function PlayerStats({ playerId }: { playerId: string }) {
   const query = useQuery({
@@ -58,7 +58,7 @@ export function PlayerStats({ playerId }: { playerId: string }) {
         </div>
         <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
           <h3 className="mb-4 font-bold">Deck performance</h3>
-          <BarChart rows={stats.decks} />
+          <BarChart rows={byWinRateThenName(stats.decks)} />
         </div>
       </div>
       <ColorSection rows={stats.color_win_rates} eyebrow="Their colors" />

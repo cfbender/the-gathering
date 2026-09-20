@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vite-plus/test"
-import { leaderboardRows, linePoints, sortByMetric, type NamedRecordRow } from "./stats"
+import {
+  byWinRateThenName,
+  leaderboardRows,
+  linePoints,
+  sortByMetric,
+  type NamedRecordRow,
+} from "./stats"
 
 describe("linePoints", () => {
   it("maps asymmetric percentage values to chart coordinates", () => {
@@ -31,6 +37,14 @@ describe("leaderboardRows", () => {
   it("keeps players exactly at the floor and breaks ties by games played", () => {
     const rows = [row("two", 2, 1), row("eight", 8, 4)]
     expect(leaderboardRows(rows).map((r) => r.id)).toEqual(["eight", "two"])
+  })
+})
+
+describe("byWinRateThenName", () => {
+  it("ranks by win rate, then alphabetically regardless of games played or case", () => {
+    const rows = [row("zephyr", 10, 5), row("Alpha", 2, 1), row("hot", 1, 1), row("beta", 4, 2)]
+    expect(byWinRateThenName(rows).map((r) => r.id)).toEqual(["hot", "Alpha", "beta", "zephyr"])
+    expect(rows.map((r) => r.id)).toEqual(["zephyr", "Alpha", "hot", "beta"])
   })
 })
 
