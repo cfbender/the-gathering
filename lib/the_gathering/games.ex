@@ -44,6 +44,22 @@ defmodule TheGathering.Games do
     |> Repo.insert()
   end
 
+  @doc """
+  Whether `user` may edit or remove `player` and that player's decks.
+
+  Administrators manage everyone. Members manage their own linked player and
+  unclaimed guests (players without an account), since nobody else could keep
+  those imported or Discord-only players tidy. Another member's player is
+  off-limits.
+  """
+  def can_manage_player?(%User{role: "admin"}, _player), do: true
+  def can_manage_player?(%User{}, %Player{user_id: nil}), do: true
+  def can_manage_player?(%User{id: id}, %Player{user_id: id}), do: true
+  def can_manage_player?(_user, _player), do: false
+
+  def can_manage_deck?(%User{} = user, %Deck{player_id: player_id}),
+    do: can_manage_player?(user, Repo.get!(Player, player_id))
+
   def update_player(%Player{} = player, attrs),
     do: player |> Player.changeset(attrs) |> Repo.update()
 
