@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
+import { ColorIdentity } from "@/components/mana-symbols"
 import { PlayerAvatar } from "@/components/player-avatar"
 import { Merge, Trophy } from "lucide-react"
 import { useState } from "react"
@@ -51,7 +52,10 @@ function PlayerDetailPage() {
               className="card border-base-300 bg-base-200 border"
             >
               <div className="card-body p-4">
-                <strong>{deck.name}</strong>
+                <span className="flex items-center justify-between gap-2">
+                  <strong>{deck.name}</strong>
+                  <ColorIdentity colors={deck.color_identity} />
+                </span>
                 <span className="text-base-content/60 text-sm">{deck.commander_name}</span>
               </div>
             </Link>
