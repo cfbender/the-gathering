@@ -11,8 +11,8 @@ defmodule TheGathering.Games.Game do
     field :notes, :string
     field :source, :string, default: "manual"
     field :external_id, :string
-    field :created_by_user_id, :integer
 
+    belongs_to :created_by, TheGathering.Accounts.User, foreign_key: :created_by_user_id
     has_many :seats, GamePlayer, on_replace: :delete
 
     timestamps(type: :utc_datetime)
@@ -26,8 +26,7 @@ defmodule TheGathering.Games.Game do
       :turns,
       :notes,
       :source,
-      :external_id,
-      :created_by_user_id
+      :external_id
     ])
     |> validate_required([:played_at, :source])
     |> validate_inclusion(:source, ~w(manual csv mythic_track discord))
@@ -36,7 +35,11 @@ defmodule TheGathering.Games.Game do
     |> cast_assoc(:seats, required: true, with: &GamePlayer.changeset/2)
     |> validate_seats()
     |> unique_constraint([:source, :external_id])
+    |> foreign_key_constraint(:created_by_user_id)
   end
+
+  def put_created_by(changeset, user_id),
+    do: put_change(changeset, :created_by_user_id, user_id)
 
   defp validate_seats(changeset) do
     seats = get_field(changeset, :seats, [])

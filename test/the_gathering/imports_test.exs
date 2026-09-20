@@ -1,6 +1,7 @@
 defmodule TheGathering.ImportsTest do
   use TheGathering.DataCase, async: false
 
+  alias TheGathering.AccountsFixtures
   alias TheGathering.Games
   alias TheGathering.Imports
 
@@ -56,12 +57,17 @@ defmodule TheGathering.ImportsTest do
   end
 
   test "imports players, decks, and games and skips the same normalized game on re-import" do
-    assert {:ok, %{created: 1, skipped: 0, game_ids: [game_id]}} = Imports.import_csv(@csv, 42)
-    assert {:ok, %{created: 0, skipped: 1, game_ids: [^game_id]}} = Imports.import_csv(@csv, 42)
+    user = AccountsFixtures.user_fixture()
+
+    assert {:ok, %{created: 1, skipped: 0, game_ids: [game_id]}} =
+             Imports.import_csv(@csv, user.id)
+
+    assert {:ok, %{created: 0, skipped: 1, game_ids: [^game_id]}} =
+             Imports.import_csv(@csv, user.id)
 
     game = Games.get_game!(game_id)
     assert game.source == "csv"
-    assert game.created_by_user_id == 42
+    assert game.created_by_user_id == user.id
 
     assert Enum.map(game.seats, &{&1.player.name, &1.deck.name, &1.mvp_card_name}) == [
              {"Alice", "Birds", "Swan Song"},

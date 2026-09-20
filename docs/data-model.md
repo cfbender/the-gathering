@@ -9,7 +9,7 @@ The game tracker is owned by `TheGathering.Games`. One installation currently re
 | Column | Notes |
 | --- | --- |
 | `name` | Required; unique with SQLite `NOCASE` collation. |
-| `user_id` | Nullable, unique integer. Intentionally has no foreign key until `TheGathering.Accounts` lands. |
+| `user_id` | Nullable, unique foreign key to `users`; deletes are restricted. |
 | `discord_id` | Nullable, unique string used for importer matching. |
 | `archived_at` | Nullable UTC timestamp; archived players are hidden from normal lists. |
 
@@ -30,13 +30,15 @@ Each deck belongs to a player. `name` is case-insensitively unique within that p
 | `notes` | Nullable text. |
 | `source` | `manual`, `csv`, or `discord`. |
 | `external_id` | Nullable; unique together with `source` for idempotent imports. |
-| `created_by_user_id` | Nullable integer with no FK until auth integration. |
+| `created_by_user_id` | Nullable foreign key to the user that created/imported the game; deletes are restricted. |
 
 ### `game_players`
 
 This is a seat/result fact, not a generic join table. It stores the game's 1-based turn order, player, optional deck, `win`/`loss`/`draw` result, optional elimination facts, optional Scryfall MVP UUID plus name snapshot, and notes. Player and seat are each unique per game. A game must have two through six consecutive seats and either exactly one winner or all draws. The context also verifies that every selected deck belongs to the seat's player.
 
 These normalized rows make player, deck, commander, matchup, streak, duration, and turn statistics queryable without decoding JSON.
+
+Users are soft-disabled rather than deleted. Both user foreign keys therefore use `ON DELETE RESTRICT` so an accidental hard delete cannot silently erase player linkage or game authorship.
 
 ## Context contract for importers
 

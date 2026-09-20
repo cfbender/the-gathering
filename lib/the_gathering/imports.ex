@@ -92,11 +92,10 @@ defmodule TheGathering.Imports do
           notes: game.notes,
           source: source,
           external_id: game.external_id,
-          created_by_user_id: user_id,
           seats: seats
         }
 
-        case Games.create_game(attrs) do
+        case Games.create_game(attrs, user_id) do
           {:ok, created} ->
             %{result | created: result.created + 1, game_ids: [created.id | result.game_ids]}
 

@@ -220,12 +220,13 @@ defmodule TheGathering.Accounts do
       nil ->
         name = available_player_name(user.display_name, user.discord_id)
 
-        %Player{}
-        |> Player.changeset(%{name: name, user_id: user.id, discord_id: user.discord_id})
-        |> Repo.insert!()
+        case Games.create_player(%{name: name, discord_id: user.discord_id}, user.id) do
+          {:ok, player} -> player
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
 
       %Player{user_id: nil} = player ->
-        player |> Player.changeset(%{user_id: user.id}) |> Repo.update!()
+        player |> Player.changeset(%{}) |> Player.put_user(user.id) |> Repo.update!()
 
       %Player{user_id: user_id} when user_id == user.id ->
         :ok

@@ -4,12 +4,12 @@ defmodule TheGathering.Games.Player do
 
   schema "players" do
     field :name, :string
-    field :user_id, :integer
     field :discord_id, :string
     field :archived_at, :utc_datetime
     # Populated from the linked user by `Games.list_players/1` and `Games.get_player!/1`.
     field :avatar_url, :string, virtual: true
 
+    belongs_to :user, TheGathering.Accounts.User
     has_many :decks, TheGathering.Games.Deck
     has_many :game_players, TheGathering.Games.GamePlayer
 
@@ -18,7 +18,7 @@ defmodule TheGathering.Games.Player do
 
   def changeset(player, attrs) do
     player
-    |> cast(attrs, [:name, :user_id, :discord_id, :archived_at])
+    |> cast(attrs, [:name, :discord_id, :archived_at])
     |> update_change(:name, &String.trim/1)
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 100)
@@ -26,5 +26,8 @@ defmodule TheGathering.Games.Player do
     |> unique_constraint(:name)
     |> unique_constraint(:user_id)
     |> unique_constraint(:discord_id)
+    |> foreign_key_constraint(:user_id)
   end
+
+  def put_user(changeset, user_id), do: put_change(changeset, :user_id, user_id)
 end
