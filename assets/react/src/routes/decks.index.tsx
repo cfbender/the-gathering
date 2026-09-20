@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
+import { ColorIdentity } from "@/components/mana-symbols"
 import { Library } from "lucide-react"
 import { getDecks } from "@/lib/games"
 
@@ -39,9 +40,7 @@ function DecksPage() {
                 {deck.commander_name}
                 {deck.partner_name && ` + ${deck.partner_name}`}
               </p>
-              {deck.color_identity && (
-                <span className="font-mono text-xs tracking-widest">{deck.color_identity}</span>
-              )}
+              <ColorIdentity colors={deck.color_identity} />
             </div>
           </Link>
         ))}
