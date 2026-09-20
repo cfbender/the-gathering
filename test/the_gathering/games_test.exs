@@ -1,6 +1,8 @@
 defmodule TheGathering.GamesTest do
   use TheGathering.DataCase, async: false
 
+  alias TheGathering.Accounts.User
+  alias TheGathering.AccountsFixtures
   alias TheGathering.Games
 
   defp player(name), do: Games.create_player(%{name: name}) |> elem(1)
@@ -104,6 +106,34 @@ defmodule TheGathering.GamesTest do
     assert "has already been taken" in errors_on(changeset).name
     assert {:ok, found} = Games.find_or_create_player_by_name("alice")
     assert found.id == alice.id
+  end
+
+  test "players carry the linked user's avatar, and nil when unlinked or the user has none" do
+    linked_user = AccountsFixtures.user_fixture()
+
+    {:ok, linked_user} =
+      linked_user
+      |> User.discord_profile_changeset(%{avatar_url: "https://cdn/av.png"})
+      |> Repo.update()
+
+    bare_user = AccountsFixtures.user_fixture()
+
+    {:ok, linked} = Games.create_player(%{name: "Linked", user_id: linked_user.id})
+    {:ok, bare} = Games.create_player(%{name: "Bare", user_id: bare_user.id})
+    {:ok, orphan} = Games.create_player(%{name: "Orphan", user_id: 999_999})
+    {:ok, unlinked} = Games.create_player(%{name: "Unlinked"})
+
+    avatars = Games.list_players() |> Map.new(&{&1.id, &1.avatar_url})
+
+    assert avatars == %{
+             linked.id => "https://cdn/av.png",
+             bare.id => nil,
+             orphan.id => nil,
+             unlinked.id => nil
+           }
+
+    assert Games.get_player!(linked.id).avatar_url == "https://cdn/av.png"
+    assert Games.get_player!(orphan.id).avatar_url == nil
   end
 
   test "list_games combines filters, paginates, and orders newest first" do

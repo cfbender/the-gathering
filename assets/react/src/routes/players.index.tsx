@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
+import { PlayerAvatar } from "@/components/player-avatar"
 import { UserPlus, Users } from "lucide-react"
 import { getPlayers } from "@/lib/games"
 
@@ -33,11 +34,7 @@ function PlayersPage() {
             className="card border-base-300 bg-base-200 hover:border-primary border"
           >
             <div className="card-body p-5">
-              <div className="avatar placeholder">
-                <div className="bg-primary text-primary-content w-12 rounded-full">
-                  <span className="text-lg">{player.name.slice(0, 2).toUpperCase()}</span>
-                </div>
-              </div>
+              <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} />
               <h2 className="mt-2 truncate text-xl font-bold" title={player.name}>
                 {player.name}
               </h2>
