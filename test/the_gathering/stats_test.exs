@@ -1,9 +1,46 @@
 defmodule TheGathering.StatsTest do
   use TheGathering.DataCase, async: false
 
-  alias TheGathering.{Accounts, Games, Stats}
+  alias TheGathering.{Accounts, Games, Repo, Stats}
+  alias TheGathering.Catalog.Card
 
   setup do
+    Repo.insert!(%Card{
+      id: "kangee",
+      oracle_id: "oracle-kangee",
+      name: "Kangee, Sky Warden",
+      normalized_name: "kangee, sky warden",
+      cmc: 0.0,
+      type_line: "Legendary Creature",
+      colors: [],
+      color_identity: [],
+      image_uris: %{"art_crop" => "https://cards.example/kangee-art.jpg"},
+      set_code: "tst",
+      collector_number: "1",
+      layout: "normal",
+      rarity: "rare",
+      commander_legal: true,
+      can_be_commander: true
+    })
+
+    Repo.insert!(%Card{
+      id: "swords",
+      oracle_id: "oracle-swords",
+      name: "Swords to Plowshares",
+      normalized_name: "swords to plowshares",
+      cmc: 1.0,
+      type_line: "Instant",
+      colors: [],
+      color_identity: [],
+      image_uris: %{"art_crop" => "https://cards.example/swords-art.jpg"},
+      set_code: "tst",
+      collector_number: "2",
+      layout: "normal",
+      rarity: "rare",
+      commander_legal: true,
+      can_be_commander: false
+    })
+
     players =
       for name <- ~w(Alice Bob Cara), into: %{} do
         {:ok, player} = Games.create_player(%{name: name})
@@ -14,6 +51,7 @@ defmodule TheGathering.StatsTest do
       Games.create_deck(%{
         player_id: players["Alice"].id,
         name: "Birds",
+        commander_card_id: "kangee",
         commander_name: "Kangee, Sky Warden",
         color_identity: "WU"
       })
@@ -71,6 +109,9 @@ defmodule TheGathering.StatsTest do
 
     wu = Enum.find(stats.color_win_rates, &(&1.id == "WU"))
     assert %{games: 3, wins: 2, win_rate: 66.7} = wu
+
+    assert %{id: "Kangee, Sky Warden", art_crop_url: "https://cards.example/kangee-art.jpg"} =
+             Enum.find(stats.commanders, &(&1.id == "Kangee, Sky Warden"))
   end
 
   test "player stats compute ordered current and longest streaks plus head-to-head", %{
@@ -117,7 +158,14 @@ defmodule TheGathering.StatsTest do
     assert player.streaks == %{current_wins: 0, longest_wins: 2}
     assert %{games: 2, wins: 1} = Enum.find(player.seat_win_rates, &(&1.id == 1))
     assert player.favorite_seat == 1
-    assert [%{name: "Swords to Plowshares", mentions: 1}] = player.mvp_cards
+
+    assert [
+             %{
+               name: "Swords to Plowshares",
+               mentions: 1,
+               art_crop_url: "https://cards.example/swords-art.jpg"
+             }
+           ] = player.mvp_cards
 
     # Move the cutoff past every timed game: the record stays, the averages disappear.
     {:ok, _} = Accounts.update_settings(%{detailed_stats_from: ~D[2026-03-05]})
@@ -143,6 +191,7 @@ defmodule TheGathering.StatsTest do
           deck_id: decks[name].id,
           seat: seat,
           result: if(name == winner, do: "win", else: "loss"),
+          mvp_card_id: if(name == "Alice" and winner == "Alice", do: "swords"),
           mvp_card_name: if(name == "Alice" and winner == "Alice", do: "Swords to Plowshares")
         }
       end)

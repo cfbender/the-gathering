@@ -19,8 +19,10 @@ export interface Deck {
   name: string
   commander_card_id: string | null
   commander_name: string
+  commander_art_crop_url: string | null
   partner_card_id: string | null
   partner_name: string | null
+  partner_art_crop_url: string | null
   color_identity: string
   decklist_url: string | null
   decklist_source: string | null
@@ -39,6 +41,7 @@ export interface Seat {
   result: "win" | "loss" | "draw"
   mvp_card_id: string | null
   mvp_card_name: string | null
+  mvp_art_crop_url: string | null
   notes: string | null
   player: Player
   deck: Deck | null

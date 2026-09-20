@@ -11,7 +11,7 @@ defmodule TheGathering.Stats do
 
   import Ecto.Query
 
-  alias TheGathering.Accounts
+  alias TheGathering.{Accounts, Catalog}
   alias TheGathering.Games.{Deck, Game, GamePlayer, Player}
   alias TheGathering.Repo
 
@@ -21,6 +21,7 @@ defmodule TheGathering.Stats do
     cutoff = detailed_stats_from()
     detailed = detailed_games(games, cutoff)
     detailed_seats = Enum.flat_map(detailed, & &1.seats)
+    card_art = card_art(seats)
 
     %{
       detailed_stats_from: cutoff,
@@ -48,7 +49,16 @@ defmodule TheGathering.Stats do
         seats
         |> Enum.reject(&is_nil(&1.deck))
         |> grouped_records(
-          &%{id: &1.deck.commander_name, name: &1.deck.commander_name},
+          &%{
+            id: &1.deck.commander_name,
+            name: &1.deck.commander_name,
+            art_crop_url:
+              Catalog.art_crop_url(
+                card_art,
+                &1.deck.commander_card_id,
+                &1.deck.commander_name
+              )
+          },
           fn seat ->
             seat.deck.commander_name
           end
@@ -70,6 +80,8 @@ defmodule TheGathering.Stats do
         |> detailed_games(cutoff)
         |> Enum.map(&Enum.find(&1.seats, fn seat -> seat.player_id == player.id end))
 
+      card_art = card_art(detailed_seats)
+
       %{
         detailed_stats_from: cutoff,
         player: %{id: player.id, name: player.name},
@@ -86,7 +98,7 @@ defmodule TheGathering.Stats do
           grouped_records(detailed_seats, &%{id: &1.seat, name: "Seat #{&1.seat}"}, & &1.seat),
         favorite_seat: favorite_seat(detailed_seats),
         best_seat: best_seat(detailed_seats),
-        mvp_cards: mvp_cards(detailed_seats)
+        mvp_cards: mvp_cards(detailed_seats, card_art)
       }
     end
   end
@@ -214,13 +226,36 @@ defmodule TheGathering.Stats do
     |> grouped_records(& &1.player, & &1.player_id)
   end
 
-  defp mvp_cards(seats) do
+  defp mvp_cards(seats, card_art) do
     seats
     |> Enum.reject(&(is_nil(&1.mvp_card_name) or &1.mvp_card_name == ""))
     |> Enum.group_by(&{&1.mvp_card_id, &1.mvp_card_name})
-    |> Enum.map(fn {{id, name}, rows} -> %{id: id, name: name, mentions: length(rows)} end)
+    |> Enum.map(fn {{id, name}, rows} ->
+      %{
+        id: id,
+        name: name,
+        mentions: length(rows),
+        art_crop_url: Catalog.art_crop_url(card_art, id, name)
+      }
+    end)
     |> Enum.sort_by(&{-&1.mentions, &1.name})
     |> Enum.take(8)
+  end
+
+  defp card_art(seats) do
+    Catalog.art_crop_urls(
+      Enum.flat_map(seats, fn seat ->
+        deck_refs =
+          if seat.deck,
+            do: [
+              {seat.deck.commander_card_id, seat.deck.commander_name},
+              {seat.deck.partner_card_id, seat.deck.partner_name}
+            ],
+            else: []
+
+        [{seat.mvp_card_id, seat.mvp_card_name} | deck_refs]
+      end)
+    )
   end
 
   defp favorite_seat([]), do: nil
@@ -261,7 +296,10 @@ defmodule TheGathering.Stats do
   defp percentage(part, total), do: Float.round(part * 100 / total, 1)
 
   defp entity(%{id: id, name: name} = value),
-    do: %{id: id, name: name} |> maybe_put(:commander_name, Map.get(value, :commander_name))
+    do:
+      %{id: id, name: name}
+      |> maybe_put(:commander_name, Map.get(value, :commander_name))
+      |> maybe_put(:art_crop_url, Map.get(value, :art_crop_url))
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

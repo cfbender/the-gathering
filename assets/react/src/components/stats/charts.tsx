@@ -1,4 +1,5 @@
 import { linePoints, type RecordStat, type TrendPoint } from "@/lib/stats"
+import { CardArtBackground } from "@/components/card-art-background"
 
 export function BarChart({
   rows,
@@ -11,14 +12,18 @@ export function BarChart({
   return (
     <div className="space-y-3">
       {rows.map((row) => (
-        <div key={row.id}>
-          <div className="mb-1 flex justify-between gap-3 text-sm">
+        <div
+          key={row.id}
+          className={row.art_crop_url ? "relative overflow-hidden rounded-lg px-3 py-2" : undefined}
+        >
+          <CardArtBackground imageUrl={row.art_crop_url} />
+          <div className="text-base-content relative z-10 mb-1 flex justify-between gap-3 text-sm">
             <span className="truncate font-medium">{row.name}</span>
-            <span className="text-base-content/60 tabular-nums">
+            <span className="text-base-content/80 tabular-nums">
               {value === "win_rate" ? `${row.win_rate}%` : row.games}
             </span>
           </div>
-          <div className="bg-base-300 h-2 overflow-hidden rounded-full">
+          <div className="bg-base-300 relative z-10 h-2 overflow-hidden rounded-full">
             <div
               className="bg-primary h-full rounded-full"
               style={{ width: `${(row[value] / max) * 100}%` }}
