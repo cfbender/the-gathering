@@ -175,7 +175,11 @@ defmodule TheGathering.Accounts do
             create_discord_user(discord_id, claims)
         end
 
-      link_discord_player(user)
+      case Games.resolve_player(user.display_name, user.discord_id, user_id: user.id) do
+        {:ok, _player} -> :ok
+        {:error, reason} -> Repo.rollback(reason)
+      end
+
       user
     end)
   end
@@ -245,41 +249,6 @@ defmodule TheGathering.Accounts do
   defp first_available(base, with_suffix, taken?) do
     [base | Enum.map(@suffix_attempts, with_suffix)]
     |> Enum.find(fn candidate -> not taken?.(candidate) end)
-  end
-
-  defp link_discord_player(user) do
-    case Repo.get_by(Player, discord_id: user.discord_id) do
-      nil ->
-        name = available_player_name(user.display_name, user.discord_id)
-
-        case Games.create_player(%{name: name, discord_id: user.discord_id}, user.id) do
-          {:ok, player} -> player
-          {:error, changeset} -> Repo.rollback(changeset)
-        end
-
-      %Player{user_id: nil} = player ->
-        player |> Player.changeset(%{}) |> Player.put_user(user.id) |> Repo.update!()
-
-      %Player{user_id: user_id} when user_id == user.id ->
-        :ok
-
-      _player ->
-        Repo.rollback(:discord_identity_conflict)
-    end
-  end
-
-  defp available_player_name(display_name, discord_id) do
-    name = display_name |> String.trim() |> String.slice(0, 76)
-
-    taken? = fn candidate ->
-      Repo.exists?(
-        from player in Player,
-          where: fragment("lower(?)", player.name) == ^Games.fold_name(candidate)
-      )
-    end
-
-    first_available(name, &"#{name} (#{&1})", taken?) ||
-      "#{name} (#{String.slice(discord_id, 0, 20)})"
   end
 
   defp discord_avatar_url(%{"picture" => picture}) when is_binary(picture) do

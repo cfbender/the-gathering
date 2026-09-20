@@ -127,44 +127,25 @@ defmodule TheGathering.Imports do
     }
   end
 
-  # Prefer the Discord identity when the source supplies one, so a Mythic Track
-  # player and the SpellBot/Discord-login player with the same account merge.
-  # Otherwise match by name and remember the Discord ID for later logins.
-  defp find_or_create_player(%{discord_id: discord_id} = seat) when is_binary(discord_id) do
-    case Repo.get_by(Player, discord_id: discord_id) do
-      %Player{} = player ->
-        {:ok, player}
-
-      nil ->
-        with {:ok, player} <- Games.find_or_create_player_by_name(seat.player) do
-          attach_discord_id(player, discord_id)
-        end
-    end
-  end
-
-  defp find_or_create_player(seat), do: Games.find_or_create_player_by_name(seat.player)
-
-  defp attach_discord_id(%Player{discord_id: nil} = player, discord_id) do
-    case Games.update_player(player, %{discord_id: discord_id}) do
-      {:ok, player} -> {:ok, player}
-      # Another player already owns this Discord ID; keep the name match.
-      {:error, _changeset} -> {:ok, player}
-    end
-  end
-
-  defp attach_discord_id(player, _discord_id), do: {:ok, player}
+  defp find_or_create_player(seat),
+    do: Games.resolve_player(seat.player, Map.get(seat, :discord_id))
 
   defp match_players(games) do
-    seats = all_seats(games)
-    existing = existing_players(seats)
+    seats = games |> all_seats() |> Enum.uniq_by(&player_key/1)
 
-    seats
-    |> Enum.uniq_by(&player_key/1)
-    |> Enum.sort_by(&String.downcase(&1.player))
-    |> Enum.reduce(%{create: [], matched: []}, fn seat, result ->
-      case existing_player(existing, seat) do
-        nil -> Map.update!(result, :create, &[seat.player | &1])
-        player -> Map.update!(result, :matched, &[%{id: player.id, name: player.name} | &1])
+    resolutions =
+      Games.preview_player_resolutions(
+        Enum.map(seats, &%{name: &1.player, discord_id: Map.get(&1, :discord_id)})
+      )
+
+    resolutions
+    |> Enum.reduce(%{create: [], matched: []}, fn resolution, result ->
+      case resolution do
+        %{status: :create, name: name} ->
+          Map.update!(result, :create, &[name | &1])
+
+        %{status: :matched, player: player} ->
+          Map.update!(result, :matched, &[%{id: player.id, name: player.name} | &1])
       end
     end)
     |> then(fn result -> %{result | matched: Enum.uniq(result.matched)} end)
@@ -240,7 +221,7 @@ defmodule TheGathering.Imports do
   defp existing_player(existing, seat) do
     case player_key(seat) do
       {:discord, discord_id} ->
-        existing.by_discord[discord_id] || existing.by_name[Games.fold_name(seat.player)]
+        existing.by_discord[discord_id]
 
       {:name, name} ->
         existing.by_name[name]

@@ -1,10 +1,11 @@
 defmodule TheGathering.AccountsTest do
-  use TheGathering.DataCase
+  use TheGathering.DataCase, async: false
 
   import Ecto.Query
 
   alias TheGathering.Accounts
   alias TheGathering.Accounts.UserToken
+  alias TheGathering.Games
   alias TheGathering.Repo
 
   @valid %{
@@ -102,6 +103,30 @@ defmodule TheGathering.AccountsTest do
 
     refute Repo.exists?(from token in UserToken, where: token.token == ^expired_token)
     assert Accounts.get_user_by_session_token(fresh_token)
+  end
+
+  test "Discord sign-in surfaces a player ownership conflict and rolls back the user" do
+    {:ok, _admin} = Accounts.create_admin(@valid)
+    {:ok, _settings} = Accounts.update_settings(%{"registration_enabled" => true})
+
+    {:ok, owner} =
+      Accounts.create_user(%{
+        "username" => "player-owner",
+        "display_name" => "Player Owner",
+        "password" => "another-long-password",
+        "role" => "member"
+      })
+
+    {:ok, _player} =
+      Games.create_player(%{name: "Claimed", discord_id: "discord-conflict"}, owner.id)
+
+    assert {:error, :discord_identity_conflict} =
+             Accounts.sign_in_with_discord(%{
+               "sub" => "discord-conflict",
+               "preferred_username" => "Claimed"
+             })
+
+    assert Accounts.get_user_by_discord_id("discord-conflict") == nil
   end
 
   test "reissued session tokens preserve the original password authentication time" do

@@ -53,8 +53,15 @@ Users are soft-disabled rather than deleted. Both user foreign keys therefore us
 
 ## Context contract for importers
 
+- `resolve_player(name, discord_id, opts \\ [])` treats a supplied Discord ID as authoritative:
+  it matches only that identity and otherwise creates a player with an available suffixed name.
+  Name matching is used only when the incoming identity has no Discord ID. Import preview uses
+  the same resolver policy and reports the distinct name that commit will create. Discord OAuth
+  and bot ingestion also use this policy; resolver changeset and account-link conflicts are
+  returned to callers rather than ignored.
 - `find_or_create_player_by_name(name, attrs \\ %{})` matches names case-insensitively.
-- `find_or_create_player_by_discord_id(discord_id, name)` matches stable Discord identity first.
+- `find_or_create_player_by_discord_id(discord_id, name)` is a compatibility wrapper around
+  `resolve_player/3`.
 - `find_or_create_deck(player_or_id, name, attrs \\ %{})` matches deck names case-insensitively within one owner. New decks require `commander_name` in `attrs`.
 - `find_or_create_game_by_external_id(source, external_id, attrs)` and `create_game/1` are idempotent when both external identity fields are present; a repeat returns the existing, fully preloaded game.
 - `create_game/1` and `update_game/2` accept nested `seats` and persist the game atomically.

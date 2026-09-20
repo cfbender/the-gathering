@@ -63,10 +63,7 @@ defmodule TheGathering.Discord.Sink.Games do
     |> Enum.with_index(1)
     |> Enum.reduce_while({:ok, []}, fn {reported_player, seat_number}, {:ok, seats} ->
       with {:ok, player} <-
-             Games.find_or_create_player_by_discord_id(
-               reported_player.discord_id,
-               reported_player.display_name
-             ),
+             Games.resolve_player(reported_player.display_name, reported_player.discord_id),
            {:ok, deck} <- find_or_create_deck(player, reported_player.commander_name) do
         seat = %{
           player_id: player.id,
