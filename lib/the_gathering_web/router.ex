@@ -78,6 +78,8 @@ defmodule TheGatheringWeb.Router do
     get "/imports/csv/sample", CSVImportController, :sample
     post "/imports/csv/preview", CSVImportController, :preview
     post "/imports/csv", CSVImportController, :create
+    post "/imports/mythic_track/preview", MythicTrackImportController, :preview
+    post "/imports/mythic_track", MythicTrackImportController, :create
   end
 
   scope "/api", TheGatheringWeb.API do

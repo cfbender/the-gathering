@@ -111,7 +111,7 @@ address, so set `TRUST_PROXY_HEADERS=true` when your proxy sets `x-real-ip` or
 `x-forwarded-for`. Discord sign-in is not rate limited here.
 
 See [Discord integration](docs/discord-integration.md) for bot creation, permissions, and current tracking behavior.
-See [CSV game import](docs/csv-import.md) for the spreadsheet format, Mythic Track compatibility, and admin import flow.
+See [CSV game import](docs/csv-import.md) for the spreadsheet format and admin import flow, and [Mythic Track import](docs/mythic-track-import.md) for moving an existing Mythic Track playgroup over.
 
 ### Card catalog
 

@@ -48,7 +48,7 @@ export interface Game {
   duration_minutes: number | null
   turns: number | null
   notes: string | null
-  source: "manual" | "csv" | "discord"
+  source: "manual" | "csv" | "mythic_track" | "discord"
   seats: Seat[]
 }
 
