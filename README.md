@@ -46,8 +46,11 @@ count, and fetch timestamp under `data`. Successful lookups are cached in memory
 for five minutes; errors are never cached.
 
 Each user can also save a Moxfield username, Archidekt username, and ManaVault
-instance URL under **Settings → Profile → Deck hosts**. `PATCH /api/session/user`
-accepts these as `moxfield_username`, `archidekt_username`, and `manavault_url`.
+instance URL plus personal API key under **Settings → Profile → Deck hosts**.
+`PATCH /api/session/user` accepts these as `moxfield_username`, `archidekt_username`,
+`manavault_url`, and `manavault_api_key`. The API key is write-only: it is stored
+encrypted with `SECRET_KEY_BASE`, never returned (user JSON exposes only
+`has_manavault_api_key`), a blank value keeps the saved key, and `null` removes it.
 `GET /api/session/remote-decks` returns the signed-in user's normalized public decks
 (`name`, commanders, color identity, URL, source, and upstream update time) plus a
 status for each source. Results, including source errors, are cached in memory for
@@ -70,9 +73,13 @@ The integrations use the upstream services' public interfaces:
   requests per IP per minute. Author is not exposed by its public schema. Only the
   configured origin is recognized; other origins are intentionally not fetched to
   avoid SSRF. Without `MANAVAULT_URL`, ManaVault links are stored as plain deck links.
-  ManaVault does not expose an unauthenticated instance-wide deck index, so a user's
-  saved instance URL is shown with that source limitation; individual public share
-  links continue to resolve normally.
+  Listing a user's ManaVault decks uses their own instance URL and personal API key
+  (`GET <instance>/api/v1/decks` with `Authorization: Bearer <key>`, paginated with
+  `page`/`per_page`); the key is created under ManaVault's **Settings → Personal API
+  keys**. Because that listing is authenticated it may include unshared decks, so
+  quick picks from it prefill the deck form directly rather than re-resolving a public
+  share link. Without a key, the source reports that one is needed and individual
+  public share links continue to resolve normally.
 
 ### Environment variables
 

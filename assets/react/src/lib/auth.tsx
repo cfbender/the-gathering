@@ -12,6 +12,7 @@ export interface User {
   moxfield_username: string | null
   archidekt_username: string | null
   manavault_url: string | null
+  has_manavault_api_key: boolean
   has_password: boolean
   role: "admin" | "member"
   disabled: boolean

@@ -11,7 +11,7 @@ defmodule TheGathering.Decklists.RemoteDecks do
   def list(%User{} = user) do
     key =
       {:remote_decks, user.id, user.moxfield_username, user.archidekt_username,
-       user.manavault_url}
+       user.manavault_url, user.manavault_api_key}
 
     case Cache.fetch(key) do
       {:ok, result} -> result
@@ -23,7 +23,7 @@ defmodule TheGathering.Decklists.RemoteDecks do
     sources = [
       fetch_source(:moxfield, user.moxfield_username, &fetch_moxfield/1),
       fetch_source(:archidekt, user.archidekt_username, &fetch_archidekt/1),
-      manavault_source(user.manavault_url)
+      manavault_source(user.manavault_url, user.manavault_api_key)
     ]
 
     result = %{
@@ -46,17 +46,64 @@ defmodule TheGathering.Decklists.RemoteDecks do
     end
   end
 
-  defp manavault_source(value) when value in [nil, ""] do
+  defp manavault_source(url, _api_key) when url in [nil, ""] do
     %{source: :manavault, configured: false, error: nil, decks: []}
   end
 
-  defp manavault_source(_url) do
+  defp manavault_source(_url, api_key) when api_key in [nil, ""] do
     %{
       source: :manavault,
       configured: true,
       error:
-        "ManaVault does not expose a public instance deck list. Add public share links directly when logging a game.",
+        "Add a ManaVault API key in Settings to list your decks. Public share links still work individually.",
       decks: []
+    }
+  end
+
+  defp manavault_source(url, api_key) do
+    fetch_source(:manavault, url, &fetch_manavault(&1, api_key))
+  end
+
+  defp fetch_manavault(url, api_key), do: fetch_manavault_page(url, api_key, 1, [])
+
+  defp fetch_manavault_page(url, api_key, page, decks) do
+    query = URI.encode_query(%{"page" => page, "per_page" => 100})
+    headers = [{"authorization", "Bearer #{api_key}"}]
+
+    case HTTP.get("#{url}/api/v1/decks?#{query}", headers) do
+      {:ok, %Req.Response{status: 200, body: %{"data" => rows} = body}} when is_list(rows) ->
+        normalized = decks ++ Enum.map(rows, &manavault_deck(&1, url))
+        total_pages = get_in(body, ["pagination", "total_pages"]) || page
+
+        if page < total_pages and rows != [] do
+          fetch_manavault_page(url, api_key, page + 1, normalized)
+        else
+          {:ok, normalized}
+        end
+
+      {:ok, %Req.Response{status: 401}} ->
+        {:error, "ManaVault rejected the API key. Create a new one in ManaVault Settings."}
+
+      {:ok, %Req.Response{status: 404}} ->
+        {:error,
+         "ManaVault has no deck API at this URL. Update ManaVault or check the instance URL."}
+
+      {:ok, %Req.Response{status: 429}} ->
+        {:error, "ManaVault rate-limited the request. Try again shortly."}
+
+      _ ->
+        {:error, "ManaVault could not be reached. Try again shortly."}
+    end
+  end
+
+  defp manavault_deck(row, url) do
+    %{
+      name: row["name"],
+      commanders: row |> Map.get("commanders", []) |> Enum.map(&commander_name/1) |> compact(),
+      color_identity: order_colors(row["commanderColorIdentity"] || []),
+      url: row["public_share_url"] || "#{url}/decks/#{row["id"]}",
+      source: :manavault,
+      updated_at: row["updated_at"]
     }
   end
 

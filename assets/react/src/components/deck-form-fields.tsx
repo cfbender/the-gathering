@@ -6,7 +6,11 @@ import { DecklistUrlField } from "@/components/decklist-url-field"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { combinedColorIdentity, type SelectedCard } from "@/lib/cards"
 import { detailsFromDecklist, useResolveDecklist, type Decklist } from "@/lib/decklists"
-import { remoteDecksQueryOptions, remoteDeckSourceLabels } from "@/lib/remote-decks"
+import {
+  decklistFromRemoteDeck,
+  remoteDecksQueryOptions,
+  remoteDeckSourceLabels,
+} from "@/lib/remote-decks"
 
 export interface DeckFormValue {
   commander: SelectedCard | null
@@ -103,12 +107,17 @@ function RemoteDeckPicker({ onPick }: { onPick: (decklist: Decklist) => void }) 
           disabled={resolve.isPending}
           onChange={(event) => {
             const url = event.target.value
-            if (!url) return
+            const deck = decks.find((candidate) => candidate.url === url)
+            if (!url || !deck) return
             setSelectedUrl(url)
-            resolve.mutate(url, { onSuccess: onPick })
+            if (deck.source === "manavault") {
+              onPick(decklistFromRemoteDeck(deck))
+            } else {
+              resolve.mutate(url, { onSuccess: onPick })
+            }
           }}
         >
-          <option value="">Choose a public deck…</option>
+          <option value="">Choose a hosted deck…</option>
           {decks.map((deck) => (
             <option key={`${deck.source}:${deck.url}`} value={deck.url}>
               {deck.name} · {remoteDeckSourceLabels[deck.source]}
