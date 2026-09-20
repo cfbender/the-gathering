@@ -1,13 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { ArrowDown, ArrowUp, Plus, Trash2, Trophy } from "lucide-react"
-import { useEffect, useState, type FormEvent } from "react"
+import { useState, type FormEvent } from "react"
 import { DeckFormFields } from "@/components/deck-form-fields"
 import { blankSeat, moveSeat, resultsForSeats, type DraftSeat } from "@/components/game-form-logic"
 import { MvpCardField } from "@/components/mvp-card-field"
 import { api, ApiError } from "@/lib/api"
 import { cardSnapshot } from "@/lib/cards"
-import { getDecks, getPlayers, type Deck, type Game, type Player } from "@/lib/games"
+import {
+  getDecks,
+  getPlayers,
+  invalidateGameRelated,
+  type Deck,
+  type Game,
+  type Player,
+} from "@/lib/games"
 
 interface GameFormProps {
   game?: Game
@@ -21,8 +28,11 @@ function localDateTime(value?: string) {
 
 function draftsFromGame(game: Game): DraftSeat[] {
   return game.seats.map((seat) => ({
+    draftId: `persisted-seat-${seat.id}`,
     id: seat.id,
+    playerId: seat.player_id,
     playerName: seat.player.name,
+    deckId: seat.deck_id,
     deckName: seat.deck?.name ?? "",
     commander: cardSnapshot(
       seat.deck?.commander_card_id,
@@ -36,28 +46,34 @@ function draftsFromGame(game: Game): DraftSeat[] {
   }))
 }
 
-async function ensurePlayer(name: string, players: Player[]) {
-  const existing = players.find((player) => player.name.toLowerCase() === name.trim().toLowerCase())
-  if (existing) return existing
-  return api<{ data: Player }>("/api/players", {
+async function ensurePlayer(draft: DraftSeat, players: Player[]) {
+  if (draft.playerId !== null) return draft.playerId
+  const existing = players.find(
+    (player) => player.name.toLowerCase() === draft.playerName.trim().toLowerCase(),
+  )
+  if (existing) return existing.id
+  const created = await api<{ data: Player }>("/api/players", {
     method: "POST",
-    body: JSON.stringify({ player: { name: name.trim() } }),
+    body: JSON.stringify({ player: { name: draft.playerName.trim() } }),
   }).then((body) => body.data)
+  players.push(created)
+  return created.id
 }
 
-async function ensureDeck(draft: DraftSeat, player: Player, decks: Deck[]) {
+async function ensureDeck(draft: DraftSeat, playerId: number, decks: Deck[]) {
   if (!draft.deckName.trim()) return null
+  if (draft.deckId !== null) return draft.deckId
   const existing = decks.find(
     (deck) =>
-      deck.player_id === player.id &&
+      deck.player_id === playerId &&
       deck.name.toLowerCase() === draft.deckName.trim().toLowerCase(),
   )
-  if (existing) return existing
-  return api<{ data: Deck }>("/api/decks", {
+  if (existing) return existing.id
+  const created = await api<{ data: Deck }>("/api/decks", {
     method: "POST",
     body: JSON.stringify({
       deck: {
-        player_id: player.id,
+        player_id: playerId,
         name: draft.deckName.trim(),
         commander_card_id: draft.commander?.catalog_id,
         commander_name: draft.commander?.name,
@@ -68,9 +84,15 @@ async function ensureDeck(draft: DraftSeat, player: Player, decks: Deck[]) {
       },
     }),
   }).then((body) => body.data)
+  decks.push(created)
+  return created.id
 }
 
 export function GameForm({ game }: GameFormProps) {
+  return <GameFormDraft key={game?.id ?? "new-game"} game={game} />
+}
+
+function GameFormDraft({ game }: GameFormProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const playersQuery = useQuery({ queryKey: ["players"], queryFn: getPlayers })
@@ -79,42 +101,32 @@ export function GameForm({ game }: GameFormProps) {
   const [seats, setSeats] = useState<DraftSeat[]>(() =>
     game ? draftsFromGame(game) : [blankSeat(), blankSeat()],
   )
-  const [winnerIndex, setWinnerIndex] = useState<number | null>(() => {
-    if (!game) return 0
-    const index = game.seats.findIndex((seat) => seat.result === "win")
-    return index < 0 ? null : index
+  const [winnerSeatId, setWinnerSeatId] = useState<string | null>(() => {
+    if (!game) return seats[0]?.draftId ?? null
+    const winner = game.seats.find((seat) => seat.result === "win")
+    return winner ? `persisted-seat-${winner.id}` : null
   })
   const [turns, setTurns] = useState(game?.turns?.toString() ?? "")
   const [duration, setDuration] = useState(game?.duration_minutes?.toString() ?? "")
   const [notes, setNotes] = useState(game?.notes ?? "")
 
-  useEffect(() => {
-    if (!game) return
-    setPlayedAt(localDateTime(game.played_at))
-    setSeats(draftsFromGame(game))
-    const winner = game.seats.findIndex((seat) => seat.result === "win")
-    setWinnerIndex(winner < 0 ? null : winner)
-  }, [game])
-
   const mutation = useMutation({
     mutationFn: async () => {
       const knownPlayers = [...(playersQuery.data ?? [])]
       const knownDecks = [...(decksQuery.data ?? [])]
-      const results = resultsForSeats(seats.length, winnerIndex)
+      const results = resultsForSeats(seats, winnerSeatId)
       const payloadSeats = []
 
       for (const [index, draft] of seats.entries()) {
-        const player = await ensurePlayer(draft.playerName, knownPlayers)
-        if (!knownPlayers.some((candidate) => candidate.id === player.id)) knownPlayers.push(player)
-        const deck = await ensureDeck(draft, player, knownDecks)
-        if (deck && !knownDecks.some((candidate) => candidate.id === deck.id)) knownDecks.push(deck)
+        const playerId = await ensurePlayer(draft, knownPlayers)
+        const deckId = await ensureDeck(draft, playerId, knownDecks)
         payloadSeats.push({
           id: draft.id,
-          player_id: player.id,
-          deck_id: deck?.id ?? null,
+          player_id: playerId,
+          deck_id: deckId,
           seat: index + 1,
           result: results[index],
-          mvp_card_id: draft.mvpCard?.catalog_id,
+          mvp_card_id: draft.mvpCard?.catalog_id ?? null,
           mvp_card_name: draft.mvpCard?.name ?? null,
         })
       }
@@ -134,11 +146,7 @@ export function GameForm({ game }: GameFormProps) {
       }).then((body) => body.data)
     },
     onSuccess: async (saved) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["games"] }),
-        queryClient.invalidateQueries({ queryKey: ["players"] }),
-        queryClient.invalidateQueries({ queryKey: ["decks"] }),
-      ])
+      await invalidateGameRelated(queryClient)
       void navigate({ to: "/games/$gameId", params: { gameId: String(saved.id) } })
     },
   })
@@ -183,18 +191,13 @@ export function GameForm({ game }: GameFormProps) {
 
           <div className="flex flex-col gap-3">
             {seats.map((seat, index) => {
-              const player = playersQuery.data?.find(
-                (candidate) =>
-                  candidate.name.toLowerCase() === seat.playerName.trim().toLowerCase(),
-              )
+              const player = playersQuery.data?.find((candidate) => candidate.id === seat.playerId)
               const playerDecks =
-                decksQuery.data?.filter((deck) => deck.player_id === player?.id) ?? []
-              const selectedDeck = playerDecks.find(
-                (deck) => deck.name.toLowerCase() === seat.deckName.trim().toLowerCase(),
-              )
+                decksQuery.data?.filter((deck) => deck.player_id === seat.playerId) ?? []
+              const selectedDeck = playerDecks.find((deck) => deck.id === seat.deckId)
               return (
                 <article
-                  key={seat.id ?? `new-${index}`}
+                  key={seat.draftId}
                   className="border-base-300 bg-base-100 rounded-box border p-4"
                 >
                   <div className="mb-3 flex items-center gap-2">
@@ -206,8 +209,8 @@ export function GameForm({ game }: GameFormProps) {
                         type="radio"
                         name="winner"
                         className="radio radio-success radio-sm"
-                        checked={winnerIndex === index}
-                        onChange={() => setWinnerIndex(index)}
+                        checked={winnerSeatId === seat.draftId}
+                        onChange={() => setWinnerSeatId(seat.draftId)}
                         aria-label={`${seat.playerName || `Seat ${index + 1}`} won`}
                       />
                       <Trophy className="text-success size-4" /> Winner
@@ -234,9 +237,13 @@ export function GameForm({ game }: GameFormProps) {
                       type="button"
                       className="btn btn-square btn-ghost btn-xs text-error"
                       disabled={seats.length <= 2}
-                      onClick={() =>
-                        setSeats((value) => value.filter((_, seatIndex) => seatIndex !== index))
-                      }
+                      onClick={() => {
+                        const remaining = seats.filter((_, seatIndex) => seatIndex !== index)
+                        setSeats(remaining)
+                        if (winnerSeatId === seat.draftId) {
+                          setWinnerSeatId(remaining[0]?.draftId ?? null)
+                        }
+                      }}
                       aria-label="Remove seat"
                     >
                       <Trash2 className="size-4" />
@@ -250,16 +257,23 @@ export function GameForm({ game }: GameFormProps) {
                         list="player-names"
                         placeholder="Choose or type a new player"
                         value={seat.playerName}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const player = playersQuery.data?.find(
+                            (candidate) =>
+                              candidate.name.toLowerCase() ===
+                              event.target.value.trim().toLowerCase(),
+                          )
                           updateSeat(index, {
+                            playerId: player?.id ?? null,
                             playerName: event.target.value,
+                            deckId: null,
                             deckName: "",
                             commander: null,
                             partner: null,
                             colorIdentity: "",
                             decklistUrl: "",
                           })
-                        }
+                        }}
                         required
                       />
                     </label>
@@ -272,9 +286,12 @@ export function GameForm({ game }: GameFormProps) {
                         value={seat.deckName}
                         onChange={(event) => {
                           const deck = playerDecks.find(
-                            (candidate) => candidate.name === event.target.value,
+                            (candidate) =>
+                              candidate.name.toLowerCase() ===
+                              event.target.value.trim().toLowerCase(),
                           )
                           updateSeat(index, {
+                            deckId: deck?.id ?? null,
                             deckName: event.target.value,
                             commander: cardSnapshot(
                               deck?.commander_card_id,
@@ -295,7 +312,7 @@ export function GameForm({ game }: GameFormProps) {
                         ))}
                       </datalist>
                     </label>
-                    {seat.deckName && !selectedDeck && (
+                    {seat.deckName && seat.deckId === null && !selectedDeck && (
                       <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
                         <DeckFormFields
                           value={seat}
@@ -309,7 +326,7 @@ export function GameForm({ game }: GameFormProps) {
                       onChange={(mvpCard) => updateSeat(index, { mvpCard })}
                     />
                   </div>
-                  {seat.playerName && !player && (
+                  {seat.playerName && seat.playerId === null && !player && (
                     <p className="text-info mt-2 text-xs">
                       A new player named “{seat.playerName}” will be created.
                     </p>
@@ -322,8 +339,10 @@ export function GameForm({ game }: GameFormProps) {
             <input
               type="checkbox"
               className="checkbox checkbox-sm"
-              checked={winnerIndex === null}
-              onChange={(event) => setWinnerIndex(event.target.checked ? null : 0)}
+              checked={winnerSeatId === null}
+              onChange={(event) =>
+                setWinnerSeatId(event.target.checked ? null : (seats[0]?.draftId ?? null))
+              }
             />
             <span className="label-text">Game ended in a draw</span>
           </label>

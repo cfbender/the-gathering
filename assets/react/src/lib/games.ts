@@ -1,3 +1,4 @@
+import type { QueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 
 export interface Player {
@@ -123,6 +124,15 @@ export const getDeck = (id: string) =>
   api<{ data: Deck }>(`/api/decks/${id}`).then((body) => body.data)
 export const getGame = (id: string) =>
   api<{ data: Game }>(`/api/games/${id}`).then((body) => body.data)
+
+/** Invalidates every cache derived from game, player, or deck records. */
+export const invalidateGameRelated = (queryClient: QueryClient) =>
+  Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["games"] }),
+    queryClient.invalidateQueries({ queryKey: ["players"] }),
+    queryClient.invalidateQueries({ queryKey: ["decks"] }),
+    queryClient.invalidateQueries({ queryKey: ["stats"] }),
+  ])
 
 export function getGames(params: Record<string, string | number | undefined>) {
   const query = new URLSearchParams()
