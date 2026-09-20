@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/app-shell"
 import { AppearanceSection } from "@/components/appearance-section"
 import { SudoPrompt } from "@/components/sudo-prompt"
 import { api } from "@/lib/api"
-import { errorMessage, requireUser } from "@/lib/auth"
+import { errorMessage, requireUser, useCurrentUser } from "@/lib/auth"
 import type { User } from "@/lib/auth"
 import { formValue } from "@/lib/form"
 
@@ -20,7 +20,9 @@ export const Route = createFileRoute("/settings")({
 })
 
 function SettingsPage() {
-  const user = Route.useRouteContext()
+  const routeUser = Route.useRouteContext()
+  // Prefer the live session so saves (for example storing an API key) update the form state.
+  const user = useCurrentUser().data ?? routeUser
   const queryClient = useQueryClient()
   const profile = useMutation({
     mutationFn: async (values: {
@@ -28,6 +30,7 @@ function SettingsPage() {
       moxfield_username: string
       archidekt_username: string
       manavault_url: string
+      manavault_api_key?: string | null
     }) =>
       (
         await api<Data<User>>("/api/session/user", {
@@ -51,11 +54,30 @@ function SettingsPage() {
   function updateProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = event.currentTarget
+    const apiKeyInput = form.elements.namedItem("manavault_api_key") as HTMLInputElement | null
+    profile.mutate(
+      {
+        display_name: formValue(form, "display_name"),
+        moxfield_username: formValue(form, "moxfield_username"),
+        archidekt_username: formValue(form, "archidekt_username"),
+        manavault_url: formValue(form, "manavault_url"),
+        manavault_api_key: formValue(form, "manavault_api_key"),
+      },
+      {
+        onSuccess: () => {
+          if (apiKeyInput) apiKeyInput.value = ""
+        },
+      },
+    )
+  }
+
+  function removeApiKey() {
     profile.mutate({
-      display_name: formValue(form, "display_name"),
-      moxfield_username: formValue(form, "moxfield_username"),
-      archidekt_username: formValue(form, "archidekt_username"),
-      manavault_url: formValue(form, "manavault_url"),
+      display_name: user.display_name,
+      moxfield_username: user.moxfield_username ?? "",
+      archidekt_username: user.archidekt_username ?? "",
+      manavault_url: user.manavault_url ?? "",
+      manavault_api_key: null,
     })
   }
 
@@ -150,13 +172,42 @@ function SettingsPage() {
               defaultValue={user.manavault_url ?? ""}
               placeholder="https://vault.example.com"
             />
-            <span className="label text-base-content/60 whitespace-normal">
-              ManaVault currently has no public instance-wide deck list; public share links still
-              work individually.
-            </span>
             {errorMessage(profile.error, "manavault_url") && (
               <span className="label text-error">
                 {errorMessage(profile.error, "manavault_url")}
+              </span>
+            )}
+          </label>
+          <label className="fieldset min-w-0">
+            <span className="fieldset-legend">ManaVault API key</span>
+            <div className="flex min-w-0 gap-2">
+              <input
+                name="manavault_api_key"
+                type="password"
+                autoComplete="off"
+                className="input min-w-0 flex-1"
+                placeholder={
+                  user.has_manavault_api_key ? "Saved — enter a new key to replace it" : "mv_…"
+                }
+              />
+              {user.has_manavault_api_key && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm self-center"
+                  onClick={removeApiKey}
+                  disabled={profile.isPending}
+                >
+                  Remove key
+                </button>
+              )}
+            </div>
+            <span className="label text-base-content/60 whitespace-normal">
+              Create a personal API key in your ManaVault account settings to list your decks here.
+              Leave blank to keep the saved key.
+            </span>
+            {errorMessage(profile.error, "manavault_api_key") && (
+              <span className="label text-error">
+                {errorMessage(profile.error, "manavault_api_key")}
               </span>
             )}
           </label>

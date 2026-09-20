@@ -181,6 +181,60 @@ describe("deck card fields", () => {
     )
   })
 
+  it("prefills a ManaVault quick pick from the listing without resolving a share link", async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+
+      if (url === "/api/session/remote-decks") {
+        return new Response(
+          JSON.stringify({
+            data: {
+              decks: [
+                {
+                  name: "Vault counters",
+                  commanders: [atraxa.name],
+                  color_identity: ["W", "U", "B", "G"],
+                  url: "https://vault.example.com/decks/42",
+                  source: "manavault",
+                  updated_at: "2026-09-20T12:00:00Z",
+                },
+              ],
+              sources: [{ source: "manavault", configured: true, error: null }],
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        )
+      }
+
+      if (url === "/api/decklists/resolve") {
+        return new Response(JSON.stringify({ errors: { detail: "Unsupported" } }), {
+          status: 422,
+          headers: { "content-type": "application/json" },
+        })
+      }
+
+      return new Response(JSON.stringify({ data: [atraxa] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    })
+    vi.stubGlobal("fetch", fetch)
+    renderWithQueryClient()
+
+    const picker = await screen.findByRole("combobox", {
+      name: "Quick pick from my hosted decks",
+    })
+    fireEvent.change(picker, { target: { value: "https://vault.example.com/decks/42" } })
+
+    await waitFor(() => expect(screen.getByTestId("deck-name").textContent).toBe("Vault counters"))
+    expect(screen.getByTestId("commander-id").textContent).toBe("scryfall-atraxa")
+    expect(screen.getByTestId("colors").textContent).toBe("WUBG")
+    expect(screen.getByTestId("decklist-url").textContent).toBe(
+      "https://vault.example.com/decks/42",
+    )
+    expect(fetch).not.toHaveBeenCalledWith("/api/decklists/resolve", expect.anything())
+  })
+
   it("renders a stored name when its card ID is unavailable", () => {
     renderWithQueryClient(
       <CommanderField

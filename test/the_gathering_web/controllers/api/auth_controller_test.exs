@@ -91,6 +91,43 @@ defmodule TheGatheringWeb.API.AuthControllerTest do
            } = json_response(conn, 200)
   end
 
+  test "stores the ManaVault API key encrypted and never returns it", %{conn: conn} do
+    user = create_user("owner", "admin")
+    conn = log_in_user(conn, user)
+
+    conn =
+      patch(conn, ~p"/api/session/user", %{
+        user: %{display_name: "Owner", manavault_api_key: " mv_secret_key "}
+      })
+
+    body = json_response(conn, 200)
+    assert body["data"]["has_manavault_api_key"] == true
+    refute Map.has_key?(body["data"], "manavault_api_key")
+    refute Jason.encode!(body) =~ "mv_secret_key"
+
+    %{rows: [[stored]]} =
+      TheGathering.Repo.query!("select manavault_api_key from users where id = ?", [user.id])
+
+    refute stored =~ "mv_secret_key"
+    assert Accounts.get_user(user.id).manavault_api_key == "mv_secret_key"
+
+    # A blank key keeps the saved one; an explicit null removes it.
+    conn =
+      patch(recycle(conn), ~p"/api/session/user", %{
+        user: %{display_name: "Owner", manavault_api_key: ""}
+      })
+
+    assert json_response(conn, 200)["data"]["has_manavault_api_key"] == true
+
+    conn =
+      patch(recycle(conn), ~p"/api/session/user", %{
+        user: %{display_name: "Owner", manavault_api_key: nil}
+      })
+
+    assert json_response(conn, 200)["data"]["has_manavault_api_key"] == false
+    assert is_nil(Accounts.get_user(user.id).manavault_api_key)
+  end
+
   test "rejects invalid deck source values", %{conn: conn} do
     user = create_user("owner", "admin")
 

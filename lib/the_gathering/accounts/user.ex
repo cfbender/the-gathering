@@ -14,6 +14,7 @@ defmodule TheGathering.Accounts.User do
     field :moxfield_username, :string
     field :archidekt_username, :string
     field :manavault_url, :string
+    field :manavault_api_key, TheGathering.Accounts.EncryptedString, redact: true
     field :role, :string, default: "member"
     field :disabled_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
@@ -59,15 +60,28 @@ defmodule TheGathering.Accounts.User do
     |> cast(attrs, [:avatar_url])
   end
 
+  @doc """
+  Updates the user's own profile and deck-host settings.
+
+  `manavault_api_key` is write-only: a blank value keeps the stored key, an
+  explicit `nil` removes it, and any other string replaces it.
+  """
   def profile_changeset(user, attrs) do
     user
-    |> cast(attrs, [:display_name, :moxfield_username, :archidekt_username, :manavault_url])
+    |> cast(keep_blank_api_key(attrs), [
+      :display_name,
+      :moxfield_username,
+      :archidekt_username,
+      :manavault_url,
+      :manavault_api_key
+    ])
     |> normalize_deck_sources()
     |> validate_required([:display_name])
     |> validate_length(:display_name, min: 1, max: 80)
     |> validate_length(:moxfield_username, max: 80)
     |> validate_length(:archidekt_username, max: 80)
     |> validate_length(:manavault_url, max: 2_048)
+    |> validate_length(:manavault_api_key, max: 512)
     |> validate_format(:moxfield_username, ~r/^[^\s\/]+$/,
       message: "must be a username, not a URL"
     )
@@ -149,9 +163,29 @@ defmodule TheGathering.Accounts.User do
 
   defp normalize_deck_sources(changeset) do
     changeset
-    |> update_change(:moxfield_username, &String.trim/1)
-    |> update_change(:archidekt_username, &String.trim/1)
-    |> update_change(:manavault_url, &(&1 |> String.trim() |> String.trim_trailing("/")))
+    |> update_change(:moxfield_username, &trim/1)
+    |> update_change(:archidekt_username, &trim/1)
+    |> update_change(:manavault_url, &(&1 |> trim() |> String.trim_trailing("/")))
+    |> update_change(:manavault_api_key, &trim/1)
+  end
+
+  defp trim(nil), do: nil
+  defp trim(value), do: String.trim(value)
+
+  # A blank key means "leave the stored key alone"; only an explicit nil clears it.
+  defp keep_blank_api_key(attrs) when is_map(attrs) do
+    Enum.reduce(["manavault_api_key", :manavault_api_key], attrs, fn key, attrs ->
+      case Map.fetch(attrs, key) do
+        {:ok, value} when is_binary(value) -> drop_if_blank(attrs, key, value)
+        _ -> attrs
+      end
+    end)
+  end
+
+  defp keep_blank_api_key(attrs), do: attrs
+
+  defp drop_if_blank(attrs, key, value) do
+    if String.trim(value) == "", do: Map.delete(attrs, key), else: attrs
   end
 
   defp validate_http_url(field, value) do

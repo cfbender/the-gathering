@@ -14,6 +14,7 @@ defmodule TheGatheringWeb.API.UserJSON do
       moxfield_username: user.moxfield_username,
       archidekt_username: user.archidekt_username,
       manavault_url: user.manavault_url,
+      has_manavault_api_key: not is_nil(user.manavault_api_key),
       has_password: not is_nil(user.hashed_password),
       role: user.role,
       disabled: not is_nil(user.disabled_at),

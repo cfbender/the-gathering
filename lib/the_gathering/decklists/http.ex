@@ -3,17 +3,17 @@ defmodule TheGathering.Decklists.HTTP do
 
   @user_agent "TheGathering/0.1 deck metadata resolver (+https://github.com/cfbender/the-gathering)"
 
-  def get(url) do
-    request(method: :get, url: url)
+  def get(url, headers \\ []) do
+    request([method: :get, url: url], headers)
   end
 
   def post(url, json) do
-    request(method: :post, url: url, json: json)
+    request([method: :post, url: url, json: json], [])
   end
 
-  defp request(options) do
+  defp request(options, headers) do
     defaults = [
-      headers: [{"accept", "application/json"}, {"user-agent", @user_agent}],
+      headers: [{"accept", "application/json"}, {"user-agent", @user_agent}] ++ headers,
       connect_options: [timeout: 3_000],
       receive_timeout: 5_000,
       retry: false
