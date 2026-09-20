@@ -42,7 +42,10 @@ defmodule TheGathering.Games.Deck do
     |> validate_color_identity()
     |> validate_inclusion(:decklist_source, @sources)
     |> assoc_constraint(:player)
+    # ecto_sqlite3 cannot learn which index fired and reports the violated columns
+    # as `decks_player_id_name_index`, so declare that name as well.
     |> unique_constraint(:name, name: :decks_player_name_nocase_index)
+    |> unique_constraint(:name, name: :decks_player_id_name_index)
     |> unique_constraint(:name)
   end
 

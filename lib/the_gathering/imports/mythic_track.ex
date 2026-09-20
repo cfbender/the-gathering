@@ -13,6 +13,8 @@ defmodule TheGathering.Imports.MythicTrack do
   Track supplied them. A game's first key card becomes the winner's MVP card.
   """
 
+  alias TheGathering.Games
+
   @status_complete 3
   @status_names %{1 => "not started", 2 => "in progress"}
 
@@ -125,10 +127,10 @@ defmodule TheGathering.Imports.MythicTrack do
   defp skip_reason(seats) do
     duplicates =
       seats
-      |> Enum.frequencies_by(&String.downcase(&1.player))
+      |> Enum.frequencies_by(&Games.fold_name(&1.player))
       |> Enum.filter(fn {_name, count} -> count > 1 end)
       |> Enum.map(fn {name, _count} ->
-        Enum.find(seats, &(String.downcase(&1.player) == name)).player
+        Enum.find(seats, &(Games.fold_name(&1.player) == name)).player
       end)
 
     cond do

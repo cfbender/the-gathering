@@ -179,13 +179,13 @@ defmodule TheGathering.Imports do
       Deck
       |> preload(:player)
       |> Repo.all()
-      |> Map.new(fn deck -> {{deck.player_id, String.downcase(deck.name)}, deck} end)
+      |> Map.new(fn deck -> {{deck.player_id, Games.fold_name(deck.name)}, deck} end)
 
     seats
-    |> Enum.uniq_by(&{player_key(&1), String.downcase(&1.deck)})
+    |> Enum.uniq_by(&{player_key(&1), Games.fold_name(&1.deck)})
     |> Enum.reduce(%{create: [], matched: []}, fn seat, result ->
       player = existing_player(players, seat)
-      deck = player && existing[{player.id, String.downcase(seat.deck)}]
+      deck = player && existing[{player.id, Games.fold_name(seat.deck)}]
 
       case deck do
         nil ->
@@ -213,14 +213,14 @@ defmodule TheGathering.Imports do
   defp player_key(%{discord_id: discord_id}) when is_binary(discord_id),
     do: {:discord, discord_id}
 
-  defp player_key(seat), do: {:name, String.downcase(seat.player)}
+  defp player_key(seat), do: {:name, Games.fold_name(seat.player)}
 
   # Returns `%{by_name: %{lowered_name => player}, by_discord: %{discord_id => player}}`
   # for the players referenced by the seats.
   defp existing_players([]), do: %{by_name: %{}, by_discord: %{}}
 
   defp existing_players(seats) do
-    names = seats |> Enum.map(&String.downcase(&1.player)) |> Enum.uniq()
+    names = seats |> Enum.map(&Games.fold_name(&1.player)) |> Enum.uniq()
 
     discord_ids =
       seats |> Enum.map(&Map.get(&1, :discord_id)) |> Enum.reject(&is_nil/1) |> Enum.uniq()
@@ -232,7 +232,7 @@ defmodule TheGathering.Imports do
       |> Repo.all()
 
     %{
-      by_name: Map.new(players, &{String.downcase(&1.name), &1}),
+      by_name: Map.new(players, &{Games.fold_name(&1.name), &1}),
       by_discord: players |> Enum.reject(&is_nil(&1.discord_id)) |> Map.new(&{&1.discord_id, &1})
     }
   end
@@ -240,7 +240,7 @@ defmodule TheGathering.Imports do
   defp existing_player(existing, seat) do
     case player_key(seat) do
       {:discord, discord_id} ->
-        existing.by_discord[discord_id] || existing.by_name[String.downcase(seat.player)]
+        existing.by_discord[discord_id] || existing.by_name[Games.fold_name(seat.player)]
 
       {:name, name} ->
         existing.by_name[name]
