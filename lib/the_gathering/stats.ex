@@ -12,7 +12,7 @@ defmodule TheGathering.Stats do
   import Ecto.Query
 
   alias TheGathering.{Accounts, Catalog}
-  alias TheGathering.Games.{Deck, Game, GamePlayer, Player}
+  alias TheGathering.Games.{ColorIdentity, Deck, Game, GamePlayer, Player}
   alias TheGathering.Repo
 
   def overview(params \\ %{}) do
@@ -40,10 +40,11 @@ defmodule TheGathering.Stats do
         seats
         |> Enum.reject(&is_nil(&1.deck))
         |> grouped_records(
-          &%{id: &1.deck.color_identity, name: color_name(&1.deck.color_identity)},
-          fn seat ->
-            seat.deck.color_identity
-          end
+          &%{
+            id: ColorIdentity.canonical(&1.deck.color_identity),
+            name: ColorIdentity.name(&1.deck.color_identity)
+          },
+          &ColorIdentity.canonical(&1.deck.color_identity)
         ),
       commanders:
         seats
@@ -303,9 +304,6 @@ defmodule TheGathering.Stats do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
-
-  defp color_name(""), do: "Colorless"
-  defp color_name(identity), do: identity
 
   defp value(params, key), do: Map.get(params, key) || Map.get(params, Atom.to_string(key))
 
