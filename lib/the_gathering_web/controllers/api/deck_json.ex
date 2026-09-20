@@ -25,6 +25,8 @@ defmodule TheGatheringWeb.API.DeckJSON do
       decklist_url: deck.decklist_url,
       decklist_source: deck.decklist_source,
       archived_at: deck.archived_at,
+      skip_count: deck.skip_count,
+      included_for_play: deck.included_for_play,
       player: player(deck)
     }
   end

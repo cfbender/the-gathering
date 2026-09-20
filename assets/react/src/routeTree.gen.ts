@@ -19,6 +19,7 @@ import { Route as CommandersIndexRouteImport } from "./routes/commanders.index"
 import { Route as CommandersCommanderIdRouteImport } from "./routes/commanders.$commanderId"
 import { Route as DecksIndexRouteImport } from "./routes/decks.index"
 import { Route as DecksDeckIdRouteImport } from "./routes/decks.$deckId"
+import { Route as DecksChooseRouteImport } from "./routes/decks.choose"
 import { Route as GamesIndexRouteImport } from "./routes/games.index"
 import { Route as GamesGameIdRouteImport } from "./routes/games.$gameId"
 import { Route as GamesNewRouteImport } from "./routes/games.new"
@@ -76,6 +77,11 @@ const DecksDeckIdRoute = DecksDeckIdRouteImport.update({
   path: "/decks/$deckId",
   getParentRoute: () => rootRouteImport,
 } as any)
+const DecksChooseRoute = DecksChooseRouteImport.update({
+  id: "/decks/choose",
+  path: "/decks/choose",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GamesIndexRoute = GamesIndexRouteImport.update({
   id: "/games/",
   path: "/games/",
@@ -116,6 +122,7 @@ export interface FileRoutesByFullPath {
   "/admin/users": typeof AdminUsersRoute
   "/commanders/$commanderId": typeof CommandersCommanderIdRoute
   "/decks/$deckId": typeof DecksDeckIdRoute
+  "/decks/choose": typeof DecksChooseRoute
   "/games/$gameId": typeof GamesGameIdRoute
   "/games/new": typeof GamesNewRoute
   "/players/$playerId": typeof PlayersPlayerIdRoute
@@ -134,6 +141,7 @@ export interface FileRoutesByTo {
   "/admin/users": typeof AdminUsersRoute
   "/commanders/$commanderId": typeof CommandersCommanderIdRoute
   "/decks/$deckId": typeof DecksDeckIdRoute
+  "/decks/choose": typeof DecksChooseRoute
   "/games/$gameId": typeof GamesGameIdRoute
   "/games/new": typeof GamesNewRoute
   "/players/$playerId": typeof PlayersPlayerIdRoute
@@ -153,6 +161,7 @@ export interface FileRoutesById {
   "/admin/users": typeof AdminUsersRoute
   "/commanders/$commanderId": typeof CommandersCommanderIdRoute
   "/decks/$deckId": typeof DecksDeckIdRoute
+  "/decks/choose": typeof DecksChooseRoute
   "/games/$gameId": typeof GamesGameIdRoute
   "/games/new": typeof GamesNewRoute
   "/players/$playerId": typeof PlayersPlayerIdRoute
@@ -173,6 +182,7 @@ export interface FileRouteTypes {
     | "/admin/users"
     | "/commanders/$commanderId"
     | "/decks/$deckId"
+    | "/decks/choose"
     | "/games/$gameId"
     | "/games/new"
     | "/players/$playerId"
@@ -191,6 +201,7 @@ export interface FileRouteTypes {
     | "/admin/users"
     | "/commanders/$commanderId"
     | "/decks/$deckId"
+    | "/decks/choose"
     | "/games/$gameId"
     | "/games/new"
     | "/players/$playerId"
@@ -209,6 +220,7 @@ export interface FileRouteTypes {
     | "/admin/users"
     | "/commanders/$commanderId"
     | "/decks/$deckId"
+    | "/decks/choose"
     | "/games/$gameId"
     | "/games/new"
     | "/players/$playerId"
@@ -228,6 +240,7 @@ export interface RootRouteChildren {
   AdminUsersRoute: typeof AdminUsersRoute
   CommandersCommanderIdRoute: typeof CommandersCommanderIdRoute
   DecksDeckIdRoute: typeof DecksDeckIdRoute
+  DecksChooseRoute: typeof DecksChooseRoute
   GamesGameIdRoute: typeof GamesGameIdRoute
   GamesNewRoute: typeof GamesNewRoute
   PlayersPlayerIdRoute: typeof PlayersPlayerIdRoute
@@ -310,6 +323,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof DecksDeckIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/decks/choose": {
+      id: "/decks/choose"
+      path: "/decks/choose"
+      fullPath: "/decks/choose"
+      preLoaderRoute: typeof DecksChooseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/games/": {
       id: "/games/"
       path: "/games"
@@ -364,6 +384,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminUsersRoute: AdminUsersRoute,
   CommandersCommanderIdRoute: CommandersCommanderIdRoute,
   DecksDeckIdRoute: DecksDeckIdRoute,
+  DecksChooseRoute: DecksChooseRoute,
   GamesGameIdRoute: GamesGameIdRoute,
   GamesNewRoute: GamesNewRoute,
   PlayersPlayerIdRoute: PlayersPlayerIdRoute,

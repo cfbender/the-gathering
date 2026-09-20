@@ -72,6 +72,9 @@ defmodule TheGatheringWeb.Router do
     get "/stats/decks/:id", StatsController, :deck
     get "/stats/commanders", StatsController, :commanders
     get "/stats/commanders/:id", StatsController, :commander
+    get "/deck-chooser", DeckChooserController, :show
+    post "/deck-chooser/sync", DeckChooserController, :sync
+    post "/deck-chooser/:id/outcomes", DeckChooserController, :create_outcome
     resources "/players", PlayerController, except: [:new, :edit]
     resources "/decks", DeckController, except: [:new, :edit]
     resources "/games", GameController, except: [:new, :edit]

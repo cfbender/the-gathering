@@ -5,7 +5,7 @@ defmodule TheGathering.Games do
   import Ecto.Query
 
   alias TheGathering.Accounts.User
-  alias TheGathering.Games.{Deck, Game, GamePlayer, Player}
+  alias TheGathering.Games.{Deck, DeckPicker, Game, GamePlayer, ManaVaultSync, Player}
   alias TheGathering.Repo
 
   def list_players(opts \\ %{}) do
@@ -267,6 +267,13 @@ defmodule TheGathering.Games do
     do: deck |> Deck.update_changeset(attrs) |> Repo.update() |> preload_ok(:player)
 
   def delete_deck(%Deck{} = deck), do: Repo.delete(deck)
+
+  def pick_deck(%User{} = user, opts \\ []), do: DeckPicker.random_deck(user, opts)
+
+  def record_deck_outcome(%User{} = user, deck_id, outcome),
+    do: DeckPicker.record_outcome(user, deck_id, outcome)
+
+  def sync_manavault_decks(%User{} = user), do: ManaVaultSync.run(user)
 
   def find_or_create_deck(player_or_id, name, attrs \\ %{}) when is_binary(name) do
     player_id = if is_struct(player_or_id, Player), do: player_or_id.id, else: player_or_id

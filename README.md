@@ -88,6 +88,17 @@ The integrations use the upstream services' public interfaces:
   share link. Without a key, the source reports that one is needed and individual
   public share links continue to resolve normally.
 
+### Deck chooser
+
+**Decks → Choose a deck** picks from the signed-in user's linked player's active
+decks. Selection uses ManaVault's weighting: hours since last played, multiplied by
+current skips plus one, divided by recorded plays plus one. Never-played decks get a
+30-day boost beyond the stalest played deck. Plays and last-played dates come from
+game seats; only the current skip count and per-deck chooser inclusion setting are
+stored. Skipping records the skip before rerolling, while choosing clears that deck's
+skips. A configured ManaVault URL and API key adds **Sync from ManaVault**, which
+creates missing decks and updates matches by deck-list URL first, then deck name.
+
 ### Environment variables
 
 | Variable | Default | Purpose |

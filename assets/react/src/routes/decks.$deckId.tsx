@@ -6,6 +6,7 @@ import { ExternalLink, Trophy } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { DeckFormFields, type DeckFormValue } from "@/components/deck-form-fields"
 import { DeckStats } from "@/components/stats/deck-stats"
+import { Switch } from "@/components/ui/switch"
 import { api, ApiError } from "@/lib/api"
 import { cardSnapshot } from "@/lib/cards"
 import { useCurrentUser } from "@/lib/auth"
@@ -96,6 +97,7 @@ function DeckDetailPage() {
 function DeckEditForm({ deck }: { deck: Deck }) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(deck.name)
+  const [includedForPlay, setIncludedForPlay] = useState(deck.included_for_play ?? true)
   const [details, setDetails] = useState<DeckFormValue>({
     commander: cardSnapshot(
       deck.commander_card_id,
@@ -119,6 +121,7 @@ function DeckEditForm({ deck }: { deck: Deck }) {
             partner_name: details.partner?.name,
             color_identity: details.colorIdentity,
             decklist_url: details.decklistUrl.trim() || null,
+            included_for_play: includedForPlay,
           },
         }),
       }).then((body) => body.data),
@@ -158,6 +161,19 @@ function DeckEditForm({ deck }: { deck: Deck }) {
             onChange={(patch) => setDetails((current) => ({ ...current, ...patch }))}
             onResolvedName={setName}
           />
+          <label className="flex items-center justify-between gap-4 sm:col-span-2">
+            <span>
+              <span className="block text-sm font-bold">Include in deck chooser</span>
+              <span className="text-base-content/60 block text-sm">
+                Archived decks are always excluded from random picks.
+              </span>
+            </span>
+            <Switch
+              checked={includedForPlay}
+              onCheckedChange={setIncludedForPlay}
+              aria-label="Include in deck chooser"
+            />
+          </label>
         </div>
         {mutation.isError && (
           <div role="alert" className="alert alert-error">

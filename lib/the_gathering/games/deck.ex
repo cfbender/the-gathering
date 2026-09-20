@@ -14,6 +14,8 @@ defmodule TheGathering.Games.Deck do
     field :decklist_url, :string
     field :decklist_source, :string
     field :archived_at, :utc_datetime
+    field :skip_count, :integer, default: 0
+    field :included_for_play, :boolean, default: true
 
     belongs_to :player, TheGathering.Games.Player
     has_many :game_players, TheGathering.Games.GamePlayer
@@ -32,13 +34,15 @@ defmodule TheGathering.Games.Deck do
       :partner_name,
       :color_identity,
       :decklist_url,
-      :archived_at
+      :archived_at,
+      :included_for_play
     ])
     |> update_change(:name, &String.trim/1)
     |> update_change(:commander_name, &String.trim/1)
     |> put_decklist_source()
     |> validate_required([:player_id, :name, :commander_name])
     |> validate_length(:name, min: 1, max: 100)
+    |> validate_number(:skip_count, greater_than_or_equal_to: 0)
     |> validate_color_identity()
     |> validate_inclusion(:decklist_source, @sources)
     |> assoc_constraint(:player)
@@ -59,7 +63,8 @@ defmodule TheGathering.Games.Deck do
       :partner_name,
       :color_identity,
       :decklist_url,
-      :archived_at
+      :archived_at,
+      :included_for_play
     ])
     |> update_change(:name, &String.trim/1)
     |> update_change(:commander_name, &String.trim/1)
