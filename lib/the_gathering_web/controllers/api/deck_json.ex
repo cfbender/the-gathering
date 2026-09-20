@@ -1,19 +1,26 @@
 defmodule TheGatheringWeb.API.DeckJSON do
+  alias TheGathering.Catalog
   alias TheGathering.Games.Deck
   alias TheGatheringWeb.API.{GameJSON, PlayerJSON}
 
-  def index(%{decks: decks}), do: %{data: Enum.map(decks, &summary/1)}
-  def show(%{deck: deck}), do: %{data: detail(deck)}
+  def index(%{decks: decks, card_art: card_art}),
+    do: %{data: Enum.map(decks, &summary(&1, card_art))}
 
-  def summary(%Deck{} = deck) do
+  def show(%{deck: deck, card_art: card_art}), do: %{data: detail(deck, card_art)}
+
+  def summary(%Deck{} = deck, card_art \\ %{}) do
     %{
       id: deck.id,
       player_id: deck.player_id,
       name: deck.name,
       commander_card_id: deck.commander_card_id,
       commander_name: deck.commander_name,
+      commander_art_crop_url:
+        Catalog.art_crop_url(card_art, deck.commander_card_id, deck.commander_name),
       partner_card_id: deck.partner_card_id,
       partner_name: deck.partner_name,
+      partner_art_crop_url:
+        Catalog.art_crop_url(card_art, deck.partner_card_id, deck.partner_name),
       color_identity: deck.color_identity,
       decklist_url: deck.decklist_url,
       decklist_source: deck.decklist_source,
@@ -22,13 +29,21 @@ defmodule TheGatheringWeb.API.DeckJSON do
     }
   end
 
-  defp detail(deck) do
-    summary(deck)
+  def card_refs(decks) when is_list(decks) do
+    Enum.flat_map(decks, fn deck ->
+      [{deck.commander_card_id, deck.commander_name}, {deck.partner_card_id, deck.partner_name}]
+    end)
+  end
+
+  def card_refs(%Deck{} = deck), do: card_refs([deck])
+
+  defp detail(deck, card_art) do
+    summary(deck, card_art)
     |> Map.put(:games_played, length(deck.game_players))
     |> Map.put(:wins, Enum.count(deck.game_players, &(&1.result == "win")))
     |> Map.put(
       :recent_games,
-      deck.game_players |> Enum.take(10) |> Enum.map(&GameJSON.seat_game/1)
+      deck.game_players |> Enum.take(10) |> Enum.map(&GameJSON.seat_game(&1, card_art))
     )
   end
 

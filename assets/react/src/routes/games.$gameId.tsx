@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Clock, Pencil, Trophy } from "lucide-react"
 import { formatDate, getGame } from "@/lib/games"
+import { CardArtBackground } from "@/components/card-art-background"
 
 export const Route = createFileRoute("/games/$gameId")({ component: GameDetailPage })
 
@@ -45,9 +46,10 @@ function GameDetailPage() {
         {game.seats.map((seat) => (
           <article
             key={seat.id}
-            className={`card border ${seat.result === "win" ? "border-success bg-success/10" : "border-base-300 bg-base-200"}`}
+            className={`card relative overflow-hidden border ${seat.result === "win" ? "border-success bg-success/10" : "border-base-300 bg-base-200"}`}
           >
-            <div className="card-body gap-2 p-5">
+            <CardArtBackground imageUrl={seat.deck?.commander_art_crop_url} />
+            <div className="card-body text-base-content relative z-10 gap-2 p-5">
               <div className="flex items-center justify-between">
                 <span className="badge badge-neutral">Seat {seat.seat}</span>
                 {seat.result === "win" && (
@@ -74,7 +76,7 @@ function GameDetailPage() {
                     <strong>{seat.deck.name}</strong>
                     <ColorIdentity colors={seat.deck.color_identity} />
                   </span>
-                  <span className="text-base-content/60 block text-sm">
+                  <span className="text-base-content/85 block text-sm">
                     {seat.deck.commander_name}
                     {seat.deck.partner_name && ` + ${seat.deck.partner_name}`}
                   </span>
@@ -83,9 +85,12 @@ function GameDetailPage() {
                 <p className="text-base-content/50">No deck recorded</p>
               )}
               {seat.mvp_card_name && (
-                <p className="text-accent mt-2 text-sm">
-                  <strong>MVP:</strong> {seat.mvp_card_name}
-                </p>
+                <div className="border-accent/40 relative mt-2 overflow-hidden rounded-lg border px-3 py-2 text-sm">
+                  <CardArtBackground imageUrl={seat.mvp_art_crop_url} />
+                  <p className="text-accent relative z-10">
+                    <strong>MVP:</strong> {seat.mvp_card_name}
+                  </p>
+                </div>
               )}
             </div>
           </article>

@@ -1,32 +1,38 @@
 defmodule TheGatheringWeb.API.GameController do
   use TheGatheringWeb, :controller
 
-  alias TheGathering.Games
+  alias TheGathering.{Catalog, Games}
+  alias TheGatheringWeb.API.GameJSON
 
   action_fallback TheGatheringWeb.API.FallbackController
 
   def index(conn, params) do
     {games, pagination} = Games.list_games(params)
-    render(conn, :index, games: games, pagination: pagination)
+
+    render(conn, :index,
+      games: games,
+      pagination: pagination,
+      card_art: Catalog.art_crop_urls(GameJSON.card_refs(games))
+    )
   end
 
   def create(conn, %{"game" => attrs}) do
     with {:ok, game} <- Games.create_game(attrs, conn.assigns.current_scope.user.id) do
-      conn |> put_status(:created) |> render(:show, game: game)
+      conn |> put_status(:created) |> render_game(game)
     end
   end
 
   def show(conn, %{"id" => id}) do
     case Games.get_game(id) do
       nil -> {:error, :not_found}
-      _game -> render(conn, :show, game: Games.get_game!(id))
+      _game -> render_game(conn, Games.get_game!(id))
     end
   end
 
   def update(conn, %{"id" => id, "game" => attrs}) do
     with game when not is_nil(game) <- Games.get_game(id),
          {:ok, game} <- Games.update_game(game, attrs) do
-      render(conn, :show, game: game)
+      render_game(conn, game)
     else
       nil -> {:error, :not_found}
       error -> error
@@ -41,5 +47,12 @@ defmodule TheGatheringWeb.API.GameController do
       nil -> {:error, :not_found}
       error -> error
     end
+  end
+
+  defp render_game(conn, game) do
+    render(conn, :show,
+      game: game,
+      card_art: Catalog.art_crop_urls(GameJSON.card_refs(game))
+    )
   end
 end
