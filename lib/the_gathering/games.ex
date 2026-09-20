@@ -214,7 +214,14 @@ defmodule TheGathering.Games do
     query =
       Game
       |> maybe_game_player(value(opts, :player_id))
+      |> maybe_game_winner(value(opts, :winner_id))
       |> maybe_game_deck(value(opts, :deck_id))
+      |> maybe_game_commander(value(opts, :commander))
+      |> maybe_player_count(positive_integer(value(opts, :player_count), nil))
+      |> maybe_minimum(:turns, positive_integer(value(opts, :min_turns), nil))
+      |> maybe_maximum(:turns, positive_integer(value(opts, :max_turns), nil))
+      |> maybe_minimum(:duration_minutes, positive_integer(value(opts, :min_duration), nil))
+      |> maybe_maximum(:duration_minutes, positive_integer(value(opts, :max_duration), nil))
       |> maybe_date_from(value(opts, :date_from))
       |> maybe_date_to(value(opts, :date_to))
       |> order_by([game], desc: game.played_at, desc: game.id)
@@ -325,12 +332,63 @@ defmodule TheGathering.Games do
     where(query, [game], game.id in subquery(game_ids))
   end
 
+  defp maybe_game_winner(query, nil), do: query
+
+  defp maybe_game_winner(query, player_id) do
+    game_ids =
+      from seat in GamePlayer,
+        where: seat.player_id == ^player_id and seat.result == "win",
+        select: seat.game_id
+
+    where(query, [game], game.id in subquery(game_ids))
+  end
+
   defp maybe_game_deck(query, nil), do: query
 
   defp maybe_game_deck(query, deck_id) do
     game_ids = from seat in GamePlayer, where: seat.deck_id == ^deck_id, select: seat.game_id
     where(query, [game], game.id in subquery(game_ids))
   end
+
+  defp maybe_game_commander(query, nil), do: query
+
+  defp maybe_game_commander(query, name) do
+    case String.trim(name) do
+      "" ->
+        query
+
+      trimmed ->
+        needle = String.downcase(trimmed)
+
+        game_ids =
+          from seat in GamePlayer,
+            join: deck in assoc(seat, :deck),
+            where:
+              fragment("instr(lower(?), ?) > 0", deck.commander_name, ^needle) or
+                fragment("instr(lower(coalesce(?, '')), ?) > 0", deck.partner_name, ^needle),
+            select: seat.game_id
+
+        where(query, [game], game.id in subquery(game_ids))
+    end
+  end
+
+  defp maybe_player_count(query, nil), do: query
+
+  defp maybe_player_count(query, count) do
+    game_ids =
+      from seat in GamePlayer,
+        group_by: seat.game_id,
+        having: count(seat.id) == ^count,
+        select: seat.game_id
+
+    where(query, [game], game.id in subquery(game_ids))
+  end
+
+  defp maybe_minimum(query, _field, nil), do: query
+  defp maybe_minimum(query, field, min), do: where(query, [game], field(game, ^field) >= ^min)
+
+  defp maybe_maximum(query, _field, nil), do: query
+  defp maybe_maximum(query, field, max), do: where(query, [game], field(game, ^field) <= ^max)
 
   defp maybe_date_from(query, nil), do: query
 

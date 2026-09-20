@@ -322,4 +322,72 @@ defmodule TheGathering.GamesTest do
     {deck_games, _pagination} = Games.list_games(%{deck_id: birds.id})
     assert Enum.map(deck_games, & &1.id) == [old.id]
   end
+
+  test "list_games filters by winner, commander, seat count, turns, and duration" do
+    alice = player("Alice")
+    bob = player("Bob")
+    cara = player("Cara")
+
+    {:ok, birds} =
+      Games.create_deck(%{
+        player_id: alice.id,
+        name: "Birds",
+        commander_name: "Kangee, Sky Warden"
+      })
+
+    {:ok, partners} =
+      Games.create_deck(%{
+        player_id: bob.id,
+        name: "Partners",
+        commander_name: "Thrasios",
+        partner_name: "Tymna the Weaver"
+      })
+
+    # Alice wins with Kangee; Bob loses with Thrasios/Tymna. Long game.
+    {:ok, alice_win} =
+      Games.create_game(
+        game_attrs([alice, bob], %{
+          turns: 12,
+          duration_minutes: 95,
+          seats: [
+            %{player_id: alice.id, deck_id: birds.id, seat: 1, result: "win"},
+            %{player_id: bob.id, deck_id: partners.id, seat: 2, result: "loss"}
+          ]
+        })
+      )
+
+    # Bob wins a three-player game without decks. Short game.
+    {:ok, bob_win} =
+      Games.create_game(
+        game_attrs([bob, alice, cara], %{
+          turns: 6,
+          duration_minutes: 40,
+          seats: [
+            %{player_id: bob.id, seat: 1, result: "win"},
+            %{player_id: alice.id, seat: 2, result: "loss"},
+            %{player_id: cara.id, seat: 3, result: "loss"}
+          ]
+        })
+      )
+
+    ids = fn opts -> Games.list_games(opts) |> elem(0) |> Enum.map(& &1.id) end
+
+    # Bob sat in both games but only won the second; string params come from the controller.
+    assert ids.(%{"winner_id" => to_string(bob.id)}) == [bob_win.id]
+    assert ids.(%{winner_id: alice.id}) == [alice_win.id]
+
+    assert ids.(%{commander: "kangee"}) == [alice_win.id]
+    assert ids.(%{commander: "TYMNA"}) == [alice_win.id]
+    assert ids.(%{commander: "   "}) == [bob_win.id, alice_win.id]
+    assert ids.(%{commander: "Atraxa"}) == []
+
+    assert ids.(%{player_count: 3}) == [bob_win.id]
+    assert ids.(%{"player_count" => "2"}) == [alice_win.id]
+
+    assert ids.(%{min_turns: 7}) == [alice_win.id]
+    assert ids.(%{max_turns: 12}) == [bob_win.id, alice_win.id]
+    assert ids.(%{max_turns: 11}) == [bob_win.id]
+    assert ids.(%{min_duration: 40, max_duration: 60}) == [bob_win.id]
+    assert ids.(%{"min_duration" => "junk"}) == [bob_win.id, alice_win.id]
+  end
 end
