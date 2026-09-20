@@ -67,6 +67,14 @@ export interface OverviewStats {
   game_lengths: GameLengths
   game_times: string[]
   leaderboard: NamedRecordRow[]
+  elo: {
+    id: number
+    name: string
+    rating: number
+    peak: number
+    games: number
+    history: { date: string; rating: number }[]
+  }[]
   matchups: MatchupRow[]
   games_by_month: { month: string; games: number }[]
   seat_win_rates: NamedRecordRow[]
@@ -79,6 +87,13 @@ export interface OverviewStats {
 export interface PlayerStats {
   detailed_stats_from: string | null
   record: RecordCounts
+  elo: {
+    rating: number
+    peak: number
+    rank: number
+    players: number
+    history: { date: string; rating: number }[]
+  } | null
   average_duration_minutes: number | null
   average_turns: number | null
   game_lengths: GameLengths

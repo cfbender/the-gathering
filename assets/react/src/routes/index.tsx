@@ -4,6 +4,7 @@ import { Clock3, Crown, Gamepad2, RotateCcw, Trophy } from "lucide-react"
 import { ActivityCalendar } from "@/components/stats/activity-calendar"
 import { BarChart } from "@/components/stats/charts"
 import { ColorSection } from "@/components/stats/color-section"
+import { EloSection } from "@/components/stats/elo-section"
 import { GameLengths } from "@/components/stats/game-lengths"
 import { MatchupHeatmap } from "@/components/stats/matchup-heatmap"
 import { StatCard } from "@/components/stats/stat-card"
@@ -118,6 +119,8 @@ function HomePage() {
           <BarChart rows={stats.commanders.slice(0, 6)} value="games" />
         </section>
       </div>
+
+      <EloSection players={stats.elo} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">

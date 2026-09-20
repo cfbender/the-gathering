@@ -5,6 +5,7 @@ import { CardArtBackground } from "@/components/card-art-background"
 import { BarChart, LineChart } from "./charts"
 import { ColorSection } from "./color-section"
 import { GameLengths } from "./game-lengths"
+import { PlayerElo } from "./player-elo"
 import { StatCard } from "./stat-card"
 import { byWinRateThenName, getPlayerStats, sinceLabel } from "@/lib/stats"
 
@@ -52,6 +53,7 @@ export function PlayerStats({ playerId }: { playerId: string }) {
             .join(", ")}
         />
       </div>
+      <PlayerElo elo={stats.elo} />
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
           <h3 className="mb-4 font-bold">Win rate over time</h3>
