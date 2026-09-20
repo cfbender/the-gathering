@@ -6,6 +6,8 @@ defmodule TheGathering.Discord.PendingGame do
   import Ecto.Changeset
   import Ecto.Query
 
+  alias TheGathering.Games.Game
+
   schema "pending_discord_games" do
     field :external_id, :string
     field :guild_id, :string
@@ -25,7 +27,7 @@ defmodule TheGathering.Discord.PendingGame do
   end
 
   def ordered_query do
-    from pending in __MODULE__, order_by: [desc: pending.played_at, desc: pending.id]
+    from pending in winnerless_query(), order_by: [desc: pending.played_at, desc: pending.id]
   end
 
   def by_external_id_query(external_id) do
@@ -33,7 +35,7 @@ defmodule TheGathering.Discord.PendingGame do
   end
 
   def latest_in_channel_query(channel_id) do
-    from pending in __MODULE__,
+    from pending in winnerless_query(),
       where: pending.channel_id == ^channel_id,
       order_by: [desc: pending.played_at, desc: pending.id],
       limit: 1
@@ -41,5 +43,17 @@ defmodule TheGathering.Discord.PendingGame do
 
   def expired_query(cutoff) do
     from pending in __MODULE__, where: pending.updated_at < ^cutoff
+  end
+
+  defp winnerless_query do
+    from pending in __MODULE__,
+      as: :pending,
+      where:
+        not exists(
+          from game in Game,
+            where:
+              game.source == "discord" and
+                game.external_id == parent_as(:pending).external_id
+        )
   end
 end
