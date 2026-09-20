@@ -188,6 +188,100 @@ defmodule TheGathering.StatsTest do
     assert %{games: 9} = Enum.find(Stats.overview().color_win_rates, &(&1.id == "R"))
   end
 
+  test "overview and player views add Elo, matchups, game lengths, colors, and rivals",
+       %{players: players, decks: decks} do
+    # A seventh, quicker game so the fastest win is unambiguous: Bob wins in 40 minutes.
+    {:ok, _quick} =
+      Games.create_game(%{
+        played_at: ~U[2026-04-01 12:00:00Z],
+        duration_minutes: 40,
+        turns: 6,
+        source: "manual",
+        seats:
+          ~w(Bob Alice Cara)
+          |> Enum.with_index(1)
+          |> Enum.map(fn {name, seat} ->
+            %{
+              player_id: players[name].id,
+              deck_id: decks[name].id,
+              seat: seat,
+              result: if(name == "Bob", do: "win", else: "loss")
+            }
+          end)
+      })
+
+    overview = Stats.overview()
+
+    assert length(overview.game_times) == 7
+    assert hd(overview.game_times) == ~U[2026-04-01 12:00:00Z]
+
+    assert overview.game_lengths.durations == [
+             %{from: 30, to: 45, games: 1},
+             %{from: 45, to: 60, games: 0},
+             %{from: 60, to: 75, games: 0},
+             %{from: 75, to: 90, games: 5}
+           ]
+
+    assert overview.game_lengths.turns == [
+             %{from: 6, to: 8, games: 1},
+             %{from: 8, to: 10, games: 5}
+           ]
+
+    assert %{duration_minutes: 40, winner: %{name: "Bob"}, result: nil} =
+             overview.game_lengths.fastest_win
+
+    assert %{duration_minutes: 75} = overview.game_lengths.longest_game
+
+    # Alice has the most wins, so she is rated highest; ratings are zero-sum up to rounding.
+    assert [%{name: "Alice", games: 7} | _] = overview.elo
+    assert length(hd(overview.elo).history) == 7
+    assert overview.elo |> Enum.map(& &1.rating) |> Enum.sum() |> Kernel.-(3000) |> abs() <= 1
+
+    alice_bob =
+      Enum.find(
+        overview.matchups,
+        &(&1.id == players["Alice"].id and &1.opponent_id == players["Bob"].id)
+      )
+
+    assert %{games: 7, wins: 3, losses: 3, draws: 1, win_rate: 42.9} = alice_bob
+
+    bob_alice =
+      Enum.find(
+        overview.matchups,
+        &(&1.id == players["Bob"].id and &1.opponent_id == players["Alice"].id)
+      )
+
+    assert %{games: 7, wins: 2, win_rate: 28.6} = bob_alice
+
+    player = Stats.player(players["Alice"].id)
+
+    assert %{rank: 1, players: 3} = player.elo
+    assert length(player.elo.history) == 7
+    assert player.average_duration_minutes == 69.2
+    assert player.average_turns == 8.5
+    # Alice's own wins were all 75-minute games; the 40-minute game was Bob's win.
+    assert %{duration_minutes: 75, result: "win"} = player.game_lengths.fastest_win
+    assert %{duration_minutes: 75} = player.game_lengths.longest_game
+
+    assert Enum.map(player.color_exposure, &{&1.id, &1.games, &1.wins, &1.share}) == [
+             {"W", 7, 3, 100.0},
+             {"U", 7, 3, 100.0},
+             {"B", 0, 0, 0.0},
+             {"R", 0, 0, 0.0},
+             {"G", 0, 0, 0.0}
+           ]
+
+    # Krenko beat Alice twice and Lathril once; Alice beat both three times.
+    assert Enum.map(player.rival_commanders, &{&1.name, &1.faced, &1.beat_me, &1.beaten}) == [
+             {"Krenko, Mob Boss", 7, 2, 3},
+             {"Lathril, Blade of the Elves", 7, 1, 3}
+           ]
+
+    # The commander page counts how often Kangee beat each opponent, not just their record.
+    kangee = Stats.commander("kangee")
+    assert %{games: 7, wins: 2, beaten: 3} = Enum.find(kangee.opponents, &(&1.name == "Bob"))
+  end
+
   test "deck stats include record, opponents, averages, and recent results", %{decks: decks} do
     stats = Stats.deck(decks["Alice"].id)
 

@@ -3,26 +3,29 @@ defmodule TheGathering.Stats.Player do
 
   alias TheGathering.{Accounts, Catalog, Repo}
   alias TheGathering.Games.Player
-  alias TheGathering.Stats.{Query, Records, Summaries}
+  alias TheGathering.Stats.{Commanders, Elo, Query, Records, Summaries}
 
   def get(player_id, params \\ %{}) do
     with %Player{} = player <- Repo.get(Player, player_id) do
       games = Query.games(params, player_id: player.id)
-      seats = Enum.map(games, &Enum.find(&1.seats, fn seat -> seat.player_id == player.id end))
+      mine = &Enum.find(&1.seats, fn seat -> seat.player_id == player.id end)
+      seats = Enum.map(games, mine)
       results = seats |> Enum.reverse() |> Enum.map(& &1.result)
       cutoff = Accounts.get_settings().detailed_stats_from
-
-      detailed_seats =
-        games
-        |> detailed_games(cutoff)
-        |> Enum.map(&Enum.find(&1.seats, fn seat -> seat.player_id == player.id end))
-
+      detailed = detailed_games(games, cutoff)
+      detailed_seats = Enum.map(detailed, mine)
       card_art = card_art(detailed_seats)
 
       %{
         detailed_stats_from: cutoff,
         player: %{id: player.id, name: player.name},
         record: Records.record(seats),
+        elo: elo(player.id, params),
+        average_duration_minutes: Records.average(detailed, & &1.duration_minutes),
+        average_turns: Records.average(detailed, & &1.turns),
+        game_lengths: Summaries.game_lengths(detailed, mine),
+        color_exposure: Records.color_exposure(seats),
+        rival_commanders: rival_commanders(games, player.id),
         streaks: streaks(results),
         recent_form: seats |> Enum.take(10) |> Enum.map(& &1.result),
         win_rate_over_time:
@@ -53,6 +56,53 @@ defmodule TheGathering.Stats.Player do
 
   defp detailed_games(games, %Date{} = cutoff) do
     Enum.filter(games, &(Date.compare(DateTime.to_date(&1.played_at), cutoff) != :lt))
+  end
+
+  # Ratings depend on every game at the table, so the whole playgroup is replayed.
+  defp elo(player_id, params) do
+    ratings = params |> Query.games() |> Elo.ratings()
+
+    case Enum.find_index(ratings, &(&1.id == player_id)) do
+      nil ->
+        nil
+
+      index ->
+        ratings
+        |> Enum.at(index)
+        |> Map.take([:rating, :peak, :history])
+        |> Map.put(:rank, index + 1)
+        |> Map.put(:players, length(ratings))
+    end
+  end
+
+  # Opponents' commanders: how often each was faced, beat this player, or was beaten
+  # by them. Mirror matches among the opponents count every seat.
+  defp rival_commanders(games, player_id) do
+    faced = games |> opponent_seats(player_id) |> Commanders.summarize()
+
+    beaten =
+      games
+      |> Enum.filter(fn game ->
+        Enum.any?(game.seats, &(&1.player_id == player_id and &1.result == "win"))
+      end)
+      |> opponent_seats(player_id)
+      |> Commanders.summarize()
+      |> Map.new(&{&1.id, &1.games})
+
+    faced
+    |> Enum.map(fn row ->
+      row
+      |> Map.take([:id, :name, :art_crop_url, :color_identity])
+      |> Map.merge(%{faced: row.games, beat_me: row.wins, beaten: Map.get(beaten, row.id, 0)})
+    end)
+    |> Enum.sort_by(&{-&1.faced, -&1.beat_me, String.downcase(&1.name)})
+  end
+
+  defp opponent_seats(games, player_id) do
+    for game <- games,
+        seat <- game.seats,
+        seat.player_id != player_id and not is_nil(seat.deck),
+        do: %{seat | game: game}
   end
 
   defp streaks(results) do

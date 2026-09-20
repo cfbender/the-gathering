@@ -101,21 +101,32 @@ defmodule TheGathering.Stats.Query do
     |> Repo.all()
   end
 
+  @doc """
+  Per opponent player across `game_ids`: their own record in those games, plus
+  `beaten`, the number of those games a tracked seat won against them.
+  """
   def opponent_counts(game_ids, tracked_seat_ids) do
     GamePlayer
     |> join(:inner, [seat], player in Player, on: player.id == seat.player_id)
+    |> join(:left, [seat], winner in GamePlayer,
+      on:
+        winner.game_id == seat.game_id and winner.result == "win" and
+          winner.id in ^tracked_seat_ids,
+      as: :winner
+    )
     |> where(
       [seat],
       seat.game_id in ^game_ids and seat.id not in ^tracked_seat_ids
     )
     |> group_by([_seat, player], [player.id, player.name])
-    |> select([seat, player], %{
+    |> select([seat, player, winner: winner], %{
       id: player.id,
       name: player.name,
       games: count(seat.id),
       wins: fragment("SUM(CASE WHEN ? = 'win' THEN 1 ELSE 0 END)", seat.result),
       losses: fragment("SUM(CASE WHEN ? = 'loss' THEN 1 ELSE 0 END)", seat.result),
-      draws: fragment("SUM(CASE WHEN ? = 'draw' THEN 1 ELSE 0 END)", seat.result)
+      draws: fragment("SUM(CASE WHEN ? = 'draw' THEN 1 ELSE 0 END)", seat.result),
+      beaten: count(winner.id)
     })
     |> Repo.all()
   end
