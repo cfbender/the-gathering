@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router"
 import { Flame, Medal, Target } from "lucide-react"
 import { CardArtBackground } from "@/components/card-art-background"
 import { BarChart, LineChart } from "./charts"
+import { ColorSection } from "./color-section"
 import { StatCard } from "./stat-card"
 import { getPlayerStats, sinceLabel } from "@/lib/stats"
 
@@ -60,6 +61,7 @@ export function PlayerStats({ playerId }: { playerId: string }) {
           <BarChart rows={stats.decks} />
         </div>
       </div>
+      <ColorSection rows={stats.color_win_rates} eyebrow="Their colors" />
       {stats.mvp_cards.length > 0 && (
         <div>
           <h3 className="mb-3 font-bold">

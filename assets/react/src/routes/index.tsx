@@ -1,22 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { Clock3, Crown, Gamepad2, RotateCcw, Trophy } from "lucide-react"
-import { useState } from "react"
-import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart } from "@/components/stats/charts"
+import { ColorSection } from "@/components/stats/color-section"
 import { StatCard } from "@/components/stats/stat-card"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { cn } from "@/lib/cn"
 import { formatDate } from "@/features/games/games"
-import {
-  LEADERBOARD_MIN_GAMES,
-  getOverviewStats,
-  leaderboardRows,
-  sinceLabel,
-  sortByMetric,
-  type ColorMetric,
-  type NamedRecordRow,
-} from "@/lib/stats"
+import { LEADERBOARD_MIN_GAMES, getOverviewStats, leaderboardRows, sinceLabel } from "@/lib/stats"
 
 export const Route = createFileRoute("/")({ component: HomePage })
 
@@ -169,54 +158,6 @@ function HomePage() {
         </div>
       </section>
     </div>
-  )
-}
-
-const colorMetricLabels: Record<ColorMetric, string> = {
-  games: "Popularity",
-  win_rate: "Win rate",
-}
-
-function ColorSection({ rows }: { rows: NamedRecordRow[] }) {
-  const [metric, setMetric] = useState<ColorMetric>("games")
-  return (
-    <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-primary text-xs font-bold uppercase">Color check</p>
-          <h2 className="text-xl font-bold">
-            {metric === "games" ? "Most played colors" : "Color win rates"}
-          </h2>
-        </div>
-        <ToggleGroup
-          type="single"
-          value={metric}
-          onValueChange={(value) => value && setMetric(value as ColorMetric)}
-          aria-label="Color metric"
-          className="join"
-        >
-          {(Object.keys(colorMetricLabels) as ColorMetric[]).map((value) => (
-            <ToggleGroupItem
-              key={value}
-              value={value}
-              className={cn("btn btn-xs join-item", metric === value ? "btn-primary" : "btn-ghost")}
-            >
-              {colorMetricLabels[value]}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </div>
-      <BarChart
-        rows={sortByMetric(rows, metric).slice(0, 6)}
-        value={metric}
-        renderLabel={(row) => (
-          <span className="inline-flex items-center gap-2">
-            <ColorIdentity colors={String(row.id)} />
-            <span>{row.name}</span>
-          </span>
-        )}
-      />
-    </section>
   )
 }
 

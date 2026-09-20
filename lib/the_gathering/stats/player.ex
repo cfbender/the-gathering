@@ -34,6 +34,7 @@ defmodule TheGathering.Stats.Player do
           seats
           |> Enum.reject(&is_nil(&1.deck))
           |> Records.grouped_records(&Summaries.entity(&1.deck), & &1.deck_id),
+        color_win_rates: Records.color_records(seats),
         head_to_head: head_to_head(games, player.id),
         seat_win_rates:
           Records.grouped_records(

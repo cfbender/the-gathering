@@ -133,6 +133,61 @@ defmodule TheGathering.StatsTest do
     assert %{games: 6, wins: 3, losses: 1, draws: 1} = bob
   end
 
+  test "player color records count only that player's seats and merge decks by color",
+       %{players: players, decks: decks} do
+    # A second Alice deck that shares Birds' colors (in another order) and a third in
+    # different colors: same-color decks merge into one row, others stay separate.
+    {:ok, more_birds} =
+      Games.create_deck(%{
+        player_id: players["Alice"].id,
+        name: "More Birds",
+        commander_name: "Isperia, Supreme Judge",
+        color_identity: "UW"
+      })
+
+    {:ok, rats} =
+      Games.create_deck(%{
+        player_id: players["Alice"].id,
+        name: "Rats",
+        commander_name: "Marrow-Gnawer",
+        color_identity: "B"
+      })
+
+    game(
+      players,
+      %{decks | "Alice" => more_birds},
+      ~U[2026-04-01 00:00:00Z],
+      "Bob",
+      ~w(Alice Bob Cara)
+    )
+
+    game(
+      players,
+      %{decks | "Alice" => rats},
+      ~U[2026-04-02 00:00:00Z],
+      "Alice",
+      ~w(Alice Bob Cara)
+    )
+
+    game(
+      players,
+      %{decks | "Alice" => rats},
+      ~U[2026-04-03 00:00:00Z],
+      "Cara",
+      ~w(Alice Bob Cara)
+    )
+
+    stats = Stats.player(players["Alice"].id)
+
+    assert Enum.map(stats.color_win_rates, &{&1.id, &1.name, &1.games, &1.wins, &1.win_rate}) ==
+             [{"WU", "Azorius", 7, 3, 42.9}, {"B", "Mono-Black", 2, 1, 50.0}]
+
+    # Opponents' colors never leak into a player's own breakdown, but they do count
+    # for the group overview.
+    refute Enum.any?(stats.color_win_rates, &(&1.id == "R"))
+    assert %{games: 9} = Enum.find(Stats.overview().color_win_rates, &(&1.id == "R"))
+  end
+
   test "deck stats include record, opponents, averages, and recent results", %{decks: decks} do
     stats = Stats.deck(decks["Alice"].id)
 

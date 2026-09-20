@@ -61,6 +61,8 @@ export interface PlayerStats {
   recent_form: ("win" | "loss" | "draw")[]
   win_rate_over_time: TrendPoint[]
   decks: NamedRecordRow[]
+  /** This player's seats grouped by deck color identity; same shape as the overview's. */
+  color_win_rates: NamedRecordRow[]
   head_to_head: HeadToHead[]
   seat_win_rates: NamedRecordRow[]
   favorite_seat: number | null
