@@ -1,6 +1,7 @@
 defmodule TheGathering.Discord.TrackerTest do
   use TheGathering.DataCase, async: false
 
+  alias TheGathering.Discord
   alias TheGathering.Discord.{Command, GameReport, PendingGame, Tracker}
 
   defmodule TestSink do
@@ -10,6 +11,18 @@ defmodule TheGathering.Discord.TrackerTest do
     def handle_report(report) do
       send(Application.fetch_env!(:the_gathering, :discord_test_pid), {:report, report})
       :ok
+    end
+  end
+
+  defmodule FailingSink do
+    @behaviour TheGathering.Discord.Sink
+
+    @impl true
+    def handle_report(%{winner_discord_ids: []}), do: :ok
+
+    def handle_report(_report) do
+      {:ok, _player} = TheGathering.Games.create_player(%{name: "Rolled Back"})
+      {:error, :forced_failure}
     end
   end
 
@@ -30,7 +43,7 @@ defmodule TheGathering.Discord.TrackerTest do
     assert completed.winner_discord_ids == ["111"]
     assert completed.raw.winner_reported_by == "111"
     assert_receive {:report, ^completed}
-    assert PendingGame.get_by_external_id(report.external_id) == nil
+    assert Discord.get_pending_by_external_id(report.external_id) == nil
   end
 
   test "staged reports survive a tracker restart" do
@@ -62,20 +75,38 @@ defmodule TheGathering.Discord.TrackerTest do
     assert :ok = Tracker.observe(replay)
     assert_receive {:report, ^replay}
 
-    pending = PendingGame.get_by_external_id(replay.external_id)
+    pending = Discord.get_pending_by_external_id(replay.external_id)
     assert pending.played_at == replay.played_at
-    assert PendingGame.to_report(pending).players == replay.players
+    assert Discord.pending_report(pending).players == replay.players
   end
 
-  test "pending reports expire 30 days after their latest observation" do
+  test "listing pending reports does not prune expired rows" do
     assert :ok = Tracker.observe(report())
     assert_receive {:report, _report}
 
     stale_at = DateTime.utc_now() |> DateTime.add(-31, :day) |> DateTime.truncate(:second)
     Repo.update_all(PendingGame, set: [updated_at: stale_at])
 
-    assert Tracker.list_pending() == []
-    assert PendingGame.get_by_external_id("spellbot:SB12345") == nil
+    assert [%PendingGame{}] = Discord.list_pending()
+    assert %PendingGame{} = Discord.get_pending_by_external_id("spellbot:SB12345")
+
+    assert :ok = Discord.prune_pending()
+    assert Discord.list_pending() == []
+  end
+
+  test "pruning removes only reports older than 30 days" do
+    assert :ok = Tracker.observe(report())
+    assert_receive {:report, _report}
+
+    stale_at = DateTime.utc_now() |> DateTime.add(-31, :day) |> DateTime.truncate(:second)
+    Repo.update_all(PendingGame, set: [updated_at: stale_at])
+
+    fresh = %GameReport{report() | external_id: "spellbot:SB20000"}
+    assert {:ok, fresh_pending} = Discord.stage_report(fresh)
+
+    assert :ok = Discord.prune_pending()
+    assert Discord.get_pending_by_external_id("spellbot:SB12345") == nil
+    assert Discord.get_pending_by_external_id(fresh.external_id).id == fresh_pending.id
   end
 
   test "does not let a non-player report themselves as winner" do
@@ -84,6 +115,19 @@ defmodule TheGathering.Discord.TrackerTest do
 
     assert {:error, :not_a_player} = Tracker.record_winner("SB12345", "999")
     refute_receive {:report, _report}
+  end
+
+  test "a failed bot resolution rolls back writes and leaves the pending game intact" do
+    stop_supervised(Tracker)
+    start_supervised!({Tracker, sink: FailingSink})
+
+    assert :ok = Tracker.observe(report())
+
+    assert {:error, {:sink_failed, :forced_failure}} =
+             Tracker.record_winner("SB12345", "111")
+
+    assert %PendingGame{} = Discord.get_pending_by_external_id("spellbot:SB12345")
+    refute Repo.get_by(TheGathering.Games.Player, name: "Rolled Back")
   end
 
   test "without a game ID, completes the most recently started game in the channel" do
