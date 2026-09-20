@@ -26,9 +26,10 @@ defmodule TheGathering.Discord.Consumer do
     end
   end
 
-  def handle_event({:MESSAGE_CREATE, message, _ws_state}), do: observe(message)
+  def handle_event({:MESSAGE_CREATE, message, _ws_state}), do: observe(message, "new")
 
-  def handle_event({:MESSAGE_UPDATE, {_old_message, message}, _ws_state}), do: observe(message)
+  def handle_event({:MESSAGE_UPDATE, {_old_message, message}, _ws_state}),
+    do: observe(message, "edited")
 
   def handle_event({:INTERACTION_CREATE, %{data: %{name: "won"}} = interaction, _ws_state}) do
     Logger.info("Discord /won invoked by user #{interaction_user_id(interaction)}")
@@ -40,7 +41,7 @@ defmodule TheGathering.Discord.Consumer do
   end
 
   # Logs describe the game by SpellBot ID and player count only; message text is never logged.
-  defp observe(message) do
+  defp observe(message, kind) do
     case SpellBotParser.parse(message) do
       {:ok, report} ->
         case Tracker.observe(report) do
@@ -59,13 +60,16 @@ defmodule TheGathering.Discord.Consumer do
       {:error, :not_spellbot} ->
         :ignore
 
-      {:error, :no_embeds} ->
-        Logger.warning(
-          "Discord delivered a SpellBot message without embeds; enable the Message Content intent for the bot in the Discord Developer Portal"
-        )
-
+      # SpellBot defers every /lfg and /game interaction, so its first message is
+      # an empty "thinking" placeholder, and its validation replies are plain
+      # text. The ready embed arrives later as an edit of the waiting post.
+      # Stripped embeds are not a possibility here: the bot requests the Message
+      # Content intent on connect, and Discord refuses the connection (close 4014)
+      # instead of delivering empty messages when the intent is not enabled.
       {:error, reason} ->
-        Logger.debug("Discord ignored a SpellBot message: #{inspect(reason)}")
+        Logger.debug(
+          "Discord ignored a #{kind} SpellBot message (type #{inspect(Map.get(message, :type))}): #{inspect(reason)}"
+        )
     end
   end
 
