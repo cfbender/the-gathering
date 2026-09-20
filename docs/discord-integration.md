@@ -152,8 +152,10 @@ home-grown gateway state machine.
 **Primary:** run a gateway bot alongside Phoenix. Accept only messages authored
 by the configured SpellBot user ID, then require the known started color, title,
 footer, start timestamp, and player field. Emit an incomplete normalized report
-when a game starts. A listed player finishes it with `/won game:SB12345`; the
-reply is ephemeral, and a non-player cannot report themselves as winner.
+when a game starts. A listed player finishes it with `/won`, which defaults to
+the most recently started game the bot has seen in that channel, or
+`/won game:SB12345` to pick a specific one; the reply is ephemeral, and a
+non-player cannot report themselves as winner.
 
 This fills the exact gap SpellBot leaves while avoiding screen-scraping its HTML
 or depending on private Convoke APIs. It also keeps the integration usable for
@@ -180,7 +182,7 @@ Discord gateway (MESSAGE_UPDATE / MESSAGE_CREATE)
 GameReport (winner_discord_ids: []) ───────┐
         │ cached in memory                 │
         │                                  ▼
-Player runs /won game:SB12345       pluggable Sink
+Player runs /won [game:SB12345]     pluggable Sink
         │                                  ▲
         ▼                                  │
 membership check + ephemeral reply         │
@@ -193,7 +195,10 @@ name/nullable commander, winner Discord IDs, and scrub-safe raw embed data.
 Commanders are `nil` because the ready embed does not contain them.
 
 The observed roster cache is in memory, so a restart after game start currently
-makes `/won` return a clear “haven't seen that game” error. Completed reports
+makes `/won` return a clear “haven't seen that game” error. Without a `game`
+option, `/won` picks the report in the invoking channel with the latest SpellBot
+start time, so re-observing an edited older post never displaces a newer game;
+if the invoker was not in that game they are told to pass the ID. Completed reports
 are persisted by the games sink described below.
 
 ## Game tracking
@@ -241,8 +246,9 @@ crashing the gateway consumer.
    paste the token into logs or support messages.
 6. Start a SpellBot game and confirm the container logs
    `Discord observed SpellBot game spellbot:SB… with N player(s)`; raw message
-   content is never logged. A listed player then runs `/won` with that ID and
-   should receive an ephemeral confirmation.
+   content is never logged. A listed player then runs `/won` in the game's
+   channel (or `/won game:SB…` from anywhere) and should receive an ephemeral
+   confirmation naming the game ID that was recorded.
 
 What the bot sees during a SpellBot game, per the [SpellBot source](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/actions/lfg_action.py):
 `/lfg` and `/game` are deferred, so the first `MESSAGE_CREATE` is an empty

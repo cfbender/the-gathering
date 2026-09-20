@@ -14,8 +14,9 @@ defmodule TheGathering.Discord.Command do
         %{
           type: 3,
           name: "game",
-          description: "SpellBot game ID, for example SB12345",
-          required: true
+          description:
+            "SpellBot game ID (e.g. SB12345). Defaults to the latest game in this channel",
+          required: false
         }
       ]
     }
@@ -51,16 +52,24 @@ defmodule TheGathering.Discord.Command do
   end
 
   def handle(%{data: %{name: "won", options: options}} = interaction) do
-    game_id = option_value(options, "game")
     user = interaction.user || interaction.member.user
 
+    result =
+      case String.trim(option_value(options, "game")) do
+        "" -> Tracker.record_latest_winner(interaction.channel_id, user.id)
+        game_id -> Tracker.record_winner(game_id, user.id)
+      end
+
     content =
-      case Tracker.record_winner(game_id, user.id) do
+      case result do
         {:ok, report} ->
           "Recorded you as the winner of #{String.replace_prefix(report.external_id, "spellbot:", "")}."
 
         {:error, :unknown_game} ->
           "I haven't seen that SpellBot game start. Check the game ID and make sure I can read the game channel."
+
+        {:error, :no_game_in_channel} ->
+          "I haven't seen a SpellBot game start in this channel. Run `/won game:SB12345` with the game ID from SpellBot's post."
 
         {:error, :not_a_player} ->
           "You weren't listed as a player in that SpellBot game, so I didn't change it."
