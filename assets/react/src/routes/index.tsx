@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { Clock3, Crown, Gamepad2, RotateCcw, Trophy } from "lucide-react"
+import { ActivityCalendar } from "@/components/stats/activity-calendar"
 import { BarChart } from "@/components/stats/charts"
 import { ColorSection } from "@/components/stats/color-section"
+import { GameLengths } from "@/components/stats/game-lengths"
+import { MatchupHeatmap } from "@/components/stats/matchup-heatmap"
 import { StatCard } from "@/components/stats/stat-card"
 import { formatDate } from "@/features/games/games"
 import { LEADERBOARD_MIN_GAMES, getOverviewStats, leaderboardRows, sinceLabel } from "@/lib/stats"
@@ -129,6 +132,17 @@ function HomePage() {
         </section>
         <ColorSection rows={stats.color_win_rates} />
       </div>
+
+      <MatchupHeatmap players={stats.leaderboard} matchups={stats.matchups} />
+
+      <GameLengths
+        gameLengths={stats.game_lengths}
+        averageDuration={stats.average_duration_minutes}
+        averageTurns={stats.average_turns}
+        since={since}
+      />
+
+      <ActivityCalendar gameTimes={stats.game_times} />
 
       <section>
         <div className="mb-3 flex items-end justify-between">
