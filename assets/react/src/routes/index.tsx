@@ -114,8 +114,15 @@ function HomePage() {
         </section>
 
         <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-          <p className="text-primary text-xs font-bold uppercase">The meta</p>
-          <h2 className="mb-5 text-xl font-bold">Most played commanders</h2>
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-primary text-xs font-bold uppercase">The meta</p>
+              <h2 className="text-xl font-bold">Most played commanders</h2>
+            </div>
+            <Link to="/commanders" className="btn btn-ghost btn-sm">
+              View all
+            </Link>
+          </div>
           <BarChart rows={stats.commanders.slice(0, 6)} value="games" />
         </section>
       </div>

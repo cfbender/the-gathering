@@ -65,10 +65,38 @@ export interface DeckStats {
   win_rate_over_time: TrendPoint[]
 }
 
+export interface CommanderSummary extends RecordStat {
+  /** Scryfall card ID, or the card name when the card is missing from the catalog. */
+  id: string
+  color_identity: string | null
+  pilots: number
+  decks: number
+  last_played_at: string
+}
+
+export interface CommanderStats {
+  commander: {
+    id: string
+    name: string
+    art_crop_url: string | null
+    color_identity: string | null
+  }
+  record: RecordStat
+  pilots: RecordStat[]
+  decks: RecordStat[]
+  partners: RecordStat[]
+  opponents: RecordStat[]
+  win_rate_over_time: TrendPoint[]
+  recent_games: RecentStatGame[]
+}
+
 const data = <T>(path: string) => api<{ data: T }>(path).then((body) => body.data)
 export const getOverviewStats = () => data<OverviewStats>("/api/stats/overview")
 export const getPlayerStats = (id: string) => data<PlayerStats>(`/api/stats/players/${id}`)
 export const getDeckStats = (id: string) => data<DeckStats>(`/api/stats/decks/${id}`)
+export const getCommanderStats = () => data<CommanderSummary[]>("/api/stats/commanders")
+export const getCommanderDetail = (id: string) =>
+  data<CommanderStats>(`/api/stats/commanders/${encodeURIComponent(id)}`)
 
 /** Label for figures limited by the administrator's detailed-stats cutoff. */
 export function sinceLabel(detailedStatsFrom: string | null, fallback?: string) {

@@ -181,6 +181,73 @@ defmodule TheGathering.StatsTest do
     assert Stats.deck(decks["Alice"].id).average_turns == 9.0
   end
 
+  test "commander stats aggregate across pilots, count partner decks for both partners, and fall back to names",
+       %{players: players, decks: decks} do
+    # Bob's second deck pairs the name-only Krenko with Kangee as a partner; he beats Alice's
+    # Kangee deck with it once, so that game holds two Kangee seats.
+    {:ok, partners} =
+      Games.create_deck(%{
+        player_id: players["Bob"].id,
+        name: "Partners",
+        commander_name: "Krenko, Mob Boss",
+        partner_card_id: "kangee",
+        partner_name: "Kangee, Sky Warden",
+        color_identity: "WUR"
+      })
+
+    game(players, Map.put(decks, "Bob", partners), ~U[2026-04-01 12:00:00Z], "Bob", [
+      "Bob",
+      "Alice",
+      "Cara"
+    ])
+
+    commanders = Stats.commanders()
+
+    assert Enum.map(commanders, & &1.name) |> Enum.sort() == [
+             "Kangee, Sky Warden",
+             "Krenko, Mob Boss",
+             "Lathril, Blade of the Elves"
+           ]
+
+    kangee = Enum.find(commanders, &(&1.id == "kangee"))
+
+    assert %{
+             name: "Kangee, Sky Warden",
+             art_crop_url: "https://cards.example/kangee-art.jpg",
+             games: 8,
+             wins: 4,
+             losses: 3,
+             draws: 1,
+             win_rate: 50.0,
+             pilots: 2,
+             decks: 2,
+             last_played_at: ~U[2026-04-01 12:00:00Z]
+           } = kangee
+
+    # Krenko is not in the catalog, so it is addressed by name and both Bob decks group together.
+    krenko = Enum.find(commanders, &(&1.name == "Krenko, Mob Boss"))
+
+    assert %{id: "Krenko, Mob Boss", art_crop_url: nil, games: 7, wins: 2, pilots: 1, decks: 2} =
+             krenko
+
+    detail = Stats.commander("kangee")
+    assert detail.commander.id == "kangee"
+    assert detail.record == %{games: 8, wins: 4, losses: 3, draws: 1, win_rate: 50.0}
+    assert Enum.map(detail.pilots, &{&1.name, &1.games}) == [{"Alice", 7}, {"Bob", 1}]
+    assert Enum.map(detail.decks, &{&1.name, &1.games}) == [{"Birds", 7}, {"Partners", 1}]
+    assert [%{name: "Krenko, Mob Boss", games: 1, wins: 1}] = detail.partners
+    assert Enum.any?(detail.opponents, &(&1.name == "Cara" and &1.games == 7))
+    assert length(detail.win_rate_over_time) == 7
+    assert hd(detail.recent_games).result == "win"
+
+    by_name = Stats.commander("krenko, mob boss")
+    assert by_name.record.games == 7
+    assert [%{name: "Kangee, Sky Warden", games: 1}] = by_name.partners
+
+    assert Stats.commander("kangee", %{"date_from" => "2026-04-01"}).record.games == 2
+    assert Stats.commander("00000000-0000-0000-0000-000000000000") == nil
+  end
+
   defp game(players, decks, played_at, winner, order) do
     seats =
       order
