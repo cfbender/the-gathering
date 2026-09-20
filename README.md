@@ -142,6 +142,8 @@ The app downloads Scryfall's compressed `default_cards` JSONL feed when the cata
 mise exec -- mix the_gathering.catalog.sync
 ```
 
+After each sync (and after every CSV or Mythic Track import) the app links decks and MVP cards that only carry a card name to catalog cards by name, filling in Scryfall IDs and missing colour identities. Trigger that alone from **Admin → Users → Link imported cards to the catalog** or with `mise exec -- mix the_gathering.catalog.backfill`.
+
 There is one row per Scryfall `oracle_id`. The preferred printing is English, available on paper, non-digital, and non-promo, then the newest `released_at`; set code, collector number, and Scryfall UUID break ties. `default_cards` is used instead of `oracle_cards` because it provides printing images and lets the app choose that representative deterministically.
 
 A card can be a commander when it is a legendary creature or its oracle text says it can be your commander. Backgrounds are deliberately excluded. Partner, Partner with, Friends forever, Choose a Background, and Background are stored as a separate pairing classification for deck-building interfaces.

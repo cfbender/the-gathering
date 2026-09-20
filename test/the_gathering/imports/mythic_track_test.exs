@@ -154,6 +154,25 @@ defmodule TheGathering.Imports.MythicTrackTest do
 
     assert unnamed_daniel.deck == "Tifa Lockhart / Candlekeep Sage"
 
+    # Mythic Track also writes partners as "A || B (Partners)" in the commander name.
+    piped =
+      game()["players"]
+      |> List.update_at(1, fn player ->
+        player
+        |> put_in(
+          ["commander", "name"],
+          "Frodo, Adventurous Hobbit || Sam, Loyal Attendant (Partners)"
+        )
+        |> put_in(["commander", "deckName"], "")
+      end)
+
+    assert [%{seats: [piped_daniel | _rest]}] =
+             Imports.preview(:mythic_track, json([game(%{"players" => piped})])).games
+
+    assert piped_daniel.commander == "Frodo, Adventurous Hobbit"
+    assert piped_daniel.partner == "Sam, Loyal Attendant"
+    assert piped_daniel.deck == "Frodo, Adventurous Hobbit / Sam, Loyal Attendant"
+
     solo = game(%{"players" => [Enum.at(players, 1)]})
 
     assert [%{line: 1, message: "skipped: needs between 2 and 6 players, has 1 (" <> _}] =

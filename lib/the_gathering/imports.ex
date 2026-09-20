@@ -10,7 +10,7 @@ defmodule TheGathering.Imports do
 
   import Ecto.Query
 
-  alias TheGathering.Games
+  alias TheGathering.{Catalog, Games}
   alias TheGathering.Games.{Deck, Game, Player}
   alias TheGathering.Imports.{CSV, MythicTrack}
   alias TheGathering.Repo
@@ -62,6 +62,7 @@ defmodule TheGathering.Imports do
           &import_game(&1, &2, @sources[source], user_id)
         )
         |> Map.update!(:game_ids, &Enum.reverse/1)
+        |> tap(fn _result -> Catalog.Backfill.run() end)
       else
         Repo.rollback({:validation, preview})
       end

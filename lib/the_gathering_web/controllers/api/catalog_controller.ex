@@ -14,4 +14,6 @@ defmodule TheGatheringWeb.API.CatalogController do
     |> put_status(:accepted)
     |> render(:triggered, result: result)
   end
+
+  def backfill(conn, _params), do: render(conn, :backfill, summary: Catalog.backfill())
 end

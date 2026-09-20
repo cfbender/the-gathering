@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
 import type { FormEvent } from "react"
-import { BarChart3, Bot, Link2, Shield, Trash2, Trophy, Users } from "lucide-react"
+import { BarChart3, Bot, Link2, Shield, Sparkles, Trash2, Trophy, Users } from "lucide-react"
 import { useState } from "react"
 import { SudoPrompt } from "@/components/sudo-prompt"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -20,6 +20,14 @@ interface Data<T> {
 interface AdminSettings {
   registration_enabled: boolean
   detailed_stats_from: string | null
+}
+
+interface BackfillSummary {
+  decks_split: number
+  decks_linked: number
+  colors_filled: number
+  mvps_linked: number
+  unmatched: string[]
 }
 
 interface PendingDiscordGame {
@@ -117,6 +125,8 @@ function AdminUsersPage() {
 
       <StatsCutoff settings={settings.data} />
 
+      <CatalogBackfill />
+
       <section aria-labelledby="accounts-heading">
         <h2 id="accounts-heading" className="mb-3 flex items-center gap-2 text-lg font-semibold">
           <Users className="size-5" /> Accounts
@@ -130,6 +140,73 @@ function AdminUsersPage() {
         </div>
       </section>
     </div>
+  )
+}
+
+/**
+ * Imported games name commanders and MVP cards without Scryfall IDs. This
+ * links them to the local catalog so art, color identity, and card pages work.
+ * It also runs on its own after every import and catalog sync.
+ */
+function CatalogBackfill() {
+  const queryClient = useQueryClient()
+  const run = useMutation({
+    mutationFn: async () =>
+      (await api<Data<BackfillSummary>>("/api/admin/catalog/backfill", { method: "POST" })).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["decks"] })
+      void queryClient.invalidateQueries({ queryKey: ["games"] })
+      void queryClient.invalidateQueries({ queryKey: ["players"] })
+      void queryClient.invalidateQueries({ queryKey: ["stats"] })
+    },
+  })
+  const summary = run.data
+
+  return (
+    <section
+      className="card bg-base-200 border-base-300 border"
+      aria-labelledby="catalog-backfill-heading"
+    >
+      <div className="card-body gap-3 p-4 sm:p-5">
+        <h2 id="catalog-backfill-heading" className="flex items-center gap-2 text-lg font-semibold">
+          <Sparkles className="size-5" /> Link imported cards to the catalog
+        </h2>
+        <p className="text-base-content/70 text-sm">
+          Imported games name commanders and MVP cards without card IDs. Linking them by name fills
+          in card art and missing color identities and splits Mythic Track&apos;s &ldquo;Commander
+          || Partner&rdquo; decks. This runs automatically after imports and catalog syncs; run it
+          by hand after fixing a misspelled name.
+        </p>
+        <div>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={run.isPending}
+            onClick={() => run.mutate()}
+          >
+            {run.isPending ? "Linking…" : "Link cards now"}
+          </button>
+        </div>
+        {summary && (
+          <p className="text-sm" role="status">
+            Linked {summary.decks_linked} commander{summary.decks_linked === 1 ? "" : "s"}, split{" "}
+            {summary.decks_split} partner deck{summary.decks_split === 1 ? "" : "s"}, filled{" "}
+            {summary.colors_filled} color identit{summary.colors_filled === 1 ? "y" : "ies"}, linked{" "}
+            {summary.mvps_linked} MVP card{summary.mvps_linked === 1 ? "" : "s"}.
+            {summary.unmatched.length > 0 && (
+              <>
+                {" "}
+                No catalog match for:{" "}
+                <span className="font-medium">{summary.unmatched.join(", ")}</span>.
+              </>
+            )}
+          </p>
+        )}
+        {run.error && !isSudoRequired(run.error) && (
+          <p className="text-error text-sm">{errorMessage(run.error)}</p>
+        )}
+      </div>
+    </section>
   )
 }
 

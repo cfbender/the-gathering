@@ -7,6 +7,8 @@ defmodule TheGatheringWeb.API.CatalogJSON do
     %{data: %{status: if(result == :started, do: "started", else: "already_running")}}
   end
 
+  def backfill(%{summary: summary}), do: %{data: summary}
+
   defp sync(%SyncState{} = state) do
     %{
       status: state.status,
