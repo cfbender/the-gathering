@@ -72,10 +72,10 @@ defmodule TheGathering.Accounts.User do
 
   def admin_update_changeset(user, attrs) do
     user
-    |> cast(attrs, [:display_name, :role, :disabled_at])
-    |> validate_required([:display_name, :role])
-    |> validate_length(:display_name, min: 1, max: 80)
-    |> validate_inclusion(:role, @roles)
+    |> cast(attrs, [:username, :display_name, :role, :disabled_at])
+    |> normalize_username()
+    |> validate_account_fields()
+    |> unique_constraint(:username)
   end
 
   defp validate_account_fields(changeset) do

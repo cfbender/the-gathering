@@ -29,7 +29,9 @@ export function UserMenu() {
         tabIndex={-1}
         className="menu dropdown-content bg-base-200 border-base-300 z-20 mt-2 w-52 rounded-box border p-2 shadow-lg"
       >
-        <li className="menu-title truncate px-3 py-2">@{user.username}</li>
+        <li className="menu-title truncate px-3 py-2" title={`@${user.username}`}>
+          @{user.username}
+        </li>
         <li>
           <Link to="/settings">
             <Settings className="size-4" /> Settings

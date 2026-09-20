@@ -196,11 +196,22 @@ defmodule TheGathering.Accounts do
 
     base = if String.length(base) >= 3, do: base, else: "discord"
 
-    if Repo.exists?(from user in User, where: user.username == ^base) do
-      "#{String.slice(base, 0, 19)}_#{String.slice(discord_id, 0, 20)}"
-    else
-      base
+    taken? = fn candidate ->
+      Repo.exists?(from user in User, where: user.username == ^candidate)
     end
+
+    first_available(base, &"#{String.slice(base, 0, 38)}#{&1}", taken?) ||
+      "#{String.slice(base, 0, 19)}_#{String.slice(discord_id, 0, 20)}"
+  end
+
+  # Tries `base`, then `with_suffix.(2)` … `with_suffix.(9)`, so a clash yields
+  # a short readable name rather than the Discord snowflake. Returns nil when all
+  # are taken so the caller can fall back to the snowflake.
+  @suffix_attempts 2..9
+
+  defp first_available(base, with_suffix, taken?) do
+    [base | Enum.map(@suffix_attempts, with_suffix)]
+    |> Enum.find(fn candidate -> not taken?.(candidate) end)
   end
 
   defp link_discord_player(user) do
@@ -224,16 +235,17 @@ defmodule TheGathering.Accounts do
   end
 
   defp available_player_name(display_name, discord_id) do
-    name = String.trim(display_name)
+    name = display_name |> String.trim() |> String.slice(0, 76)
 
-    if Repo.exists?(
-         from player in Player,
-           where: fragment("lower(?)", player.name) == ^String.downcase(name)
-       ) do
-      "#{String.slice(name, 0, 76)} (#{String.slice(discord_id, 0, 20)})"
-    else
-      name
+    taken? = fn candidate ->
+      Repo.exists?(
+        from player in Player,
+          where: fragment("lower(?)", player.name) == ^String.downcase(candidate)
+      )
     end
+
+    first_available(name, &"#{name} (#{&1})", taken?) ||
+      "#{name} (#{String.slice(discord_id, 0, 20)})"
   end
 
   defp discord_avatar_url(%{"picture" => picture}) when is_binary(picture) do
