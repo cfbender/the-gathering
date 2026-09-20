@@ -112,13 +112,15 @@ function BreakdownBars({
         style={{ gridTemplateColumns: `repeat(${values.length}, minmax(0, 1fr))` }}
       >
         {values.map((value, index) => (
-          <div key={labels[index]} className="flex h-full min-w-0 flex-col justify-end gap-1">
-            <div
-              className="bg-primary/70 min-h-px rounded-t-sm"
-              style={{ height: `${(value / max) * 100}%` }}
-              title={`${labels[index]}: ${value} games`}
-            />
-            <span className="text-base-content/45 truncate text-center text-[9px]">
+          <div key={labels[index]} className="flex h-full min-w-0 flex-col gap-1">
+            <div className="flex min-h-0 flex-1 items-end">
+              <div
+                className="bg-primary/70 min-h-px w-full rounded-t-sm"
+                style={{ height: `${(value / max) * 100}%` }}
+                title={`${labels[index]}: ${value} games`}
+              />
+            </div>
+            <span className="text-base-content/45 h-3 shrink-0 truncate text-center text-[9px] leading-3">
               {!compact || index % 6 === 0 ? labels[index] : ""}
             </span>
           </div>
