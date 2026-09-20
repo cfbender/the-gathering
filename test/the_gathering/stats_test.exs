@@ -110,6 +110,9 @@ defmodule TheGathering.StatsTest do
     wu = Enum.find(stats.color_win_rates, &(&1.id == "WU"))
     assert %{name: "Azorius", games: 3, wins: 2, win_rate: 66.7} = wu
 
+    assert Enum.map(Stats.overview().color_exposure, &{&1.id, &1.games}) ==
+             [{"W", 6}, {"U", 6}, {"B", 6}, {"R", 6}, {"G", 6}]
+
     # Dashboard commanders carry the same canonical catalog ID the Commanders page uses,
     # and honour the date range.
     assert %{name: "Kangee, Sky Warden", art_crop_url: "https://cards.example/kangee-art.jpg"} =

@@ -4,6 +4,7 @@ import { Clock3, Crown, Gamepad2, RotateCcw, Trophy } from "lucide-react"
 import { ActivityCalendar } from "@/components/stats/activity-calendar"
 import { BarChart } from "@/components/stats/charts"
 import { ColorSection } from "@/components/stats/color-section"
+import { ColorWheel } from "@/components/stats/color-wheel"
 import { EloSection } from "@/components/stats/elo-section"
 import { GameLengths } from "@/components/stats/game-lengths"
 import { MatchupHeatmap } from "@/components/stats/matchup-heatmap"
@@ -134,6 +135,11 @@ function HomePage() {
           <BarChart rows={stats.seat_win_rates} />
         </section>
         <ColorSection rows={stats.color_win_rates} />
+        <ColorWheel
+          rows={stats.color_exposure}
+          eyebrow="Playgroup colors"
+          className="md:col-span-2"
+        />
       </div>
 
       <MatchupHeatmap players={stats.leaderboard} matchups={stats.matchups} />

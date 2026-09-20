@@ -4,8 +4,11 @@ import { Flame, Medal, Target } from "lucide-react"
 import { CardArtBackground } from "@/components/card-art-background"
 import { BarChart, LineChart } from "./charts"
 import { ColorSection } from "./color-section"
+import { ColorRadar } from "./color-radar"
+import { ColorWheel } from "./color-wheel"
 import { GameLengths } from "./game-lengths"
 import { PlayerElo } from "./player-elo"
+import { Rivalries } from "./rivalries"
 import { StatCard } from "./stat-card"
 import { byWinRateThenName, getPlayerStats, sinceLabel } from "@/lib/stats"
 
@@ -64,7 +67,12 @@ export function PlayerStats({ playerId }: { playerId: string }) {
           <BarChart rows={byWinRateThenName(stats.decks)} />
         </div>
       </div>
-      <ColorSection rows={stats.color_win_rates} eyebrow="Their colors" />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <ColorSection rows={stats.color_win_rates} eyebrow="Their colors" />
+        <ColorRadar rows={stats.color_exposure} />
+        <ColorWheel rows={stats.color_exposure} eyebrow="Their color mix" />
+      </div>
+      <Rivalries headToHead={stats.head_to_head} commanders={stats.rival_commanders} />
       <GameLengths
         gameLengths={stats.game_lengths}
         averageDuration={stats.average_duration_minutes}

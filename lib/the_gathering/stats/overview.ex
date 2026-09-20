@@ -33,6 +33,7 @@ defmodule TheGathering.Stats.Overview do
           & &1.seat
         ),
       color_win_rates: Records.color_records(seats),
+      color_exposure: Records.color_exposure(seats),
       commanders: params |> Stats.Commanders.list() |> Enum.take(8),
       recent_games: games |> Enum.take(6) |> Enum.map(&Summaries.recent_game/1)
     }
