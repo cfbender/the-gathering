@@ -10,20 +10,19 @@ defmodule TheGathering.Stats.Commanders do
   catalog knows it, otherwise the stored ID, otherwise the normalized name. The
   published `id` is that canonical catalog ID (or the card name when the catalog lacks
   the card), and `get/2` accepts the published ID, a stored ID, or a card name, so every
-  ID `list/1` emits resolves to a detail page.
+  ID `list/1` emits resolves to a detail page. Detail trends are limited to the newest
+  500 games so response and calculation cost remain bounded.
   """
-
-  import Ecto.Query
-  import TheGathering.Stats.Records
 
   alias TheGathering.Catalog
   alias TheGathering.Catalog.CardData
-  alias TheGathering.Games.GamePlayer
-  alias TheGathering.Repo
+  alias TheGathering.Stats.{Query, Records, Summaries}
+
+  @trend_game_limit 500
 
   @doc "Every commander played, most played first."
   def list(params \\ %{}) do
-    params |> seats() |> summarize()
+    params |> Query.commander_seats() |> summarize()
   end
 
   @doc "`list/1` over seats that already have `:game`, `:deck`, and `:player` loaded."
@@ -46,56 +45,103 @@ defmodule TheGathering.Stats.Commanders do
   card name; `nil` when never played.
   """
   def get(id, params \\ %{}) do
-    all_seats = seats(params)
-    summaries = card_summaries(all_seats)
+    with {key, card} <- resolve(id) do
+      ids = [id, card.id, card.stored_id] |> Enum.reject(&is_nil/1) |> Enum.uniq()
+      names = if is_binary(card.name), do: [card.name], else: []
+      {stored_ids, stored_names} = Query.commander_aliases(ids, names)
+      ids = Enum.uniq(ids ++ stored_ids)
+      names = Enum.uniq(names ++ stored_names)
+      candidate_seats = Query.commander_seats(params, ids, names)
+      summaries = card_summaries(candidate_seats)
 
-    entries =
-      all_seats
-      |> Enum.flat_map(&commander_seats(&1, summaries))
-      |> Enum.filter(&matches?(&1, id))
+      entries =
+        candidate_seats
+        |> Enum.flat_map(&commander_seats(&1, summaries))
+        |> Enum.filter(&same_commander?(&1, key))
 
-    case entries do
-      [] ->
-        nil
-
-      [{key, card, _seat} | _] ->
-        seats = Enum.map(entries, fn {_key, _card, seat} -> seat end)
-        seat_ids = MapSet.new(seats, & &1.id)
-        games = seats |> Enum.map(& &1.game) |> Enum.uniq_by(& &1.id) |> preload_seats()
-        tracked = &Enum.filter(&1, fn seat -> MapSet.member?(seat_ids, seat.id) end)
-
-        %{
-          commander: commander_entity(key, card),
-          record: record(seats),
-          pilots: grouped_records(seats, & &1.player, & &1.player_id),
-          decks: grouped_records(seats, &deck_entity(&1.deck, summaries), & &1.deck_id),
-          partners: partners(seats, key, summaries),
-          opponents: opponents(games, seat_ids),
-          win_rate_over_time: cumulative_win_rate(games, tracked),
-          recent_games: games |> Enum.take(10) |> Enum.map(&recent_game(&1, tracked.(&1.seats)))
-        }
+      detail(entries, summaries)
     end
   end
 
-  defp seats(params) do
-    GamePlayer
-    |> join(:inner, [seat], game in assoc(seat, :game), as: :game)
-    |> join(:inner, [seat], deck in assoc(seat, :deck))
-    |> date_range(params)
-    |> order_by([seat, game: game], desc: game.played_at, desc: game.id, asc: seat.seat)
-    |> preload([:player, :deck, :game])
-    |> Repo.all()
+  defp detail([], _summaries), do: nil
+
+  defp detail([{key, card, _seat} | _] = entries, summaries) do
+    seats = Enum.map(entries, fn {_key, _card, seat} -> seat end)
+    seat_ids = Enum.map(seats, & &1.id)
+    game_ids = seats |> Enum.map(& &1.game_id) |> Enum.uniq()
+    recent_games = Query.recent_games(game_ids, 10)
+    tracked_seat_ids = MapSet.new(seat_ids)
+
+    %{
+      commander: Summaries.commander(key, card),
+      record: Records.record(seats),
+      pilots: Records.grouped_records(seats, &Summaries.entity(&1.player), & &1.player_id),
+      decks:
+        Records.grouped_records(
+          seats,
+          &Summaries.deck(&1.deck, summaries),
+          & &1.deck_id
+        ),
+      partners: partners(seats, key, summaries),
+      opponents: game_ids |> Query.opponent_counts(seat_ids) |> Summaries.records(),
+      win_rate_over_time: Records.cumulative_win_rate(trend_games(entries), & &1),
+      recent_games:
+        Enum.map(
+          recent_games,
+          &Summaries.recent_game(
+            &1,
+            Enum.filter(&1.seats, fn seat -> MapSet.member?(tracked_seat_ids, seat.id) end)
+          )
+        )
+    }
   end
 
-  defp preload_seats(games) do
-    games
-    |> Repo.preload(seats: [:player, :deck])
+  defp resolve(id) do
+    direct_summaries = Catalog.card_summaries([{id, id}])
+
+    case Catalog.card_summary(direct_summaries, id, id) do
+      nil -> resolve_reference(id)
+      summary -> canonical(summary, id, summary.name)
+    end
+  end
+
+  defp resolve_reference(id) do
+    references = Query.commander_references(id)
+    summaries = Catalog.card_summaries(references)
+
+    Enum.find_value(references, fn {stored_id, name} ->
+      if stored_id == id or normalized_name(name) == normalized_name(id) do
+        canonical(Catalog.card_summary(summaries, stored_id, name), stored_id, name)
+      end
+    end)
+  end
+
+  defp normalized_name(value) when is_binary(value), do: CardData.normalize_name(value)
+  defp normalized_name(_value), do: nil
+
+  defp same_commander?({key, _card, _seat}, key), do: true
+  defp same_commander?(_entry, _key), do: false
+
+  defp trend_games(entries) do
+    entries
+    |> Enum.group_by(fn {_key, _card, seat} -> seat.game_id end)
+    |> Enum.map(fn {_game_id, rows} ->
+      {_key, _card, first_seat} = hd(rows)
+
+      tracked_seats =
+        rows
+        |> Enum.map(fn {_key, _card, seat} -> seat end)
+        |> Enum.uniq_by(& &1.id)
+
+      %{first_seat.game | seats: tracked_seats}
+    end)
     |> Enum.sort_by(&{DateTime.to_unix(&1.played_at), &1.id}, :desc)
+    |> Enum.take(@trend_game_limit)
   end
 
   # One `{key, card, seat}` entry per commander card the seat's deck ran, where `key`
   # is the canonical identity and `card` carries the resolved name plus the stored
-  # reference so `matches?/2` can honour legacy IDs.
+  # reference used to resolve legacy IDs.
   defp commander_seats(seat, summaries) do
     deck = seat.deck
 
@@ -125,38 +171,6 @@ defmodule TheGathering.Stats.Commanders do
   defp missing_card(stored_id, name),
     do: %{id: stored_id, name: name, art_crop_url: nil, color_identity: nil, stored_id: stored_id}
 
-  # `id` is a published/canonical ID, a stored Scryfall ID, or a card name.
-  defp matches?({key, card, _seat}, id) do
-    key == {:id, id} or card.stored_id == id or
-      (is_binary(card.name) and CardData.normalize_name(card.name) == CardData.normalize_name(id))
-  end
-
-  defp commander_entity(key, card) do
-    %{
-      id: public_id(key, card),
-      name: card.name,
-      art_crop_url: card.art_crop_url,
-      color_identity: card.color_identity
-    }
-  end
-
-  # Cards the catalog lacks and that were only ever recorded by name are addressed by
-  # that name; everything else by its canonical Scryfall ID.
-  defp public_id({:id, id}, _card), do: id
-  defp public_id({:name, _normalized}, card), do: card.name
-
-  defp deck_entity(deck, summaries) do
-    art = Catalog.card_summary(summaries, deck.commander_card_id, deck.commander_name)
-
-    %{
-      id: deck.id,
-      name: deck.name,
-      commander_name: deck.commander_name,
-      color_identity: deck.color_identity,
-      art_crop_url: art && art.art_crop_url
-    }
-  end
-
   defp partners(seats, key, summaries) do
     seats
     |> Enum.flat_map(&commander_seats(&1, summaries))
@@ -173,18 +187,11 @@ defmodule TheGathering.Stats.Commanders do
       seats = Enum.map(rows, fn {_key, _card, seat} -> seat end)
 
       key
-      |> commander_entity(card)
-      |> Map.merge(record(seats))
+      |> Summaries.commander(card)
+      |> Map.merge(Records.record(seats))
       |> Map.merge(extra_fun.(seats))
     end)
     |> Enum.sort_by(&{-&1.games, -&1.win_rate, String.downcase(&1.name)})
-  end
-
-  defp opponents(games, seat_ids) do
-    games
-    |> Enum.flat_map(fn game -> Enum.reject(game.seats, &MapSet.member?(seat_ids, &1.id)) end)
-    |> Enum.reject(&is_nil(&1.player))
-    |> grouped_records(& &1.player, & &1.player_id)
   end
 
   defp card_summaries(seats) do

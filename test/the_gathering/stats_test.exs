@@ -254,6 +254,19 @@ defmodule TheGathering.StatsTest do
     assert Stats.commander("00000000-0000-0000-0000-000000000000") == nil
   end
 
+  test "commander detail query resolves a name-only legacy deck" do
+    detail = Stats.commander("krenko, mob boss")
+
+    assert detail.commander == %{
+             id: "Krenko, Mob Boss",
+             name: "Krenko, Mob Boss",
+             art_crop_url: nil,
+             color_identity: nil
+           }
+
+    assert detail.record == %{games: 6, wins: 1, losses: 4, draws: 1, win_rate: 16.7}
+  end
+
   test "commander identity is canonical across stored IDs, names, seat order, and the overview",
        %{players: players, decks: decks} do
     # Bob records Kangee by name only; Cara's deck still points at a printing the catalog
