@@ -69,6 +69,21 @@ defmodule TheGatheringWeb.API.DeckControllerTest do
     assert body["data"]["name"] == "Krenko!"
   end
 
+  test "the owner can exclude a deck from the chooser but cannot edit its skip count", ctx do
+    body =
+      ctx.conn
+      |> log_in_user(ctx.owner)
+      |> patch(~p"/api/decks/#{ctx.deck.id}", %{deck: %{included_for_play: false, skip_count: 9}})
+      |> json_response(200)
+
+    assert body["data"]["included_for_play"] == false
+    assert body["data"]["skip_count"] == 0
+
+    deck = Games.get_deck!(ctx.deck.id)
+    assert deck.included_for_play == false
+    assert deck.skip_count == 0
+  end
+
   test "members cannot edit decks of unclaimed guest players", ctx do
     assert %{"errors" => %{"detail" => "Forbidden"}} =
              ctx.conn

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
-import { Library } from "lucide-react"
+import { Dices, Library } from "lucide-react"
 import { useState } from "react"
 import { CardArtBackground } from "@/components/card-art-background"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -38,31 +38,36 @@ function DecksPage() {
         title="Decks"
         actions={
           query.data && (
-            <ToggleGroup
-              type="single"
-              value={scope}
-              onValueChange={(value) => value && setChoice(value as Scope)}
-              aria-label="Which decks to show"
-              className="join"
-            >
-              {(
-                [
-                  ["mine", `My decks (${mine.length})`],
-                  ["all", `Everyone (${decks.length})`],
-                ] as const
-              ).map(([value, label]) => (
-                <ToggleGroupItem
-                  key={value}
-                  value={value}
-                  className={cn(
-                    "btn btn-sm join-item",
-                    scope === value ? "btn-primary" : "btn-ghost",
-                  )}
-                >
-                  {label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+            <>
+              <Link to="/decks/choose" className="btn btn-primary btn-sm">
+                <Dices className="size-4" /> Choose a deck
+              </Link>
+              <ToggleGroup
+                type="single"
+                value={scope}
+                onValueChange={(value) => value && setChoice(value as Scope)}
+                aria-label="Which decks to show"
+                className="join"
+              >
+                {(
+                  [
+                    ["mine", `My decks (${mine.length})`],
+                    ["all", `Everyone (${decks.length})`],
+                  ] as const
+                ).map(([value, label]) => (
+                  <ToggleGroupItem
+                    key={value}
+                    value={value}
+                    className={cn(
+                      "btn btn-sm join-item",
+                      scope === value ? "btn-primary" : "btn-ghost",
+                    )}
+                  >
+                    {label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </>
           )
         }
       />

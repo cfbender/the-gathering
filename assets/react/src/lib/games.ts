@@ -27,6 +27,8 @@ export interface Deck {
   decklist_url: string | null
   decklist_source: string | null
   archived_at: string | null
+  skip_count?: number
+  included_for_play?: boolean
   player?: Player
   games_played?: number
   wins?: number
