@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import { CardArtBackground } from "@/components/card-art-background"
 import { ColorIdentity } from "@/components/mana-symbols"
+import { PlayerAvatar } from "@/components/player-avatar"
 import { favoritePrey, favoriteVictim, nemesisCommander, nemesisPlayer } from "@/lib/rivals"
 import type { CommanderStats, HeadToHead, RivalCommander } from "@/lib/stats"
 
@@ -15,6 +16,7 @@ export function RivalryCallout({
   detail,
   link,
   artCropUrl,
+  avatarUrl,
   colorIdentity,
 }: {
   label: string
@@ -23,6 +25,7 @@ export function RivalryCallout({
   detail: string
   link: RivalryLink
   artCropUrl?: string | null
+  avatarUrl?: string | null
   colorIdentity?: string | null
 }) {
   const linkClassName =
@@ -36,13 +39,18 @@ export function RivalryCallout({
           <p className="text-primary text-xs font-bold tracking-wide uppercase">{label}</p>
           {colorIdentity && <ColorIdentity colors={colorIdentity} />}
         </div>
-        <div className="border-base-300/70 bg-base-100/75 rounded-box border px-3 py-2 shadow-sm backdrop-blur">
-          <strong className="text-base-content block truncate" title={name}>
-            {name}
-          </strong>
-          <span className="text-base-content/70 text-sm tabular-nums">
-            {count} {detail}
-          </span>
+        <div className="border-base-300/70 bg-base-100/75 rounded-box flex items-center gap-3 border px-3 py-2 shadow-sm backdrop-blur">
+          {link.to === "/players/$playerId" && (
+            <PlayerAvatar name={name} avatarUrl={avatarUrl} size="sm" className="shrink-0" />
+          )}
+          <div className="min-w-0">
+            <strong className="text-base-content block truncate" title={name}>
+              {name}
+            </strong>
+            <span className="text-base-content/70 text-sm tabular-nums">
+              {count} {detail}
+            </span>
+          </div>
         </div>
       </div>
       {link.to === "/players/$playerId" ? (
@@ -128,6 +136,7 @@ export function Rivalries({
               count={value}
               detail={value === 1 ? result[0] : result[1]}
               artCropUrl={commander?.art_crop_url}
+              avatarUrl={kind === "player" ? row.avatar_url : null}
               colorIdentity={commander?.color_identity}
               link={
                 kind === "player"
@@ -140,7 +149,7 @@ export function Rivalries({
       </div>
       {commanders.length > 0 && (
         <div className="border-base-300 bg-base-200/60 overflow-hidden rounded-xl border">
-          <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,4rem)] gap-2 border-b border-base-300 px-4 py-2 text-right text-xs font-bold uppercase text-base-content/50">
+          <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,3.25rem)] gap-2 border-b border-base-300 px-4 py-2 text-right text-xs font-bold uppercase text-base-content/50 sm:grid-cols-[minmax(0,1fr)_repeat(3,4rem)]">
             <span className="text-left">Rival commander</span>
             <span>Faced</span>
             <span>Beat me</span>
@@ -151,10 +160,13 @@ export function Rivalries({
               key={commander.id}
               to="/commanders/$commanderId"
               params={{ commanderId: commander.id }}
-              className="grid grid-cols-[minmax(0,1fr)_repeat(3,4rem)] items-center gap-2 border-b border-base-300/70 px-4 py-2.5 text-right text-sm last:border-b-0 hover:bg-base-300/40"
+              className="grid grid-cols-[minmax(0,1fr)_repeat(3,3.25rem)] items-center gap-2 border-b border-base-300/70 px-4 py-2.5 text-right text-sm last:border-b-0 hover:bg-base-300/40 sm:grid-cols-[minmax(0,1fr)_repeat(3,4rem)]"
             >
               <span className="flex min-w-0 items-center gap-2 text-left font-medium">
-                <ColorIdentity colors={commander.color_identity ?? ""} />
+                <ColorIdentity
+                  colors={commander.color_identity ?? ""}
+                  className="hidden sm:inline-flex"
+                />
                 <span className="truncate">{commander.name}</span>
               </span>
               <span>{commander.faced}</span>
@@ -188,6 +200,7 @@ export function CommanderRivalries({ opponents }: { opponents: CommanderStats["o
           name={nemesis.name}
           count={nemesis.wins}
           detail={nemesis.wins === 1 ? "win against this commander" : "wins against this commander"}
+          avatarUrl={nemesis.avatar_url}
           link={{ to: "/players/$playerId", params: { playerId: String(nemesis.id) } }}
         />
       )}
@@ -197,6 +210,7 @@ export function CommanderRivalries({ opponents }: { opponents: CommanderStats["o
           name={prey.name}
           count={prey.beaten}
           detail={prey.beaten === 1 ? "loss to this commander" : "losses to this commander"}
+          avatarUrl={prey.avatar_url}
           link={{ to: "/players/$playerId", params: { playerId: String(prey.id) } }}
         />
       )}

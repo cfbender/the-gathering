@@ -18,6 +18,7 @@ export interface NamedRecordRow extends RecordCounts {
 export interface HeadToHead {
   id: number
   name: string
+  avatar_url: string | null
   games: number
   wins: number
   losses: number
@@ -161,7 +162,7 @@ export interface CommanderStats {
   pilots: NamedRecordRow[]
   decks: NamedRecordRow[]
   partners: NamedRecordRow[]
-  opponents: (NamedRecordRow & { beaten: number })[]
+  opponents: (NamedRecordRow & { avatar_url: string | null; beaten: number })[]
   win_rate_over_time: TrendPoint[]
   recent_games: RecentStatGame[]
 }

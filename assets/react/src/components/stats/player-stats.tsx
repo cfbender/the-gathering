@@ -68,11 +68,11 @@ export function PlayerStats({ playerId }: { playerId: string }) {
         <h3 className="mb-4 font-bold">Deck performance</h3>
         <BarChart rows={byWinRateThenName(stats.decks)} columns={2} />
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2">
         <ColorSection rows={stats.color_win_rates} eyebrow="Their colors" />
-        <ColorRadar rows={stats.color_exposure} />
         <ColorWheel rows={stats.color_exposure} eyebrow="Their color mix" />
       </div>
+      <ColorRadar rows={stats.color_exposure} />
       <Rivalries headToHead={stats.head_to_head} commanders={stats.rival_commanders} />
       <GameLengths
         gameLengths={stats.game_lengths}
