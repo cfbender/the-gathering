@@ -225,6 +225,50 @@ defmodule TheGathering.Imports.MythicTrackTest do
     assert Repo.aggregate(Game, :count) == 1
   end
 
+  test "preview and import create a distinct player for a conflicting Discord identity" do
+    user = AccountsFixtures.user_fixture()
+    {:ok, existing_alice} = Games.create_player(%{name: "Alice", discord_id: "discord-alice-a"})
+
+    players =
+      game()["players"]
+      |> List.update_at(0, fn player ->
+        player
+        |> put_in(["player", "name"], "Alice")
+        |> put_in(["player", "discordUserId"], "discord-alice-b")
+      end)
+
+    payload = json([game(%{"players" => players})])
+    preview = Imports.preview(:mythic_track, payload)
+
+    assert "Alice (2)" in preview.players.create
+    refute Enum.any?(preview.players.matched, &(&1.id == existing_alice.id))
+
+    assert {:ok, %{created: 1, game_ids: [game_id]}} =
+             Imports.import(:mythic_track, payload, user.id)
+
+    imported_alice = Repo.get_by!(TheGathering.Games.Player, discord_id: "discord-alice-b")
+    assert imported_alice.name == "Alice (2)"
+
+    assert Enum.any?(Games.get_game!(game_id).seats, &(&1.player_id == imported_alice.id))
+    refute Enum.any?(Games.get_game!(game_id).seats, &(&1.player_id == existing_alice.id))
+  end
+
+  test "matching Discord identity wins when the imported display name changed" do
+    user = AccountsFixtures.user_fixture()
+
+    {:ok, existing} =
+      Games.create_player(%{name: "Original Discord Name", discord_id: "200000000000000002"})
+
+    payload = json([game()])
+    preview = Imports.preview(:mythic_track, payload)
+
+    assert Enum.any?(preview.players.matched, &(&1.id == existing.id))
+    refute "Drew" in preview.players.create
+
+    assert {:ok, %{game_ids: [game_id]}} = Imports.import(:mythic_track, payload, user.id)
+    assert Enum.any?(Games.get_game!(game_id).seats, &(&1.player_id == existing.id))
+  end
+
   test "links the first key card to the winner as MVP and keeps the rest in notes" do
     user = AccountsFixtures.user_fixture()
 

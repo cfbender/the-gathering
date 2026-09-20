@@ -1,5 +1,5 @@
 defmodule TheGathering.Discord.Sink.GamesTest do
-  use TheGathering.DataCase
+  use TheGathering.DataCase, async: false
 
   alias TheGathering.Discord.{GameReport, PendingGame, Tracker}
   alias TheGathering.Discord.Sink.Games, as: GamesSink
@@ -53,6 +53,20 @@ defmodule TheGathering.Discord.Sink.GamesTest do
     assert first.result == "win"
     assert second.player.discord_id == "111"
     assert second.result == "loss"
+  end
+
+  test "distinct Discord users with the same display name get distinct players" do
+    same_names =
+      report(["111"])
+      |> Map.update!(:players, fn players ->
+        Enum.map(players, &Map.put(&1, :display_name, "Shared Name"))
+      end)
+
+    assert :ok = GamesSink.handle_report(same_names)
+
+    assert %Player{name: "Shared Name"} = Repo.get_by!(Player, discord_id: "111")
+    assert %Player{name: "Shared Name (2)"} = Repo.get_by!(Player, discord_id: "222")
+    assert Repo.aggregate(Game, :count) == 1
   end
 
   test "/won updates the winner of an already-created game" do

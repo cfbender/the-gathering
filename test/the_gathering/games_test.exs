@@ -110,6 +110,16 @@ defmodule TheGathering.GamesTest do
     assert found.id == alice.id
   end
 
+  test "player resolver surfaces failures while linking an existing Discord identity" do
+    {:ok, player} = Games.create_player(%{name: "Discord Player", discord_id: "discord-42"})
+
+    assert {:error, changeset} =
+             Games.resolve_player("Renamed Player", "discord-42", user_id: -1)
+
+    assert errors_on(changeset).user_id == ["does not exist"]
+    assert Games.get_player(player.id).user_id == nil
+  end
+
   test "name finders fold case like SQLite, so non-ASCII names are found instead of re-inserted" do
     # SQLite's lower()/NOCASE leave É alone; Unicode downcase would turn it into é,
     # miss the row, and the insert would then hit the unique index.

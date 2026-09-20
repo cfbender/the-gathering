@@ -5,7 +5,17 @@ defmodule TheGathering.Games do
   import Ecto.Query
 
   alias TheGathering.Accounts.User
-  alias TheGathering.Games.{Deck, DeckPicker, Game, GamePlayer, ManaVaultSync, Player}
+
+  alias TheGathering.Games.{
+    Deck,
+    DeckPicker,
+    Game,
+    GamePlayer,
+    ManaVaultSync,
+    Player,
+    ResolvePlayer
+  }
+
   alias TheGathering.Repo
 
   def list_players(opts \\ %{}) do
@@ -87,6 +97,16 @@ defmodule TheGathering.Games do
   """
   def fold_name(name) when is_binary(name), do: name |> String.trim() |> String.downcase(:ascii)
 
+  @doc """
+  Resolves a player without allowing a display name to override an explicit Discord identity.
+
+  Discord identities match only by `discord_id`; when no identity matches, a distinct player
+  name is chosen. Name matching is used only when `discord_id` is absent.
+  """
+  def resolve_player(name, discord_id, opts \\ []), do: ResolvePlayer.run(name, discord_id, opts)
+
+  def preview_player_resolutions(identities), do: ResolvePlayer.preview(identities)
+
   def find_or_create_player_by_name(name, attrs \\ %{}) when is_binary(name) do
     case Repo.one(
            from player in Player,
@@ -105,10 +125,7 @@ defmodule TheGathering.Games do
   end
 
   def find_or_create_player_by_discord_id(discord_id, name) do
-    case Repo.get_by(Player, discord_id: discord_id) do
-      nil -> create_player(%{discord_id: discord_id, name: name})
-      player -> {:ok, player}
-    end
+    resolve_player(name, discord_id)
   end
 
   @doc """
