@@ -9,6 +9,9 @@ export interface User {
   display_name: string
   discord_id: string | null
   avatar_url: string | null
+  moxfield_username: string | null
+  archidekt_username: string | null
+  manavault_url: string | null
   has_password: boolean
   role: "admin" | "member"
   disabled: boolean

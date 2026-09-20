@@ -38,6 +38,7 @@ function Harness() {
       <output data-testid="commander-name">{value.commander?.name}</output>
       <output data-testid="partner-id">{value.partner?.catalog_id}</output>
       <output data-testid="colors">{value.colorIdentity}</output>
+      <output data-testid="decklist-url">{value.decklistUrl}</output>
     </>
   )
 }
@@ -58,11 +59,13 @@ describe("deck card fields", () => {
   it("stores the selected commander ID and prefills color identity", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ data: [atraxa] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+      vi.fn().mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: [atraxa] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        ),
       ),
     )
     renderWithQueryClient()
@@ -110,6 +113,72 @@ describe("deck card fields", () => {
     expect(screen.getByTestId("commander-id").textContent).toBe("scryfall-atraxa")
     expect(screen.getByTestId("partner-id").textContent).toBe("")
     expect(screen.getByTestId("colors").textContent).toBe("WUBG")
+  })
+
+  it("resolves a hosted-deck quick pick before prefilling the deck", async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+
+      if (url === "/api/session/remote-decks") {
+        return new Response(
+          JSON.stringify({
+            data: {
+              decks: [
+                {
+                  name: "Hosted counters",
+                  commanders: [atraxa.name],
+                  color_identity: ["W", "U", "B", "G"],
+                  url: "https://moxfield.com/decks/hosted",
+                  source: "moxfield",
+                  updated_at: "2026-09-20T12:00:00Z",
+                },
+              ],
+              sources: [{ source: "moxfield", configured: true, error: null }],
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        )
+      }
+
+      if (url === "/api/decklists/resolve") {
+        return new Response(
+          JSON.stringify({
+            data: {
+              source: "moxfield",
+              id: "hosted",
+              url: "https://moxfield.com/decks/hosted",
+              name: "Hosted counters",
+              commanders: [{ name: atraxa.name }],
+              color_identity: ["W", "U", "B", "G"],
+              fetched_at: "2026-09-20T12:00:00Z",
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        )
+      }
+
+      return new Response(JSON.stringify({ data: [atraxa] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    })
+    vi.stubGlobal("fetch", fetch)
+    renderWithQueryClient()
+
+    const picker = await screen.findByRole("combobox", {
+      name: "Quick pick from my hosted decks",
+    })
+    fireEvent.change(picker, { target: { value: "https://moxfield.com/decks/hosted" } })
+
+    await waitFor(() => expect(screen.getByTestId("deck-name").textContent).toBe("Hosted counters"))
+    expect(screen.getByTestId("commander-id").textContent).toBe("scryfall-atraxa")
+    expect(screen.getByTestId("colors").textContent).toBe("WUBG")
+    expect(screen.getByTestId("decklist-url").textContent).toBe("https://moxfield.com/decks/hosted")
+    expect((picker as HTMLSelectElement).value).toBe("https://moxfield.com/decks/hosted")
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/decklists/resolve",
+      expect.objectContaining({ method: "POST" }),
+    )
   })
 
   it("renders a stored name when its card ID is unavailable", () => {

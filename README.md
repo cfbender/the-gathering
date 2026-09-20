@@ -45,18 +45,34 @@ URL, deck name, commanders, commander color identity, author when exposed, card
 count, and fetch timestamp under `data`. Successful lookups are cached in memory
 for five minutes; errors are never cached.
 
+Each user can also save a Moxfield username, Archidekt username, and ManaVault
+instance URL under **Settings → Profile → Deck hosts**. `PATCH /api/session/user`
+accepts these as `moxfield_username`, `archidekt_username`, and `manavault_url`.
+`GET /api/session/remote-decks` returns the signed-in user's normalized public decks
+(`name`, commanders, color identity, URL, source, and upstream update time) plus a
+status for each source. Results, including source errors, are cached in memory for
+five minutes. The user's player page links these decks, and the new-game form can
+resolve one into a new deck with a quick pick.
+
 The integrations use the upstream services' public interfaces:
 
 - Moxfield: `GET https://api2.moxfield.com/v3/decks/all/:id`. The request sends a
   descriptive User-Agent, but Moxfield does not publish API limits or a supported
-  third-party API contract and may reject server traffic with Cloudflare 403s.
+  third-party API contract and may reject server traffic with Cloudflare 403s. User
+  listings use the unofficial `GET https://api2.moxfield.com/v2/decks/search-sfw`
+  endpoint and report upstream blocking without failing the rest of the list.
 - Archidekt: `GET https://archidekt.com/api/decks/:id/`. No authentication or
-  documented public rate limit is currently required.
+  documented public rate limit is currently required. User listings use the
+  unofficial `GET https://archidekt.com/api/decks/v3/?ownerUsername=...` endpoint,
+  then fetch public deck details to identify commanders.
 - ManaVault: `POST $MANAVAULT_URL/share/graphql` against the ManaVault instance you
   configure. No authentication is required; ManaVault's default limit is 120
   requests per IP per minute. Author is not exposed by its public schema. Only the
   configured origin is recognized; other origins are intentionally not fetched to
   avoid SSRF. Without `MANAVAULT_URL`, ManaVault links are stored as plain deck links.
+  ManaVault does not expose an unauthenticated instance-wide deck index, so a user's
+  saved instance URL is shown with that source limitation; individual public share
+  links continue to resolve normally.
 
 ### Environment variables
 

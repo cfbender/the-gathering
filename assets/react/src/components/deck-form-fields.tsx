@@ -1,8 +1,11 @@
+import { useQuery } from "@tanstack/react-query"
+import { LoaderCircle } from "lucide-react"
 import { useState } from "react"
 import { CommanderField } from "@/components/commander-field"
 import { DecklistUrlField } from "@/components/decklist-url-field"
 import { combinedColorIdentity, type SelectedCard } from "@/lib/cards"
-import { detailsFromDecklist, type Decklist } from "@/lib/decklists"
+import { detailsFromDecklist, useResolveDecklist, type Decklist } from "@/lib/decklists"
+import { remoteDecksQueryOptions, remoteDeckSourceLabels } from "@/lib/remote-decks"
 
 export interface DeckFormValue {
   commander: SelectedCard | null
@@ -59,6 +62,7 @@ export function DeckFormFields({ value, onChange, onResolvedName }: DeckFormFiel
         />
       </label>
       <div className="min-w-0 sm:col-span-2">
+        <RemoteDeckPicker onPick={(decklist) => void applyDecklist(decklist)} />
         <DecklistUrlField
           value={value.decklistUrl}
           onChange={(decklistUrl) => onChange({ decklistUrl })}
@@ -71,5 +75,50 @@ export function DeckFormFields({ value, onChange, onResolvedName }: DeckFormFiel
         )}
       </div>
     </>
+  )
+}
+
+function RemoteDeckPicker({ onPick }: { onPick: (decklist: Decklist) => void }) {
+  const remoteDecks = useQuery(remoteDecksQueryOptions)
+  const resolve = useResolveDecklist()
+  const [selectedUrl, setSelectedUrl] = useState("")
+  const decks = remoteDecks.data?.decks ?? []
+
+  if (decks.length === 0) return null
+
+  return (
+    <div className="bg-primary/5 border-primary/20 mb-3 rounded-box border p-3">
+      <label className="form-control flex flex-col gap-1.5">
+        <span className="text-sm font-medium">Quick pick from my hosted decks</span>
+        <select
+          className="select select-bordered select-sm w-full"
+          value={selectedUrl}
+          disabled={resolve.isPending}
+          onChange={(event) => {
+            const url = event.target.value
+            if (!url) return
+            setSelectedUrl(url)
+            resolve.mutate(url, { onSuccess: onPick })
+          }}
+        >
+          <option value="">Choose a public deck…</option>
+          {decks.map((deck) => (
+            <option key={`${deck.source}:${deck.url}`} value={deck.url}>
+              {deck.name} · {remoteDeckSourceLabels[deck.source]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {resolve.isPending && (
+        <p className="text-base-content/60 mt-2 flex items-center gap-1.5 text-xs" role="status">
+          <LoaderCircle className="size-3 animate-spin" /> Loading deck details…
+        </p>
+      )}
+      {resolve.isError && (
+        <p className="text-error mt-2 text-xs" role="alert">
+          That deck could not be loaded. Open its link to check that it is public.
+        </p>
+      )}
+    </div>
   )
 }

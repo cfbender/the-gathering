@@ -67,6 +67,52 @@ defmodule TheGatheringWeb.API.AuthControllerTest do
     assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
   end
 
+  test "updates and returns the signed-in user's deck sources", %{conn: conn} do
+    user = create_user("owner", "admin")
+    conn = log_in_user(conn, user)
+
+    conn =
+      patch(conn, ~p"/api/session/user", %{
+        user: %{
+          display_name: "Deck Brewer",
+          moxfield_username: " brewer ",
+          archidekt_username: "arch-brewer",
+          manavault_url: "https://vault.example.com/"
+        }
+      })
+
+    assert %{
+             "data" => %{
+               "display_name" => "Deck Brewer",
+               "moxfield_username" => "brewer",
+               "archidekt_username" => "arch-brewer",
+               "manavault_url" => "https://vault.example.com"
+             }
+           } = json_response(conn, 200)
+  end
+
+  test "rejects invalid deck source values", %{conn: conn} do
+    user = create_user("owner", "admin")
+
+    conn =
+      conn
+      |> log_in_user(user)
+      |> patch(~p"/api/session/user", %{
+        user: %{
+          display_name: "Owner",
+          moxfield_username: "https://moxfield.com/users/owner",
+          manavault_url: "not a URL"
+        }
+      })
+
+    assert %{
+             "errors" => %{
+               "manavault_url" => ["must be a valid http(s) URL"],
+               "moxfield_username" => ["must be a username, not a URL"]
+             }
+           } = json_response(conn, 422)
+  end
+
   test "disabled users cannot log in", %{conn: conn} do
     create_user("owner", "admin")
     user = create_user("member", "member")
