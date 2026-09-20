@@ -68,6 +68,15 @@ export interface Pagination {
   total_pages: number
 }
 
+/**
+ * Mirrors `Games.can_manage_player?`: admins manage everyone, members manage
+ * their own linked player and unclaimed guests (players without an account).
+ */
+export function canManagePlayer(viewer: { id: number; role: string } | undefined, player: Player) {
+  if (!viewer) return false
+  return viewer.role === "admin" || player.user_id === null || player.user_id === viewer.id
+}
+
 export const getPlayers = () => api<{ data: Player[] }>("/api/players").then((body) => body.data)
 export const getPlayer = (id: string) =>
   api<{ data: Player }>(`/api/players/${id}`).then((body) => body.data)

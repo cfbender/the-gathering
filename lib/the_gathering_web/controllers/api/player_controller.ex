@@ -25,6 +25,7 @@ defmodule TheGatheringWeb.API.PlayerController do
 
   def update(conn, %{"id" => id, "player" => attrs}) when is_map(attrs) do
     with player when not is_nil(player) <- Games.get_player(id),
+         :ok <- authorize(conn, player),
          {:ok, player} <- Games.update_player(player, Map.take(attrs, @member_attrs)) do
       render(conn, :show, player: Games.get_player!(player.id))
     else
@@ -50,11 +51,18 @@ defmodule TheGatheringWeb.API.PlayerController do
 
   def delete(conn, %{"id" => id}) do
     with player when not is_nil(player) <- Games.get_player(id),
+         :ok <- authorize(conn, player),
          {:ok, _player} <- Games.delete_player(player) do
       send_resp(conn, :no_content, "")
     else
       nil -> {:error, :not_found}
       error -> error
     end
+  end
+
+  defp authorize(conn, player) do
+    if Games.can_manage_player?(conn.assigns.current_scope.user, player),
+      do: :ok,
+      else: {:error, :forbidden}
   end
 end

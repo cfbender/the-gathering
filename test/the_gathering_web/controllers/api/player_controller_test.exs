@@ -27,6 +27,19 @@ defmodule TheGatheringWeb.API.PlayerControllerTest do
     assert Games.get_player!(ctx.drew.id).discord_id == nil
   end
 
+  test "members cannot rename another member's linked player", ctx do
+    {:ok, _drew} = Games.link_player_to_user(ctx.drew, ctx.admin)
+    conn = log_in_user(ctx.conn, ctx.member)
+
+    assert %{"errors" => %{"detail" => "Forbidden"}} =
+             conn
+             |> patch(~p"/api/players/#{ctx.drew.id}", %{player: %{name: "Nope"}})
+             |> json_response(403)
+
+    assert conn |> delete(~p"/api/players/#{ctx.drew.id}") |> json_response(403)
+    assert Games.get_player!(ctx.drew.id).name == "Drew"
+  end
+
   test "admins merge players; members receive 403", ctx do
     conn = log_in_user(ctx.conn, ctx.member)
 

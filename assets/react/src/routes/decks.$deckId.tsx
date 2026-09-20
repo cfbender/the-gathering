@@ -7,13 +7,15 @@ import { DeckFormFields, type DeckFormValue } from "@/components/deck-form-field
 import { DeckStats } from "@/components/stats/deck-stats"
 import { api, ApiError } from "@/lib/api"
 import { cardSnapshot } from "@/lib/cards"
-import { formatDate, getDeck, type Deck } from "@/lib/games"
+import { useCurrentUser } from "@/lib/auth"
+import { canManagePlayer, formatDate, getDeck, type Deck } from "@/lib/games"
 
 export const Route = createFileRoute("/decks/$deckId")({ component: DeckDetailPage })
 
 function DeckDetailPage() {
   const { deckId } = Route.useParams()
   const query = useQuery({ queryKey: ["decks", deckId], queryFn: () => getDeck(deckId) })
+  const viewer = useCurrentUser()
   if (query.isPending) return <span className="loading loading-spinner" />
   if (query.isError) return <div className="alert alert-error">Deck not found.</div>
   const deck = query.data
@@ -54,7 +56,13 @@ function DeckDetailPage() {
         </div>
       </PageHeader>
       <DeckStats deckId={deckId} />
-      <DeckEditForm key={deck.id} deck={deck} />
+      {deck.player && canManagePlayer(viewer.data, deck.player) ? (
+        <DeckEditForm key={deck.id} deck={deck} />
+      ) : (
+        <p className="text-base-content/60 text-sm">
+          Only {deck.player?.name ?? "the owner"} or an administrator can edit this deck.
+        </p>
+      )}
       <section>
         <h2 className="mb-3 text-xl font-bold">Recent games</h2>
         {deck.recent_games?.length === 0 && (
