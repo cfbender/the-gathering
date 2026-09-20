@@ -1,18 +1,23 @@
 import type { ReactNode } from "react"
+import { cn } from "@/lib/cn"
 
 export function StatCard({
   label,
   value,
   detail,
   icon,
+  className,
 }: {
   label: string
   value: ReactNode
   detail?: ReactNode
   icon?: ReactNode
+  className?: string
 }) {
   return (
-    <div className="border-base-300 bg-base-200/70 rounded-xl border p-4 shadow-sm">
+    <div
+      className={cn("border-base-300 bg-base-200/70 rounded-xl border p-4 shadow-sm", className)}
+    >
       <div className="text-base-content/55 flex items-center justify-between text-xs font-bold tracking-wider uppercase">
         <span>{label}</span>
         {icon}

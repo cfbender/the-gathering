@@ -7,7 +7,7 @@ import { ColorSection } from "./color-section"
 import { ColorRadar } from "./color-radar"
 import { ColorWheel } from "./color-wheel"
 import { GameLengths } from "./game-lengths"
-import { PlayerElo } from "./player-elo"
+import { EloStatCard, EloTrendCard } from "./player-elo"
 import { Rivalries } from "./rivalries"
 import { StatCard } from "./stat-card"
 import { byWinRateThenName, getPlayerStats, sinceLabel } from "@/lib/stats"
@@ -29,7 +29,7 @@ export function PlayerStats({ playerId }: { playerId: string }) {
           At the table
         </h2>
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           label="Win rate"
           value={`${stats.record.win_rate}%`}
@@ -55,17 +55,18 @@ export function PlayerStats({ playerId }: { playerId: string }) {
             .filter(Boolean)
             .join(", ")}
         />
+        <EloStatCard elo={stats.elo} className="col-span-2 sm:col-span-1" />
       </div>
-      <PlayerElo elo={stats.elo} />
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+        <div className="border-base-300 bg-base-200/60 min-w-0 rounded-xl border p-5">
           <h3 className="mb-4 font-bold">Win rate over time</h3>
-          <LineChart points={stats.win_rate_over_time} />
+          <LineChart points={stats.win_rate_over_time} className="h-48" />
         </div>
-        <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-          <h3 className="mb-4 font-bold">Deck performance</h3>
-          <BarChart rows={byWinRateThenName(stats.decks)} />
-        </div>
+        <EloTrendCard elo={stats.elo} />
+      </div>
+      <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+        <h3 className="mb-4 font-bold">Deck performance</h3>
+        <BarChart rows={byWinRateThenName(stats.decks)} columns={2} />
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
         <ColorSection rows={stats.color_win_rates} eyebrow="Their colors" />
