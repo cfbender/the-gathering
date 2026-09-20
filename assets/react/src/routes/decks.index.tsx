@@ -3,29 +3,38 @@ import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Dices, Library } from "lucide-react"
-import { useState } from "react"
 import { CardArtBackground } from "@/components/card-art-background"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useCurrentUser } from "@/lib/auth"
 import { cn } from "@/lib/cn"
 import { getDecks } from "@/features/decks/decks"
-import { ownDecks } from "@/features/decks/own-decks"
+import {
+  type DeckScope,
+  ownDecks,
+  parseDeckScope,
+  resolveDeckScope,
+} from "@/features/decks/own-decks"
 
-export const Route = createFileRoute("/decks/")({ component: DecksPage })
-
-type Scope = "mine" | "all"
+export const Route = createFileRoute("/decks/")({
+  // `?scope=mine|all` persists the toggle across reloads and shared links.
+  validateSearch: (search: Record<string, unknown>) => ({ scope: parseDeckScope(search.scope) }),
+  component: DecksPage,
+})
 
 function DecksPage() {
   const query = useQuery({ queryKey: ["decks", {}], queryFn: () => getDecks() })
   const viewer = useCurrentUser()
-  const [choice, setChoice] = useState<Scope | null>(null)
+  const { scope: choice } = Route.useSearch()
+  const navigate = Route.useNavigate()
 
   const decks = query.data ?? []
   const mine = ownDecks(decks, viewer.data?.id)
-  // Default to the viewer's decks; fall back to everyone's when they have none
-  // (no linked player yet, or nothing logged) so the page is never empty by default.
-  const scope: Scope = choice ?? (mine.length > 0 ? "mine" : "all")
+  const scope = resolveDeckScope(choice, mine.length)
   const shown = scope === "mine" ? mine : decks
+
+  function setScope(value: DeckScope) {
+    void navigate({ search: { scope: value }, replace: true })
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -41,7 +50,7 @@ function DecksPage() {
               <ToggleGroup
                 type="single"
                 value={scope}
-                onValueChange={(value) => value && setChoice(value as Scope)}
+                onValueChange={(value) => value && setScope(value as DeckScope)}
                 aria-label="Which decks to show"
                 className="join"
               >
