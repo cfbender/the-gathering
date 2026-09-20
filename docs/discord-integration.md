@@ -209,10 +209,13 @@ choose any listed player as the winner, or discard a report that should not be
 recorded. The corresponding sudo-protected API is `GET
 /api/admin/discord/pending`, `PATCH /api/admin/discord/pending/:id`, and `DELETE
 /api/admin/discord/pending/:id`. Pending reports are retained for 30 days after
-their latest observation and stale rows are pruned when a report is observed or
-the pending list is read. This bounds storage while leaving a month for `/won`
-or administrator recovery. The staged data is normalized; raw Discord payloads
-are never stored in full or logged.
+their latest observation. `TheGathering.Discord.StageReport` owns staging,
+`ResolvePendingGame` owns resolution and discard, and the `Discord` context is
+the entry point used by both Tracker and the admin API. Tracker explicitly
+prunes stale rows after staging; reading the pending list never writes. Game
+persistence and pending-row consumption occur in one transaction. This bounds
+storage while leaving a month for `/won` or administrator recovery. The staged
+data is normalized; raw Discord payloads are never stored in full or logged.
 
 ## Game tracking
 

@@ -1,4 +1,5 @@
 defmodule TheGatheringWeb.API.AdminDiscordPendingJSON do
+  alias TheGathering.Discord
   alias TheGathering.Discord.PendingGame
 
   def index(%{pending_games: pending_games}) do
@@ -6,7 +7,7 @@ defmodule TheGatheringWeb.API.AdminDiscordPendingJSON do
   end
 
   defp data(%PendingGame{} = pending) do
-    report = PendingGame.to_report(pending)
+    report = Discord.pending_report(pending)
 
     %{
       id: pending.id,

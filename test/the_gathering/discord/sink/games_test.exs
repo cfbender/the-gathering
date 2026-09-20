@@ -1,6 +1,7 @@
 defmodule TheGathering.Discord.Sink.GamesTest do
   use TheGathering.DataCase, async: false
 
+  alias TheGathering.Discord
   alias TheGathering.Discord.{GameReport, PendingGame, Tracker}
   alias TheGathering.Discord.Sink.Games, as: GamesSink
   alias TheGathering.Games
@@ -74,14 +75,14 @@ defmodule TheGathering.Discord.Sink.GamesTest do
     start_supervised!({Tracker, sink: GamesSink})
 
     assert :ok = Tracker.observe(report([]))
-    assert %PendingGame{} = PendingGame.get_by_external_id("spellbot:SB12345")
+    assert %PendingGame{} = Discord.get_pending_by_external_id("spellbot:SB12345")
     assert {:ok, _completed} = Tracker.record_winner("SB12345", "222")
 
     game = Repo.get_by!(Game, source: "discord", external_id: "spellbot:SB12345")
     seats = game.id |> Games.get_game!() |> Map.fetch!(:seats)
 
     assert Repo.aggregate(Game, :count) == 1
-    assert PendingGame.get_by_external_id("spellbot:SB12345") == nil
+    assert Discord.get_pending_by_external_id("spellbot:SB12345") == nil
     assert Enum.find(seats, &(&1.player.discord_id == "222")).result == "win"
     assert Enum.find(seats, &(&1.player.discord_id == "111")).result == "loss"
   end
@@ -99,7 +100,7 @@ defmodule TheGathering.Discord.Sink.GamesTest do
     tracker = start_supervised!({Tracker, sink: GamesSink})
     assert {:error, :invalid_player_count} = Tracker.observe(invalid)
     assert %{sink: GamesSink} = :sys.get_state(tracker)
-    assert PendingGame.get_by_external_id(invalid.external_id) == nil
+    assert Discord.get_pending_by_external_id(invalid.external_id) == nil
   end
 
   defp report(winner_discord_ids) do

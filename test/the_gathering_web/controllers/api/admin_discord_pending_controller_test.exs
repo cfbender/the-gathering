@@ -2,6 +2,7 @@ defmodule TheGatheringWeb.API.AdminDiscordPendingControllerTest do
   use TheGatheringWeb.ConnCase, async: false
 
   alias TheGathering.AccountsFixtures
+  alias TheGathering.Discord
   alias TheGathering.Discord.{GameReport, PendingGame}
   alias TheGathering.Games.Game
   alias TheGathering.Repo
@@ -12,7 +13,7 @@ defmodule TheGatheringWeb.API.AdminDiscordPendingControllerTest do
   end
 
   test "admin lists and resolves a pending Discord game", %{conn: conn, admin: admin} do
-    {:ok, pending} = PendingGame.upsert(report())
+    {:ok, pending} = Discord.stage_report(report())
 
     response = conn |> get(~p"/api/admin/discord/pending") |> json_response(200)
 
@@ -47,12 +48,26 @@ defmodule TheGatheringWeb.API.AdminDiscordPendingControllerTest do
   end
 
   test "admin can discard a pending game", %{conn: conn} do
-    {:ok, pending} = PendingGame.upsert(report())
+    {:ok, pending} = Discord.stage_report(report())
 
     conn = delete(conn, ~p"/api/admin/discord/pending/#{pending.id}")
 
     assert response(conn, 204)
     assert Repo.get(PendingGame, pending.id) == nil
+  end
+
+  test "a failed admin resolution leaves the pending game intact", %{conn: conn} do
+    invalid_report = %{report() | players: Enum.take(report().players, 1)}
+    {:ok, pending} = Discord.stage_report(invalid_report)
+
+    conn =
+      patch(conn, ~p"/api/admin/discord/pending/#{pending.id}", %{
+        winner_discord_id: "111"
+      })
+
+    assert json_response(conn, 400) == %{"errors" => %{"detail" => "Bad Request"}}
+    assert Repo.get(PendingGame, pending.id)
+    refute Repo.get_by(Game, source: "discord", external_id: invalid_report.external_id)
   end
 
   defp report do
