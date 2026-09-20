@@ -98,8 +98,13 @@ export function ColorIdentity({
 }) {
   const supplied = typeof colors === "string" ? colors.split("") : colors
   const ordered = colorOrder.filter((color) => supplied.includes(color))
-  const displayed = ordered.length ? ordered : ["C"]
+  const displayed = supplied.includes("C") && ordered.length === 0 ? ["C"] : ordered
   const label = displayed.map((color) => colorNames[color]).join(", ")
+
+  // An empty identity usually means "not recorded" (imported decks often have
+  // none), so show nothing rather than claiming the deck is colorless. Pass "C"
+  // explicitly for a genuinely colorless deck.
+  if (displayed.length === 0) return null
 
   return (
     <span
