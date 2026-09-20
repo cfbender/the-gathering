@@ -24,6 +24,22 @@ export interface HeadToHead {
   draws: number
 }
 
+export interface ColorExposure extends RecordCounts {
+  id: "W" | "U" | "B" | "R" | "G"
+  name: string
+  share: number
+}
+
+export interface RivalCommander {
+  id: string
+  name: string
+  art_crop_url: string | null
+  color_identity: string | null
+  faced: number
+  beat_me: number
+  beaten: number
+}
+
 export interface TrendPoint {
   date: string
   win_rate: number
@@ -79,6 +95,7 @@ export interface OverviewStats {
   games_by_month: { month: string; games: number }[]
   seat_win_rates: NamedRecordRow[]
   color_win_rates: NamedRecordRow[]
+  color_exposure: ColorExposure[]
   /** The top eight rows of `getCommanderStats()`, keyed by the same canonical IDs. */
   commanders: CommanderSummary[]
   recent_games: RecentStatGame[]
@@ -103,6 +120,8 @@ export interface PlayerStats {
   decks: NamedRecordRow[]
   /** This player's seats grouped by deck color identity; same shape as the overview's. */
   color_win_rates: NamedRecordRow[]
+  color_exposure: ColorExposure[]
+  rival_commanders: RivalCommander[]
   head_to_head: HeadToHead[]
   seat_win_rates: NamedRecordRow[]
   favorite_seat: number | null
@@ -142,7 +161,7 @@ export interface CommanderStats {
   pilots: NamedRecordRow[]
   decks: NamedRecordRow[]
   partners: NamedRecordRow[]
-  opponents: NamedRecordRow[]
+  opponents: (NamedRecordRow & { beaten: number })[]
   win_rate_over_time: TrendPoint[]
   recent_games: RecentStatGame[]
 }

@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/app-shell"
 import { CardArtBackground } from "@/components/card-art-background"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart, LineChart } from "@/components/stats/charts"
+import { CommanderRivalries } from "@/components/stats/rivalries"
 import { StatCard } from "@/components/stats/stat-card"
 import { formatDate } from "@/features/games/games"
 import { getCommanderDetail, type NamedRecordRow } from "@/lib/stats"
@@ -44,6 +45,8 @@ function CommanderPage() {
         <StatCard label="Pilots" value={stats.pilots.length} icon={<Users className="size-4" />} />
         <StatCard label="Decks" value={stats.decks.length} icon={<Layers className="size-4" />} />
       </div>
+
+      <CommanderRivalries opponents={stats.opponents} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Win rate over time">
