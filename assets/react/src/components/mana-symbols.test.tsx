@@ -39,9 +39,11 @@ describe("mana symbols", () => {
     ])
   })
 
-  it("renders an empty identity as a colorless pip", () => {
-    render(<ColorIdentity colors="" />)
+  it("renders nothing for an unrecorded identity but a pip for an explicit colorless one", () => {
+    const { container } = render(<ColorIdentity colors="" />)
+    expect(container.querySelector("img")).toBeNull()
 
+    render(<ColorIdentity colors="C" />)
     expect(screen.getByLabelText("Color identity: colorless")).toBeTruthy()
     expect(screen.getByRole("img", { name: "colorless mana" })).toBeTruthy()
   })
