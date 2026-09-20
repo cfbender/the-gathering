@@ -89,3 +89,30 @@ export function linePoints(values: number[], width = 300, height = 100): string 
     )
     .join(" ")
 }
+
+/** Players need this many games before they appear in the playgroup leaderboard. */
+export const LEADERBOARD_MIN_GAMES = 2
+
+/** Leaderboard rows with enough games, best win rate first (more games breaks ties). */
+export function leaderboardRows(rows: RecordStat[], minGames = LEADERBOARD_MIN_GAMES) {
+  return rows
+    .filter((row) => row.games >= minGames)
+    .sort((a, b) => b.win_rate - a.win_rate || b.games - a.games)
+}
+
+export type ColorMetric = "games" | "win_rate"
+
+/**
+ * Rows ordered by the chosen metric, highest first; the other metric breaks ties.
+ * Win-rate ranking skips rows below the game floor so a single win cannot top the chart.
+ */
+export function sortByMetric(
+  rows: RecordStat[],
+  metric: ColorMetric,
+  minGames = LEADERBOARD_MIN_GAMES,
+) {
+  const other: ColorMetric = metric === "games" ? "win_rate" : "games"
+  return rows
+    .filter((row) => metric === "games" || row.games >= minGames)
+    .sort((a, b) => b[metric] - a[metric] || b[other] - a[other])
+}

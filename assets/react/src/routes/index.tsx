@@ -1,11 +1,22 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { Clock3, Crown, Gamepad2, RotateCcw, Trophy } from "lucide-react"
+import { useState } from "react"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart } from "@/components/stats/charts"
 import { StatCard } from "@/components/stats/stat-card"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { cn } from "@/lib/cn"
 import { formatDate } from "@/lib/games"
-import { getOverviewStats, sinceLabel } from "@/lib/stats"
+import {
+  LEADERBOARD_MIN_GAMES,
+  getOverviewStats,
+  leaderboardRows,
+  sinceLabel,
+  sortByMetric,
+  type ColorMetric,
+  type RecordStat,
+} from "@/lib/stats"
 
 export const Route = createFileRoute("/")({ component: HomePage })
 
@@ -22,7 +33,8 @@ function HomePage() {
   const stats = query.data
 
   if (stats.games_count === 0) return <EmptyDashboard />
-  const leader = [...stats.leaderboard].sort((a, b) => b.win_rate - a.win_rate)[0]
+  const leaderboard = leaderboardRows(stats.leaderboard)
+  const leader = leaderboard[0]
   const since = sinceLabel(stats.detailed_stats_from)
 
   return (
@@ -74,27 +86,30 @@ function HomePage() {
             <Trophy className="text-accent size-6" />
           </div>
           <div className="divide-base-300 divide-y">
-            {[...stats.leaderboard]
-              .sort((a, b) => b.win_rate - a.win_rate)
-              .map((player, index) => (
-                <Link
-                  key={player.id}
-                  to="/players/$playerId"
-                  params={{ playerId: String(player.id) }}
-                  className="hover:bg-base-300/40 grid grid-cols-[2rem_1fr_auto] items-center gap-3 px-5 py-3 transition-colors"
-                >
-                  <span className="text-base-content/35 font-mono font-bold">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span>
-                    <strong className="block">{player.name}</strong>
-                    <small className="text-base-content/55">
-                      {player.wins}–{player.losses}–{player.draws} · {player.games} games
-                    </small>
-                  </span>
-                  <strong className="text-primary text-lg tabular-nums">{player.win_rate}%</strong>
-                </Link>
-              ))}
+            {leaderboard.length === 0 && (
+              <p className="text-base-content/55 p-5 text-sm">
+                Players appear here after {LEADERBOARD_MIN_GAMES} games.
+              </p>
+            )}
+            {leaderboard.map((player, index) => (
+              <Link
+                key={player.id}
+                to="/players/$playerId"
+                params={{ playerId: String(player.id) }}
+                className="hover:bg-base-300/40 grid grid-cols-[2rem_1fr_auto] items-center gap-3 px-5 py-3 transition-colors"
+              >
+                <span className="text-base-content/35 font-mono font-bold">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span>
+                  <strong className="block">{player.name}</strong>
+                  <small className="text-base-content/55">
+                    {player.wins}–{player.losses}–{player.draws} · {player.games} games
+                  </small>
+                </span>
+                <strong className="text-primary text-lg tabular-nums">{player.win_rate}%</strong>
+              </Link>
+            ))}
           </div>
         </section>
 
@@ -116,19 +131,7 @@ function HomePage() {
           </h2>
           <BarChart rows={stats.seat_win_rates} />
         </section>
-        <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-          <p className="text-primary text-xs font-bold uppercase">Color check</p>
-          <h2 className="mb-5 text-xl font-bold">Color performance</h2>
-          <BarChart
-            rows={stats.color_win_rates.slice(0, 6)}
-            renderLabel={(row) => (
-              <span className="inline-flex items-center gap-2">
-                <ColorIdentity colors={String(row.id)} />
-                <span>{row.name}</span>
-              </span>
-            )}
-          />
-        </section>
+        <ColorSection rows={stats.color_win_rates} />
       </div>
 
       <section>
@@ -159,6 +162,54 @@ function HomePage() {
         </div>
       </section>
     </div>
+  )
+}
+
+const colorMetricLabels: Record<ColorMetric, string> = {
+  games: "Popularity",
+  win_rate: "Win rate",
+}
+
+function ColorSection({ rows }: { rows: RecordStat[] }) {
+  const [metric, setMetric] = useState<ColorMetric>("games")
+  return (
+    <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-primary text-xs font-bold uppercase">Color check</p>
+          <h2 className="text-xl font-bold">
+            {metric === "games" ? "Most played colors" : "Color win rates"}
+          </h2>
+        </div>
+        <ToggleGroup
+          type="single"
+          value={metric}
+          onValueChange={(value) => value && setMetric(value as ColorMetric)}
+          aria-label="Color metric"
+          className="join"
+        >
+          {(Object.keys(colorMetricLabels) as ColorMetric[]).map((value) => (
+            <ToggleGroupItem
+              key={value}
+              value={value}
+              className={cn("btn btn-xs join-item", metric === value ? "btn-primary" : "btn-ghost")}
+            >
+              {colorMetricLabels[value]}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
+      <BarChart
+        rows={sortByMetric(rows, metric).slice(0, 6)}
+        value={metric}
+        renderLabel={(row) => (
+          <span className="inline-flex items-center gap-2">
+            <ColorIdentity colors={String(row.id)} />
+            <span>{row.name}</span>
+          </span>
+        )}
+      />
+    </section>
   )
 }
 

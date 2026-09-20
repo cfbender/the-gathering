@@ -108,7 +108,7 @@ defmodule TheGathering.StatsTest do
     assert %{games: 3, wins: 1, win_rate: 33.3} = seat_two
 
     wu = Enum.find(stats.color_win_rates, &(&1.id == "WU"))
-    assert %{games: 3, wins: 2, win_rate: 66.7} = wu
+    assert %{name: "Azorius", games: 3, wins: 2, win_rate: 66.7} = wu
 
     assert %{id: "Kangee, Sky Warden", art_crop_url: "https://cards.example/kangee-art.jpg"} =
              Enum.find(stats.commanders, &(&1.id == "Kangee, Sky Warden"))
