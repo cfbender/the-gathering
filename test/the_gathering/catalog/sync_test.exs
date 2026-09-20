@@ -36,4 +36,55 @@ defmodule TheGathering.Catalog.SyncTest do
     assert failed.last_error =~ "could not stream"
     assert Catalog.count_cards() == 2
   end
+
+  @tag :tmp_dir
+  test "rejects an empty generation without replacing a good catalog", %{tmp_dir: tmp_dir} do
+    original_cards = sync_good_catalog()
+    empty_source = Path.join(tmp_dir, "empty.jsonl")
+    File.write!(empty_source, "")
+
+    assert {:error, "staged catalog generation is empty"} =
+             Sync.run(source: {:file, empty_source})
+
+    assert_catalog_unchanged(original_cards)
+    assert Catalog.sync_status().status == "failed"
+    assert Catalog.sync_status().last_error =~ "staged catalog generation is empty"
+  end
+
+  @tag :tmp_dir
+  test "rejects an all-filtered generation without replacing a good catalog", %{tmp_dir: tmp_dir} do
+    original_cards = sync_good_catalog()
+    filtered_source = Path.join(tmp_dir, "filtered.jsonl")
+    File.write!(filtered_source, Jason.encode!(%{"set_type" => "memorabilia"}) <> "\n")
+
+    assert {:error, "staged catalog generation is empty"} =
+             Sync.run(source: {:file, filtered_source})
+
+    assert_catalog_unchanged(original_cards)
+  end
+
+  @tag :tmp_dir
+  test "does not replace a good catalog when decoding fails after a batch is staged", %{
+    tmp_dir: tmp_dir
+  } do
+    original_cards = sync_good_catalog()
+    partial_source = Path.join(tmp_dir, "partial.jsonl")
+    first_card = @fixture |> File.stream!() |> Enum.at(0)
+    File.write!(partial_source, String.duplicate(first_card, 250) <> "not-json\n")
+
+    assert {:error, reason} = Sync.run(source: {:file, partial_source})
+    assert reason =~ "invalid Scryfall bulk JSON"
+    assert_catalog_unchanged(original_cards)
+  end
+
+  defp sync_good_catalog do
+    assert {:ok, 2} = Sync.run(source: {:file, @fixture})
+    [Catalog.get_card!("printing-latest"), Catalog.get_card!("jotun")]
+  end
+
+  defp assert_catalog_unchanged(original_cards) do
+    assert Catalog.count_cards() == 2
+
+    assert Enum.map(original_cards, &Catalog.get_card!(&1.id)) == original_cards
+  end
 end
