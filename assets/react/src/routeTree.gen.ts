@@ -15,6 +15,8 @@ import { Route as LoginRouteImport } from "./routes/login"
 import { Route as RegisterRouteImport } from "./routes/register"
 import { Route as SettingsRouteImport } from "./routes/settings"
 import { Route as AdminUsersRouteImport } from "./routes/admin/users"
+import { Route as CommandersIndexRouteImport } from "./routes/commanders.index"
+import { Route as CommandersCommanderIdRouteImport } from "./routes/commanders.$commanderId"
 import { Route as DecksIndexRouteImport } from "./routes/decks.index"
 import { Route as DecksDeckIdRouteImport } from "./routes/decks.$deckId"
 import { Route as GamesIndexRouteImport } from "./routes/games.index"
@@ -52,6 +54,16 @@ const SettingsRoute = SettingsRouteImport.update({
 const AdminUsersRoute = AdminUsersRouteImport.update({
   id: "/admin/users",
   path: "/admin/users",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CommandersIndexRoute = CommandersIndexRouteImport.update({
+  id: "/commanders/",
+  path: "/commanders/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CommandersCommanderIdRoute = CommandersCommanderIdRouteImport.update({
+  id: "/commanders/$commanderId",
+  path: "/commanders/$commanderId",
   getParentRoute: () => rootRouteImport,
 } as any)
 const DecksIndexRoute = DecksIndexRouteImport.update({
@@ -102,10 +114,12 @@ export interface FileRoutesByFullPath {
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
   "/admin/users": typeof AdminUsersRoute
+  "/commanders/$commanderId": typeof CommandersCommanderIdRoute
   "/decks/$deckId": typeof DecksDeckIdRoute
   "/games/$gameId": typeof GamesGameIdRoute
   "/games/new": typeof GamesNewRoute
   "/players/$playerId": typeof PlayersPlayerIdRoute
+  "/commanders/": typeof CommandersIndexRoute
   "/decks/": typeof DecksIndexRoute
   "/games/": typeof GamesIndexRoute
   "/players/": typeof PlayersIndexRoute
@@ -118,10 +132,12 @@ export interface FileRoutesByTo {
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
   "/admin/users": typeof AdminUsersRoute
+  "/commanders/$commanderId": typeof CommandersCommanderIdRoute
   "/decks/$deckId": typeof DecksDeckIdRoute
   "/games/$gameId": typeof GamesGameIdRoute
   "/games/new": typeof GamesNewRoute
   "/players/$playerId": typeof PlayersPlayerIdRoute
+  "/commanders": typeof CommandersIndexRoute
   "/decks": typeof DecksIndexRoute
   "/games": typeof GamesIndexRoute
   "/players": typeof PlayersIndexRoute
@@ -135,10 +151,12 @@ export interface FileRoutesById {
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
   "/admin/users": typeof AdminUsersRoute
+  "/commanders/$commanderId": typeof CommandersCommanderIdRoute
   "/decks/$deckId": typeof DecksDeckIdRoute
   "/games/$gameId": typeof GamesGameIdRoute
   "/games/new": typeof GamesNewRoute
   "/players/$playerId": typeof PlayersPlayerIdRoute
+  "/commanders/": typeof CommandersIndexRoute
   "/decks/": typeof DecksIndexRoute
   "/games/": typeof GamesIndexRoute
   "/players/": typeof PlayersIndexRoute
@@ -153,10 +171,12 @@ export interface FileRouteTypes {
     | "/register"
     | "/settings"
     | "/admin/users"
+    | "/commanders/$commanderId"
     | "/decks/$deckId"
     | "/games/$gameId"
     | "/games/new"
     | "/players/$playerId"
+    | "/commanders/"
     | "/decks/"
     | "/games/"
     | "/players/"
@@ -169,10 +189,12 @@ export interface FileRouteTypes {
     | "/register"
     | "/settings"
     | "/admin/users"
+    | "/commanders/$commanderId"
     | "/decks/$deckId"
     | "/games/$gameId"
     | "/games/new"
     | "/players/$playerId"
+    | "/commanders"
     | "/decks"
     | "/games"
     | "/players"
@@ -185,10 +207,12 @@ export interface FileRouteTypes {
     | "/register"
     | "/settings"
     | "/admin/users"
+    | "/commanders/$commanderId"
     | "/decks/$deckId"
     | "/games/$gameId"
     | "/games/new"
     | "/players/$playerId"
+    | "/commanders/"
     | "/decks/"
     | "/games/"
     | "/players/"
@@ -202,10 +226,12 @@ export interface RootRouteChildren {
   RegisterRoute: typeof RegisterRoute
   SettingsRoute: typeof SettingsRoute
   AdminUsersRoute: typeof AdminUsersRoute
+  CommandersCommanderIdRoute: typeof CommandersCommanderIdRoute
   DecksDeckIdRoute: typeof DecksDeckIdRoute
   GamesGameIdRoute: typeof GamesGameIdRoute
   GamesNewRoute: typeof GamesNewRoute
   PlayersPlayerIdRoute: typeof PlayersPlayerIdRoute
+  CommandersIndexRoute: typeof CommandersIndexRoute
   DecksIndexRoute: typeof DecksIndexRoute
   GamesIndexRoute: typeof GamesIndexRoute
   PlayersIndexRoute: typeof PlayersIndexRoute
@@ -254,6 +280,20 @@ declare module "@tanstack/react-router" {
       path: "/admin/users"
       fullPath: "/admin/users"
       preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/commanders/": {
+      id: "/commanders/"
+      path: "/commanders"
+      fullPath: "/commanders/"
+      preLoaderRoute: typeof CommandersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/commanders/$commanderId": {
+      id: "/commanders/$commanderId"
+      path: "/commanders/$commanderId"
+      fullPath: "/commanders/$commanderId"
+      preLoaderRoute: typeof CommandersCommanderIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/decks/": {
@@ -322,10 +362,12 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterRoute: RegisterRoute,
   SettingsRoute: SettingsRoute,
   AdminUsersRoute: AdminUsersRoute,
+  CommandersCommanderIdRoute: CommandersCommanderIdRoute,
   DecksDeckIdRoute: DecksDeckIdRoute,
   GamesGameIdRoute: GamesGameIdRoute,
   GamesNewRoute: GamesNewRoute,
   PlayersPlayerIdRoute: PlayersPlayerIdRoute,
+  CommandersIndexRoute: CommandersIndexRoute,
   DecksIndexRoute: DecksIndexRoute,
   GamesIndexRoute: GamesIndexRoute,
   PlayersIndexRoute: PlayersIndexRoute,

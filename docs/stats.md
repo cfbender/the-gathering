@@ -19,3 +19,13 @@ Returns the player identity, overall record, current and longest win streaks, te
 ## `GET /api/stats/decks/:id`
 
 Returns deck and owner identity, overall record, average duration and turns, opponents faced, cumulative win rate over time, and recent games with the deck's result.
+
+## `GET /api/stats/commanders`
+
+Returns every commander played across the playgroup, most played first. Each row carries the commander's `id` (its Scryfall card ID, or the card name when the card is missing from the catalog), `name`, `art_crop_url`, canonical `color_identity`, the record fields, distinct `pilots` and `decks` counts, and `last_played_at`. A seat counts once for each commander card its deck ran, so a partner deck contributes to both partners. Decks that only recorded a commander name (older imports) are grouped by normalized name.
+
+## `GET /api/stats/commanders/:id`
+
+Accepts a Scryfall card ID or a card name. Returns the `commander` identity, overall `record`, per-pilot and per-deck records, `partners` it was paired with, `opponents` faced, cumulative `win_rate_over_time`, and `recent_games` with the commander's result. Responds 404 when the commander has never been played.
+
+All stats endpoints accept optional `date_from` / `date_to` (inclusive ISO dates).

@@ -14,6 +14,15 @@ defmodule TheGatheringWeb.API.StatsController do
     end
   end
 
+  def commanders(conn, params), do: render(conn, :show, stats: Stats.commanders(params))
+
+  def commander(conn, %{"id" => id} = params) do
+    case Stats.commander(id, params) do
+      nil -> {:error, :not_found}
+      stats -> render(conn, :show, stats: stats)
+    end
+  end
+
   def deck(conn, %{"id" => id} = params) do
     case Stats.deck(id, params) do
       nil -> {:error, :not_found}

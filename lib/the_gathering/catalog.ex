@@ -4,6 +4,7 @@ defmodule TheGathering.Catalog do
   import Ecto.Query
 
   alias TheGathering.Catalog.{Backfill, Card, CardData, SyncServer, SyncState}
+  alias TheGathering.Games.ColorIdentity
   alias TheGathering.Repo
 
   @default_limit 20
@@ -45,7 +46,14 @@ defmodule TheGathering.Catalog do
   def get_card!(id), do: Repo.get!(Card, id)
   def count_cards, do: Repo.aggregate(Card, :count)
 
-  def art_crop_urls(card_refs) do
+  @doc """
+  Resolves `{card_id, card_name}` references to catalog summaries in one query.
+
+  Returns a map keyed by `{:id, card_id}` and `{:name, normalized_name}` whose values are
+  `%{id, name, art_crop_url, color_identity}`; look entries up with `card_summary/3`.
+  Stored IDs win, and names cover legacy imported decks that only recorded a snapshot.
+  """
+  def card_summaries(card_refs) do
     ids = card_refs |> Enum.map(&elem(&1, 0)) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
     names =
@@ -57,15 +65,34 @@ defmodule TheGathering.Catalog do
 
     Card
     |> where([card], card.id in ^ids or card.normalized_name in ^names)
-    |> select([card], {card.id, card.normalized_name, card.image_uris})
+    |> select(
+      [card],
+      {card.id, card.name, card.normalized_name, card.image_uris, card.color_identity}
+    )
     |> Repo.all()
-    |> Enum.reduce(%{}, fn {id, normalized_name, image_uris}, urls ->
-      art_crop_url = Map.get(image_uris || %{}, "art_crop")
+    |> Enum.reduce(%{}, fn {id, name, normalized_name, image_uris, color_identity}, summaries ->
+      summary = %{
+        id: id,
+        name: name,
+        art_crop_url: Map.get(image_uris || %{}, "art_crop"),
+        color_identity: ColorIdentity.canonical(Enum.join(color_identity || []))
+      }
 
-      urls
-      |> Map.put({:id, id}, art_crop_url)
-      |> Map.put({:name, normalized_name}, art_crop_url)
+      summaries
+      |> Map.put({:id, id}, summary)
+      |> Map.put({:name, normalized_name}, summary)
     end)
+  end
+
+  def card_summary(summaries, id, name) do
+    Map.get(summaries, {:id, id}) ||
+      (is_binary(name) && Map.get(summaries, {:name, CardData.normalize_name(name)})) || nil
+  end
+
+  def art_crop_urls(card_refs) do
+    card_refs
+    |> card_summaries()
+    |> Map.new(fn {key, summary} -> {key, summary.art_crop_url} end)
   end
 
   def art_crop_url(urls, id, name) do

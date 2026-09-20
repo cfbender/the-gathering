@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query"
 import { Link, Outlet, createRootRouteWithContext, useLocation } from "@tanstack/react-router"
-import { Gamepad2, Layers, Menu, Upload, Users } from "lucide-react"
+import { Crown, Gamepad2, Layers, Menu, Upload, Users } from "lucide-react"
 import { useEffect, useState } from "react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -30,6 +30,7 @@ const navItems = [
   { to: "/games" as const, label: "Games", icon: Gamepad2, adminOnly: false },
   { to: "/players" as const, label: "Players", icon: Users, adminOnly: false },
   { to: "/decks" as const, label: "Decks", icon: Layers, adminOnly: false },
+  { to: "/commanders" as const, label: "Commanders", icon: Crown, adminOnly: false },
   { to: "/import" as const, label: "Import", icon: Upload, adminOnly: true },
 ]
 
