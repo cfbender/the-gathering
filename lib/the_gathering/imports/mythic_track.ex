@@ -13,6 +13,7 @@ defmodule TheGathering.Imports.MythicTrack do
   Track supplied them. A game's first key card becomes the winner's MVP card.
   """
 
+  alias TheGathering.Catalog.Backfill
   alias TheGathering.Games
 
   @status_complete 3
@@ -145,8 +146,10 @@ defmodule TheGathering.Imports.MythicTrack do
   defp build_seat(player, seat, line, players) do
     commander = player["commander"] || %{}
     partner = player["commanderPartner"] || %{}
-    commander_name = string(commander["name"])
-    partner_name = blank_to_nil(string(partner["name"]))
+    # Mythic Track sometimes writes partners as "A || B (Partners)" in the
+    # commander name instead of filling commanderPartner.
+    {commander_name, piped_partner} = Backfill.split_partners(string(commander["name"]))
+    partner_name = blank_to_nil(string(partner["name"])) || piped_partner
     identity = player["player"] || %{}
 
     %{

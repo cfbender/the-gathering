@@ -29,6 +29,18 @@ The API routes are `POST /api/imports/mythic_track/preview` and `POST /api/impor
 
 Only games with `gameStatus` 3 (complete) are imported; in-progress and unstarted games appear as warnings.
 
+Mythic Track writes a partner pair as one commander named `A || B (Partners)`. The importer splits that into the deck's commander and partner, and names the deck `A / B` when Mythic Track had no separate deck name.
+
+## Linking cards to the catalog
+
+Imported decks and MVP cards arrive with card names but not always Scryfall IDs, so they have no art or colour identity until they are linked to the local card catalog. The link runs automatically after every import and after each catalog sync, matching names exactly (accents ignored) and falling back to the front face of double-faced cards. It fills missing commander, partner, and MVP card IDs, and fills an empty colour identity from the linked cards; existing colour identities are left alone. Run it again by hand from **Admin → Users → Link imported cards to the catalog** (also `POST /api/admin/catalog/backfill`) or with:
+
+```sh
+mise exec -- mix the_gathering.catalog.backfill
+```
+
+Names it cannot match are listed in the result so you can fix the deck by hand.
+
 ## Skipped games
 
 Mythic Track lets you save games The Gathering cannot represent: fewer than two or more than six players, a blank player name, the same player in two seats, or several winners. Those games are listed as warnings with the game's name, date, and players (for example `Game 213: skipped: Daniel is listed twice (03/17/2025 - Commander (EDH) - Game 1, 2025-03-17, players: Daniel, Reality, Daniel, Matt)`) and the rest of the file still imports. Fix the game in Mythic Track and re-export, or log it by hand afterwards. Only a missing `id` or an unreadable `createdOn` rejects the whole file.

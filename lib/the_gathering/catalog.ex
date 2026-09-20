@@ -3,7 +3,7 @@ defmodule TheGathering.Catalog do
 
   import Ecto.Query
 
-  alias TheGathering.Catalog.{Card, CardData, SyncServer, SyncState}
+  alias TheGathering.Catalog.{Backfill, Card, CardData, SyncServer, SyncState}
   alias TheGathering.Repo
 
   @default_limit 20
@@ -78,6 +78,9 @@ defmodule TheGathering.Catalog do
   end
 
   def trigger_sync, do: SyncServer.trigger()
+
+  @doc "Links imported decks and MVP cards to catalog cards by name. See `Backfill`."
+  def backfill, do: Backfill.run()
 
   defp commander_filter(query, true), do: where(query, [card], card.can_be_commander)
   defp commander_filter(query, false), do: where(query, [card], not card.can_be_commander)

@@ -4,7 +4,7 @@ defmodule TheGathering.Catalog.Sync do
   import Ecto.Query
 
   alias Ecto.Adapters.SQL
-  alias TheGathering.Catalog.{Card, CardData, Gzip, Scryfall, StagedCard, SyncState}
+  alias TheGathering.Catalog.{Backfill, Card, CardData, Gzip, Scryfall, StagedCard, SyncState}
   alias TheGathering.Repo
 
   @batch_size 250
@@ -28,6 +28,7 @@ defmodule TheGathering.Catalog.Sync do
       count = Repo.aggregate(StagedCard, :count)
       publish!()
       finish_state(state, count, source.updated_at)
+      Backfill.run()
       {:ok, count}
     rescue
       error ->

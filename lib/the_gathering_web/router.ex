@@ -101,6 +101,7 @@ defmodule TheGatheringWeb.Router do
     patch "/discord/pending/:id", AdminDiscordPendingController, :update
     delete "/discord/pending/:id", AdminDiscordPendingController, :delete
     post "/catalog/sync", CatalogController, :sync
+    post "/catalog/backfill", CatalogController, :backfill
   end
 
   scope "/api", TheGatheringWeb.API do
