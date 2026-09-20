@@ -3,7 +3,7 @@ import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { PlayerAvatar } from "@/components/player-avatar"
 import { UserPlus, Users } from "lucide-react"
-import { getPlayers } from "@/lib/games"
+import { getPlayers } from "@/features/games/games"
 
 export const Route = createFileRoute("/players/")({ component: PlayersPage })
 

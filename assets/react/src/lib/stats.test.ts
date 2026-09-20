@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { leaderboardRows, linePoints, sortByMetric, type RecordStat } from "./stats"
+import { leaderboardRows, linePoints, sortByMetric, type NamedRecordRow } from "./stats"
 
 describe("linePoints", () => {
   it("maps asymmetric percentage values to chart coordinates", () => {
@@ -12,7 +12,7 @@ describe("linePoints", () => {
   })
 })
 
-const row = (id: string, games: number, wins: number): RecordStat => ({
+const row = (id: string, games: number, wins: number): NamedRecordRow => ({
   id,
   name: id,
   games,

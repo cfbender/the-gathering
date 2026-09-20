@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { LoaderCircle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { CommanderField } from "@/components/commander-field"
+import { CommanderField } from "@/features/decks/commander-field"
 import { DecklistUrlField } from "@/components/decklist-url-field"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { combinedColorIdentity, type SelectedCard } from "@/lib/cards"
@@ -98,7 +98,7 @@ export function DeckFormFields({
   )
 }
 
-function useApplyDecklist(
+export function useApplyDecklist(
   onChange: (patch: Partial<DeckFormValue>) => void,
   onResolvedName?: (name: string) => void,
   manualEditVersion?: number,

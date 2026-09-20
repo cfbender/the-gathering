@@ -8,7 +8,7 @@ The Gathering is a self-hosted Commander (Magic: The Gathering) game tracker: an
 - `lib/the_gathering_web/` — Phoenix web layer: router, `/api` controllers, the SPA shell (`AppController`), and `ViteAssets` (dev-server vs manifest asset tags).
 - `config/` — Phoenix, runtime, database, and environment configuration. `runtime.exs` reads `DATA_DIR`, `DATABASE_PATH`, `SECRET_KEY_BASE`, `PHX_HOST`, `PHX_SCHEME`, `PHX_URL_PORT`.
 - `priv/repo/` — Ecto migrations (SQLite).
-- `assets/react/` — the React app (`src/routes` are TanStack Router file-based routes; `routeTree.gen.ts` is generated). Tailwind 4 + daisyUI themes live in `src/app.css`.
+- `assets/react/` — the React app. Product code is organized under `src/features/` (games, decks, imports, and admin); thin TanStack Router adapters live in `src/routes/`, and `routeTree.gen.ts` is generated. Shared presentation and UI primitives remain in `src/components/`. Tailwind 4 + daisyUI themes live in `src/app.css`.
 - `test/` — ExUnit tests and test support.
 - `Dockerfile`, `docker-entrypoint.sh`, `docker-compose.yml` — production container build and startup flow.
 - `mise.toml` — pinned toolchain (Erlang, Elixir, Node, aube).

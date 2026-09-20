@@ -7,8 +7,8 @@ import { CardArtBackground } from "@/components/card-art-background"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart, LineChart } from "@/components/stats/charts"
 import { StatCard } from "@/components/stats/stat-card"
-import { formatDate } from "@/lib/games"
-import { getCommanderDetail, type RecordStat } from "@/lib/stats"
+import { formatDate } from "@/features/games/games"
+import { getCommanderDetail, type NamedRecordRow } from "@/lib/stats"
 
 export const Route = createFileRoute("/commanders/$commanderId")({ component: CommanderPage })
 
@@ -126,8 +126,8 @@ function RecordLinks({
   rows,
   link,
 }: {
-  rows: RecordStat[]
-  link: (row: RecordStat) => Pick<LinkProps, "to" | "params">
+  rows: NamedRecordRow[]
+  link: (row: NamedRecordRow) => Pick<LinkProps, "to" | "params">
 }) {
   if (!rows.length) return <Empty>Nothing recorded yet.</Empty>
   return (

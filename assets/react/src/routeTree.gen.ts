@@ -10,10 +10,14 @@
 
 import { Route as rootRouteImport } from "./routes/__root"
 import { Route as IndexRouteImport } from "./routes/index"
+import { Route as AdminRouteImport } from "./routes/admin"
 import { Route as ImportRouteImport } from "./routes/import"
 import { Route as LoginRouteImport } from "./routes/login"
 import { Route as RegisterRouteImport } from "./routes/register"
 import { Route as SettingsRouteImport } from "./routes/settings"
+import { Route as AdminCatalogRouteImport } from "./routes/admin/catalog"
+import { Route as AdminDiscordRouteImport } from "./routes/admin/discord"
+import { Route as AdminSettingsRouteImport } from "./routes/admin/settings"
 import { Route as AdminUsersRouteImport } from "./routes/admin/users"
 import { Route as CommandersIndexRouteImport } from "./routes/commanders.index"
 import { Route as CommandersCommanderIdRouteImport } from "./routes/commanders.$commanderId"
@@ -30,6 +34,11 @@ import { Route as GamesGameIdEditRouteImport } from "./routes/games.$gameId_.edi
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: "/admin",
+  path: "/admin",
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImportRoute = ImportRouteImport.update({
@@ -52,10 +61,25 @@ const SettingsRoute = SettingsRouteImport.update({
   path: "/settings",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminCatalogRoute = AdminCatalogRouteImport.update({
+  id: "/catalog",
+  path: "/catalog",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDiscordRoute = AdminDiscordRouteImport.update({
+  id: "/discord",
+  path: "/discord",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSettingsRoute = AdminSettingsRouteImport.update({
+  id: "/settings",
+  path: "/settings",
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
-  id: "/admin/users",
-  path: "/admin/users",
-  getParentRoute: () => rootRouteImport,
+  id: "/users",
+  path: "/users",
+  getParentRoute: () => AdminRoute,
 } as any)
 const CommandersIndexRoute = CommandersIndexRouteImport.update({
   id: "/commanders/",
@@ -115,10 +139,14 @@ const GamesGameIdEditRoute = GamesGameIdEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
+  "/admin": typeof AdminRouteWithChildren
   "/import": typeof ImportRoute
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
+  "/admin/catalog": typeof AdminCatalogRoute
+  "/admin/discord": typeof AdminDiscordRoute
+  "/admin/settings": typeof AdminSettingsRoute
   "/admin/users": typeof AdminUsersRoute
   "/commanders/$commanderId": typeof CommandersCommanderIdRoute
   "/decks/$deckId": typeof DecksDeckIdRoute
@@ -134,10 +162,14 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute
+  "/admin": typeof AdminRouteWithChildren
   "/import": typeof ImportRoute
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
+  "/admin/catalog": typeof AdminCatalogRoute
+  "/admin/discord": typeof AdminDiscordRoute
+  "/admin/settings": typeof AdminSettingsRoute
   "/admin/users": typeof AdminUsersRoute
   "/commanders/$commanderId": typeof CommandersCommanderIdRoute
   "/decks/$deckId": typeof DecksDeckIdRoute
@@ -154,10 +186,14 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/": typeof IndexRoute
+  "/admin": typeof AdminRouteWithChildren
   "/import": typeof ImportRoute
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
+  "/admin/catalog": typeof AdminCatalogRoute
+  "/admin/discord": typeof AdminDiscordRoute
+  "/admin/settings": typeof AdminSettingsRoute
   "/admin/users": typeof AdminUsersRoute
   "/commanders/$commanderId": typeof CommandersCommanderIdRoute
   "/decks/$deckId": typeof DecksDeckIdRoute
@@ -175,10 +211,14 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | "/"
+    | "/admin"
     | "/import"
     | "/login"
     | "/register"
     | "/settings"
+    | "/admin/catalog"
+    | "/admin/discord"
+    | "/admin/settings"
     | "/admin/users"
     | "/commanders/$commanderId"
     | "/decks/$deckId"
@@ -194,10 +234,14 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/"
+    | "/admin"
     | "/import"
     | "/login"
     | "/register"
     | "/settings"
+    | "/admin/catalog"
+    | "/admin/discord"
+    | "/admin/settings"
     | "/admin/users"
     | "/commanders/$commanderId"
     | "/decks/$deckId"
@@ -213,10 +257,14 @@ export interface FileRouteTypes {
   id:
     | "__root__"
     | "/"
+    | "/admin"
     | "/import"
     | "/login"
     | "/register"
     | "/settings"
+    | "/admin/catalog"
+    | "/admin/discord"
+    | "/admin/settings"
     | "/admin/users"
     | "/commanders/$commanderId"
     | "/decks/$deckId"
@@ -233,11 +281,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRouteWithChildren
   ImportRoute: typeof ImportRoute
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   SettingsRoute: typeof SettingsRoute
-  AdminUsersRoute: typeof AdminUsersRoute
   CommandersCommanderIdRoute: typeof CommandersCommanderIdRoute
   DecksDeckIdRoute: typeof DecksDeckIdRoute
   DecksChooseRoute: typeof DecksChooseRoute
@@ -258,6 +306,13 @@ declare module "@tanstack/react-router" {
       path: "/"
       fullPath: "/"
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin": {
+      id: "/admin"
+      path: "/admin"
+      fullPath: "/admin"
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/import": {
@@ -288,12 +343,33 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin/catalog": {
+      id: "/admin/catalog"
+      path: "/catalog"
+      fullPath: "/admin/catalog"
+      preLoaderRoute: typeof AdminCatalogRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    "/admin/discord": {
+      id: "/admin/discord"
+      path: "/discord"
+      fullPath: "/admin/discord"
+      preLoaderRoute: typeof AdminDiscordRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    "/admin/settings": {
+      id: "/admin/settings"
+      path: "/settings"
+      fullPath: "/admin/settings"
+      preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     "/admin/users": {
       id: "/admin/users"
-      path: "/admin/users"
+      path: "/users"
       fullPath: "/admin/users"
       preLoaderRoute: typeof AdminUsersRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AdminRoute
     }
     "/commanders/": {
       id: "/commanders/"
@@ -375,13 +451,29 @@ declare module "@tanstack/react-router" {
   }
 }
 
+interface AdminRouteChildren {
+  AdminCatalogRoute: typeof AdminCatalogRoute
+  AdminDiscordRoute: typeof AdminDiscordRoute
+  AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminUsersRoute: typeof AdminUsersRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminCatalogRoute: AdminCatalogRoute,
+  AdminDiscordRoute: AdminDiscordRoute,
+  AdminSettingsRoute: AdminSettingsRoute,
+  AdminUsersRoute: AdminUsersRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRouteWithChildren,
   ImportRoute: ImportRoute,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   SettingsRoute: SettingsRoute,
-  AdminUsersRoute: AdminUsersRoute,
   CommandersCommanderIdRoute: CommandersCommanderIdRoute,
   DecksDeckIdRoute: DecksDeckIdRoute,
   DecksChooseRoute: DecksChooseRoute,

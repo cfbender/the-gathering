@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import type { CardSummary } from "@/lib/cards"
-import type { Deck } from "@/lib/games"
+import type { DeckDetail } from "@/features/decks/decks"
 import { DeckEditForm } from "./decks.$deckId"
 
 const card = (id: string, name: string, color: string): CardSummary => ({
@@ -17,7 +17,7 @@ const card = (id: string, name: string, color: string): CardSummary => ({
   commander_pairing: "partner",
 })
 
-const deck: Deck = {
+const deck: DeckDetail = {
   id: 42,
   player_id: 7,
   name: "Catalog partners",
@@ -31,7 +31,12 @@ const deck: Deck = {
   decklist_url: null,
   decklist_source: null,
   archived_at: null,
+  skip_count: 0,
   included_for_play: true,
+  player: null,
+  games_played: 0,
+  wins: 0,
+  recent_games: [],
 }
 
 afterEach(() => {

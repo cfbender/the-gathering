@@ -11,8 +11,8 @@ import { PlayerStats } from "@/components/stats/player-stats"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { CardArtBackground } from "@/components/card-art-background"
 import { errorMessage, isSudoRequired, useCurrentUser } from "@/lib/auth"
-import { formatDate, getPlayer, getPlayers, mergePlayers } from "@/lib/games"
-import type { Player } from "@/lib/games"
+import { formatDate, getPlayer, getPlayers, mergePlayers } from "@/features/games/games"
+import type { PlayerDetail, PlayerSummary } from "@/features/games/games"
 
 export const Route = createFileRoute("/players/$playerId")({ component: PlayerDetailPage })
 
@@ -100,7 +100,7 @@ function PlayerDetailPage() {
   )
 }
 
-function MyRemoteDecks({ player }: { player: Player }) {
+function MyRemoteDecks({ player }: { player: PlayerDetail }) {
   const viewer = useCurrentUser()
   if (viewer.data?.id !== player.user_id) return null
 
@@ -116,7 +116,7 @@ function MyRemoteDecks({ player }: { player: Player }) {
  * Administrators fold duplicate players (an imported guest and the same person's
  * account, say) into one. Everything moves to the chosen player; this one goes away.
  */
-function MergePlayer({ player }: { player: Player }) {
+function MergePlayer({ player }: { player: PlayerDetail }) {
   const viewer = useCurrentUser()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -128,7 +128,7 @@ function MergePlayer({ player }: { player: Player }) {
   const [targetId, setTargetId] = useState("")
   const [confirming, setConfirming] = useState(false)
   const merge = useMutation({
-    mutationFn: (target: Player) => mergePlayers(player.id, target.id),
+    mutationFn: (target: PlayerSummary) => mergePlayers(player.id, target.id),
     onSuccess: (target) => {
       void queryClient.invalidateQueries({ queryKey: ["players"] })
       void queryClient.invalidateQueries({ queryKey: ["games"] })

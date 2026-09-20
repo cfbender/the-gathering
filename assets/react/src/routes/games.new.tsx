@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
-import { GameForm } from "@/components/game-form"
+import { GameForm } from "@/features/games/game-form"
 
 export const Route = createFileRoute("/games/new")({
   component: NewGamePage,

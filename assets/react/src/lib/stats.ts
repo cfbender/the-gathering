@@ -1,15 +1,27 @@
 import { api } from "@/lib/api"
 
-export interface RecordStat {
-  id: number | string
-  name: string
-  commander_name?: string
-  art_crop_url?: string | null
+export interface RecordCounts {
   games: number
   wins: number
   losses: number
   draws: number
   win_rate: number
+}
+
+export interface NamedRecordRow extends RecordCounts {
+  id: number | string
+  name: string
+  commander_name?: string
+  art_crop_url?: string | null
+}
+
+export interface HeadToHead {
+  id: number
+  name: string
+  games: number
+  wins: number
+  losses: number
+  draws: number
 }
 
 export interface TrendPoint {
@@ -33,10 +45,10 @@ export interface OverviewStats {
   games_count: number
   average_duration_minutes: number | null
   average_turns: number | null
-  leaderboard: RecordStat[]
+  leaderboard: NamedRecordRow[]
   games_by_month: { month: string; games: number }[]
-  seat_win_rates: RecordStat[]
-  color_win_rates: RecordStat[]
+  seat_win_rates: NamedRecordRow[]
+  color_win_rates: NamedRecordRow[]
   /** The top eight rows of `getCommanderStats()`, keyed by the same canonical IDs. */
   commanders: CommanderSummary[]
   recent_games: RecentStatGame[]
@@ -44,13 +56,13 @@ export interface OverviewStats {
 
 export interface PlayerStats {
   detailed_stats_from: string | null
-  record: RecordStat
+  record: RecordCounts
   streaks: { current_wins: number; longest_wins: number }
   recent_form: ("win" | "loss" | "draw")[]
   win_rate_over_time: TrendPoint[]
-  decks: RecordStat[]
-  head_to_head: RecordStat[]
-  seat_win_rates: RecordStat[]
+  decks: NamedRecordRow[]
+  head_to_head: HeadToHead[]
+  seat_win_rates: NamedRecordRow[]
   favorite_seat: number | null
   best_seat: number | null
   mvp_cards: { id: string | null; name: string; mentions: number; art_crop_url: string | null }[]
@@ -58,17 +70,19 @@ export interface PlayerStats {
 
 export interface DeckStats {
   detailed_stats_from: string | null
-  record: RecordStat
+  record: RecordCounts
   average_duration_minutes: number | null
   average_turns: number | null
-  opponents: RecordStat[]
+  opponents: NamedRecordRow[]
   recent_games: RecentStatGame[]
   win_rate_over_time: TrendPoint[]
 }
 
-export interface CommanderSummary extends RecordStat {
+export interface CommanderSummary extends RecordCounts {
   /** Scryfall card ID, or the card name when the card is missing from the catalog. */
   id: string
+  name: string
+  art_crop_url: string | null
   color_identity: string | null
   pilots: number
   decks: number
@@ -82,11 +96,11 @@ export interface CommanderStats {
     art_crop_url: string | null
     color_identity: string | null
   }
-  record: RecordStat
-  pilots: RecordStat[]
-  decks: RecordStat[]
-  partners: RecordStat[]
-  opponents: RecordStat[]
+  record: RecordCounts
+  pilots: NamedRecordRow[]
+  decks: NamedRecordRow[]
+  partners: NamedRecordRow[]
+  opponents: NamedRecordRow[]
   win_rate_over_time: TrendPoint[]
   recent_games: RecentStatGame[]
 }
@@ -123,7 +137,10 @@ export function linePoints(values: number[], width = 300, height = 100): string 
 export const LEADERBOARD_MIN_GAMES = 2
 
 /** Leaderboard rows with enough games, best win rate first (more games breaks ties). */
-export function leaderboardRows(rows: RecordStat[], minGames = LEADERBOARD_MIN_GAMES) {
+export function leaderboardRows<T extends NamedRecordRow>(
+  rows: T[],
+  minGames = LEADERBOARD_MIN_GAMES,
+): T[] {
   return rows
     .filter((row) => row.games >= minGames)
     .sort((a, b) => b.win_rate - a.win_rate || b.games - a.games)
@@ -135,11 +152,11 @@ export type ColorMetric = "games" | "win_rate"
  * Rows ordered by the chosen metric, highest first; the other metric breaks ties.
  * Win-rate ranking skips rows below the game floor so a single win cannot top the chart.
  */
-export function sortByMetric(
-  rows: RecordStat[],
+export function sortByMetric<T extends NamedRecordRow>(
+  rows: T[],
   metric: ColorMetric,
   minGames = LEADERBOARD_MIN_GAMES,
-) {
+): T[] {
   const other: ColorMetric = metric === "games" ? "win_rate" : "games"
   return rows
     .filter((row) => metric === "games" || row.games >= minGames)

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import { DeckChooserPage } from "@/components/deck-chooser-page"
+import { DeckChooserPage } from "@/features/decks/deck-chooser-page"
 import type { User } from "@/lib/auth"
 
 const user: User = {

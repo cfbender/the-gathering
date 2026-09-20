@@ -7,12 +7,7 @@ import { CardArtBackground } from "@/components/card-art-background"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/cn"
-import {
-  getCommanderStats,
-  sortByMetric,
-  type ColorMetric,
-  type CommanderSummary,
-} from "@/lib/stats"
+import { getCommanderStats, sortByMetric, type ColorMetric } from "@/lib/stats"
 
 export const Route = createFileRoute("/commanders/")({ component: CommandersPage })
 
@@ -24,7 +19,7 @@ const metricLabels: Record<ColorMetric, string> = {
 function CommandersPage() {
   const query = useQuery({ queryKey: ["stats", "commanders"], queryFn: () => getCommanderStats() })
   const [metric, setMetric] = useState<ColorMetric>("games")
-  const rows = sortByMetric(query.data ?? [], metric) as CommanderSummary[]
+  const rows = sortByMetric(query.data ?? [], metric)
 
   return (
     <div className="flex flex-col gap-6">

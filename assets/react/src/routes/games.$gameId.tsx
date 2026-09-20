@@ -3,7 +3,7 @@ import { Link, createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Clock, Pencil, Trophy } from "lucide-react"
-import { canManageGame, formatDate, getGame } from "@/lib/games"
+import { canManageGame, formatDate, getGame } from "@/features/games/games"
 import { CardArtBackground } from "@/components/card-art-background"
 import { useCurrentUser } from "@/lib/auth"
 

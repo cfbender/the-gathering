@@ -1,9 +1,9 @@
 import { api } from "@/lib/api"
-import type { Deck } from "@/lib/games"
+import type { DeckSummary } from "@/features/decks/decks"
 
 export type DeckPick =
   | {
-      deck: Deck
+      deck: DeckSummary
       play_count: number
       skip_count: number
       last_played_at: string | null
