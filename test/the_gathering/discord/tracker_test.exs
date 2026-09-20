@@ -40,12 +40,59 @@ defmodule TheGathering.Discord.TrackerTest do
     refute_receive {:report, _report}
   end
 
+  test "without a game ID, completes the most recently started game in the channel" do
+    older = report()
+    other_channel = %GameReport{report() | external_id: "spellbot:SB30000", channel_id: "555"}
+
+    newer = %GameReport{
+      report()
+      | external_id: "spellbot:SB20000",
+        played_at: ~U[2025-06-15 18:00:00Z]
+    }
+
+    # Observe the newest game first so recency comes from played_at, not order.
+    for observed <- [newer, other_channel, older] do
+      assert :ok = Tracker.observe(observed)
+      assert_receive {:report, ^observed}
+    end
+
+    assert {:ok, %GameReport{external_id: "spellbot:SB20000"}} =
+             Tracker.record_latest_winner("444", "111")
+
+    assert_receive {:report,
+                    %GameReport{external_id: "spellbot:SB20000", winner_discord_ids: ["111"]}}
+
+    assert {:error, :not_a_player} = Tracker.record_latest_winner("444", "999")
+    assert {:error, :no_game_in_channel} = Tracker.record_latest_winner("666", "111")
+  end
+
+  test "slash command without options uses the invoking channel" do
+    Tracker.observe(report())
+    assert_receive {:report, _report}
+
+    interaction = %{
+      data: %{name: "won", options: nil},
+      channel_id: 444,
+      user: %{id: "222"},
+      member: nil
+    }
+
+    assert %{type: 4, data: %{flags: 64, content: "Recorded you as the winner of SB12345."}} =
+             Command.handle(interaction)
+
+    assert_receive {:report, %GameReport{winner_discord_ids: ["222"]}}
+
+    assert %{data: %{content: content}} = Command.handle(%{interaction | channel_id: 999})
+    assert content =~ "haven't seen a SpellBot game start in this channel"
+  end
+
   test "slash command gives ephemeral success and errors" do
     Tracker.observe(report())
     assert_receive {:report, _report}
 
     interaction = %{
       data: %{name: "won", options: [%{name: "game", value: "SB12345"}]},
+      channel_id: 444,
       user: %{id: "111"},
       member: nil
     }

@@ -20,6 +20,18 @@ defmodule TheGathering.Discord.Tracker do
     )
   end
 
+  @doc """
+  Records `discord_id` as the winner of the most recently started game observed
+  in `channel_id`, for `/won` invoked without an explicit game ID.
+  """
+  @spec record_latest_winner(String.t(), String.t()) :: {:ok, GameReport.t()} | {:error, term()}
+  def record_latest_winner(channel_id, discord_id) do
+    GenServer.call(
+      __MODULE__,
+      {:record_latest_winner, to_string(channel_id), to_string(discord_id)}
+    )
+  end
+
   @impl true
   def init(options), do: {:ok, %{reports: %{}, sink: options[:sink]}}
 
@@ -32,8 +44,21 @@ defmodule TheGathering.Discord.Tracker do
   end
 
   def handle_call({:record_winner, external_id, discord_id}, _from, state) do
-    with %GameReport{} = report <- state.reports[external_id],
-         true <- Enum.any?(report.players, &(&1.discord_id == discord_id)) do
+    case state.reports[external_id] do
+      %GameReport{} = report -> complete(report, discord_id, state)
+      nil -> {:reply, {:error, :unknown_game}, state}
+    end
+  end
+
+  def handle_call({:record_latest_winner, channel_id, discord_id}, _from, state) do
+    case latest_in_channel(state.reports, channel_id) do
+      %GameReport{} = report -> complete(report, discord_id, state)
+      nil -> {:reply, {:error, :no_game_in_channel}, state}
+    end
+  end
+
+  defp complete(%GameReport{} = report, discord_id, state) do
+    if Enum.any?(report.players, &(&1.discord_id == discord_id)) do
       completed = %GameReport{
         report
         | winner_discord_ids: [discord_id],
@@ -42,15 +67,24 @@ defmodule TheGathering.Discord.Tracker do
 
       case Sink.dispatch(completed, state.sink) do
         :ok ->
-          {:reply, {:ok, completed}, put_in(state.reports[external_id], completed)}
+          {:reply, {:ok, completed}, put_in(state.reports[report.external_id], completed)}
 
         {:error, reason} ->
           {:reply, {:error, {:sink_failed, reason}}, state}
       end
     else
-      nil -> {:reply, {:error, :unknown_game}, state}
-      false -> {:reply, {:error, :not_a_player}, state}
+      {:reply, {:error, :not_a_player}, state}
     end
+  end
+
+  # SpellBot's ready embed carries the game's start time, so the latest
+  # `played_at` is the most recently started game even when an older post is
+  # edited (and re-observed) after a newer game began.
+  defp latest_in_channel(reports, channel_id) do
+    reports
+    |> Map.values()
+    |> Enum.filter(&(&1.channel_id == channel_id))
+    |> Enum.max_by(& &1.played_at, DateTime, fn -> nil end)
   end
 
   defp normalize_game_id(game_id) do
