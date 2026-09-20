@@ -1,9 +1,10 @@
 defmodule TheGathering.Discord.Tracker do
-  @moduledoc "Keeps observed SpellBot reports in memory so `/won` can complete them."
+  @moduledoc "Stages observed SpellBot reports in SQLite so `/won` can complete them."
 
   use GenServer
 
-  alias TheGathering.Discord.{GameReport, Sink}
+  alias TheGathering.Discord.{GameReport, PendingGame, Sink}
+  alias TheGathering.Discord.Sink.Games, as: GamesSink
 
   def start_link(options) do
     GenServer.start_link(__MODULE__, options, name: __MODULE__)
@@ -33,31 +34,55 @@ defmodule TheGathering.Discord.Tracker do
   end
 
   @impl true
-  def init(options), do: {:ok, %{reports: %{}, sink: options[:sink]}}
+  def init(options), do: {:ok, %{sink: options[:sink]}}
 
   @impl true
   def handle_call({:observe, report}, _from, state) do
-    case Sink.dispatch(report, state.sink) do
-      :ok -> {:reply, :ok, put_in(state.reports[report.external_id], report)}
-      {:error, reason} -> {:reply, {:error, reason}, state}
-    end
+    result =
+      with :ok <- Sink.dispatch(report, state.sink),
+           {:ok, _pending} <- PendingGame.upsert(report) do
+        :ok
+      end
+
+    {:reply, result, state}
   end
 
   def handle_call({:record_winner, external_id, discord_id}, _from, state) do
-    case state.reports[external_id] do
-      %GameReport{} = report -> complete(report, discord_id, state)
+    case PendingGame.get_by_external_id(external_id) do
+      %PendingGame{} = pending -> {:reply, resolve(pending, discord_id, state.sink), state}
       nil -> {:reply, {:error, :unknown_game}, state}
     end
   end
 
   def handle_call({:record_latest_winner, channel_id, discord_id}, _from, state) do
-    case latest_in_channel(state.reports, channel_id) do
-      %GameReport{} = report -> complete(report, discord_id, state)
+    case PendingGame.latest_in_channel(channel_id) do
+      %PendingGame{} = pending -> {:reply, resolve(pending, discord_id, state.sink), state}
       nil -> {:reply, {:error, :no_game_in_channel}, state}
     end
   end
 
-  defp complete(%GameReport{} = report, discord_id, state) do
+  @doc "Lists pending reports for administration without requiring the gateway process."
+  def list_pending, do: PendingGame.list()
+
+  @doc "Records a winner selected by an administrator."
+  def resolve_pending(id, discord_id, sink \\ GamesSink) do
+    case PendingGame.get(id) do
+      %PendingGame{} = pending -> resolve(pending, to_string(discord_id), sink)
+      nil -> {:error, :unknown_game}
+    end
+  end
+
+  @doc "Discards a pending report selected by an administrator."
+  def discard_pending(id) do
+    case PendingGame.get(id) do
+      %PendingGame{} = pending -> PendingGame.delete(pending)
+      nil -> {:error, :unknown_game}
+    end
+  end
+
+  defp resolve(%PendingGame{} = pending, discord_id, sink) do
+    report = PendingGame.to_report(pending)
+
     if Enum.any?(report.players, &(&1.discord_id == discord_id)) do
       completed = %GameReport{
         report
@@ -65,26 +90,16 @@ defmodule TheGathering.Discord.Tracker do
           raw: Map.put(report.raw, :winner_reported_by, discord_id)
       }
 
-      case Sink.dispatch(completed, state.sink) do
-        :ok ->
-          {:reply, {:ok, completed}, put_in(state.reports[report.external_id], completed)}
-
+      with :ok <- Sink.dispatch(completed, sink),
+           {:ok, _pending} <- PendingGame.delete(pending) do
+        {:ok, completed}
+      else
         {:error, reason} ->
-          {:reply, {:error, {:sink_failed, reason}}, state}
+          {:error, {:sink_failed, reason}}
       end
     else
-      {:reply, {:error, :not_a_player}, state}
+      {:error, :not_a_player}
     end
-  end
-
-  # SpellBot's ready embed carries the game's start time, so the latest
-  # `played_at` is the most recently started game even when an older post is
-  # edited (and re-observed) after a newer game began.
-  defp latest_in_channel(reports, channel_id) do
-    reports
-    |> Map.values()
-    |> Enum.filter(&(&1.channel_id == channel_id))
-    |> Enum.max_by(& &1.played_at, DateTime, fn -> nil end)
   end
 
   defp normalize_game_id(game_id) do
