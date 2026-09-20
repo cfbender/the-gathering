@@ -144,9 +144,8 @@ defmodule TheGathering.GamesTest do
 
     bare_user = AccountsFixtures.user_fixture()
 
-    {:ok, linked} = Games.create_player(%{name: "Linked", user_id: linked_user.id})
-    {:ok, bare} = Games.create_player(%{name: "Bare", user_id: bare_user.id})
-    {:ok, orphan} = Games.create_player(%{name: "Orphan", user_id: 999_999})
+    {:ok, linked} = Games.create_player(%{name: "Linked"}, linked_user.id)
+    {:ok, bare} = Games.create_player(%{name: "Bare"}, bare_user.id)
     {:ok, unlinked} = Games.create_player(%{name: "Unlinked"})
 
     avatars = Games.list_players() |> Map.new(&{&1.id, &1.avatar_url})
@@ -154,12 +153,23 @@ defmodule TheGathering.GamesTest do
     assert avatars == %{
              linked.id => "https://cdn/av.png",
              bare.id => nil,
-             orphan.id => nil,
              unlinked.id => nil
            }
 
     assert Games.get_player!(linked.id).avatar_url == "https://cdn/av.png"
-    assert Games.get_player!(orphan.id).avatar_url == nil
+  end
+
+  test "invalid user references return changeset errors" do
+    alice = player("Alice")
+    bob = player("Bob")
+
+    assert {:error, player_changeset} = Games.create_player(%{name: "Orphan"}, 999_999)
+    assert errors_on(player_changeset).user_id == ["does not exist"]
+
+    assert {:error, game_changeset} =
+             Games.create_game(game_attrs([alice, bob]), 999_999)
+
+    assert errors_on(game_changeset).created_by_user_id == ["does not exist"]
   end
 
   test "merging players moves seats and decks, collapses same-named decks, and carries identity" do
@@ -217,7 +227,7 @@ defmodule TheGathering.GamesTest do
   test "linking a player to an account merges the account's stub player into it" do
     user = AccountsFixtures.user_fixture()
     imported = player("Drew")
-    {:ok, stub} = Games.create_player(%{name: "Drew (2)", user_id: user.id, discord_id: "42"})
+    {:ok, stub} = Games.create_player(%{name: "Drew (2)", discord_id: "42"}, user.id)
     other = player("Other")
     {:ok, _game} = Games.create_game(game_attrs([stub, other]))
 

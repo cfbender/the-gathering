@@ -1,6 +1,7 @@
 defmodule TheGathering.Imports.MythicTrackTest do
   use TheGathering.DataCase, async: false
 
+  alias TheGathering.AccountsFixtures
   alias TheGathering.Games
   alias TheGathering.Games.Game
   alias TheGathering.Imports
@@ -169,6 +170,8 @@ defmodule TheGathering.Imports.MythicTrackTest do
   end
 
   test "imports with Scryfall IDs, merges Discord identities, and skips the same GUID" do
+    user = AccountsFixtures.user_fixture()
+
     # Drew already exists from the Discord bot under a different display name.
     {:ok, drew} = Games.find_or_create_player_by_discord_id("200000000000000002", "waxpoetik")
     {:ok, other_daniel} = Games.create_player(%{name: "daniel"})
@@ -181,7 +184,7 @@ defmodule TheGathering.Imports.MythicTrackTest do
              Enum.sort([drew.id, other_daniel.id])
 
     assert {:ok, %{created: 1, skipped: 0, game_ids: [game_id]}} =
-             Imports.import(:mythic_track, payload, 1)
+             Imports.import(:mythic_track, payload, user.id)
 
     imported = Games.get_game!(game_id)
     assert imported.source == "mythic_track"
@@ -198,12 +201,14 @@ defmodule TheGathering.Imports.MythicTrackTest do
     refute is_nil(Repo.get_by(TheGathering.Games.Player, discord_id: "200000000000000002"))
 
     assert {:ok, %{created: 0, skipped: 1, game_ids: [^game_id]}} =
-             Imports.import(:mythic_track, payload, 1)
+             Imports.import(:mythic_track, payload, user.id)
 
     assert Repo.aggregate(Game, :count) == 1
   end
 
   test "links the first key card to the winner as MVP and keeps the rest in notes" do
+    user = AccountsFixtures.user_fixture()
+
     key_cards = [
       %{"scryfallId" => "sf-craterhoof", "name" => "Craterhoof Behemoth", "colors" => ["G"]},
       %{"scryfallId" => nil, "name" => "Finale of Devastation", "colors" => ["G"]}
@@ -221,7 +226,8 @@ defmodule TheGathering.Imports.MythicTrackTest do
 
     assert parsed.notes == "Close one\nKey cards: Finale of Devastation"
 
-    assert {:ok, %{created: 1, game_ids: [game_id]}} = Imports.import(:mythic_track, payload, 1)
+    assert {:ok, %{created: 1, game_ids: [game_id]}} =
+             Imports.import(:mythic_track, payload, user.id)
 
     winner =
       game_id |> Games.get_game!() |> Map.fetch!(:seats) |> Enum.find(&(&1.result == "win"))

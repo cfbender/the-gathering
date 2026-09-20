@@ -36,7 +36,13 @@ defmodule TheGathering.Games do
 
   def get_player(id), do: Repo.get(Player, id)
 
-  def create_player(attrs), do: %Player{} |> Player.changeset(attrs) |> Repo.insert()
+  def create_player(attrs, user_id \\ nil) do
+    %Player{}
+    |> Player.changeset(attrs)
+    |> Player.put_user(user_id)
+    |> validate_user_exists(:user_id)
+    |> Repo.insert()
+  end
 
   def update_player(%Player{} = player, attrs),
     do: player |> Player.changeset(attrs) |> Repo.update()
@@ -287,16 +293,16 @@ defmodule TheGathering.Games do
 
   def get_game(id), do: Repo.get(Game, id)
 
-  def create_game(attrs) do
+  def create_game(attrs, created_by_user_id \\ nil) do
     case external_identity(attrs) do
       {source, external_id} when is_binary(external_id) and external_id != "" ->
         case Repo.get_by(Game, source: source, external_id: external_id) do
-          nil -> insert_game(attrs, source, external_id)
+          nil -> insert_game(attrs, created_by_user_id, source, external_id)
           game -> {:ok, get_game!(game.id)}
         end
 
       _identity ->
-        insert_game(attrs)
+        insert_game(attrs, created_by_user_id)
     end
   end
 
@@ -314,7 +320,7 @@ defmodule TheGathering.Games do
       |> Map.merge(%{source: source, external_id: external_id})
 
     case Repo.get_by(Game, source: source, external_id: external_id) do
-      nil -> insert_game(attrs, source, external_id)
+      nil -> insert_game(attrs, nil, source, external_id)
       game -> update_game(game, attrs)
     end
   end
@@ -330,10 +336,12 @@ defmodule TheGathering.Games do
 
   def delete_game(%Game{} = game), do: Repo.delete(game)
 
-  defp insert_game(attrs, source \\ nil, external_id \\ nil) do
+  defp insert_game(attrs, created_by_user_id, source \\ nil, external_id \\ nil) do
     result =
       %Game{}
       |> Game.changeset(attrs)
+      |> Game.put_created_by(created_by_user_id)
+      |> validate_user_exists(:created_by_user_id)
       |> validate_deck_ownership()
       |> Repo.insert()
       |> preload_game_ok()
@@ -369,6 +377,20 @@ defmodule TheGathering.Games do
     if mismatched?,
       do: add_error(changeset, :seats, "contains a deck that does not belong to its player"),
       else: changeset
+  end
+
+  # SQLite reports foreign-key violations without a constraint name, so Ecto
+  # cannot translate them through foreign_key_constraint/3 on its own.
+  defp validate_user_exists(changeset, field) do
+    case get_field(changeset, field) do
+      nil ->
+        changeset
+
+      user_id ->
+        if Repo.exists?(from user in User, where: user.id == ^user_id),
+          do: changeset,
+          else: add_error(changeset, field, "does not exist")
+    end
   end
 
   defp external_identity(attrs) do
@@ -409,11 +431,9 @@ defmodule TheGathering.Games do
   defp maybe_active(query, _include_archived),
     do: where(query, [resource], is_nil(resource.archived_at))
 
-  # `players.user_id` has no FK, so this is a plain left join on the id.
   defp with_avatar(query) do
     from player in query,
-      left_join: user in User,
-      on: user.id == player.user_id,
+      left_join: user in assoc(player, :user),
       select_merge: %{avatar_url: user.avatar_url}
   end
 
