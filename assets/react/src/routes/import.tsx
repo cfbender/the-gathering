@@ -154,8 +154,8 @@ function ImportPage() {
       {data?.valid && !commit.data && (
         <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
           <p className="text-base-content/70 text-sm">
-            This creates {data.players.create.length} players, {data.decks.create.length} decks, and
-            up to {data.games.length} games in one transaction.
+            Imports {count(data.games.length, "game")} in one transaction, creating any missing
+            players and commander decks.
           </p>
           <button
             type="button"
@@ -276,11 +276,32 @@ function Preview({ preview, source }: { preview: CSVImportPreview; source: Impor
               : "Fix errors before importing"}
           </h2>
           <p className="text-sm">
-            {preview.players.matched.length} players and {preview.decks.matched.length} decks match
-            existing records.
+            Creates {count(preview.players.create.length, "new player")} and{" "}
+            {count(preview.decks.create.length, "commander deck")};{" "}
+            {count(preview.players.matched.length, "player")} and{" "}
+            {count(preview.decks.matched.length, "deck")} already exist and will be reused.
           </p>
         </div>
       </div>
+
+      {preview.players.create.length > 0 && (
+        <div className="card border-base-300 bg-base-200 border">
+          <div className="card-body gap-2 p-4">
+            <h3 className="text-sm font-bold">New players</h3>
+            <p className="text-base-content/60 text-xs">
+              Nobody needs an account to appear here. Later, link a player to an account from Admin
+              → Users, or merge duplicates from a player's page.
+            </p>
+            <ul className="flex flex-wrap gap-2" aria-label="Players that will be created">
+              {preview.players.create.map((player) => (
+                <li key={playerName(player)} className="badge badge-outline">
+                  {playerName(player)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {preview.warnings.length > 0 && (
         <div className="alert alert-warning items-start text-sm">
@@ -370,4 +391,12 @@ function Preview({ preview, source }: { preview: CSVImportPreview; source: Impor
       )}
     </section>
   )
+}
+
+function count(n: number, noun: string) {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`
+}
+
+function playerName(player: string | { name: string }) {
+  return typeof player === "string" ? player : player.name
 }

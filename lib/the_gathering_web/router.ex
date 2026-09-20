@@ -80,6 +80,7 @@ defmodule TheGatheringWeb.Router do
     post "/imports/csv", CSVImportController, :create
     post "/imports/mythic_track/preview", MythicTrackImportController, :preview
     post "/imports/mythic_track", MythicTrackImportController, :create
+    post "/players/:id/merge", PlayerController, :merge
   end
 
   scope "/api", TheGatheringWeb.API do
@@ -92,6 +93,7 @@ defmodule TheGatheringWeb.Router do
     pipe_through [:api, :require_authenticated_user, :require_admin, :require_sudo_mode]
 
     resources "/users", AdminUserController, only: [:index, :update, :delete]
+    put "/users/:id/player", AdminUserController, :link_player
     get "/settings", AdminSettingsController, :show
     patch "/settings", AdminSettingsController, :update
     post "/catalog/sync", CatalogController, :sync

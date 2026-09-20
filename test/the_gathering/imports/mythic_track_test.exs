@@ -86,7 +86,7 @@ defmodule TheGathering.Imports.MythicTrackTest do
     assert preview.players.create == ["Daniel", "Drew", "Kaylyn"]
   end
 
-  test "a game with no winner is an all-player draw and two winners is an error" do
+  test "a game with no winner is an all-player draw and two winners is skipped" do
     draw = game(%{"players" => Enum.map(game()["players"], &Map.put(&1, "isWinner", false))})
     assert %{valid: true, games: [parsed]} = Imports.preview(:mythic_track, json([draw]))
     assert Enum.map(parsed.seats, & &1.result) == ["draw", "draw", "draw"]
@@ -94,14 +94,28 @@ defmodule TheGathering.Imports.MythicTrackTest do
     two_winners =
       game(%{
         "id" => "8f3a0a44-0000-4000-8000-000000000002",
+        "name" => "Friday pod",
         "players" => Enum.map(game()["players"], &Map.put(&1, "isWinner", true))
       })
 
     preview = Imports.preview(:mythic_track, json([game(), two_winners]))
-    refute preview.valid
-    assert [%{line: 2, field: "isWinner"}] = preview.errors
-    # The valid game is still previewed so the admin can see what would import.
+    # The admin cannot fix the export here, so the good game stays importable.
+    assert preview.valid
+    assert preview.errors == []
+    assert [%{line: 2, message: message}] = preview.warnings
+    assert message =~ "more than one player is marked as the winner"
+    assert message =~ "Friday pod, 2026-03-14, players: Drew, Daniel, Kaylyn"
     assert length(preview.games) == 1
+  end
+
+  test "a player listed twice skips the game and names the player" do
+    [drew, daniel, kaylyn] = game()["players"]
+    twice = game(%{"players" => [drew, daniel, kaylyn, Map.put(daniel, "turnOrder", 4)]})
+
+    preview = Imports.preview(:mythic_track, json([twice]))
+    assert preview.valid
+    assert preview.games == []
+    assert [%{line: 1, message: "skipped: Daniel is listed twice (" <> _rest}] = preview.warnings
   end
 
   test "skips in-progress games with a warning and names partner decks" do
@@ -116,7 +130,14 @@ defmodule TheGathering.Imports.MythicTrackTest do
     preview = Imports.preview(:mythic_track, json([game(%{"players" => players}), in_progress]))
 
     assert preview.valid
-    assert preview.warnings == [%{line: 2, message: "skipped: game is in progress"}]
+
+    assert preview.warnings == [
+             %{
+               line: 2,
+               message: "skipped: game is in progress (2026-03-14, players: Drew, Daniel, Kaylyn)"
+             }
+           ]
+
     assert [%{seats: [daniel | _rest]}] = preview.games
     assert daniel.deck == "Tifa Punches"
     assert daniel.partner == "Candlekeep Sage"
@@ -133,7 +154,12 @@ defmodule TheGathering.Imports.MythicTrackTest do
     assert unnamed_daniel.deck == "Tifa Lockhart / Candlekeep Sage"
 
     solo = game(%{"players" => [Enum.at(players, 1)]})
-    assert [%{line: 1, field: "players"}] = Imports.preview(:mythic_track, json([solo])).errors
+
+    assert [%{line: 1, message: "skipped: needs between 2 and 6 players, has 1 (" <> _}] =
+             Imports.preview(:mythic_track, json([solo])).warnings
+
+    assert [%{line: 1, field: "id"}] =
+             Imports.preview(:mythic_track, json([game(%{"id" => ""})])).errors
   end
 
   test "rejects payloads that are not a game array" do

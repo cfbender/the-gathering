@@ -4,6 +4,8 @@ export interface Player {
   id: number
   name: string
   avatar_url: string | null
+  /** Account this player belongs to; linked by an administrator or Discord sign-in. */
+  user_id: number | null
   archived_at: string | null
   games_played?: number
   wins?: number
@@ -69,6 +71,18 @@ export interface Pagination {
 export const getPlayers = () => api<{ data: Player[] }>("/api/players").then((body) => body.data)
 export const getPlayer = (id: string) =>
   api<{ data: Player }>(`/api/players/${id}`).then((body) => body.data)
+/** Admin only: folds `sourceId` into `targetId` (seats, decks, identity) and deletes the source. */
+export const mergePlayers = (sourceId: number, targetId: number) =>
+  api<{ data: Player }>(`/api/players/${sourceId}/merge`, {
+    method: "POST",
+    body: JSON.stringify({ target_id: targetId }),
+  }).then((body) => body.data)
+/** Admin only: makes `playerId` the account's player, merging the account's current player into it. */
+export const linkUserPlayer = (userId: number, playerId: number) =>
+  api<{ data: Player }>(`/api/admin/users/${userId}/player`, {
+    method: "PUT",
+    body: JSON.stringify({ player_id: playerId }),
+  }).then((body) => body.data)
 export const getDecks = (playerId?: number) =>
   api<{ data: Deck[] }>(`/api/decks${playerId ? `?player_id=${playerId}` : ""}`).then(
     (body) => body.data,
