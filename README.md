@@ -96,8 +96,17 @@ current skips plus one, divided by recorded plays plus one. Never-played decks g
 30-day boost beyond the stalest played deck. Plays and last-played dates come from
 game seats; only the current skip count and per-deck chooser inclusion setting are
 stored. Skipping records the skip before rerolling, while choosing clears that deck's
-skips. A configured ManaVault URL and API key adds **Sync from ManaVault**, which
-creates missing decks and updates matches by deck-list URL first, then deck name.
+skips.
+
+Hosted decks are not listed separately: **Sync hosted decks** (on your player profile
+and the chooser, shown once any deck host is configured) calls `POST
+/api/session/remote-decks/sync`, which folds every listed Moxfield, Archidekt, and
+ManaVault deck into your player's deck list. A remote deck refreshes the local deck
+with the same deck-list URL or name; otherwise it links the unlinked local deck with
+the same commander pair (filling in commander card, partner, and colors but keeping
+your name for it); otherwise it is added as a new deck. A deck that already links
+elsewhere is never re-pointed. Hosts that fail to list are skipped and reported in the
+response's `errors`.
 
 ### Environment variables
 

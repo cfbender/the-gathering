@@ -63,6 +63,7 @@ defmodule TheGatheringWeb.Router do
 
     patch "/session/user", SessionController, :update_profile
     get "/session/remote-decks", RemoteDeckController, :index
+    post "/session/remote-decks/sync", RemoteDeckController, :sync
 
     get "/cards", CardController, :index
     get "/cards/:id", CardController, :show
@@ -73,7 +74,6 @@ defmodule TheGatheringWeb.Router do
     get "/stats/commanders", StatsController, :commanders
     get "/stats/commanders/:id", StatsController, :commander
     get "/deck-chooser", DeckChooserController, :show
-    post "/deck-chooser/sync", DeckChooserController, :sync
     post "/deck-chooser/:id/outcomes", DeckChooserController, :create_outcome
     resources "/players", PlayerController, except: [:new, :edit]
     resources "/decks", DeckController, except: [:new, :edit]

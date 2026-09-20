@@ -3,13 +3,18 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { PlayerAvatar } from "@/components/player-avatar"
-import { RemoteDeckList } from "@/components/remote-deck-list"
 import { SudoPrompt } from "@/components/sudo-prompt"
-import { Merge, Trophy } from "lucide-react"
+import { ExternalLink, Merge, Trophy } from "lucide-react"
 import { useState } from "react"
 import { PlayerStats } from "@/components/stats/player-stats"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { CardArtBackground } from "@/components/card-art-background"
+import {
+  SyncRemoteDecksButton,
+  SyncRemoteDecksResult,
+  useSyncRemoteDecks,
+} from "@/features/decks/sync-remote-decks"
+import { remoteDeckSourceLabels, type RemoteDeckSource } from "@/lib/remote-decks"
 import { errorMessage, isSudoRequired, useCurrentUser } from "@/lib/auth"
 import { formatDate, getPlayer, getPlayers, mergePlayers } from "@/features/games/games"
 import type { PlayerDetail, PlayerSummary } from "@/features/games/games"
@@ -41,32 +46,7 @@ function PlayerDetailPage() {
         </div>
       </PageHeader>
       <PlayerStats playerId={playerId} />
-      <MyRemoteDecks player={player} />
-      <section>
-        <h2 className="mb-3 text-xl font-bold">Decks</h2>
-        {player.decks?.length === 0 && (
-          <p className="text-base-content/60">No decks recorded yet.</p>
-        )}
-        <div className="grid gap-3 sm:grid-cols-2">
-          {player.decks?.map((deck) => (
-            <Link
-              key={deck.id}
-              to="/decks/$deckId"
-              params={{ deckId: String(deck.id) }}
-              className="card group border-base-300 bg-base-200 hover:border-primary/40 relative overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-xl"
-            >
-              <CardArtBackground imageUrl={deck.commander_art_crop_url} interactive />
-              <div className="card-body text-base-content relative z-10 p-4">
-                <span className="flex items-center justify-between gap-2">
-                  <strong>{deck.name}</strong>
-                  <ColorIdentity colors={deck.color_identity} />
-                </span>
-                <span className="text-base-content/85 text-sm">{deck.commander_name}</span>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
+      <PlayerDecks player={player} />
       <section>
         <h2 className="mb-3 text-xl font-bold">Recent games</h2>
         {player.recent_games?.length === 0 && (
@@ -100,16 +80,67 @@ function PlayerDetailPage() {
   )
 }
 
-function MyRemoteDecks({ player }: { player: PlayerDetail }) {
+/**
+ * The player's decks, with hosted decks (Moxfield, Archidekt, ManaVault) folded in:
+ * the owner can sync them, which links same-commander decks and adds the rest.
+ */
+function PlayerDecks({ player }: { player: PlayerDetail }) {
   const viewer = useCurrentUser()
-  if (viewer.data?.id !== player.user_id) return null
+  const owner = viewer.data !== undefined && viewer.data.id === player.user_id
+  const sync = useSyncRemoteDecks()
 
   return (
     <section>
-      <h2 className="mb-3 text-xl font-bold">My hosted decks</h2>
-      <RemoteDeckList />
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-bold">Decks</h2>
+        {owner &&
+          (sync.available ? (
+            <SyncRemoteDecksButton sync={sync} size="sm" />
+          ) : (
+            <Link to="/settings" className="link link-hover text-base-content/65 text-sm">
+              Connect a deck host to sync your hosted decks
+            </Link>
+          ))}
+      </div>
+      {owner && (
+        <div className="mb-3 empty:hidden">
+          <SyncRemoteDecksResult sync={sync} />
+        </div>
+      )}
+      {player.decks.length === 0 && <p className="text-base-content/60">No decks recorded yet.</p>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {player.decks.map((deck) => (
+          <Link
+            key={deck.id}
+            to="/decks/$deckId"
+            params={{ deckId: String(deck.id) }}
+            className="card group border-base-300 bg-base-200 hover:border-primary/40 relative overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-xl"
+          >
+            <CardArtBackground imageUrl={deck.commander_art_crop_url} interactive />
+            <div className="card-body text-base-content relative z-10 p-4">
+              <span className="flex items-center justify-between gap-2">
+                <strong>{deck.name}</strong>
+                <ColorIdentity colors={deck.color_identity} />
+              </span>
+              <span className="text-base-content/85 text-sm">{deck.commander_name}</span>
+              {deck.decklist_url && (
+                <span className="text-base-content/70 inline-flex items-center gap-1 text-xs">
+                  <ExternalLink className="size-3" />
+                  {deckHostLabel(deck.decklist_source)}
+                </span>
+              )}
+            </div>
+          </Link>
+        ))}
+      </div>
     </section>
   )
+}
+
+function deckHostLabel(source: string | null) {
+  return source && source in remoteDeckSourceLabels
+    ? remoteDeckSourceLabels[source as RemoteDeckSource]
+    : "Deck list"
 }
 
 /**

@@ -1,7 +1,8 @@
 defmodule TheGatheringWeb.API.RemoteDeckControllerTest do
   use TheGatheringWeb.ConnCase, async: false
 
-  alias TheGathering.Accounts
+  alias TheGathering.{Accounts, Games, Repo}
+  alias TheGathering.Catalog.{Card, CardData}
   alias TheGathering.Decklists.{Cache, RemoteDecks}
 
   setup :register_and_log_in_user
@@ -350,5 +351,87 @@ defmodule TheGatheringWeb.API.RemoteDeckControllerTest do
 
     result = RemoteDecks.list(user)
     assert Enum.find(result.sources, &(&1.source == :moxfield)).error =~ "time budget"
+  end
+
+  test "POST /api/session/remote-decks/sync creates and updates ManaVault decks", ctx do
+    {:ok, player} = Games.create_player(%{name: "Chooser"}, ctx.user.id)
+    insert_card("atraxa", "Atraxa, Praetors' Voice", ~w(W U B G))
+    insert_card("krenko", "Krenko, Mob Boss", ~w(R))
+
+    {:ok, existing} =
+      Games.create_deck(%{
+        player_id: player.id,
+        name: "Old name",
+        commander_name: "Old commander",
+        decklist_url: "https://vault.example.com/decks/1"
+      })
+
+    {:ok, user} =
+      Accounts.update_profile(ctx.user, %{
+        "display_name" => ctx.user.display_name,
+        "manavault_url" => "https://vault.example.com",
+        "manavault_api_key" => "mvk_test_key"
+      })
+
+    Req.Test.expect(__MODULE__, 1, fn conn ->
+      assert conn.request_path == "/api/v1/decks"
+      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer mvk_test_key"]
+
+      Req.Test.json(conn, %{
+        "data" => [
+          %{
+            "id" => 1,
+            "name" => "Atraxa counters",
+            "commanders" => ["Atraxa, Praetors' Voice"],
+            "commanderColorIdentity" => ~w(W U B G),
+            "updated_at" => "2026-09-20T12:00:00Z"
+          },
+          %{
+            "id" => 2,
+            "name" => "Goblin rush",
+            "commanders" => ["Krenko, Mob Boss"],
+            "commanderColorIdentity" => ["R"],
+            "updated_at" => "2026-09-20T12:00:00Z"
+          }
+        ],
+        "pagination" => %{"total_pages" => 1}
+      })
+    end)
+
+    assert %{"data" => %{"created" => 1, "updated" => 1, "errors" => []}} =
+             ctx.conn
+             |> recycle()
+             |> log_in_user(user)
+             |> post(~p"/api/session/remote-decks/sync")
+             |> json_response(200)
+
+    updated = Games.get_deck!(existing.id)
+    assert updated.name == "Atraxa counters"
+    assert updated.commander_card_id == "atraxa"
+    assert updated.color_identity == "WUBG"
+
+    [created] =
+      Enum.reject(Games.list_decks(%{player_id: player.id}), &(&1.id == existing.id))
+
+    assert created.name == "Goblin rush"
+    assert created.commander_card_id == "krenko"
+    assert created.decklist_url == "https://vault.example.com/decks/2"
+  end
+
+  defp insert_card(id, name, colors) do
+    Repo.insert!(%Card{
+      id: id,
+      oracle_id: "oracle-#{id}",
+      name: name,
+      normalized_name: CardData.normalize_name(name),
+      color_identity: colors,
+      image_uris: %{},
+      type_line: "Legendary Creature",
+      set_code: "tst",
+      collector_number: id,
+      layout: "normal",
+      rarity: "rare",
+      can_be_commander: true
+    })
   end
 end

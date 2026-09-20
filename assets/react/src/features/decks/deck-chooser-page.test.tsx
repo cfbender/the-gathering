@@ -69,7 +69,7 @@ afterEach(() => {
 })
 
 describe("deck chooser", () => {
-  it("hides ManaVault sync unless both the URL and API key are configured", async () => {
+  it("hides hosted-deck sync until a deck host is configured", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -82,11 +82,11 @@ describe("deck chooser", () => {
 
     renderPage()
     await screen.findByText("No decks available to pick")
-    expect(screen.queryByRole("button", { name: "Sync from ManaVault" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Sync hosted decks" })).toBeNull()
 
     cleanup()
     renderPage({ ...user, has_manavault_api_key: true })
-    expect(await screen.findByRole("button", { name: "Sync from ManaVault" })).toBeTruthy()
+    expect(await screen.findByRole("button", { name: "Sync hosted decks" })).toBeTruthy()
   })
 
   it("records a skip before requesting a different candidate", async () => {

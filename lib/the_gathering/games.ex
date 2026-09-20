@@ -11,11 +11,11 @@ defmodule TheGathering.Games do
     DeckPicker,
     Game,
     GamePlayer,
-    ManaVaultSync,
     MergePlayers,
     Player,
     RecordGame,
-    ResolvePlayer
+    ResolvePlayer,
+    SyncRemoteDecks
   }
 
   alias TheGathering.Repo
@@ -184,7 +184,7 @@ defmodule TheGathering.Games do
   def record_deck_outcome(%User{} = user, deck_id, outcome),
     do: DeckPicker.record_outcome(user, deck_id, outcome)
 
-  def sync_manavault_decks(%User{} = user), do: ManaVaultSync.run(user)
+  def sync_remote_decks(%User{} = user), do: SyncRemoteDecks.run(user)
 
   def find_or_create_deck(player_or_id, name, attrs \\ %{}) when is_binary(name) do
     player_id = if is_struct(player_or_id, Player), do: player_or_id.id, else: player_or_id

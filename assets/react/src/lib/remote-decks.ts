@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import type { User } from "@/lib/auth"
 import type { Decklist } from "@/lib/decklists"
 
 export type RemoteDeckSource = "moxfield" | "archidekt" | "manavault"
@@ -29,6 +30,29 @@ export const remoteDecksQueryOptions = queryOptions({
   queryFn: async () => (await api<{ data: RemoteDecksResult }>("/api/session/remote-decks")).data,
   staleTime: 5 * 60 * 1000,
 })
+
+export interface RemoteDeckSyncResult {
+  created: number
+  updated: number
+  errors: { source: RemoteDeckSource; error: string }[]
+}
+
+/** Folds the user's hosted decks into their player's deck list (see SyncRemoteDecks). */
+export function syncRemoteDecks() {
+  return api<{ data: RemoteDeckSyncResult }>("/api/session/remote-decks/sync", {
+    method: "POST",
+  }).then((body) => body.data)
+}
+
+/** Whether the user has any deck host to sync from; mirrors the server's check. */
+export function hasDeckHost(user: User | undefined): boolean {
+  return Boolean(
+    user &&
+    (user.moxfield_username ||
+      user.archidekt_username ||
+      (user.manavault_url && user.has_manavault_api_key)),
+  )
+}
 
 export const remoteDeckSourceLabels: Record<RemoteDeckSource, string> = {
   moxfield: "Moxfield",

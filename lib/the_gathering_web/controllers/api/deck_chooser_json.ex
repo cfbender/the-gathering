@@ -20,6 +20,4 @@ defmodule TheGatheringWeb.API.DeckChooserJSON do
   def outcome(%{deck: deck, outcome: outcome}) do
     %{data: %{deck_id: deck.id, outcome: outcome, skip_count: deck.skip_count}}
   end
-
-  def sync(%{counts: counts}), do: %{data: counts}
 end
