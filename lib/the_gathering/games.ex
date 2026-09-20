@@ -12,7 +12,9 @@ defmodule TheGathering.Games do
     Game,
     GamePlayer,
     ManaVaultSync,
+    MergePlayers,
     Player,
+    RecordGame,
     ResolvePlayer
   }
 
@@ -136,123 +138,15 @@ defmodule TheGathering.Games do
   Fails with a changeset error when the two players sat in the same game or
   belong to different accounts, since neither can be represented afterwards.
   """
-  def merge_players(%Player{id: id}, %Player{id: id}), do: {:error, :bad_request}
-
-  def merge_players(%Player{} = source, %Player{} = target) do
-    Repo.transaction(fn ->
-      with :ok <- ensure_mergeable(source, target),
-           {:ok, target} <- carry_identity(source, target) do
-        move_decks(source, target)
-
-        Repo.update_all(from(seat in GamePlayer, where: seat.player_id == ^source.id),
-          set: [player_id: target.id]
-        )
-
-        Repo.delete!(source)
-        Repo.get!(Player, target.id)
-      else
-        {:error, reason} -> Repo.rollback(reason)
-      end
-    end)
-  end
+  def merge_players(%Player{} = source, %Player{} = target),
+    do: MergePlayers.run(source, target)
 
   @doc """
   Makes `player` the account's player. The account's current player, if any and
   different, is merged into `player` so no game history is lost.
   """
-  def link_player_to_user(%Player{} = player, %User{} = user) do
-    player = Repo.get!(Player, player.id)
-    current = Repo.get_by(Player, user_id: user.id)
-
-    cond do
-      current && current.id == player.id ->
-        {:ok, player}
-
-      conflicting?(player.user_id, user.id) ->
-        {:error, merge_error(player, "players belong to different accounts")}
-
-      conflicting?(player.discord_id, user.discord_id) ->
-        {:error, merge_error(player, "players have different Discord identities")}
-
-      current ->
-        merge_players(current, player)
-
-      true ->
-        player
-        |> change(user_id: user.id)
-        |> maybe_put_discord_id(user.discord_id)
-        |> Repo.update()
-    end
-  end
-
-  defp ensure_mergeable(source, target) do
-    shared_games =
-      Repo.exists?(
-        from a in GamePlayer,
-          join: b in GamePlayer,
-          on: a.game_id == b.game_id,
-          where: a.player_id == ^source.id and b.player_id == ^target.id
-      )
-
-    cond do
-      shared_games ->
-        {:error, merge_error(source, "both players are seated in the same game")}
-
-      conflicting?(source.user_id, target.user_id) ->
-        {:error, merge_error(source, "players belong to different accounts")}
-
-      conflicting?(source.discord_id, target.discord_id) ->
-        {:error, merge_error(source, "players have different Discord identities")}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp conflicting?(a, b), do: not is_nil(a) and not is_nil(b) and a != b
-
-  defp merge_error(source, message), do: source |> change() |> add_error(:merge, message)
-
-  defp carry_identity(source, target) do
-    # Free the unique columns on the source first so the target can take them.
-    source |> change(user_id: nil, discord_id: nil) |> Repo.update!()
-
-    target
-    |> change(user_id: target.user_id || source.user_id)
-    |> maybe_put_discord_id(source.discord_id)
-    |> Repo.update()
-  end
-
-  defp maybe_put_discord_id(changeset, nil), do: changeset
-
-  defp maybe_put_discord_id(changeset, discord_id) do
-    case get_field(changeset, :discord_id) do
-      nil -> put_change(changeset, :discord_id, discord_id)
-      _existing -> changeset
-    end
-  end
-
-  defp move_decks(source, target) do
-    target_decks =
-      Repo.all(from deck in Deck, where: deck.player_id == ^target.id)
-      |> Map.new(&{fold_name(&1.name), &1})
-
-    for deck <- Repo.all(from deck in Deck, where: deck.player_id == ^source.id) do
-      case Map.fetch(target_decks, fold_name(deck.name)) do
-        {:ok, existing} ->
-          Repo.update_all(from(seat in GamePlayer, where: seat.deck_id == ^deck.id),
-            set: [deck_id: existing.id]
-          )
-
-          Repo.delete!(deck)
-
-        :error ->
-          deck |> change(player_id: target.id) |> Repo.update!()
-      end
-    end
-
-    :ok
-  end
+  def link_player_to_user(%Player{} = player, %User{} = user),
+    do: MergePlayers.link_to_user(player, user)
 
   def list_decks(opts \\ %{}) do
     include_archived = value(opts, :include_archived, false)
@@ -357,92 +251,18 @@ defmodule TheGathering.Games do
 
   def can_manage_game?(_user, _game), do: false
 
-  def create_game(attrs, created_by_user_id \\ nil) do
-    case external_identity(attrs) do
-      {source, external_id} when is_binary(external_id) and external_id != "" ->
-        case Repo.get_by(Game, source: source, external_id: external_id) do
-          nil -> insert_game(attrs, created_by_user_id, source, external_id)
-          game -> {:ok, get_game!(game.id)}
-        end
+  def create_game(attrs, created_by_user_id \\ nil),
+    do: RecordGame.create(attrs, created_by_user_id)
 
-      _identity ->
-        insert_game(attrs, created_by_user_id)
-    end
-  end
+  def find_or_create_game_by_external_id(source, external_id, attrs),
+    do: RecordGame.find_or_create_by_external_id(source, external_id, attrs)
 
-  def find_or_create_game_by_external_id(source, external_id, attrs) do
-    attrs
-    |> Map.new()
-    |> Map.merge(%{source: source, external_id: external_id})
-    |> create_game()
-  end
+  def upsert_game_by_external_id(source, external_id, attrs),
+    do: RecordGame.upsert_by_external_id(source, external_id, attrs)
 
-  def upsert_game_by_external_id(source, external_id, attrs) do
-    attrs =
-      attrs
-      |> Map.new()
-      |> Map.merge(%{source: source, external_id: external_id})
-
-    case Repo.get_by(Game, source: source, external_id: external_id) do
-      nil -> insert_game(attrs, nil, source, external_id)
-      game -> update_game(game, attrs)
-    end
-  end
-
-  def update_game(%Game{} = game, attrs) do
-    game
-    |> Repo.preload(:seats)
-    |> Game.changeset(attrs)
-    |> validate_deck_ownership()
-    |> Repo.update()
-    |> preload_game_ok()
-  end
+  def update_game(%Game{} = game, attrs), do: RecordGame.update(game, attrs)
 
   def delete_game(%Game{} = game), do: Repo.delete(game)
-
-  defp insert_game(attrs, created_by_user_id, source \\ nil, external_id \\ nil) do
-    result =
-      %Game{}
-      |> Game.changeset(attrs)
-      |> Game.put_created_by(created_by_user_id)
-      |> Game.put_external_identity(source, external_id)
-      |> validate_user_exists(:created_by_user_id)
-      |> validate_deck_ownership()
-      |> Repo.insert()
-      |> preload_game_ok()
-
-    case result do
-      {:error, changeset} when not is_nil(source) ->
-        if Keyword.has_key?(changeset.errors, :external_id) do
-          {:ok,
-           Game
-           |> Repo.get_by!(source: source, external_id: external_id)
-           |> then(&get_game!(&1.id))}
-        else
-          result
-        end
-
-      _result ->
-        result
-    end
-  end
-
-  defp validate_deck_ownership(changeset) do
-    mismatched? =
-      changeset
-      |> get_field(:seats, [])
-      |> Enum.any?(fn
-        %{deck_id: nil} ->
-          false
-
-        %{deck_id: deck_id, player_id: player_id} ->
-          Repo.get_by(Deck, id: deck_id, player_id: player_id) == nil
-      end)
-
-    if mismatched?,
-      do: add_error(changeset, :seats, "contains a deck that does not belong to its player"),
-      else: changeset
-  end
 
   # SQLite reports foreign-key violations without a constraint name, so Ecto
   # cannot translate them through foreign_key_constraint/3 on its own.
@@ -456,10 +276,6 @@ defmodule TheGathering.Games do
           do: changeset,
           else: add_error(changeset, field, "does not exist")
     end
-  end
-
-  defp external_identity(attrs) do
-    {value(attrs, :source, "manual"), value(attrs, :external_id)}
   end
 
   defp recover_player({:error, _changeset} = error, name) do
@@ -485,11 +301,6 @@ defmodule TheGathering.Games do
 
   defp preload_ok({:ok, struct}, association), do: {:ok, Repo.preload(struct, association)}
   defp preload_ok(error, _association), do: error
-
-  defp preload_game_ok({:ok, game}),
-    do: {:ok, Repo.preload(game, [seats: [:player, :deck]], force: true)}
-
-  defp preload_game_ok(error), do: error
 
   defp maybe_active(query, true), do: query
 

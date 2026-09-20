@@ -141,7 +141,7 @@ defmodule TheGathering.Imports.MythicTrackTest do
 
     assert [%{seats: [daniel | _rest]}] = preview.games
     assert daniel.deck == "Tifa Punches"
-    assert daniel.partner == "Candlekeep Sage"
+    assert daniel.partner_name == "Candlekeep Sage"
     assert daniel.partner_card_id == "sf-bg"
     assert daniel.color_identity == "UG"
 
@@ -170,7 +170,7 @@ defmodule TheGathering.Imports.MythicTrackTest do
              Imports.preview(:mythic_track, json([game(%{"players" => piped})])).games
 
     assert piped_daniel.commander == "Frodo, Adventurous Hobbit"
-    assert piped_daniel.partner == "Sam, Loyal Attendant"
+    assert piped_daniel.partner_name == "Sam, Loyal Attendant"
     assert piped_daniel.deck == "Frodo, Adventurous Hobbit / Sam, Loyal Attendant"
 
     solo = game(%{"players" => [Enum.at(players, 1)]})
@@ -223,6 +223,30 @@ defmodule TheGathering.Imports.MythicTrackTest do
              Imports.import(:mythic_track, payload, user.id)
 
     assert Repo.aggregate(Game, :count) == 1
+  end
+
+  test "commit preserves partner name, card ID, and combined colors" do
+    user = AccountsFixtures.user_fixture()
+
+    partner = %{
+      "scryfallId" => "sf-candlekeep",
+      "name" => "Candlekeep Sage",
+      "colors" => ["U"]
+    }
+
+    players =
+      game()["players"]
+      |> List.update_at(1, &Map.put(&1, "commanderPartner", partner))
+
+    assert {:ok, %{game_ids: [game_id]}} =
+             Imports.import(:mythic_track, json([game(%{"players" => players})]), user.id)
+
+    winner =
+      game_id |> Games.get_game!() |> Map.fetch!(:seats) |> Enum.find(&(&1.result == "win"))
+
+    assert winner.deck.partner_name == "Candlekeep Sage"
+    assert winner.deck.partner_card_id == "sf-candlekeep"
+    assert winner.deck.color_identity == "UG"
   end
 
   test "preview and import create a distinct player for a conflicting Discord identity" do

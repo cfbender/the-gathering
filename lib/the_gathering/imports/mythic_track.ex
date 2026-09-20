@@ -13,8 +13,8 @@ defmodule TheGathering.Imports.MythicTrack do
   Track supplied them. A game's first key card becomes the winner's MVP card.
   """
 
-  alias TheGathering.Catalog.Backfill
   alias TheGathering.Games
+  alias TheGathering.Imports.{Game, Seat}
 
   @status_complete 3
   @status_names %{1 => "not started", 2 => "in progress"}
@@ -112,7 +112,7 @@ defmodule TheGathering.Imports.MythicTrack do
 
       true ->
         {:ok,
-         %{
+         %Game{
            external_id: external_id,
            game_id: external_id,
            played_at: played_at,
@@ -148,18 +148,18 @@ defmodule TheGathering.Imports.MythicTrack do
     partner = player["commanderPartner"] || %{}
     # Mythic Track sometimes writes partners as "A || B (Partners)" in the
     # commander name instead of filling commanderPartner.
-    {commander_name, piped_partner} = Backfill.split_partners(string(commander["name"]))
+    {commander_name, piped_partner} = split_partners(string(commander["name"]))
     partner_name = blank_to_nil(string(partner["name"])) || piped_partner
     identity = player["player"] || %{}
 
-    %{
+    %Seat{
       line: line,
       player: player_name(identity),
       discord_id: blank_to_nil(string(identity["discordUserId"])),
       deck: deck_name(commander, commander_name, partner_name),
       commander: commander_name,
       commander_card_id: blank_to_nil(string(commander["scryfallId"])),
-      partner: partner_name,
+      partner_name: partner_name,
       partner_card_id: blank_to_nil(string(partner["scryfallId"])),
       color_identity: color_identity(commander, partner),
       decklist_url: blank_to_nil(string(commander["decklistUrl"])),
@@ -207,6 +207,17 @@ defmodule TheGathering.Imports.MythicTrack do
       "" when is_binary(partner_name) -> "#{commander_name} / #{partner_name}"
       "" -> commander_name
       name -> name
+    end
+  end
+
+  defp split_partners(name) do
+    case String.split(name, "||", parts: 2) do
+      [commander, partner] ->
+        {String.trim(commander),
+         partner |> String.replace(~r/\s*\([^)]*\)\s*$/, "") |> String.trim()}
+
+      [only] ->
+        {String.trim(only), nil}
     end
   end
 

@@ -3,6 +3,7 @@ defmodule TheGathering.Catalog.BackfillTest do
 
   alias TheGathering.Catalog.{Backfill, Card, CardData}
   alias TheGathering.{Games, Repo}
+  alias TheGathering.Games.LinkCatalogCards
 
   defp card(id, name, opts) do
     Repo.insert!(%Card{
@@ -138,5 +139,34 @@ defmodule TheGathering.Catalog.BackfillTest do
       game.id |> Games.get_game!() |> Map.fetch!(:seats) |> Enum.find(&(&1.result == "win"))
 
     assert winner.mvp_card_id == "rhystic"
+  end
+
+  test "bounded repair returns a cursor and reports update conflicts", %{player: p} do
+    {:ok, _existing} =
+      Games.create_deck(%{
+        player_id: p.id,
+        name: "Frodo, Adventurous Hobbit / Sam, Loyal Attendant",
+        commander_name: "Frodo, Adventurous Hobbit",
+        commander_card_id: "frodo"
+      })
+
+    {:ok, piped} =
+      Games.create_deck(%{
+        player_id: p.id,
+        name: "Frodo, Adventurous Hobbit || Sam, Loyal Attendant (Partners)",
+        commander_name: "Frodo, Adventurous Hobbit || Sam, Loyal Attendant (Partners)"
+      })
+
+    assert {:ok, first} =
+             LinkCatalogCards.repair_batch(%{deck_id: 0, seat_id: 0}, limit: 1)
+
+    refute first.done?
+    assert [%{resource: :deck, id: id, errors: errors}] = first.conflicts
+    assert id == piped.id
+    assert Keyword.has_key?(errors, :name)
+    assert Games.get_deck!(piped.id).commander_card_id == nil
+
+    assert {:ok, second} = LinkCatalogCards.repair_batch(first.cursor, limit: 1)
+    assert second.done?
   end
 end

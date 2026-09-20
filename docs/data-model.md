@@ -34,7 +34,7 @@ deck for an unclaimed guest remains supported while logging a game.
 | `played_at` | Required UTC datetime; lists order by this descending, then ID. |
 | `duration_minutes`, `turns` | Nullable positive integers. |
 | `notes` | Nullable text. |
-| `source` | `manual`, `csv`, or `discord`. |
+| `source` | `manual`, `csv`, `mythic_track`, or `discord`. |
 | `external_id` | Nullable; unique together with `source` for idempotent imports. |
 | `created_by_user_id` | Nullable foreign key to the user that created/imported the game; deletes are restricted. |
 
@@ -53,6 +53,14 @@ Users are soft-disabled rather than deleted. Both user foreign keys therefore us
 
 ## Context contract for importers
 
+CSV and Mythic Track parsers normalize source payloads into typed
+`TheGathering.Imports.Game` and `TheGathering.Imports.Seat` structs. `Imports.Preview`
+resolves the proposed player/deck plan without writing. `Imports.Commit` parses and
+previews before opening a transaction, then re-resolves players, decks, and external game
+identities while writing the batch atomically. After commit, only the imported games are
+passed to `Games.LinkCatalogCards`; global historical repair remains an explicit bounded
+catalog backfill operation.
+
 - `resolve_player(name, discord_id, opts \\ [])` treats a supplied Discord ID as authoritative:
   it matches only that identity and otherwise creates a player with an available suffixed name.
   Name matching is used only when the incoming identity has no Discord ID. Import preview uses
@@ -67,6 +75,11 @@ Users are soft-disabled rather than deleted. Both user foreign keys therefore us
 - `create_game/1` and `update_game/2` accept nested `seats` and persist the game atomically.
 - `list_games/1` accepts `player_id`, `deck_id`, `date_from`, `date_to`, `page`, and `per_page` (capped at 100).
 - `get_game!/1` preloads each seat's player and deck.
+
+The public `Games` context remains the compatibility boundary. Complete workflows are
+owned by `Games.RecordGame` (nested game/seat writes), `Games.MergePlayers` (all player,
+deck, seat, and elimination references), and `Games.LinkCatalogCards` (Deck/GamePlayer
+catalog links). Card-name lookup belongs to `Catalog.find_card_by_name/1`.
 
 Importer order should be player → deck → game. Keep raw source payloads outside these tables if audit storage is later needed; game facts themselves stay relational.
 

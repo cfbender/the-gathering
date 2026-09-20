@@ -4,8 +4,7 @@ defmodule TheGathering.Accounts do
   import Ecto.Query
 
   alias Ecto.Multi
-  alias TheGathering.Accounts.{ServerSettings, User, UserToken}
-  alias TheGathering.Games
+  alias TheGathering.Accounts.{ServerSettings, SignInWithDiscord, User, UserToken}
   alias TheGathering.Games.Player
   alias TheGathering.Repo
 
@@ -159,32 +158,7 @@ defmodule TheGathering.Accounts do
     |> Repo.update()
   end
 
-  def sign_in_with_discord(%{"sub" => discord_id} = claims) when is_binary(discord_id) do
-    Repo.transaction(fn ->
-      user =
-        case Repo.get_by(User, discord_id: discord_id) do
-          %User{disabled_at: disabled_at} when not is_nil(disabled_at) ->
-            Repo.rollback(:disabled)
-
-          %User{} = user ->
-            user
-            |> User.discord_profile_changeset(%{avatar_url: discord_avatar_url(claims)})
-            |> Repo.update!()
-
-          nil ->
-            create_discord_user(discord_id, claims)
-        end
-
-      case Games.resolve_player(user.display_name, user.discord_id, user_id: user.id) do
-        {:ok, _player} -> :ok
-        {:error, reason} -> Repo.rollback(reason)
-      end
-
-      user
-    end)
-  end
-
-  def sign_in_with_discord(_claims), do: {:error, :invalid_discord_user}
+  def sign_in_with_discord(claims), do: SignInWithDiscord.run(claims)
 
   defp register_when_allowed(%{allowed: false}, _attrs), do: Repo.rollback(:registration_closed)
   defp register_when_allowed(%{bootstrap: false}, _attrs), do: Repo.rollback(:registration_closed)
@@ -202,60 +176,6 @@ defmodule TheGathering.Accounts do
 
     nil
   end
-
-  defp create_discord_user(discord_id, claims) do
-    status = registration_status()
-    unless status.allowed and not status.bootstrap, do: Repo.rollback(:registration_closed)
-
-    username = available_discord_username(claims["preferred_username"], discord_id)
-
-    attrs = %{
-      username: username,
-      display_name: claims["preferred_username"] || username,
-      discord_id: discord_id,
-      avatar_url: discord_avatar_url(claims)
-    }
-
-    %User{}
-    |> User.discord_changeset(attrs)
-    |> Repo.insert!()
-  end
-
-  defp available_discord_username(preferred_username, discord_id) do
-    base =
-      preferred_username
-      |> to_string()
-      |> String.trim()
-      |> String.downcase()
-      |> String.replace(~r/[^a-z0-9_.-]/, "_")
-      |> String.trim("_.-")
-      |> String.slice(0, 32)
-
-    base = if String.length(base) >= 3, do: base, else: "discord"
-
-    taken? = fn candidate ->
-      Repo.exists?(from user in User, where: user.username == ^candidate)
-    end
-
-    first_available(base, &"#{String.slice(base, 0, 38)}#{&1}", taken?) ||
-      "#{String.slice(base, 0, 19)}_#{String.slice(discord_id, 0, 20)}"
-  end
-
-  # Tries `base`, then `with_suffix.(2)` … `with_suffix.(9)`, so a clash yields
-  # a short readable name rather than the Discord snowflake. Returns nil when all
-  # are taken so the caller can fall back to the snowflake.
-  @suffix_attempts 2..9
-
-  defp first_available(base, with_suffix, taken?) do
-    [base | Enum.map(@suffix_attempts, with_suffix)]
-    |> Enum.find(fn candidate -> not taken?.(candidate) end)
-  end
-
-  defp discord_avatar_url(%{"picture" => picture}) when is_binary(picture) do
-    unless String.ends_with?(picture, "/nil"), do: picture
-  end
-
-  defp discord_avatar_url(_claims), do: nil
 
   defp update_user_and_delete_all_tokens(changeset) do
     Multi.new()

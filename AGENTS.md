@@ -4,7 +4,7 @@
 
 The Gathering is a self-hosted Commander (Magic: The Gathering) game tracker: an Elixir/Phoenix JSON API plus a Vite/React single-page app, shipped as one container.
 
-- `lib/the_gathering/` — core application/domain code (Ecto schemas, contexts, Scryfall catalog, imports).
+- `lib/the_gathering/` — core application/domain code. `Games` and `Accounts` contexts expose stable public APIs backed by workflow modules such as `Games.RecordGame`, `Games.MergePlayers`, and `Accounts.SignInWithDiscord`; import parsing, preview, and commit live under `TheGathering.Imports`.
 - `lib/the_gathering_web/` — Phoenix web layer: router, `/api` controllers, the SPA shell (`AppController`), and `ViteAssets` (dev-server vs manifest asset tags).
 - `config/` — Phoenix, runtime, database, and environment configuration. `runtime.exs` reads `DATA_DIR`, `DATABASE_PATH`, `SECRET_KEY_BASE`, `PHX_HOST`, `PHX_SCHEME`, `PHX_URL_PORT`.
 - `priv/repo/` — Ecto migrations (SQLite).
