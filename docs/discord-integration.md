@@ -244,6 +244,15 @@ crashing the gateway consumer.
    content is never logged. A listed player then runs `/won` with that ID and
    should receive an ephemeral confirmation.
 
+What the bot sees during a SpellBot game, per the [SpellBot source](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/actions/lfg_action.py):
+`/lfg` and `/game` are deferred, so the first `MESSAGE_CREATE` is an empty
+"thinking" placeholder; SpellBot then sends the waiting/seated game post as an
+interaction followup, and answers validation problems with plain text. When an
+`/lfg` game fills, SpellBot **edits the existing post** into `Your game is
+ready!`, so the report is parsed from a `MESSAGE_UPDATE`. Only that edit (or a
+`/game` post that starts fully seated) produces the `observed` log line; the
+other messages are ignored silently.
+
 ### Troubleshooting
 
 The bot logs each step at `info`, so `docker compose logs the-gathering` shows
@@ -259,8 +268,7 @@ how far it got. Read the log from the top of the last start:
 | `Discord registered /won in guild …` but `/won` is missing in Discord | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
 | `Discord registered /won globally` but `/won` is missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
 | `Could not register the Discord /won command: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |
-| `Discord delivered a SpellBot message without embeds` | Discord strips embeds from other bots' messages unless **Message Content Intent** is enabled. |
-| No `Discord observed SpellBot game …` line when a game starts | The bot cannot see the channel (grant **View Channels** there), or the message is from a different SpellBot deployment: set `DISCORD_SPELLBOT_USER_ID` to that bot's user ID. |
+| No `Discord observed SpellBot game …` line when a game starts | The line appears only once the post reads **Your game is ready!** (see the message flow above). Otherwise the bot cannot see the channel (grant **View Channels** there), or the message is from a different SpellBot deployment: set `DISCORD_SPELLBOT_USER_ID` to that bot's user ID. Set `LOG_LEVEL=debug` to log why each SpellBot message was ignored. |
 
 A real Discord smoke test was not run in the orb because no throwaway
 application/server credentials were available. The test suite uses the scrubbed

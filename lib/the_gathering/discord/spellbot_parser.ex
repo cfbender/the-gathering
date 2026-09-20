@@ -46,8 +46,8 @@ defmodule TheGathering.Discord.SpellBotParser do
     end
   end
 
-  # Without the privileged Message Content intent, Discord strips embeds from
-  # every message the bot did not author, so this is the symptom to surface.
+  # SpellBot's deferred interaction placeholders and plain-text replies carry no
+  # embeds; only the waiting/ready game post does.
   defp find_started_embed([]), do: {:error, :no_embeds}
 
   defp find_started_embed(embeds) when is_list(embeds) do

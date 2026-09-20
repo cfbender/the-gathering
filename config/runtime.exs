@@ -62,6 +62,15 @@ if discord_bot_token = System.get_env("DISCORD_BOT_TOKEN") do
 end
 
 if config_env() == :prod do
+  # LOG_LEVEL=debug shows why the Discord bot ignored a message, among other detail.
+  log_level = System.get_env("LOG_LEVEL", "info")
+
+  if log_level in ~w(debug info warning error) do
+    config :logger, level: String.to_atom(log_level)
+  else
+    raise "LOG_LEVEL must be one of debug, info, warning, error; got #{inspect(log_level)}"
+  end
+
   data_dir = System.get_env("DATA_DIR", "/data")
   database_path = System.get_env("DATABASE_PATH", Path.join(data_dir, "the_gathering.db"))
 
