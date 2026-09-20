@@ -355,6 +355,11 @@ function Preview({ preview, source }: { preview: CSVImportPreview; source: Impor
                       >
                         {seat.result}
                       </span>
+                      {seat.mvp_card && (
+                        <span className="text-base-content/60 block text-xs">
+                          MVP: {seat.mvp_card}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 )),

@@ -122,7 +122,8 @@ defmodule TheGathering.Imports do
       deck_id: deck.id,
       seat: seat.seat,
       result: seat.result,
-      mvp_card_name: seat.mvp_card
+      mvp_card_name: seat.mvp_card,
+      mvp_card_id: Map.get(seat, :mvp_card_id)
     }
   end
 

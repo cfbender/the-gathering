@@ -10,7 +10,7 @@ defmodule TheGathering.Imports.MythicTrack do
   Produces the same game/seat shape as `TheGathering.Imports.CSV`, with `line`
   set to the game's 1-based position in the array. Seats additionally carry
   Discord IDs, Scryfall card IDs, colour identity, and decklist URLs when Mythic
-  Track supplied them.
+  Track supplied them. A game's first key card becomes the winner's MVP card.
   """
 
   @status_complete 3
@@ -68,12 +68,15 @@ defmodule TheGathering.Imports.MythicTrack do
     played_at = parse_datetime(game["createdOn"])
     players = List.wrap(game["players"])
 
+    key_cards = key_cards(game)
+
     seats =
       players
       |> Enum.with_index()
       |> Enum.sort_by(fn {player, index} -> {player["turnOrder"] || 1_000, index} end)
       |> Enum.with_index(1)
       |> Enum.map(fn {{player, _index}, seat} -> build_seat(player, seat, line, players) end)
+      |> assign_key_cards(key_cards)
 
     errors =
       []
@@ -112,7 +115,7 @@ defmodule TheGathering.Imports.MythicTrack do
          played_at: played_at,
          duration_minutes: positive_or_nil(game["gameTimeInMinutes"]),
          turns: positive_or_nil(game["totalTurns"]),
-         notes: notes(game),
+         notes: notes(game, key_cards, seats),
          lines: [line],
          seats: seats
        }}
@@ -141,8 +144,35 @@ defmodule TheGathering.Imports.MythicTrack do
       decklist_url: blank_to_nil(string(commander["decklistUrl"])),
       seat: seat,
       result: result(player, players),
-      mvp_card: nil
+      mvp_card: nil,
+      mvp_card_id: nil
     }
+  end
+
+  # Mythic Track records a game's key cards without tying them to a seat; in
+  # practice they are the cards that won the game, so the first one becomes the
+  # winner's MVP. Remaining key cards are kept in the game notes.
+  defp key_cards(game) do
+    game["keyCards"]
+    |> List.wrap()
+    |> Enum.filter(&is_map/1)
+    |> Enum.map(&%{name: string(&1["name"]), card_id: blank_to_nil(string(&1["scryfallId"]))})
+    |> Enum.reject(&(&1.name == ""))
+  end
+
+  defp assign_key_cards(seats, []), do: seats
+
+  defp assign_key_cards(seats, [mvp | _rest]) do
+    Enum.map(seats, fn
+      %{result: "win"} = seat -> %{seat | mvp_card: mvp.name, mvp_card_id: mvp.card_id}
+      seat -> seat
+    end)
+  end
+
+  # Key cards that did not become the winner's MVP (or all of them when the game
+  # had no winner) are listed in the notes so the data is not lost.
+  defp unassigned_key_cards(key_cards, seats) do
+    if Enum.any?(seats, &(&1.result == "win")), do: Enum.drop(key_cards, 1), else: key_cards
   end
 
   defp player_name(identity) do
@@ -179,8 +209,14 @@ defmodule TheGathering.Imports.MythicTrack do
 
   defp valid_results?(seats), do: Enum.count(seats, &(&1.result == "win")) <= 1
 
-  defp notes(game) do
-    [game["name"], game["notes"]]
+  defp notes(game, key_cards, seats) do
+    extra_cards =
+      case unassigned_key_cards(key_cards, seats) do
+        [] -> ""
+        cards -> "Key cards: " <> Enum.map_join(cards, ", ", & &1.name)
+      end
+
+    [game["name"], game["notes"], extra_cards]
     |> Enum.map(&string/1)
     |> Enum.reject(&(&1 == ""))
     |> Enum.uniq()

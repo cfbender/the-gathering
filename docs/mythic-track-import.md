@@ -25,5 +25,6 @@ The API routes are `POST /api/imports/mythic_track/preview` and `POST /api/impor
 | Commander / partner `scryfallId`, `name`, `colors`, `decklistUrl` | Deck commander, partner, colour identity, and decklist link |
 | `turnOrder` | Seat, renumbered 1..n (missing values sort last) |
 | `isWinner` | One winner → win/loss; no winner → all draw; more than one winner → error |
+| `keyCards` | The first key card becomes the winner's MVP card (name and Scryfall ID). Any further key cards, or all of them in a draw, are appended to notes as `Key cards: …` |
 
-Only games with `gameStatus` 3 (complete) are imported; in-progress and unstarted games appear as warnings. Mythic Track's key cards are not linked to a player, so MVP cards are not imported.
+Only games with `gameStatus` 3 (complete) are imported; in-progress and unstarted games appear as warnings.
