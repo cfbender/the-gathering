@@ -48,6 +48,19 @@ defmodule TheGathering.Catalog do
   def get_card!(id), do: Repo.get!(Card, id)
   def count_cards, do: Repo.aggregate(Card, :count)
 
+  @doc "Finds a catalog card by printed name, preferring commanders and current printings."
+  def find_card_by_name(name) when is_binary(name) do
+    normalized = CardData.normalize_name(name)
+
+    exact =
+      from card in Card,
+        where: card.normalized_name == ^normalized,
+        order_by: [desc: card.can_be_commander, desc: card.released_at],
+        limit: 1
+
+    Repo.one(exact) || Repo.one(front_face_query(normalized))
+  end
+
   @doc """
   Resolves `{card_id, card_name}` references to catalog summaries in one query.
 
@@ -119,6 +132,17 @@ defmodule TheGathering.Catalog do
     do: where(query, [card], not is_nil(card.commander_pairing))
 
   defp partner_filter(query, _value), do: query
+
+  defp front_face_query(normalized) do
+    prefix = normalized <> " // "
+
+    from card in Card,
+      where:
+        fragment("substr(?, 1, ?) = ?", card.normalized_name, ^String.length(prefix), ^prefix) and
+          not like(card.name, "A-%"),
+      order_by: [desc: card.can_be_commander, desc: card.released_at],
+      limit: 1
+  end
 
   defp escape_like(value) do
     value

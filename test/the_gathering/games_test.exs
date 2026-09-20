@@ -4,7 +4,7 @@ defmodule TheGathering.GamesTest do
   alias TheGathering.Accounts.User
   alias TheGathering.AccountsFixtures
   alias TheGathering.Games
-  alias TheGathering.Games.Deck
+  alias TheGathering.Games.{Deck, GamePlayer}
   alias TheGathering.Repo
 
   defp player(name), do: Games.create_player(%{name: name}) |> elem(1)
@@ -232,6 +232,32 @@ defmodule TheGathering.GamesTest do
     assert {:error, changeset} = Games.merge_players(alice, drew)
     assert errors_on(changeset).merge == ["both players are seated in the same game"]
     assert {:error, :bad_request} = Games.merge_players(drew, drew)
+  end
+
+  test "merging players migrates eliminated-by references" do
+    source = player("Source")
+    target = player("Target")
+    defeated = player("Defeated")
+    winner = player("Winner")
+
+    {:ok, game} =
+      Games.create_game(%{
+        played_at: ~U[2026-09-19 18:00:00Z],
+        seats: [
+          %{player_id: defeated.id, seat: 1, result: "loss"},
+          %{player_id: winner.id, seat: 2, result: "win"}
+        ]
+      })
+
+    defeated_seat = Enum.find(game.seats, &(&1.player_id == defeated.id))
+
+    defeated_seat
+    |> Ecto.Changeset.change(eliminated_by_player_id: source.id, eliminated_turn: 8)
+    |> Repo.update!()
+
+    assert {:ok, merged} = Games.merge_players(source, target)
+    assert merged.id == target.id
+    assert Repo.get!(GamePlayer, defeated_seat.id).eliminated_by_player_id == target.id
   end
 
   test "linking a player to an account merges the account's stub player into it" do

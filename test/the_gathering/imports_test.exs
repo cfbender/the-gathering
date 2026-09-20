@@ -2,8 +2,10 @@ defmodule TheGathering.ImportsTest do
   use TheGathering.DataCase, async: false
 
   alias TheGathering.AccountsFixtures
+  alias TheGathering.Catalog.{Card, CardData}
   alias TheGathering.Games
   alias TheGathering.Imports
+  alias TheGathering.Repo
 
   @csv """
   game_id,date,player,deck,commander,seat,result,mvp_card,duration_minutes,turns,notes
@@ -75,6 +77,33 @@ defmodule TheGathering.ImportsTest do
            ]
   end
 
+  test "commit links only imported rows instead of running global repair" do
+    user = AccountsFixtures.user_fixture()
+    insert_card("kangee", "Kangee, Sky Warden", ["W", "U"])
+    insert_card("krenko", "Krenko", ["R"])
+    insert_card("swan-song", "Swan Song", ["U"], false)
+
+    {:ok, unrelated_player} = Games.create_player(%{name: "Unrelated"})
+
+    {:ok, unrelated_deck} =
+      Games.create_deck(%{
+        player_id: unrelated_player.id,
+        name: "Old deck",
+        commander_name: "Kangee, Sky Warden"
+      })
+
+    assert {:ok, %{game_ids: [game_id]}} = Imports.import_csv(@csv, user.id)
+    game = Games.get_game!(game_id)
+    alice = Enum.find(game.seats, &(&1.player.name == "Alice"))
+    bob = Enum.find(game.seats, &(&1.player.name == "Bob"))
+
+    assert alice.deck.commander_card_id == "kangee"
+    assert alice.deck.color_identity == "WU"
+    assert alice.mvp_card_id == "swan-song"
+    assert bob.deck.commander_card_id == "krenko"
+    assert Games.get_deck!(unrelated_deck.id).commander_card_id == nil
+  end
+
   test "rejects two winners without persisting any part of the file" do
     invalid = String.replace(@csv, "Bob,Goblins,Krenko,2,loss", "Bob,Goblins,Krenko,2,win")
 
@@ -101,5 +130,26 @@ defmodule TheGathering.ImportsTest do
              {"Alice", "Kangee", "loss"},
              {"Bob", "Krenko", "win"}
            ]
+  end
+
+  defp insert_card(id, name, colors, commander \\ true) do
+    Repo.insert!(%Card{
+      id: id,
+      oracle_id: "oracle-#{id}",
+      name: name,
+      normalized_name: CardData.normalize_name(name),
+      cmc: 0.0,
+      type_line: if(commander, do: "Legendary Creature", else: "Instant"),
+      colors: colors,
+      color_identity: colors,
+      image_uris: %{},
+      set_code: "tst",
+      collector_number: id,
+      layout: "normal",
+      rarity: "rare",
+      released_at: ~D[2024-01-01],
+      commander_legal: true,
+      can_be_commander: commander
+    })
   end
 end

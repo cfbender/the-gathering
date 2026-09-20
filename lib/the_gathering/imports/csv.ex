@@ -2,6 +2,7 @@ defmodule TheGathering.Imports.CSV do
   @moduledoc false
 
   alias TheGathering.Games
+  alias TheGathering.Imports.{Game, Seat}
 
   NimbleCSV.define(Parser, separator: ",", escape: "\"")
 
@@ -38,8 +39,9 @@ defmodule TheGathering.Imports.CSV do
       |> Enum.map(fn {row, line} -> native_row(headers, row, line) end)
       |> collect_rows()
 
-    games = build_games(parsed)
-    game_errors = empty_error(games, errors) ++ Enum.flat_map(games, &validate_game/1)
+    game_rows = group_games(parsed)
+    games = build_games(game_rows)
+    game_errors = empty_error(games, errors) ++ Enum.flat_map(game_rows, &validate_game/1)
     {:ok, games, errors ++ game_errors}
   end
 
@@ -72,8 +74,9 @@ defmodule TheGathering.Imports.CSV do
       |> Enum.flat_map(fn {row, line} -> mythic_rows(headers, row, line) end)
       |> collect_rows()
 
-    games = build_games(parsed)
-    game_errors = empty_error(games, errors) ++ Enum.flat_map(games, &validate_game/1)
+    game_rows = group_games(parsed)
+    games = build_games(game_rows)
+    game_errors = empty_error(games, errors) ++ Enum.flat_map(game_rows, &validate_game/1)
     {:ok, games, errors ++ game_errors}
   end
 
@@ -108,10 +111,15 @@ defmodule TheGathering.Imports.CSV do
     end)
   end
 
-  defp build_games(rows) do
+  defp group_games(rows) do
     rows
     |> Enum.group_by(& &1.game_id)
-    |> Enum.map(fn {_game_id, seats} -> build_game(seats) end)
+    |> Enum.map(fn {_game_id, seats} -> seats end)
+  end
+
+  defp build_games(game_rows) do
+    game_rows
+    |> Enum.map(&build_game/1)
     |> Enum.sort_by(&{&1.played_at, &1.external_id})
   end
 
@@ -138,7 +146,7 @@ defmodule TheGathering.Imports.CSV do
         |> Enum.map_join("|", &to_string(&1 || ""))
       end)
 
-    %{
+    %Game{
       external_id: Base.encode16(:crypto.hash(:sha256, normalized), case: :lower),
       game_id: first.game_id,
       played_at: first.date,
@@ -146,8 +154,12 @@ defmodule TheGathering.Imports.CSV do
       turns: first.turns,
       notes: first.notes,
       lines: seats |> Enum.map(& &1.line) |> Enum.uniq() |> Enum.sort(),
-      seats: Enum.sort_by(seats, & &1.seat)
+      seats: seats |> Enum.sort_by(& &1.seat) |> Enum.map(&normalize_seat/1)
     }
+  end
+
+  defp normalize_seat(seat) do
+    struct!(Seat, Map.take(seat, [:line, :player, :deck, :commander, :seat, :result, :mvp_card]))
   end
 
   defp validate_row(row) do
@@ -165,9 +177,8 @@ defmodule TheGathering.Imports.CSV do
     |> valid_optional_positive(row.line, "turns", row.turns)
   end
 
-  defp validate_game(game) do
-    seats = game.seats
-    lines = game.lines
+  defp validate_game(seats) do
+    lines = seats |> Enum.map(& &1.line) |> Enum.uniq() |> Enum.sort()
 
     []
     |> add_game_error(
