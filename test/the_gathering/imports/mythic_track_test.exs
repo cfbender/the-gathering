@@ -1,0 +1,179 @@
+defmodule TheGathering.Imports.MythicTrackTest do
+  use TheGathering.DataCase, async: false
+
+  alias TheGathering.Games
+  alias TheGathering.Games.Game
+  alias TheGathering.Imports
+
+  # Shaped like Mythic Track's `List<GameViewModel>` (camelCase System.Text.Json output).
+  defp game(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "id" => "8f3a0a44-0000-4000-8000-000000000001",
+        "name" => "",
+        "notes" => "Close one",
+        "createdOn" => "2026-03-14T19:30:15.123456",
+        "gameStatus" => 3,
+        "gameType" => 1,
+        "totalTurns" => 9,
+        "gameTimeInMinutes" => 55,
+        "players" => [
+          # Listed out of turn order on purpose: seats must follow turnOrder.
+          seat("Drew", 2, false, "Krenko, Mob Boss", %{"discordUserId" => "200000000000000002"}),
+          seat("Daniel", 1, true, "Tifa Lockhart", %{
+            "deckName" => "Tifa Punches",
+            "colors" => ["G"]
+          }),
+          seat("Kaylyn", nil, false, "Éowyn, Shieldmaiden", %{})
+        ]
+      },
+      overrides
+    )
+  end
+
+  defp seat(name, turn_order, winner, commander, extra) do
+    commander_extra = Map.drop(extra, ["discordUserId"])
+
+    %{
+      "id" => Ecto.UUID.generate(),
+      "player" => %{
+        "id" => Ecto.UUID.generate(),
+        "name" => name,
+        "discordUserId" => extra["discordUserId"]
+      },
+      "commander" =>
+        Map.merge(
+          %{
+            "scryfallId" => "sf-#{String.downcase(commander)}",
+            "name" => commander,
+            "colors" => ["R"],
+            "decklistUrl" => "",
+            "deckName" => nil
+          },
+          commander_extra
+        ),
+      "commanderPartner" => nil,
+      "turnOrder" => turn_order,
+      "mulligans" => 0,
+      "isWinner" => winner
+    }
+  end
+
+  defp json(games), do: Jason.encode!(games)
+
+  test "orders seats by turn order, derives results, decks, colours, and notes" do
+    preview = Imports.preview(:mythic_track, json([game()]))
+
+    assert preview.valid
+    assert preview.warnings == []
+    assert [parsed] = preview.games
+    assert parsed.external_id == "8f3a0a44-0000-4000-8000-000000000001"
+    assert parsed.played_at == ~U[2026-03-14 19:30:15Z]
+    assert parsed.turns == 9
+    assert parsed.duration_minutes == 55
+    assert parsed.notes == "Close one"
+
+    assert Enum.map(parsed.seats, &{&1.seat, &1.player, &1.result, &1.deck}) == [
+             {1, "Daniel", "win", "Tifa Punches"},
+             {2, "Drew", "loss", "Krenko, Mob Boss"},
+             {3, "Kaylyn", "loss", "Éowyn, Shieldmaiden"}
+           ]
+
+    daniel = hd(parsed.seats)
+    assert daniel.commander_card_id == "sf-tifa lockhart"
+    assert daniel.color_identity == "G"
+    assert Enum.at(parsed.seats, 1).discord_id == "200000000000000002"
+    assert preview.players.create == ["Daniel", "Drew", "Kaylyn"]
+  end
+
+  test "a game with no winner is an all-player draw and two winners is an error" do
+    draw = game(%{"players" => Enum.map(game()["players"], &Map.put(&1, "isWinner", false))})
+    assert %{valid: true, games: [parsed]} = Imports.preview(:mythic_track, json([draw]))
+    assert Enum.map(parsed.seats, & &1.result) == ["draw", "draw", "draw"]
+
+    two_winners =
+      game(%{
+        "id" => "8f3a0a44-0000-4000-8000-000000000002",
+        "players" => Enum.map(game()["players"], &Map.put(&1, "isWinner", true))
+      })
+
+    preview = Imports.preview(:mythic_track, json([game(), two_winners]))
+    refute preview.valid
+    assert [%{line: 2, field: "isWinner"}] = preview.errors
+    # The valid game is still previewed so the admin can see what would import.
+    assert length(preview.games) == 1
+  end
+
+  test "skips in-progress games with a warning and names partner decks" do
+    partner = %{"scryfallId" => "sf-bg", "name" => "Candlekeep Sage", "colors" => ["U"]}
+
+    players =
+      game()["players"]
+      |> List.update_at(1, &Map.put(&1, "commanderPartner", partner))
+
+    in_progress = game(%{"id" => "8f3a0a44-0000-4000-8000-000000000003", "gameStatus" => 2})
+
+    preview = Imports.preview(:mythic_track, json([game(%{"players" => players}), in_progress]))
+
+    assert preview.valid
+    assert preview.warnings == [%{line: 2, message: "skipped: game is in progress"}]
+    assert [%{seats: [daniel | _rest]}] = preview.games
+    assert daniel.deck == "Tifa Punches"
+    assert daniel.partner == "Candlekeep Sage"
+    assert daniel.partner_card_id == "sf-bg"
+    assert daniel.color_identity == "UG"
+
+    # Without a Mythic Track deck name, a partner deck is "Commander / Partner".
+    unnamed =
+      game(%{"players" => List.update_at(players, 1, &put_in(&1, ["commander", "deckName"], ""))})
+
+    assert [%{seats: [unnamed_daniel | _rest]}] =
+             Imports.preview(:mythic_track, json([unnamed])).games
+
+    assert unnamed_daniel.deck == "Tifa Lockhart / Candlekeep Sage"
+
+    solo = game(%{"players" => [Enum.at(players, 1)]})
+    assert [%{line: 1, field: "players"}] = Imports.preview(:mythic_track, json([solo])).errors
+  end
+
+  test "rejects payloads that are not a game array" do
+    assert [%{line: 1, field: "json"}] = Imports.preview(:mythic_track, "{\"nope\": 1}").errors
+    assert [%{line: 1, field: "json"}] = Imports.preview(:mythic_track, "not json").errors
+    assert [%{line: 1, field: "json"}] = Imports.preview(:mythic_track, "[]").errors
+  end
+
+  test "imports with Scryfall IDs, merges Discord identities, and skips the same GUID" do
+    # Drew already exists from the Discord bot under a different display name.
+    {:ok, drew} = Games.find_or_create_player_by_discord_id("200000000000000002", "waxpoetik")
+    {:ok, other_daniel} = Games.create_player(%{name: "daniel"})
+
+    payload = json([game()])
+    preview = Imports.preview(:mythic_track, payload)
+    assert preview.players.create == ["Kaylyn"]
+
+    assert Enum.map(preview.players.matched, & &1.id) |> Enum.sort() ==
+             Enum.sort([drew.id, other_daniel.id])
+
+    assert {:ok, %{created: 1, skipped: 0, game_ids: [game_id]}} =
+             Imports.import(:mythic_track, payload, 1)
+
+    imported = Games.get_game!(game_id)
+    assert imported.source == "mythic_track"
+    assert imported.external_id == "8f3a0a44-0000-4000-8000-000000000001"
+
+    seats = Enum.sort_by(imported.seats, & &1.seat)
+    assert Enum.map(seats, & &1.player.name) == ["daniel", "waxpoetik", "Kaylyn"]
+    assert Enum.map(seats, & &1.result) == ["win", "loss", "loss"]
+
+    tifa = hd(seats).deck
+    assert tifa.name == "Tifa Punches"
+    assert tifa.commander_card_id == "sf-tifa lockhart"
+    assert tifa.color_identity == "G"
+    refute is_nil(Repo.get_by(TheGathering.Games.Player, discord_id: "200000000000000002"))
+
+    assert {:ok, %{created: 0, skipped: 1, game_ids: [^game_id]}} =
+             Imports.import(:mythic_track, payload, 1)
+
+    assert Repo.aggregate(Game, :count) == 1
+  end
+end

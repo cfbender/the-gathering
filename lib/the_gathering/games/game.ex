@@ -30,7 +30,7 @@ defmodule TheGathering.Games.Game do
       :created_by_user_id
     ])
     |> validate_required([:played_at, :source])
-    |> validate_inclusion(:source, ~w(manual csv discord))
+    |> validate_inclusion(:source, ~w(manual csv mythic_track discord))
     |> validate_number(:duration_minutes, greater_than: 0)
     |> validate_number(:turns, greater_than: 0)
     |> cast_assoc(:seats, required: true, with: &GamePlayer.changeset/2)
