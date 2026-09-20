@@ -19,7 +19,7 @@ export function ColorRadar({ rows }: { rows: ColorExposure[] }) {
     return (
       <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
         <p className="text-primary text-xs font-bold uppercase">Color profile</p>
-        <h2 className="text-xl font-bold">Exposure and success</h2>
+        <h2 className="text-xl font-bold">Played and won by color</h2>
         <p className="text-base-content/50 mt-5 text-sm">No games with a deck recorded yet.</p>
       </section>
     )
@@ -28,71 +28,93 @@ export function ColorRadar({ rows }: { rows: ColorExposure[] }) {
   return (
     <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
       <p className="text-primary text-xs font-bold uppercase">Color profile</p>
-      <h2 className="text-xl font-bold">Exposure and success</h2>
-      <div className="mx-auto mt-2 max-w-sm">
-        <svg
-          viewBox="0 0 240 240"
-          className="w-full"
-          role="img"
-          aria-label="Color exposure and win rate radar chart"
-        >
-          {[25, 50, 75, 100].map((percent) => (
+      <h2 className="text-xl font-bold">Played and won by color</h2>
+      <p className="text-base-content/60 mt-1 text-sm">
+        How often each color shows up in the decks they pilot, and how they fare when it does.
+        Multicolor decks count toward every color they include.
+      </p>
+      <div className="mt-4 grid items-center gap-6 md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+        <div className="mx-auto w-full max-w-xs">
+          <svg
+            viewBox="0 0 240 240"
+            className="w-full"
+            role="img"
+            aria-label="Share of games and win rate by color"
+          >
+            {[25, 50, 75, 100].map((percent) => (
+              <polygon
+                key={percent}
+                points={polygon(Array(5).fill(percent))}
+                fill="none"
+                className="stroke-base-content/20"
+                strokeWidth="1"
+              />
+            ))}
+            {rows.map((row, index) => (
+              <line
+                key={row.id}
+                x1={center}
+                y1={center}
+                x2={point(index, 100).split(",")[0]}
+                y2={point(index, 100).split(",")[1]}
+                className="stroke-base-content/15"
+              />
+            ))}
             <polygon
-              key={percent}
-              points={polygon(Array(5).fill(percent))}
-              fill="none"
-              className="stroke-base-content/20"
-              strokeWidth="1"
+              points={polygon(rows.map((row) => row.share))}
+              className="fill-primary/35 stroke-primary"
+              strokeWidth="2.5"
             />
-          ))}
-          {rows.map((row, index) => (
-            <line
-              key={row.id}
-              x1={center}
-              y1={center}
-              x2={point(index, 100).split(",")[0]}
-              y2={point(index, 100).split(",")[1]}
-              className="stroke-base-content/15"
+            <polygon
+              points={polygon(rows.map((row) => row.win_rate))}
+              className="fill-secondary/35 stroke-secondary"
+              strokeWidth="2.5"
             />
-          ))}
-          <polygon
-            points={polygon(rows.map((row) => row.share))}
-            className="fill-primary/35 stroke-primary"
-            strokeWidth="2.5"
-          />
-          <polygon
-            points={polygon(rows.map((row) => row.win_rate))}
-            className="fill-secondary/35 stroke-secondary"
-            strokeWidth="2.5"
-          />
-          {rows.map((row, index) => {
-            const [x = 0, y = 0] = point(index, 116).split(",").map(Number)
-            return (
-              <foreignObject key={row.id} x={x - 14} y={y - 14} width="28" height="28">
-                <div className="flex h-full items-center justify-center text-xl">
-                  <ManaSymbol symbol={row.id} className="m-0 translate-y-0" />
-                </div>
-              </foreignObject>
-            )
-          })}
-        </svg>
-        <div className="mb-4 flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs font-medium">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="bg-primary size-2.5 rounded-sm" /> Exposure
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="bg-secondary size-2.5 rounded-sm" /> Win rate
-          </span>
-        </div>
-      </div>
-      <div className="grid grid-cols-5 gap-1 text-center text-sm tabular-nums">
-        {rows.map((row) => (
-          <div key={row.id} title={`${row.name}: ${row.games} games`}>
-            <ManaSymbol symbol={row.id} className="mx-auto mb-1 block translate-y-0" />
-            <strong className="text-primary block">{row.share}%</strong>
-            <span className="text-secondary block">{row.win_rate}%</span>
+            {rows.map((row, index) => {
+              const [x = 0, y = 0] = point(index, 116).split(",").map(Number)
+              return (
+                <foreignObject key={row.id} x={x - 14} y={y - 14} width="28" height="28">
+                  <div className="flex h-full items-center justify-center text-xl">
+                    <ManaSymbol symbol={row.id} className="m-0 translate-y-0" />
+                  </div>
+                </foreignObject>
+              )
+            })}
+          </svg>
+          <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs font-medium">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="bg-primary size-2.5 rounded-sm" /> % of games
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="bg-secondary size-2.5 rounded-sm" /> Win rate
+            </span>
           </div>
-        ))}
+        </div>
+        <table className="w-full text-sm tabular-nums">
+          <thead className="text-base-content/50 text-xs font-bold uppercase">
+            <tr>
+              <th className="pb-2 text-left font-bold">Color</th>
+              <th className="pb-2 text-right font-bold">Games</th>
+              <th className="text-primary pb-2 text-right font-bold">% of games</th>
+              <th className="text-secondary pb-2 text-right font-bold">Win rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className="border-base-300/70 border-t">
+                <td className="py-2">
+                  <span className="flex items-center gap-2 font-medium">
+                    <ManaSymbol symbol={row.id} className="m-0 translate-y-0" />
+                    {row.name}
+                  </span>
+                </td>
+                <td className="text-base-content/70 py-2 text-right">{row.games}</td>
+                <td className="py-2 text-right font-semibold">{row.share}%</td>
+                <td className="py-2 text-right font-semibold">{row.win_rate}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   )

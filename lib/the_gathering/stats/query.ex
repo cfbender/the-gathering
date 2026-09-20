@@ -108,6 +108,7 @@ defmodule TheGathering.Stats.Query do
   def opponent_counts(game_ids, tracked_seat_ids) do
     GamePlayer
     |> join(:inner, [seat], player in Player, on: player.id == seat.player_id)
+    |> join(:left, [_seat, player], user in assoc(player, :user), as: :user)
     |> join(:left, [seat], winner in GamePlayer,
       on:
         winner.game_id == seat.game_id and winner.result == "win" and
@@ -118,10 +119,11 @@ defmodule TheGathering.Stats.Query do
       [seat],
       seat.game_id in ^game_ids and seat.id not in ^tracked_seat_ids
     )
-    |> group_by([_seat, player], [player.id, player.name])
-    |> select([seat, player, winner: winner], %{
+    |> group_by([_seat, player, user: user], [player.id, player.name, user.avatar_url])
+    |> select([seat, player, user: user, winner: winner], %{
       id: player.id,
       name: player.name,
+      avatar_url: user.avatar_url,
       games: count(seat.id),
       wins: fragment("SUM(CASE WHEN ? = 'win' THEN 1 ELSE 0 END)", seat.result),
       losses: fragment("SUM(CASE WHEN ? = 'loss' THEN 1 ELSE 0 END)", seat.result),

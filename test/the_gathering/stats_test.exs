@@ -1,7 +1,8 @@
 defmodule TheGathering.StatsTest do
   use TheGathering.DataCase, async: false
 
-  alias TheGathering.{Accounts, Games, Repo, Stats}
+  alias TheGathering.{Accounts, AccountsFixtures, Games, Repo, Stats}
+  alias TheGathering.Accounts.User
   alias TheGathering.Catalog.Card
 
   setup do
@@ -134,6 +135,26 @@ defmodule TheGathering.StatsTest do
 
     bob = Enum.find(stats.head_to_head, &(&1.id == players["Bob"].id))
     assert %{games: 6, wins: 3, losses: 1, draws: 1} = bob
+  end
+
+  test "rival players carry their linked user's avatar", %{players: players} do
+    user = AccountsFixtures.user_fixture()
+
+    {:ok, user} =
+      user
+      |> User.discord_profile_changeset(%{avatar_url: "https://cdn/bob.png"})
+      |> Repo.update()
+
+    {:ok, _} = Games.link_player_to_user(players["Bob"], user)
+
+    stats = Stats.player(players["Alice"].id)
+    bob = Enum.find(stats.head_to_head, &(&1.id == players["Bob"].id))
+    cara = Enum.find(stats.head_to_head, &(&1.id == players["Cara"].id))
+    assert bob.avatar_url == "https://cdn/bob.png"
+    assert cara.avatar_url == nil
+
+    kangee = Stats.commander("kangee")
+    assert %{avatar_url: "https://cdn/bob.png"} = Enum.find(kangee.opponents, &(&1.name == "Bob"))
   end
 
   test "player color records count only that player's seats and merge decks by color",

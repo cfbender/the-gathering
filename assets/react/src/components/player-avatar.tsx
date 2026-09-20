@@ -3,11 +3,12 @@ import { cn } from "@/lib/cn"
 interface PlayerAvatarProps {
   name: string
   avatarUrl?: string | null
-  size?: "md" | "lg"
+  size?: "sm" | "md" | "lg"
   className?: string
 }
 
 const sizes = {
+  sm: { ring: "w-9", text: "text-sm" },
   md: { ring: "w-12", text: "text-lg" },
   lg: { ring: "w-20", text: "text-3xl" },
 }

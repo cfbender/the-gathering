@@ -1,7 +1,7 @@
 defmodule TheGathering.Stats.Player do
   @moduledoc "Calculates one player's statistics view."
 
-  alias TheGathering.{Accounts, Catalog, Repo}
+  alias TheGathering.{Accounts, Catalog, Games, Repo}
   alias TheGathering.Games.Player
   alias TheGathering.Stats.{Commanders, Elo, Query, Records, Summaries}
 
@@ -116,6 +116,8 @@ defmodule TheGathering.Stats.Player do
   end
 
   defp head_to_head(games, player_id) do
+    avatars = Games.list_players(%{include_archived: true}) |> Map.new(&{&1.id, &1.avatar_url})
+
     games
     |> Enum.flat_map(fn game ->
       mine = Enum.find(game.seats, &(&1.player_id == player_id))
@@ -133,6 +135,7 @@ defmodule TheGathering.Stats.Player do
       %{
         id: opponent.id,
         name: opponent.name,
+        avatar_url: Map.get(avatars, opponent.id),
         games: length(rows),
         wins: Enum.count(rows, &(&1.mine == "win")),
         losses: Enum.count(rows, &(&1.theirs == "win")),
