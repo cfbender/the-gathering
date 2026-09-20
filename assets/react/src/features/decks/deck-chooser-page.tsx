@@ -1,22 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Check, Dices, Library, RefreshCw, SkipForward } from "lucide-react"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { Check, Dices, Library, SkipForward } from "lucide-react"
 import { useState } from "react"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { CardArtBackground } from "@/components/card-art-background"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Button } from "@/components/ui/button"
-import { useCurrentUser } from "@/lib/auth"
+import { getDeckPick, recordDeckOutcome, type DeckPick } from "@/features/decks/deck-chooser"
 import {
-  getDeckPick,
-  recordDeckOutcome,
-  syncManaVaultDecks,
-  type DeckPick,
-  type ManaVaultSyncResult,
-} from "@/features/decks/deck-chooser"
+  SyncRemoteDecksButton,
+  SyncRemoteDecksResult,
+  useSyncRemoteDecks,
+} from "@/features/decks/sync-remote-decks"
 
 export function DeckChooserPage() {
-  const queryClient = useQueryClient()
-  const user = useCurrentUser()
   const [excludeId, setExcludeId] = useState<number>()
   const [chosenName, setChosenName] = useState<string>()
   const pick = useQuery({
@@ -27,16 +23,10 @@ export function DeckChooserPage() {
     mutationFn: ({ deckId, outcome }: { deckId: number; outcome: "played" | "skipped" }) =>
       recordDeckOutcome(deckId, outcome),
   })
-  const sync = useMutation({
-    mutationFn: syncManaVaultDecks,
-    onSuccess: () => {
-      setExcludeId(undefined)
-      setChosenName(undefined)
-      void queryClient.invalidateQueries({ queryKey: ["deck-chooser"] })
-      void queryClient.invalidateQueries({ queryKey: ["decks"] })
-    },
+  const sync = useSyncRemoteDecks(() => {
+    setExcludeId(undefined)
+    setChosenName(undefined)
   })
-  const canSync = Boolean(user.data?.manavault_url && user.data.has_manavault_api_key)
 
   async function skip() {
     if (!pick.data?.deck) return
@@ -57,26 +47,14 @@ export function DeckChooserPage() {
         eyebrow="What should I play?"
         title="Choose a deck"
         description="A weighted pick favors decks you have not played recently, while your skips keep nudging a deck back into the mix."
-        actions={
-          canSync ? (
-            <Button variant="outline" onClick={() => sync.mutate()} disabled={sync.isPending}>
-              <RefreshCw className={sync.isPending ? "size-4 animate-spin" : "size-4"} />
-              {sync.isPending ? "Syncing…" : "Sync from ManaVault"}
-            </Button>
-          ) : undefined
-        }
+        actions={<SyncRemoteDecksButton sync={sync} />}
       />
 
       <a href="/decks" className="link link-hover text-base-content/65 w-fit text-sm">
         ← Back to decks
       </a>
 
-      {sync.isSuccess && <SyncResult result={sync.data} />}
-      {sync.isError && (
-        <div role="alert" className="alert alert-error">
-          ManaVault could not be synced. Check your instance URL and API key, then try again.
-        </div>
-      )}
+      <SyncRemoteDecksResult sync={sync} />
       {outcome.isError && (
         <div role="alert" className="alert alert-error">
           That choice could not be saved. Try again.
@@ -188,15 +166,6 @@ function DeckCandidate({
         </div>
       </div>
     </section>
-  )
-}
-
-function SyncResult({ result }: { result: ManaVaultSyncResult }) {
-  return (
-    <div role="status" className="alert alert-success">
-      <RefreshCw className="size-5" />
-      Synced ManaVault: {result.created} created, {result.updated} updated.
-    </div>
   )
 }
 

@@ -8,6 +8,16 @@ defmodule TheGatheringWeb.API.RemoteDeckJSON do
     }
   end
 
+  def sync(%{result: result}) do
+    %{
+      data: %{
+        created: result.created,
+        updated: result.updated,
+        errors: Enum.map(result.errors, &%{source: &1.source, error: &1.error})
+      }
+    }
+  end
+
   defp deck(deck) do
     %{
       name: deck.name,

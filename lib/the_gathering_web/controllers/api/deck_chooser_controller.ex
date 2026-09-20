@@ -30,10 +30,4 @@ defmodule TheGatheringWeb.API.DeckChooserController do
   end
 
   def create_outcome(_conn, _params), do: {:error, :bad_request}
-
-  def sync(conn, _params) do
-    with {:ok, counts} <- Games.sync_manavault_decks(conn.assigns.current_scope.user) do
-      render(conn, :sync, counts: counts)
-    end
-  end
 end
