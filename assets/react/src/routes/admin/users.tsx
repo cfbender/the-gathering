@@ -411,6 +411,7 @@ function StatsCutoff({ settings }: { settings: AdminSettings | undefined }) {
 
 function UserCard({ user, players }: { user: User; players: Player[] }) {
   const queryClient = useQueryClient()
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const update = useMutation({
     mutationFn: (attrs: {
       username?: string
@@ -424,6 +425,15 @@ function UserCard({ user, players }: { user: User; players: Player[] }) {
       }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["admin", "users"] }),
   })
+  const deleteUser = useMutation({
+    mutationFn: () => api<void>(`/api/admin/users/${user.id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
+      void queryClient.invalidateQueries({ queryKey: ["players"] })
+      void queryClient.invalidateQueries({ queryKey: ["games"] })
+    },
+  })
+  const mutationError = update.error ?? deleteUser.error
 
   function saveNames(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -472,17 +482,26 @@ function UserCard({ user, players }: { user: User; players: Player[] }) {
             >
               {user.disabled ? "Enable" : "Disable"}
             </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm text-error"
+              disabled={update.isPending || deleteUser.isPending}
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="size-4" /> Delete user
+            </button>
           </div>
         </div>
-        {update.error && (
+        {mutationError && !isSudoRequired(mutationError) && (
           <div className="alert alert-error py-2 text-sm">
-            {errorMessage(update.error, "role") ?? errorMessage(update.error)}
+            {errorMessage(mutationError, "role") ?? errorMessage(mutationError)}
           </div>
         )}
         <SudoPrompt
-          error={update.error}
+          error={mutationError}
           onSuccess={() => {
             update.reset()
+            deleteUser.reset()
             void queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
           }}
         />
@@ -518,6 +537,18 @@ function UserCard({ user, players }: { user: User; players: Player[] }) {
         )}
         <LinkedPlayer user={user} players={players} />
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`Delete ${user.display_name}?`}
+        confirmLabel="Delete user"
+        destructive
+        onConfirm={() => deleteUser.mutate()}
+      >
+        Their account and sessions will be permanently deleted. Games and their player record,
+        including decks and game history, will be kept, and the player will be unlinked from the
+        account.
+      </ConfirmDialog>
     </div>
   )
 }

@@ -1,0 +1,137 @@
+defmodule TheGatheringWeb.API.AdminUserControllerTest do
+  use TheGatheringWeb.ConnCase, async: false
+
+  import Ecto.Query
+
+  alias TheGathering.Accounts
+  alias TheGathering.Accounts.{User, UserToken}
+  alias TheGathering.AccountsFixtures
+  alias TheGathering.Games
+  alias TheGathering.Games.{Game, Player}
+  alias TheGathering.Repo
+
+  test "DELETE removes the account and tokens while preserving and unlinking game history", %{
+    conn: conn
+  } do
+    admin = AccountsFixtures.admin_fixture()
+    {:ok, _settings} = Accounts.update_settings(%{"registration_enabled" => true})
+    user = discord_user("100000000000000101")
+    player = Repo.get_by!(Player, user_id: user.id)
+    {:ok, opponent} = Games.create_player(%{name: "Opponent"})
+
+    {:ok, deck} =
+      Games.create_deck(%{
+        player_id: player.id,
+        name: "History Deck",
+        commander_name: "Alela, Artful Provocateur"
+      })
+
+    {:ok, game} =
+      Games.create_game(
+        %{
+          played_at: ~U[2026-09-20 18:00:00Z],
+          seats: [
+            %{player_id: player.id, deck_id: deck.id, seat: 1, result: "win"},
+            %{player_id: opponent.id, seat: 2, result: "loss"}
+          ]
+        },
+        user.id
+      )
+
+    target_token = Accounts.generate_user_session_token(user)
+
+    conn = conn |> log_in_user(admin) |> delete(~p"/api/admin/users/#{user.id}")
+
+    assert response(conn, 204)
+    refute Repo.get(User, user.id)
+    refute Accounts.get_user_by_session_token(target_token)
+    refute Repo.exists?(from token in UserToken, where: token.user_id == ^user.id)
+
+    assert %Player{user_id: nil, discord_id: "100000000000000101"} =
+             preserved_player = Repo.get!(Player, player.id)
+
+    assert Repo.get!(Game, game.id).created_by_user_id == nil
+    assert Games.get_deck!(deck.id).player_id == preserved_player.id
+    assert Enum.map(Games.get_game!(game.id).seats, & &1.player_id) == [player.id, opponent.id]
+
+    assert {:ok, registered_again} =
+             Accounts.sign_in_with_discord(discord_claims("100000000000000101"))
+
+    refute registered_again.id == user.id
+    assert Repo.get!(Player, player.id).user_id == registered_again.id
+    assert Repo.get!(Player, player.id).discord_id == registered_again.discord_id
+  end
+
+  test "an administrator cannot delete their own account", %{conn: conn} do
+    admin = AccountsFixtures.admin_fixture()
+
+    response =
+      conn
+      |> log_in_user(admin)
+      |> delete(~p"/api/admin/users/#{admin.id}")
+      |> json_response(403)
+
+    assert response == %{"errors" => %{"detail" => "Forbidden"}}
+    assert Repo.get(User, admin.id)
+  end
+
+  test "the last administrator cannot be deleted" do
+    admin = AccountsFixtures.admin_fixture()
+    member = AccountsFixtures.user_fixture()
+
+    assert {:error, :forbidden} = Accounts.delete_user(admin, member)
+    assert Repo.get(User, admin.id)
+  end
+
+  test "a non-administrator receives 403", %{conn: conn} do
+    admin = AccountsFixtures.admin_fixture()
+    member = AccountsFixtures.user_fixture()
+
+    response =
+      conn
+      |> log_in_user(member)
+      |> delete(~p"/api/admin/users/#{admin.id}")
+      |> json_response(403)
+
+    assert response == %{"errors" => %{"detail" => "Forbidden"}}
+  end
+
+  test "deletion requires recent sudo authentication", %{conn: conn} do
+    admin = AccountsFixtures.admin_fixture()
+    member = AccountsFixtures.user_fixture()
+    conn = log_in_user(conn, admin)
+    token = get_session(conn, :user_token)
+
+    Repo.update_all(
+      from(user_token in UserToken, where: user_token.token == ^token),
+      set: [
+        authenticated_at:
+          DateTime.utc_now() |> DateTime.add(-11, :minute) |> DateTime.truncate(:second)
+      ]
+    )
+
+    response = conn |> delete(~p"/api/admin/users/#{member.id}") |> json_response(403)
+
+    assert response == %{
+             "errors" => %{
+               "code" => "sudo_required",
+               "detail" => "Reauthentication required"
+             }
+           }
+
+    assert Repo.get(User, member.id)
+  end
+
+  defp discord_user(discord_id) do
+    {:ok, user} = Accounts.sign_in_with_discord(discord_claims(discord_id))
+    user
+  end
+
+  defp discord_claims(discord_id) do
+    %{
+      "sub" => discord_id,
+      "preferred_username" => "Discord Member",
+      "picture" => "https://cdn.discordapp.com/avatars/#{discord_id}/avatar-hash"
+    }
+  end
+end
