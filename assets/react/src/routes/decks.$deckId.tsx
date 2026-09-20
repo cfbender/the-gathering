@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
+import { PageHeader } from "@/components/app-shell"
 import { ExternalLink, Trophy } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { DeckFormFields, type DeckFormValue } from "@/components/deck-form-fields"
@@ -18,30 +19,30 @@ function DeckDetailPage() {
   const deck = query.data
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <p className="text-primary text-sm font-semibold uppercase">
-          {deck.player && (
+      <PageHeader
+        eyebrow={
+          deck.player ? (
             <Link to="/players/$playerId" params={{ playerId: String(deck.player.id) }}>
               {deck.player.name}
             </Link>
-          )}
-        </p>
-        <h1 className="text-4xl font-bold">{deck.name}</h1>
-        <p className="text-base-content/70 mt-2 text-xl">
-          {deck.commander_name}
-          {deck.partner_name && ` + ${deck.partner_name}`}
-        </p>
-        {deck.decklist_url && (
-          <a
-            href={deck.decklist_url}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-outline btn-sm mt-4"
-          >
-            <ExternalLink className="size-4" /> Open deck list
-          </a>
-        )}
-        <div className="stats border-base-300 bg-base-200 mt-5 border">
+          ) : undefined
+        }
+        title={deck.name}
+        description={`${deck.commander_name ?? ""}${deck.partner_name ? ` + ${deck.partner_name}` : ""}`}
+        actions={
+          deck.decklist_url ? (
+            <a
+              href={deck.decklist_url}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-outline btn-sm"
+            >
+              <ExternalLink className="size-4" /> Open deck list
+            </a>
+          ) : undefined
+        }
+      >
+        <div className="stats border-base-300 bg-base-100/60 mt-5 border">
           <div className="stat">
             <div className="stat-title">Games</div>
             <div className="stat-value text-2xl">{deck.games_played}</div>
@@ -51,7 +52,7 @@ function DeckDetailPage() {
             <div className="stat-value text-success text-2xl">{deck.wins}</div>
           </div>
         </div>
-      </div>
+      </PageHeader>
       <DeckStats deckId={deckId} />
       <DeckEditForm key={deck.id} deck={deck} />
       <section>

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
+import { PageHeader } from "@/components/app-shell"
 import { Trophy } from "lucide-react"
 import { PlayerStats } from "@/components/stats/player-stats"
 import { formatDate, getPlayer } from "@/lib/games"
@@ -14,10 +15,8 @@ function PlayerDetailPage() {
   const player = query.data
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <p className="text-primary text-sm font-semibold uppercase">Player profile</p>
-        <h1 className="text-4xl font-bold">{player.name}</h1>
-        <div className="stats border-base-300 bg-base-200 mt-4 border">
+      <PageHeader eyebrow="Player profile" title={player.name}>
+        <div className="stats border-base-300 bg-base-100/60 mt-5 border">
           <div className="stat">
             <div className="stat-title">Games</div>
             <div className="stat-value text-2xl">{player.games_played}</div>
@@ -27,7 +26,7 @@ function PlayerDetailPage() {
             <div className="stat-value text-success text-2xl">{player.wins}</div>
           </div>
         </div>
-      </div>
+      </PageHeader>
       <PlayerStats playerId={playerId} />
       <section>
         <h2 className="mb-3 text-xl font-bold">Decks</h2>

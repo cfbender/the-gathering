@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
+import { PageHeader } from "@/components/app-shell"
 import { GameForm } from "@/components/game-form"
 import { getGame } from "@/lib/games"
 
@@ -19,10 +20,7 @@ function EditGamePage() {
   if (query.isError) return <div className="alert alert-error">Game not found.</div>
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <div>
-        <p className="text-primary text-sm font-semibold uppercase">Game #{gameId}</p>
-        <h1 className="text-3xl font-bold">Edit game</h1>
-      </div>
+      <PageHeader eyebrow={`Game #${gameId}`} title="Edit game" />
       <GameForm game={query.data} />
     </div>
   )

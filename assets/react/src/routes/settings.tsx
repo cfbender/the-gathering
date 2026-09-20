@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import type { FormEvent } from "react"
 import { KeyRound, UserRound } from "lucide-react"
+import { PageHeader } from "@/components/app-shell"
+import { AppearanceSection } from "@/components/appearance-section"
 import { SudoPrompt } from "@/components/sudo-prompt"
 import { api } from "@/lib/api"
 import { errorMessage, requireUser } from "@/lib/auth"
@@ -57,12 +59,13 @@ function SettingsPage() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-base-content/70 mt-1">
-          Manage your profile{user.has_password ? " and password" : ""}.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Account"
+        title="Settings"
+        description={`Manage your profile${user.has_password ? ", password," : ""} and appearance.`}
+      />
+
+      <AppearanceSection />
 
       <form className="card bg-base-200 border-base-300 border" onSubmit={updateProfile}>
         <div className="card-body gap-4">

@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
+import { PageHeader } from "@/components/app-shell"
 import { CheckCircle2, Download, FileSpreadsheet, Upload, XCircle } from "lucide-react"
 import { useState } from "react"
 import type { ChangeEvent } from "react"
@@ -39,19 +40,16 @@ function ImportPage() {
 
   return (
     <div className="mx-auto flex min-w-0 max-w-5xl flex-col gap-6">
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-primary text-sm font-semibold uppercase">Administration</p>
-          <h1 className="text-3xl font-bold tracking-tight">Import game history</h1>
-          <p className="text-base-content/70 mt-1 max-w-2xl">
-            Upload The Gathering’s template or paste CSV exported from the Mythic Track import
-            spreadsheet. Nothing is saved until you confirm.
-          </p>
-        </div>
-        <a className="btn btn-outline btn-sm" href="/api/imports/csv/sample" download>
-          <Download className="size-4" /> Sample CSV
-        </a>
-      </header>
+      <PageHeader
+        eyebrow="Administration"
+        title="Import game history"
+        description="Upload The Gathering’s template or paste CSV exported from the Mythic Track import spreadsheet. Nothing is saved until you confirm."
+        actions={
+          <a className="btn btn-outline btn-sm" href="/api/imports/csv/sample" download>
+            <Download className="size-4" /> Sample CSV
+          </a>
+        }
+      />
 
       <section className="card border-base-300 bg-base-200 border">
         <div className="card-body gap-4 p-4 sm:p-6">

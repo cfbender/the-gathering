@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
+import { PageHeader } from "@/components/app-shell"
 import { Clock, Pencil, Trophy } from "lucide-react"
 import { formatDate, getGame } from "@/lib/games"
 
@@ -18,11 +19,17 @@ function GameDetailPage() {
   const game = query.data
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <p className="text-primary text-sm font-semibold uppercase">Game #{game.id}</p>
-          <h1 className="text-3xl font-bold">{formatDate(game.played_at)}</h1>
-          <p className="text-base-content/60 mt-1 flex gap-4 text-sm">
+      <PageHeader
+        eyebrow={`Game #${game.id}`}
+        title={formatDate(game.played_at)}
+        actions={
+          <Link to="/games/$gameId/edit" params={{ gameId }} className="btn btn-outline">
+            <Pencil className="size-4" /> Edit
+          </Link>
+        }
+      >
+        {(game.turns || game.duration_minutes) && (
+          <p className="text-base-content/60 mt-3 flex gap-4 text-sm">
             {game.turns && <span>{game.turns} turns</span>}
             {game.duration_minutes && (
               <span className="flex items-center gap-1">
@@ -31,11 +38,8 @@ function GameDetailPage() {
               </span>
             )}
           </p>
-        </div>
-        <Link to="/games/$gameId/edit" params={{ gameId }} className="btn btn-outline">
-          <Pencil className="size-4" /> Edit
-        </Link>
-      </div>
+        )}
+      </PageHeader>
       <section className="grid gap-4 sm:grid-cols-2">
         {game.seats.map((seat) => (
           <article
