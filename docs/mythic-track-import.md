@@ -24,7 +24,17 @@ The API routes are `POST /api/imports/mythic_track/preview` and `POST /api/impor
 | Commander `deckName`, else commander name(s) | Deck name, owned by that player |
 | Commander / partner `scryfallId`, `name`, `colors`, `decklistUrl` | Deck commander, partner, colour identity, and decklist link |
 | `turnOrder` | Seat, renumbered 1..n (missing values sort last) |
-| `isWinner` | One winner → win/loss; no winner → all draw; more than one winner → error |
+| `isWinner` | One winner → win/loss; no winner → all draw; more than one winner → the game is skipped |
 | `keyCards` | The first key card becomes the winner's MVP card (name and Scryfall ID). Any further key cards, or all of them in a draw, are appended to notes as `Key cards: …` |
 
 Only games with `gameStatus` 3 (complete) are imported; in-progress and unstarted games appear as warnings.
+
+## Skipped games
+
+Mythic Track lets you save games The Gathering cannot represent: fewer than two or more than six players, a blank player name, the same player in two seats, or several winners. Those games are listed as warnings with the game's name, date, and players (for example `Game 213: skipped: Daniel is listed twice (03/17/2025 - Commander (EDH) - Game 1, 2025-03-17, players: Daniel, Reality, Daniel, Matt)`) and the rest of the file still imports. Fix the game in Mythic Track and re-export, or log it by hand afterwards. Only a missing `id` or an unreadable `createdOn` rejects the whole file.
+
+## Players and decks
+
+Nobody needs an account to appear in imported games. The preview lists the players it will create; each becomes a plain player record, and every commander a player used becomes a deck owned by that player so it can be suggested the next time a game is logged.
+
+When someone later signs in with Discord, they get their own player record. An administrator can point their account at the imported player instead from **Admin → Users** (the *Player* select on each user), which moves any games already logged under the account's player onto the imported one. Duplicates that Mythic Track kept apart (say `Drew` and `waxpoetik`) can be folded together from the *Merge into another player* card on a player's page; games, decks, and the account link all move to the chosen player. Merging refuses when both players sat in the same game.

@@ -10,6 +10,7 @@ defmodule TheGatheringWeb.API.PlayerJSON do
       id: player.id,
       name: player.name,
       avatar_url: player.avatar_url,
+      user_id: player.user_id,
       archived_at: player.archived_at
     }
 
@@ -18,7 +19,6 @@ defmodule TheGatheringWeb.API.PlayerJSON do
 
     summary(player)
     |> Map.merge(%{
-      user_id: player.user_id,
       discord_id: player.discord_id,
       games_played: length(seats),
       wins: Enum.count(seats, &(&1.result == "win")),

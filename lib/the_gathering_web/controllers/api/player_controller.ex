@@ -20,15 +20,33 @@ defmodule TheGatheringWeb.API.PlayerController do
     end
   end
 
-  def update(conn, %{"id" => id, "player" => attrs}) do
+  # Account and Discord identity are linked by administrators, never by payload.
+  @member_attrs ~w(name archived_at)
+
+  def update(conn, %{"id" => id, "player" => attrs}) when is_map(attrs) do
     with player when not is_nil(player) <- Games.get_player(id),
-         {:ok, player} <- Games.update_player(player, attrs) do
+         {:ok, player} <- Games.update_player(player, Map.take(attrs, @member_attrs)) do
       render(conn, :show, player: Games.get_player!(player.id))
     else
       nil -> {:error, :not_found}
       error -> error
     end
   end
+
+  def update(_conn, _params), do: {:error, :bad_request}
+
+  def merge(conn, %{"id" => id, "target_id" => target_id}) do
+    with source when not is_nil(source) <- Games.get_player(id),
+         target when not is_nil(target) <- Games.get_player(target_id),
+         {:ok, target} <- Games.merge_players(source, target) do
+      render(conn, :show, player: Games.get_player!(target.id))
+    else
+      nil -> {:error, :not_found}
+      error -> error
+    end
+  end
+
+  def merge(_conn, _params), do: {:error, :bad_request}
 
   def delete(conn, %{"id" => id}) do
     with player when not is_nil(player) <- Games.get_player(id),

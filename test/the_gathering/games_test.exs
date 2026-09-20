@@ -136,6 +136,80 @@ defmodule TheGathering.GamesTest do
     assert Games.get_player!(orphan.id).avatar_url == nil
   end
 
+  test "merging players moves seats and decks, collapses same-named decks, and carries identity" do
+    drew = player("Drew")
+    alice = player("Alice")
+    {:ok, wax} = Games.create_player(%{name: "waxpoetik", discord_id: "200000000000000002"})
+
+    {:ok, drew_krenko} = Games.find_or_create_deck(drew, "Krenko", %{commander_name: "Krenko"})
+    {:ok, wax_krenko} = Games.find_or_create_deck(wax, "krenko", %{commander_name: "Krenko"})
+    {:ok, wax_tifa} = Games.find_or_create_deck(wax, "Tifa", %{commander_name: "Tifa"})
+
+    {:ok, game_a} =
+      Games.create_game(
+        game_attrs([drew, alice], %{
+          seats: [
+            %{player_id: drew.id, deck_id: drew_krenko.id, seat: 1, result: "win"},
+            %{player_id: alice.id, seat: 2, result: "loss"}
+          ]
+        })
+      )
+
+    {:ok, game_b} =
+      Games.create_game(
+        game_attrs([wax, alice], %{
+          external_id: "b",
+          seats: [
+            %{player_id: wax.id, deck_id: wax_krenko.id, seat: 1, result: "loss"},
+            %{player_id: alice.id, seat: 2, result: "win"}
+          ]
+        })
+      )
+
+    assert {:ok, merged} = Games.merge_players(wax, drew)
+    assert merged.id == drew.id
+    assert merged.discord_id == "200000000000000002"
+    assert Games.get_player(wax.id) == nil
+
+    # waxpoetik's Krenko seat now points at Drew's existing Krenko deck; Tifa moved over.
+    seats = Games.get_game!(game_b.id).seats
+    assert [%{player_id: player_id, deck_id: deck_id}] = Enum.filter(seats, &(&1.seat == 1))
+    assert {player_id, deck_id} == {drew.id, drew_krenko.id}
+    assert Games.get_deck(wax_krenko.id) == nil
+    assert Games.get_deck!(wax_tifa.id).player_id == drew.id
+    assert length(Games.get_player!(drew.id).game_players) == 2
+
+    assert Enum.map(Games.get_game!(game_a.id).seats, & &1.player_id) |> Enum.sort() ==
+             Enum.sort([drew.id, alice.id])
+
+    # Alice sat in both of Drew's games, so she cannot be merged into him.
+    assert {:error, changeset} = Games.merge_players(alice, drew)
+    assert errors_on(changeset).merge == ["both players are seated in the same game"]
+    assert {:error, :bad_request} = Games.merge_players(drew, drew)
+  end
+
+  test "linking a player to an account merges the account's stub player into it" do
+    user = AccountsFixtures.user_fixture()
+    imported = player("Drew")
+    {:ok, stub} = Games.create_player(%{name: "Drew (2)", user_id: user.id, discord_id: "42"})
+    other = player("Other")
+    {:ok, _game} = Games.create_game(game_attrs([stub, other]))
+
+    assert {:ok, linked} = Games.link_player_to_user(imported, user)
+    assert linked.id == imported.id
+    assert linked.user_id == user.id
+    assert linked.discord_id == "42"
+    assert Games.get_player(stub.id) == nil
+    assert length(Games.get_player!(imported.id).game_players) == 1
+
+    # Linking again is a no-op; linking a player owned by another account fails.
+    assert {:ok, %{id: id}} = Games.link_player_to_user(imported, user)
+    assert id == imported.id
+    other_user = AccountsFixtures.user_fixture()
+    assert {:error, changeset} = Games.link_player_to_user(imported, other_user)
+    assert errors_on(changeset).merge == ["players belong to different accounts"]
+  end
+
   test "list_games combines filters, paginates, and orders newest first" do
     alice = player("Alice")
     bob = player("Bob")

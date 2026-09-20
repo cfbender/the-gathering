@@ -1,8 +1,8 @@
 defmodule TheGatheringWeb.API.AdminUserController do
   use TheGatheringWeb, :controller
 
-  alias TheGathering.Accounts
-  alias TheGatheringWeb.API.UserJSON
+  alias TheGathering.{Accounts, Games}
+  alias TheGatheringWeb.API.{PlayerJSON, UserJSON}
 
   action_fallback TheGatheringWeb.API.FallbackController
 
@@ -18,6 +18,19 @@ defmodule TheGatheringWeb.API.AdminUserController do
   end
 
   def update(_conn, _params), do: {:error, :bad_request}
+
+  def link_player(conn, %{"id" => id, "player_id" => player_id}) do
+    with {:ok, user} <- fetch_user(id),
+         player when not is_nil(player) <- Games.get_player(player_id),
+         {:ok, player} <- Games.link_player_to_user(player, user) do
+      conn |> put_view(PlayerJSON) |> render(:show, player: Games.get_player!(player.id))
+    else
+      nil -> {:error, :not_found}
+      error -> error
+    end
+  end
+
+  def link_player(_conn, _params), do: {:error, :bad_request}
 
   def delete(conn, %{"id" => id}) do
     with {:ok, user} <- fetch_user(id),

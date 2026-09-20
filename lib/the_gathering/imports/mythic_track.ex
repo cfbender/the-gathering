@@ -42,7 +42,7 @@ defmodule TheGathering.Imports.MythicTrack do
         case classify(game, line) do
           {:skip, warning} -> {parsed, errors, [warning | warnings]}
           {:ok, game} -> {[game | parsed], errors, warnings}
-          {:error, game_errors} -> {parsed, errors ++ game_errors, warnings}
+          {:error, game_error} -> {parsed, errors ++ [game_error], warnings}
         end
       end)
 
@@ -57,11 +57,28 @@ defmodule TheGathering.Imports.MythicTrack do
 
       status ->
         name = Map.get(@status_names, status, "status #{inspect(status)}")
-        {:skip, %{line: line, message: "skipped: game is #{name}"}}
+        {:skip, %{line: line, message: "skipped: game is #{name} (#{describe(game)})"}}
     end
   end
 
-  defp classify(_game, line), do: {:error, [error(line, "game", "must be an object")]}
+  defp classify(_game, line), do: {:error, error(line, "game", "must be an object")}
+
+  # Enough context to find the game in Mythic Track and fix it there.
+  defp describe(game) do
+    players =
+      game["players"]
+      |> List.wrap()
+      |> Enum.map(&player_name(&1["player"] || %{}))
+      |> Enum.reject(&(&1 == ""))
+
+    [
+      blank_to_nil(string(game["name"])),
+      game["createdOn"] |> string() |> String.slice(0, 10) |> blank_to_nil(),
+      if(players != [], do: "players: " <> Enum.join(players, ", "))
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(", ")
+  end
 
   defp build_game(game, line) do
     external_id = string(game["id"])
@@ -78,49 +95,48 @@ defmodule TheGathering.Imports.MythicTrack do
       |> Enum.map(fn {{player, _index}, seat} -> build_seat(player, seat, line, players) end)
       |> assign_key_cards(key_cards)
 
-    errors =
-      []
-      |> required(line, "id", external_id)
-      |> required(line, "createdOn", played_at)
-      |> add_error(
-        length(seats) not in 2..6,
-        line,
-        "players",
-        "must contain between 2 and 6 players"
-      )
-      |> add_error(
-        Enum.any?(seats, &(&1.player == "")),
-        line,
-        "players",
-        "every player needs a name"
-      )
-      |> add_error(
-        duplicate?(seats, &String.downcase(&1.player)),
-        line,
-        "players",
-        "cannot contain the same player twice"
-      )
-      |> add_error(
-        not valid_results?(seats),
-        line,
-        "isWinner",
-        "must have at most one winner; games without a winner import as draws"
-      )
+    # A game the admin cannot repair in this file is skipped with a reason rather
+    # than blocking the other games; malformed identity fields are real errors.
+    cond do
+      external_id == "" ->
+        {:error, error(line, "id", "is required")}
 
-    if errors == [] do
-      {:ok,
-       %{
-         external_id: external_id,
-         game_id: external_id,
-         played_at: played_at,
-         duration_minutes: positive_or_nil(game["gameTimeInMinutes"]),
-         turns: positive_or_nil(game["totalTurns"]),
-         notes: notes(game, key_cards, seats),
-         lines: [line],
-         seats: seats
-       }}
-    else
-      {:error, errors}
+      played_at == :invalid ->
+        {:error, error(line, "createdOn", "is required and must be a valid date")}
+
+      reason = skip_reason(seats) ->
+        {:skip, %{line: line, message: "skipped: #{reason} (#{describe(game)})"}}
+
+      true ->
+        {:ok,
+         %{
+           external_id: external_id,
+           game_id: external_id,
+           played_at: played_at,
+           duration_minutes: positive_or_nil(game["gameTimeInMinutes"]),
+           turns: positive_or_nil(game["totalTurns"]),
+           notes: notes(game, key_cards, seats),
+           lines: [line],
+           seats: seats
+         }}
+    end
+  end
+
+  defp skip_reason(seats) do
+    duplicates =
+      seats
+      |> Enum.frequencies_by(&String.downcase(&1.player))
+      |> Enum.filter(fn {_name, count} -> count > 1 end)
+      |> Enum.map(fn {name, _count} ->
+        Enum.find(seats, &(String.downcase(&1.player) == name)).player
+      end)
+
+    cond do
+      length(seats) not in 2..6 -> "needs between 2 and 6 players, has #{length(seats)}"
+      Enum.any?(seats, &(&1.player == "")) -> "a player has no name"
+      duplicates != [] -> Enum.join(duplicates, ", ") <> " is listed twice"
+      not valid_results?(seats) -> "more than one player is marked as the winner"
+      true -> nil
     end
   end
 
@@ -247,16 +263,6 @@ defmodule TheGathering.Imports.MythicTrack do
 
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
-
-  defp duplicate?(items, mapper), do: items |> Enum.map(mapper) |> then(&(Enum.uniq(&1) != &1))
-
-  defp required(errors, line, field, value) when value in [nil, "", :invalid],
-    do: errors ++ [error(line, field, "is required and must be valid")]
-
-  defp required(errors, _line, _field, _value), do: errors
-
-  defp add_error(errors, false, _line, _field, _message), do: errors
-  defp add_error(errors, true, line, field, message), do: errors ++ [error(line, field, message)]
 
   defp error(line, field, message), do: %{line: line, field: field, message: message}
 end

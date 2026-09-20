@@ -2,12 +2,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
 import type { FormEvent } from "react"
-import { Shield, Users } from "lucide-react"
+import { Link2, Shield, Users } from "lucide-react"
+import { useState } from "react"
 import { SudoPrompt } from "@/components/sudo-prompt"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { api } from "@/lib/api"
 import { errorMessage, isSudoRequired, requireAdmin } from "@/lib/auth"
 import type { User } from "@/lib/auth"
 import { formValue } from "@/lib/form"
+import { getPlayers, linkUserPlayer } from "@/lib/games"
+import type { Player } from "@/lib/games"
 
 interface Data<T> {
   data: T
@@ -28,6 +32,7 @@ function AdminUsersPage() {
     queryKey: ["admin", "users"],
     queryFn: async () => (await api<Data<User[]>>("/api/admin/users")).data,
   })
+  const players = useQuery({ queryKey: ["players"], queryFn: getPlayers })
   const settings = useQuery({
     queryKey: ["admin", "settings"],
     queryFn: async () => (await api<Data<AdminSettings>>("/api/admin/settings")).data,
@@ -97,7 +102,7 @@ function AdminUsersPage() {
         {users.error && <div className="alert alert-error">{errorMessage(users.error)}</div>}
         <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
           {users.data?.map((user) => (
-            <UserCard key={user.id} user={user} />
+            <UserCard key={user.id} user={user} players={players.data ?? []} />
           ))}
         </div>
       </section>
@@ -105,7 +110,7 @@ function AdminUsersPage() {
   )
 }
 
-function UserCard({ user }: { user: User }) {
+function UserCard({ user, players }: { user: User; players: Player[] }) {
   const queryClient = useQueryClient()
   const update = useMutation({
     mutationFn: (attrs: {
@@ -212,7 +217,81 @@ function UserCard({ user }: { user: User }) {
         {errorMessage(update.error, "username") && (
           <p className="text-error text-sm">{errorMessage(update.error, "username")}</p>
         )}
+        <LinkedPlayer user={user} players={players} />
       </div>
+    </div>
+  )
+}
+
+/**
+ * Which player's games belong to this account. Imported histories (CSV, Mythic
+ * Track) create players nobody has claimed yet; choosing one here moves the
+ * account's current player, if any, into it.
+ */
+function LinkedPlayer({ user, players }: { user: User; players: Player[] }) {
+  const queryClient = useQueryClient()
+  const current = players.find((player) => player.user_id === user.id)
+  const [pending, setPending] = useState<Player | null>(null)
+  const link = useMutation({
+    mutationFn: (player: Player) => linkUserPlayer(user.id, player.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["players"] })
+      void queryClient.invalidateQueries({ queryKey: ["games"] })
+      void queryClient.invalidateQueries({ queryKey: ["decks"] })
+    },
+  })
+  const options = players.filter((player) => player.user_id === null || player.user_id === user.id)
+
+  return (
+    <div className="border-base-300 flex flex-col gap-2 border-t pt-3">
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="flex items-center gap-1 font-medium">
+          <Link2 className="size-4" /> Player
+        </span>
+        <select
+          aria-label={`Player for ${user.username}`}
+          className="select select-sm min-w-0 flex-1"
+          value={current?.id ?? ""}
+          disabled={link.isPending}
+          onChange={(event) => {
+            const player = players.find((item) => String(item.id) === event.target.value)
+            if (player && player.id !== current?.id) setPending(player)
+          }}
+        >
+          <option value="" disabled>
+            {current ? current.name : "Not linked to a player"}
+          </option>
+          {options.map((player) => (
+            <option key={player.id} value={player.id}>
+              {player.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {link.error && (
+        <p className="text-error text-sm">
+          {errorMessage(link.error, "merge") ?? errorMessage(link.error)}
+        </p>
+      )}
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(open) => !open && setPending(null)}
+        title={`Link ${user.display_name} to ${pending?.name ?? ""}?`}
+        confirmLabel="Link player"
+        onConfirm={() => pending && link.mutate(pending)}
+      >
+        {current ? (
+          <>
+            <strong>{current.name}</strong>'s games and decks move to{" "}
+            <strong>{pending?.name}</strong>, and {current.name} is removed. This cannot be undone.
+          </>
+        ) : (
+          <>
+            Games recorded for <strong>{pending?.name}</strong> will count for this account, and
+            Discord sign-in will use this player from now on.
+          </>
+        )}
+      </ConfirmDialog>
     </div>
   )
 }
