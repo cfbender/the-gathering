@@ -53,28 +53,28 @@ export function Rivalries({
       label: "Nemesis",
       row: nemesis,
       value: nemesis?.losses,
-      result: "loss",
+      result: ["loss", "losses"],
       kind: "player",
     },
     {
       label: "Favorite victim",
       row: victim,
       value: victim?.wins,
-      result: "win",
+      result: ["win", "wins"],
       kind: "player",
     },
     {
       label: "Nemesis commander",
       row: commanderNemesis,
       value: commanderNemesis?.beat_me,
-      result: "loss",
+      result: ["loss", "losses"],
       kind: "commander",
     },
     {
       label: "Favorite prey",
       row: commanderPrey,
       value: commanderPrey?.beaten,
-      result: "win",
+      result: ["win", "wins"],
       kind: "commander",
     },
   ] as const
@@ -98,7 +98,7 @@ export function Rivalries({
               key={label}
               label={label}
               count={value}
-              detail={`${result}${value === 1 ? "" : "s"}`}
+              detail={value === 1 ? result[0] : result[1]}
               artCropUrl={commander?.art_crop_url}
               colorIdentity={commander?.color_identity}
             >
