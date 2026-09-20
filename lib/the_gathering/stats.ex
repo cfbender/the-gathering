@@ -23,7 +23,6 @@ defmodule TheGathering.Stats do
     cutoff = detailed_stats_from()
     detailed = detailed_games(games, cutoff)
     detailed_seats = Enum.flat_map(detailed, & &1.seats)
-    card_art = card_art(seats)
 
     %{
       detailed_stats_from: cutoff,
@@ -48,25 +47,7 @@ defmodule TheGathering.Stats do
           },
           &ColorIdentity.canonical(&1.deck.color_identity)
         ),
-      commanders:
-        seats
-        |> Enum.reject(&is_nil(&1.deck))
-        |> grouped_records(
-          &%{
-            id: &1.deck.commander_name,
-            name: &1.deck.commander_name,
-            art_crop_url:
-              Catalog.art_crop_url(
-                card_art,
-                &1.deck.commander_card_id,
-                &1.deck.commander_name
-              )
-          },
-          fn seat ->
-            seat.deck.commander_name
-          end
-        )
-        |> Enum.take(8),
+      commanders: params |> Stats.Commanders.list() |> Enum.take(8),
       recent_games: games |> Enum.take(6) |> Enum.map(&recent_game/1)
     }
   end

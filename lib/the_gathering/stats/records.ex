@@ -26,24 +26,27 @@ defmodule TheGathering.Stats.Records do
   end
 
   @doc """
-  Cumulative win rate after each game, oldest first. `seat_fun` picks the tracked seat
-  from a game's seats; games where it returns `nil` are skipped.
+  Cumulative win rate after each game, oldest first. `seats_fun` picks the tracked
+  seats from a game's seats (a seat, a list of seats, or `nil`); games where it picks
+  nothing are skipped. Every tracked seat counts as an appearance, so the final point
+  always equals `record/1` over the same seats even when several tracked seats share
+  one game (a commander mirror match).
   """
-  def cumulative_win_rate(games, seat_fun) do
+  def cumulative_win_rate(games, seats_fun) do
     games
     |> Enum.reverse()
     |> Enum.reduce({[], 0, 0}, fn game, acc ->
-      add_trend_point(acc, game, seat_fun.(game.seats))
+      add_trend_point(acc, game, List.wrap(seats_fun.(game.seats)))
     end)
     |> elem(0)
     |> Enum.reverse()
   end
 
-  defp add_trend_point(acc, _game, nil), do: acc
+  defp add_trend_point(acc, _game, []), do: acc
 
-  defp add_trend_point({points, wins, total}, game, seat) do
-    wins = wins + if(seat.result == "win", do: 1, else: 0)
-    total = total + 1
+  defp add_trend_point({points, wins, total}, game, seats) do
+    wins = wins + Enum.count(seats, &(&1.result == "win"))
+    total = total + length(seats)
 
     point = %{
       date: Date.to_iso8601(DateTime.to_date(game.played_at)),
@@ -53,7 +56,10 @@ defmodule TheGathering.Stats.Records do
     {[point | points], wins, total}
   end
 
-  @doc "A compact game summary; `tracked` is the seat whose result the caller follows, if any."
+  @doc """
+  A compact game summary; `tracked` is the seat (or seats) whose result the caller
+  follows, if any. See `tracked_result/1` for how several seats combine.
+  """
   def recent_game(game, tracked \\ nil) do
     winner = Enum.find(game.seats, &(&1.result == "win"))
 
@@ -62,10 +68,24 @@ defmodule TheGathering.Stats.Records do
       played_at: game.played_at,
       duration_minutes: game.duration_minutes,
       turns: game.turns,
-      result: tracked && tracked.result,
+      result: tracked_result(tracked),
       winner: winner && entity(winner.player),
       players: length(game.seats)
     }
+  end
+
+  @doc """
+  The result to show for the tracked seat(s) of one game: a single seat's own result,
+  or, when several tracked seats shared a game, `"win"` if any of them won, `"draw"`
+  if any drew, and `"loss"` otherwise.
+  """
+  def tracked_result(nil), do: nil
+  def tracked_result([]), do: nil
+  def tracked_result(%{result: result}), do: result
+
+  def tracked_result(seats) when is_list(seats) do
+    results = Enum.map(seats, & &1.result)
+    Enum.find(["win", "draw"], "loss", &(&1 in results))
   end
 
   @doc """
