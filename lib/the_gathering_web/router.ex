@@ -59,6 +59,7 @@ defmodule TheGatheringWeb.Router do
 
     patch "/session/user", SessionController, :update_profile
     post "/session/sudo", SessionController, :sudo
+    get "/session/remote-decks", RemoteDeckController, :index
 
     get "/cards", CardController, :index
     get "/cards/:id", CardController, :show
