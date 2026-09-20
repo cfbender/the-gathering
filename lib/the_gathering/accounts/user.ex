@@ -11,6 +11,9 @@ defmodule TheGathering.Accounts.User do
     field :password, :string, virtual: true, redact: true
     field :discord_id, :string
     field :avatar_url, :string
+    field :moxfield_username, :string
+    field :archidekt_username, :string
+    field :manavault_url, :string
     field :role, :string, default: "member"
     field :disabled_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
@@ -58,9 +61,20 @@ defmodule TheGathering.Accounts.User do
 
   def profile_changeset(user, attrs) do
     user
-    |> cast(attrs, [:display_name])
+    |> cast(attrs, [:display_name, :moxfield_username, :archidekt_username, :manavault_url])
+    |> normalize_deck_sources()
     |> validate_required([:display_name])
     |> validate_length(:display_name, min: 1, max: 80)
+    |> validate_length(:moxfield_username, max: 80)
+    |> validate_length(:archidekt_username, max: 80)
+    |> validate_length(:manavault_url, max: 2_048)
+    |> validate_format(:moxfield_username, ~r/^[^\s\/]+$/,
+      message: "must be a username, not a URL"
+    )
+    |> validate_format(:archidekt_username, ~r/^[^\s\/]+$/,
+      message: "must be a username, not a URL"
+    )
+    |> validate_change(:manavault_url, &validate_http_url/2)
   end
 
   def password_changeset(user, attrs, opts \\ []) do
@@ -130,6 +144,20 @@ defmodule TheGathering.Accounts.User do
 
       _value ->
         update_change(changeset, :display_name, &String.trim/1)
+    end
+  end
+
+  defp normalize_deck_sources(changeset) do
+    changeset
+    |> update_change(:moxfield_username, &String.trim/1)
+    |> update_change(:archidekt_username, &String.trim/1)
+    |> update_change(:manavault_url, &(&1 |> String.trim() |> String.trim_trailing("/")))
+  end
+
+  defp validate_http_url(field, value) do
+    case URI.parse(value) do
+      %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) -> []
+      _ -> [{field, "must be a valid http(s) URL"}]
     end
   end
 end
