@@ -57,12 +57,17 @@ defmodule TheGatheringWeb.DiscordAuthController do
         login_error(conn, "discord_sudo_mismatch")
 
       error ->
-        # Assent errors carry Discord's error status and body, which is what an
-        # admin needs to debug misconfigured credentials or redirect URIs.
-        Logger.warning("Discord sign-in failed: #{inspect(error)}")
+        Logger.warning("Discord sign-in failed: #{oauth_error_summary(error)}")
         login_error(conn, "discord_failed")
     end
   end
+
+  defp oauth_error_summary({:error, %{__struct__: module, response: %{status: status}}})
+       when is_integer(status),
+       do: "#{inspect(module)} status=#{status}"
+
+  defp oauth_error_summary({:error, %{__struct__: module}}), do: inspect(module)
+  defp oauth_error_summary(_error), do: "unknown OAuth error"
 
   defp oauth_mode(conn, %{"sudo" => "1"}) do
     case conn.assigns.current_scope.user do

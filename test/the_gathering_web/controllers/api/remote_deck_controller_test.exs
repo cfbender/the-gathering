@@ -2,7 +2,7 @@ defmodule TheGatheringWeb.API.RemoteDeckControllerTest do
   use TheGatheringWeb.ConnCase, async: false
 
   alias TheGathering.Accounts
-  alias TheGathering.Decklists.Cache
+  alias TheGathering.Decklists.{Cache, RemoteDecks}
 
   setup :register_and_log_in_user
 
@@ -10,7 +10,15 @@ defmodule TheGatheringWeb.API.RemoteDeckControllerTest do
     Cache.clear()
     Application.put_env(:the_gathering, :decklists_req_options, plug: {Req.Test, __MODULE__})
 
-    on_exit(fn -> Application.delete_env(:the_gathering, :decklists_req_options) end)
+    Application.put_env(:the_gathering, :decklists_dns_resolver, fn _host, family ->
+      if family == :inet, do: {:ok, [{93, 184, 216, 34}]}, else: {:ok, []}
+    end)
+
+    on_exit(fn ->
+      Application.delete_env(:the_gathering, :decklists_req_options)
+      Application.delete_env(:the_gathering, :decklists_dns_resolver)
+      Application.delete_env(:the_gathering, :remote_decks_limits)
+    end)
   end
 
   test "GET /api/session/remote-decks normalizes configured public deck sources", %{
@@ -140,7 +148,8 @@ defmodule TheGatheringWeb.API.RemoteDeckControllerTest do
 
     Req.Test.stub(__MODULE__, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
-      assert conn.host == "vault.example.com"
+      assert conn.host == "93.184.216.34"
+      assert Plug.Conn.get_req_header(conn, "host") == ["vault.example.com"]
       assert conn.request_path == "/api/v1/decks"
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer mvk_test_key"]
 
@@ -242,5 +251,104 @@ defmodule TheGatheringWeb.API.RemoteDeckControllerTest do
 
     assert %{"data" => %{"decks" => []}} =
              conn |> recycle() |> get(~p"/api/session/remote-decks") |> json_response(200)
+  end
+
+  test "deduplicates concurrent cache misses for one user" do
+    user = %TheGathering.Accounts.User{id: -1, moxfield_username: "concurrent-user"}
+
+    Req.Test.expect(__MODULE__, 1, fn conn ->
+      Req.Test.json(conn, %{"pageNumber" => 1, "totalPages" => 1, "data" => []})
+    end)
+
+    tasks =
+      for _index <- 1..2 do
+        Task.async(fn ->
+          receive do
+            :go -> RemoteDecks.list(user)
+          end
+        end)
+      end
+
+    for task <- tasks do
+      Req.Test.allow(__MODULE__, self(), task.pid)
+      send(task.pid, :go)
+    end
+
+    assert Enum.map(tasks, &Task.await/1) |> Enum.uniq() |> length() == 1
+  end
+
+  test "does not follow ManaVault redirects", %{conn: conn, user: user} do
+    {:ok, _user} =
+      Accounts.update_profile(user, %{
+        "display_name" => user.display_name,
+        "manavault_url" => "https://vault.example.com",
+        "manavault_api_key" => "mvk_redirect"
+      })
+
+    Req.Test.expect(__MODULE__, 1, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_header("location", "http://127.0.0.1/admin")
+      |> Plug.Conn.send_resp(302, "redirect")
+    end)
+
+    %{"data" => %{"sources" => sources}} =
+      conn |> get(~p"/api/session/remote-decks") |> json_response(200)
+
+    assert Enum.find(sources, &(&1["source"] == "manavault"))["error"] =~ "could not be reached"
+  end
+
+  test "truncates an endpoint that always returns another page", %{conn: conn, user: user} do
+    Application.put_env(:the_gathering, :remote_decks_limits, %{max_pages: 2})
+
+    {:ok, _user} =
+      Accounts.update_profile(user, %{
+        "display_name" => user.display_name,
+        "moxfield_username" => "endless"
+      })
+
+    Req.Test.expect(__MODULE__, 2, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      page = String.to_integer(conn.query_params["pageNumber"])
+
+      Req.Test.json(conn, %{
+        "totalPages" => 1_000,
+        "data" => [%{"id" => "deck-#{page}", "name" => "Deck #{page}"}]
+      })
+    end)
+
+    %{"data" => %{"decks" => decks, "sources" => sources}} =
+      conn |> get(~p"/api/session/remote-decks") |> json_response(200)
+
+    assert length(decks) == 2
+    assert Enum.find(sources, &(&1["source"] == "moxfield"))["error"] =~ "page limit"
+  end
+
+  test "reports response byte and total duration budgets", %{conn: conn, user: user} do
+    {:ok, user} =
+      Accounts.update_profile(user, %{
+        "display_name" => user.display_name,
+        "moxfield_username" => "oversized"
+      })
+
+    Application.put_env(:the_gathering, :remote_decks_limits, %{max_bytes: 100})
+
+    Req.Test.expect(__MODULE__, 1, fn conn ->
+      Req.Test.json(conn, %{
+        "totalPages" => 1,
+        "data" => [],
+        "padding" => String.duplicate("x", 200)
+      })
+    end)
+
+    %{"data" => %{"sources" => sources}} =
+      conn |> get(~p"/api/session/remote-decks") |> json_response(200)
+
+    assert Enum.find(sources, &(&1["source"] == "moxfield"))["error"] =~ "response budget"
+
+    Cache.clear()
+    Application.put_env(:the_gathering, :remote_decks_limits, %{duration_ms: 0})
+
+    result = RemoteDecks.list(user)
+    assert Enum.find(result.sources, &(&1.source == :moxfield)).error =~ "time budget"
   end
 end

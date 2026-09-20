@@ -75,8 +75,15 @@ The integrations use the upstream services' public interfaces:
   avoid SSRF. Without `MANAVAULT_URL`, ManaVault links are stored as plain deck links.
   Listing a user's ManaVault decks uses their own instance URL and personal API key
   (`GET <instance>/api/v1/decks` with `Authorization: Bearer <key>`, paginated with
-  `page`/`per_page`); the key is created under ManaVault's **Settings → Personal API
-  keys**. Because that listing is authenticated it may include unshared decks, so
+  `page`/`per_page`); the URL must be an HTTPS origin with no path, credentials,
+  query, or fragment. Private, loopback, link-local, and Tailscale destinations are
+  blocked unless the exact hostname is listed in `MANAVAULT_ALLOWED_HOSTS`; those
+  explicitly trusted hosts may also use HTTP. `MANAVAULT_ALLOW_INSECURE_URLS=true`
+  permits HTTP for otherwise-public hosts without permitting private destinations.
+  Redirects are not followed. The key is created under ManaVault's **Settings →
+  Personal API keys**. Listings stop after 20 pages, 500 decks, 2 MB of responses,
+  or 15 seconds per source and report truncation in that source's status. Because
+  an authenticated listing may include unshared decks,
   quick picks from it prefill the deck form directly rather than re-resolving a public
   share link. Without a key, the source reports that one is needed and individual
   public share links continue to resolve normally.
@@ -96,6 +103,8 @@ The integrations use the upstream services' public interfaces:
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, or `error`. `debug` explains why the Discord bot ignored a message. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
 | `MANAVAULT_URL` | unset | Origin of a self-hosted ManaVault instance whose shared deck links are recognized and resolved. |
+| `MANAVAULT_ALLOWED_HOSTS` | unset | Comma-separated exact hostnames allowed for personal ManaVault listing on private networks; also permits HTTP for those hosts. |
+| `MANAVAULT_ALLOW_INSECURE_URLS` | unset | Set to `true` to permit HTTP personal ManaVault origins that resolve to public addresses. |
 | `DISCORD_CLIENT_ID` | unset | Discord application client ID; enables member OAuth sign-in when paired with the secret. |
 | `DISCORD_CLIENT_SECRET` | unset | Discord application client secret. |
 | `DISCORD_BOT_TOKEN` | unset | Discord bot token; enables automatic recording of completed SpellBot games when set. |
