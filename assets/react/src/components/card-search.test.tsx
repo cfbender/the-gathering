@@ -35,13 +35,14 @@ function Harness() {
   return <CardSearch label="Commander" value={value} onChange={setValue} commanderOnly />
 }
 
-function renderSearch() {
+function SelectedHarness() {
+  const [value, setValue] = useState<CardSummary | null>(cards[0] ?? null)
+  return <CardSearch label="Commander" value={value} onChange={setValue} commanderOnly />
+}
+
+function renderSearch(component = <Harness />) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <Harness />
-    </QueryClientProvider>,
-  )
+  return render(<QueryClientProvider client={queryClient}>{component}</QueryClientProvider>)
 }
 
 describe("CardSearch", () => {
@@ -78,5 +79,15 @@ describe("CardSearch", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Clear card" }))
     expect((combobox as HTMLInputElement).value).toBe("")
+  })
+
+  it("keeps the first keystroke when editing a selected card", () => {
+    renderSearch(<SelectedHarness />)
+
+    const combobox = screen.getByRole("combobox", { name: "Commander" })
+    fireEvent.change(combobox, { target: { value: "Atraxa!" } })
+
+    expect((combobox as HTMLInputElement).value).toBe("Atraxa!")
+    expect(screen.queryByText("Legendary Creature — Phyrexian Angel Horror")).toBeNull()
   })
 })

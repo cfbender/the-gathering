@@ -10,7 +10,7 @@ import { api } from "@/lib/api"
 import { errorMessage, isSudoRequired, requireAdmin } from "@/lib/auth"
 import type { User } from "@/lib/auth"
 import { formValue } from "@/lib/form"
-import { getPlayers, linkUserPlayer } from "@/lib/games"
+import { getPlayers, invalidateGameRelated, linkUserPlayer } from "@/lib/games"
 import type { Player } from "@/lib/games"
 
 interface Data<T> {
@@ -577,9 +577,7 @@ function LinkedPlayer({ user, players }: { user: User; players: Player[] }) {
   const link = useMutation({
     mutationFn: (player: Player) => linkUserPlayer(user.id, player.id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["players"] })
-      void queryClient.invalidateQueries({ queryKey: ["games"] })
-      void queryClient.invalidateQueries({ queryKey: ["decks"] })
+      void invalidateGameRelated(queryClient)
     },
   })
   const options = players.filter((player) => player.user_id === null || player.user_id === user.id)

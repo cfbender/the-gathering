@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vite-plus/test"
 import { moveSeat, resultsForSeats, type DraftSeat } from "./game-form-logic"
 
-const seats = ["Alice", "Bob", "Cara"].map((playerName) => ({ playerName }) as DraftSeat)
+const seats = ["Alice", "Bob", "Cara"].map(
+  (playerName, index) => ({ draftId: `seat-${index}`, playerName }) as DraftSeat,
+)
 
 describe("game form seat and winner logic", () => {
   it("moves turn order without dropping a seat and respects either boundary", () => {
@@ -11,7 +13,7 @@ describe("game form seat and winner logic", () => {
   })
 
   it("produces exactly one winner or an all-draw result", () => {
-    expect(resultsForSeats(3, 1)).toEqual(["loss", "win", "loss"])
-    expect(resultsForSeats(3, null)).toEqual(["draw", "draw", "draw"])
+    expect(resultsForSeats(seats, "seat-1")).toEqual(["loss", "win", "loss"])
+    expect(resultsForSeats(seats, null)).toEqual(["draw", "draw", "draw"])
   })
 })

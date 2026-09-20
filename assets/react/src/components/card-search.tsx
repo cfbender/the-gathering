@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Search, X } from "lucide-react"
-import { useEffect, useId, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import type { KeyboardEvent } from "react"
 import { CardImage } from "./card-image"
 import { ManaCost } from "./mana-symbols"
@@ -31,13 +31,20 @@ export function CardSearch({
   const [debounced, setDebounced] = useState("")
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
+  const clearingSelectionForSearch = useRef(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query.trim()), 250)
     return () => window.clearTimeout(timer)
   }, [query])
 
-  useEffect(() => setQuery(value?.name ?? ""), [value])
+  useEffect(() => {
+    if (clearingSelectionForSearch.current && value === null) {
+      clearingSelectionForSearch.current = false
+      return
+    }
+    setQuery(value?.name ?? "")
+  }, [value])
 
   const cards = useQuery({
     queryKey: ["cards", { q: debounced, commander: commanderOnly }],
@@ -103,7 +110,10 @@ export function CardSearch({
           onBlur={() => window.setTimeout(() => setOpen(false), 100)}
           onChange={(event) => {
             setQuery(event.target.value)
-            if (value) onChange(null)
+            if (value) {
+              clearingSelectionForSearch.current = true
+              onChange(null)
+            }
             setOpen(true)
             setActive(-1)
           }}

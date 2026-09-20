@@ -23,6 +23,7 @@ import {
   previewImport,
 } from "@/lib/imports"
 import type { CSVImportPreview, ImportSource } from "@/lib/imports"
+import { invalidateGameRelated } from "@/lib/games"
 
 export const Route = createFileRoute("/import")({
   beforeLoad: ({ context, location }) => requireAdmin(context.queryClient, location.href),
@@ -39,9 +40,7 @@ function ImportPage() {
   const commit = useMutation({
     mutationFn: (input: string) => commitImport(source, input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["games"] })
-      void queryClient.invalidateQueries({ queryKey: ["players"] })
-      void queryClient.invalidateQueries({ queryKey: ["decks"] })
+      void invalidateGameRelated(queryClient)
     },
   })
 

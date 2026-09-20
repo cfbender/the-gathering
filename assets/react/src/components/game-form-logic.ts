@@ -1,8 +1,11 @@
 import type { SelectedCard } from "@/lib/cards"
 
 export interface DraftSeat {
+  draftId: string
   id?: number
+  playerId: number | null
   playerName: string
+  deckId: number | null
   deckName: string
   commander: SelectedCard | null
   partner: SelectedCard | null
@@ -11,8 +14,13 @@ export interface DraftSeat {
   mvpCard: SelectedCard | null
 }
 
+let nextDraftSeatId = 0
+
 export const blankSeat = (): DraftSeat => ({
+  draftId: `new-seat-${++nextDraftSeatId}`,
+  playerId: null,
   playerName: "",
+  deckId: null,
   deckName: "",
   commander: null,
   partner: null,
@@ -33,8 +41,8 @@ export function moveSeat(seats: DraftSeat[], index: number, direction: -1 | 1) {
   return next
 }
 
-export function resultsForSeats(count: number, winnerIndex: number | null) {
-  return Array.from({ length: count }, (_, index) =>
-    winnerIndex === null ? "draw" : index === winnerIndex ? "win" : "loss",
+export function resultsForSeats(seats: DraftSeat[], winnerSeatId: string | null) {
+  return seats.map((seat) =>
+    winnerSeatId === null ? "draw" : seat.draftId === winnerSeatId ? "win" : "loss",
   ) as Array<"draw" | "win" | "loss">
 }
