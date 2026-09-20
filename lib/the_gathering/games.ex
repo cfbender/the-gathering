@@ -4,6 +4,7 @@ defmodule TheGathering.Games do
   import Ecto.Changeset
   import Ecto.Query
 
+  alias TheGathering.Accounts.User
   alias TheGathering.Games.{Deck, Game, GamePlayer, Player}
   alias TheGathering.Repo
 
@@ -12,13 +13,16 @@ defmodule TheGathering.Games do
 
     Player
     |> maybe_active(include_archived)
+    |> with_avatar()
     |> order_by([player], asc: fragment("lower(?)", player.name))
     |> Repo.all()
   end
 
   def get_player!(id) do
     Player
-    |> Repo.get!(id)
+    |> where(id: ^id)
+    |> with_avatar()
+    |> Repo.one!()
     |> Repo.preload(
       decks: from(deck in Deck, order_by: [asc: deck.name]),
       game_players:
@@ -266,6 +270,14 @@ defmodule TheGathering.Games do
 
   defp maybe_active(query, _include_archived),
     do: where(query, [resource], is_nil(resource.archived_at))
+
+  # `players.user_id` has no FK, so this is a plain left join on the id.
+  defp with_avatar(query) do
+    from player in query,
+      left_join: user in User,
+      on: user.id == player.user_id,
+      select_merge: %{avatar_url: user.avatar_url}
+  end
 
   defp maybe_where_player(query, nil), do: query
 

@@ -3,6 +3,7 @@ import { api } from "@/lib/api"
 export interface Player {
   id: number
   name: string
+  avatar_url: string | null
   archived_at: string | null
   games_played?: number
   wins?: number

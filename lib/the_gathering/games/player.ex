@@ -7,6 +7,8 @@ defmodule TheGathering.Games.Player do
     field :user_id, :integer
     field :discord_id, :string
     field :archived_at, :utc_datetime
+    # Populated from the linked user by `Games.list_players/1` and `Games.get_player!/1`.
+    field :avatar_url, :string, virtual: true
 
     has_many :decks, TheGathering.Games.Deck
     has_many :game_players, TheGathering.Games.GamePlayer

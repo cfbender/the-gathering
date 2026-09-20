@@ -6,7 +6,12 @@ defmodule TheGatheringWeb.API.PlayerJSON do
   def show(%{player: player}), do: %{data: detail(player)}
 
   def summary(%Player{} = player),
-    do: %{id: player.id, name: player.name, archived_at: player.archived_at}
+    do: %{
+      id: player.id,
+      name: player.name,
+      avatar_url: player.avatar_url,
+      archived_at: player.archived_at
+    }
 
   defp detail(player) do
     seats = player.game_players
