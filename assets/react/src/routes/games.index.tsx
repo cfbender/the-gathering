@@ -2,21 +2,68 @@ import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
-import { CalendarDays, Plus, Trophy } from "lucide-react"
-import { useState } from "react"
+import { CalendarDays, Plus, Trophy, X } from "lucide-react"
+import { useEffect, useState } from "react"
 import { formatDate, getGames, getPlayers } from "@/features/games/games"
 import { CardArtBackground } from "@/components/card-art-background"
 
 export const Route = createFileRoute("/games/")({ component: GamesPage })
 
+const emptyFilters = {
+  player_id: "",
+  winner_id: "",
+  commander: "",
+  player_count: "",
+  date_from: "",
+  date_to: "",
+  min_turns: "",
+  max_turns: "",
+  min_duration: "",
+  max_duration: "",
+}
+
+type Filters = typeof emptyFilters
+
+const seatCounts = ["2", "3", "4", "5", "6"]
+
 function GamesPage() {
-  const [playerId, setPlayerId] = useState("")
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [filters, setFilters] = useState<Filters>(emptyFilters)
   const [page, setPage] = useState(1)
-  const filters = { player_id: playerId, date_from: dateFrom, date_to: dateTo, page }
-  const games = useQuery({ queryKey: ["games", filters], queryFn: () => getGames(filters) })
+  // Commander is free text; wait for a pause in typing before querying.
+  const [commander, setCommander] = useState("")
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setFilters((current) =>
+        current.commander === commander.trim()
+          ? current
+          : { ...current, commander: commander.trim() },
+      )
+      setPage(1)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [commander])
+
+  function update(patch: Partial<Filters>) {
+    setFilters((current) => ({ ...current, ...patch }))
+    setPage(1)
+  }
+
+  function clear() {
+    setFilters(emptyFilters)
+    setCommander("")
+    setPage(1)
+  }
+
+  const activeCount = Object.values(filters).filter((value) => value !== "").length
+  const params = { ...filters, page }
+  const games = useQuery({ queryKey: ["games", params], queryFn: () => getGames(params) })
   const players = useQuery({ queryKey: ["players"], queryFn: getPlayers })
+
+  const playerOptions = players.data?.map((player) => (
+    <option key={player.id} value={player.id}>
+      {player.name}
+    </option>
+  ))
 
   return (
     <div className="flex flex-col gap-6">
@@ -31,49 +78,98 @@ function GamesPage() {
       />
 
       <section aria-label="Game filters" className="card border-base-300 bg-base-200 border">
-        <div className="card-body grid gap-3 p-4 sm:grid-cols-3">
-          <label className="form-control">
-            <span className="label-text mb-1 text-xs font-semibold">Player</span>
-            <select
-              className="select select-bordered select-sm w-full"
-              value={playerId}
-              onChange={(event) => {
-                setPlayerId(event.target.value)
-                setPage(1)
-              }}
-            >
-              <option value="">Everyone</option>
-              {players.data?.map((player) => (
-                <option key={player.id} value={player.id}>
-                  {player.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="form-control">
-            <span className="label-text mb-1 text-xs font-semibold">From</span>
-            <input
-              type="date"
-              className="input input-bordered input-sm w-full"
-              value={dateFrom}
-              onChange={(event) => {
-                setDateFrom(event.target.value)
-                setPage(1)
-              }}
+        <div className="card-body gap-3 p-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <label className="form-control">
+              <span className="label-text mb-1 text-xs font-semibold">Player</span>
+              <select
+                className="select select-bordered select-sm w-full"
+                value={filters.player_id}
+                onChange={(event) => update({ player_id: event.target.value })}
+              >
+                <option value="">Everyone</option>
+                {playerOptions}
+              </select>
+            </label>
+            <label className="form-control">
+              <span className="label-text mb-1 text-xs font-semibold">Winner</span>
+              <select
+                className="select select-bordered select-sm w-full"
+                value={filters.winner_id}
+                onChange={(event) => update({ winner_id: event.target.value })}
+              >
+                <option value="">Anyone</option>
+                {playerOptions}
+              </select>
+            </label>
+            <label className="form-control">
+              <span className="label-text mb-1 text-xs font-semibold">Commander</span>
+              <input
+                type="search"
+                className="input input-bordered input-sm w-full"
+                placeholder="Any commander or partner"
+                value={commander}
+                onChange={(event) => setCommander(event.target.value)}
+              />
+            </label>
+            <label className="form-control">
+              <span className="label-text mb-1 text-xs font-semibold">Pod size</span>
+              <select
+                className="select select-bordered select-sm w-full"
+                value={filters.player_count}
+                onChange={(event) => update({ player_count: event.target.value })}
+              >
+                <option value="">Any size</option>
+                {seatCounts.map((count) => (
+                  <option key={count} value={count}>
+                    {count} players
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-control">
+              <span className="label-text mb-1 text-xs font-semibold">From</span>
+              <input
+                type="date"
+                className="input input-bordered input-sm w-full"
+                value={filters.date_from}
+                onChange={(event) => update({ date_from: event.target.value })}
+              />
+            </label>
+            <label className="form-control">
+              <span className="label-text mb-1 text-xs font-semibold">Through</span>
+              <input
+                type="date"
+                className="input input-bordered input-sm w-full"
+                value={filters.date_to}
+                onChange={(event) => update({ date_to: event.target.value })}
+              />
+            </label>
+            <RangeFilter
+              label="Turns"
+              min={filters.min_turns}
+              max={filters.max_turns}
+              onChange={(min, max) => update({ min_turns: min, max_turns: max })}
             />
-          </label>
-          <label className="form-control">
-            <span className="label-text mb-1 text-xs font-semibold">Through</span>
-            <input
-              type="date"
-              className="input input-bordered input-sm w-full"
-              value={dateTo}
-              onChange={(event) => {
-                setDateTo(event.target.value)
-                setPage(1)
-              }}
+            <RangeFilter
+              label="Duration (minutes)"
+              min={filters.min_duration}
+              max={filters.max_duration}
+              onChange={(min, max) => update({ min_duration: min, max_duration: max })}
             />
-          </label>
+          </div>
+          {activeCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="text-base-content/70">
+                {activeCount} {activeCount === 1 ? "filter" : "filters"} active
+                {games.data &&
+                  ` · ${games.data.pagination.total} ${games.data.pagination.total === 1 ? "game" : "games"}`}
+              </span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={clear}>
+                <X className="size-4" /> Clear filters
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -120,7 +216,7 @@ function GamesPage() {
                       {seat.result === "win" && (
                         <Trophy className="text-success relative z-10 size-4 shrink-0" />
                       )}
-                      <span className="text-base-content relative z-10 min-w-0">
+                      <span className="text-base-content relative z-10 min-w-0 flex-1">
                         <strong className="block truncate">{seat.player.name}</strong>
                         <span className="text-base-content/85 block truncate text-xs">
                           {seat.deck?.commander_name ?? "Unknown commander"}
@@ -163,5 +259,46 @@ function GamesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+/** Paired min/max numeric inputs that share one label. */
+function RangeFilter({
+  label,
+  min,
+  max,
+  onChange,
+}: {
+  label: string
+  min: string
+  max: string
+  onChange: (min: string, max: string) => void
+}) {
+  return (
+    <fieldset className="form-control min-w-0">
+      <legend className="label-text mb-1 text-xs font-semibold">{label}</legend>
+      <div className="join w-full">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          className="input input-bordered input-sm join-item w-full min-w-0"
+          placeholder="Min"
+          aria-label={`Minimum ${label.toLowerCase()}`}
+          value={min}
+          onChange={(event) => onChange(event.target.value, max)}
+        />
+        <input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          className="input input-bordered input-sm join-item w-full min-w-0"
+          placeholder="Max"
+          aria-label={`Maximum ${label.toLowerCase()}`}
+          value={max}
+          onChange={(event) => onChange(min, event.target.value)}
+        />
+      </div>
+    </fieldset>
   )
 }
