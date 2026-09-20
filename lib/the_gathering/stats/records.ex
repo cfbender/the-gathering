@@ -6,12 +6,30 @@ defmodule TheGathering.Stats.Records do
   `"draw"`); games are `Game` structs with preloaded seats, newest first.
   """
 
+  alias TheGathering.Games.ColorIdentity
+
   @doc "Groups seats by `key_fun` and returns one record per group, most played first."
   def grouped_records(rows, entity_fun, key_fun) do
     rows
     |> Enum.group_by(key_fun)
     |> Enum.map(fn {_key, group} -> Map.merge(entity_fun.(hd(group)), record(group)) end)
     |> Enum.sort_by(&{-&1.games, -&1.win_rate, String.downcase(&1.name)})
+  end
+
+  @doc """
+  One record per deck color identity (`id` is the canonical WUBRG letters, `name`
+  the guild/shard name). Seats without a deck have no colors and are skipped.
+  """
+  def color_records(seats) do
+    seats
+    |> Enum.reject(&is_nil(&1.deck))
+    |> grouped_records(
+      &%{
+        id: ColorIdentity.canonical(&1.deck.color_identity),
+        name: ColorIdentity.name(&1.deck.color_identity)
+      },
+      &ColorIdentity.canonical(&1.deck.color_identity)
+    )
   end
 
   def record(rows) do

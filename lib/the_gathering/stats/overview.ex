@@ -2,7 +2,6 @@ defmodule TheGathering.Stats.Overview do
   @moduledoc "Calculates the playgroup overview statistics view."
 
   alias TheGathering.{Accounts, Stats}
-  alias TheGathering.Games.ColorIdentity
   alias TheGathering.Stats.{Query, Records, Summaries}
 
   def get(params \\ %{}) do
@@ -29,16 +28,7 @@ defmodule TheGathering.Stats.Overview do
           &%{id: &1.seat, name: "Seat #{&1.seat}"},
           & &1.seat
         ),
-      color_win_rates:
-        seats
-        |> Enum.reject(&is_nil(&1.deck))
-        |> Records.grouped_records(
-          &%{
-            id: ColorIdentity.canonical(&1.deck.color_identity),
-            name: ColorIdentity.name(&1.deck.color_identity)
-          },
-          &ColorIdentity.canonical(&1.deck.color_identity)
-        ),
+      color_win_rates: Records.color_records(seats),
       commanders: params |> Stats.Commanders.list() |> Enum.take(8),
       recent_games: games |> Enum.take(6) |> Enum.map(&Summaries.recent_game/1)
     }
