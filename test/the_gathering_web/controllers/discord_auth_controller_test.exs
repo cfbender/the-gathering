@@ -69,6 +69,54 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
     assert %{role: "member"} = Accounts.get_user_by_discord_id("100000000000000007")
   end
 
+  test "username and player-name clashes get a short numeric suffix", %{conn: conn} do
+    create_admin()
+    open_registration()
+    # "discord_user" and "Discord_User" are what the stubbed Discord profile yields.
+    {:ok, _first} =
+      Accounts.create_user(%{
+        "username" => "discord_user",
+        "display_name" => "Discord_User",
+        "password" => "long-enough-password"
+      })
+
+    {:ok, _player} = TheGathering.Games.create_player(%{name: "discord_user"})
+    {:ok, _player} = TheGathering.Games.create_player(%{name: "discord_user (2)"})
+
+    conn = discord_callback(conn, "100000000000000008")
+
+    assert redirected_to(conn) == "/"
+
+    assert %{username: "discord_user2"} =
+             user = Accounts.get_user_by_discord_id("100000000000000008")
+
+    assert %Player{name: "Discord_User (3)"} = Repo.get_by(Player, discord_id: user.discord_id)
+
+    conn = discord_callback(build_conn(), "100000000000000009")
+    assert redirected_to(conn) == "/"
+    assert %{username: "discord_user3"} = Accounts.get_user_by_discord_id("100000000000000009")
+  end
+
+  test "an administrator can rename a member's username", %{conn: conn} do
+    admin = create_admin()
+    open_registration()
+    user = create_discord_user("100000000000000010")
+
+    conn =
+      conn
+      |> log_in_user(admin)
+      |> patch(~p"/api/admin/users/#{user.id}", %{user: %{username: " Wax.Poetik "}})
+
+    assert %{"data" => %{"username" => "wax.poetik"}} = json_response(conn, 200)
+
+    conn =
+      build_conn()
+      |> log_in_user(admin)
+      |> patch(~p"/api/admin/users/#{user.id}", %{user: %{username: "owner"}})
+
+    assert %{"errors" => %{"username" => ["has already been taken"]}} = json_response(conn, 422)
+  end
+
   test "callback signs in an existing linked member while registration is closed", %{conn: conn} do
     create_admin()
     open_registration()

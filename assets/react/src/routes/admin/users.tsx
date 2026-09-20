@@ -109,7 +109,12 @@ function AdminUsersPage() {
 function UserCard({ user }: { user: User }) {
   const queryClient = useQueryClient()
   const update = useMutation({
-    mutationFn: (attrs: { display_name?: string; role?: string; disabled?: boolean }) =>
+    mutationFn: (attrs: {
+      username?: string
+      display_name?: string
+      role?: string
+      disabled?: boolean
+    }) =>
       api<Data<User>>(`/api/admin/users/${user.id}`, {
         method: "PATCH",
         body: JSON.stringify({ user: attrs }),
@@ -117,9 +122,12 @@ function UserCard({ user }: { user: User }) {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["admin", "users"] }),
   })
 
-  function saveName(event: FormEvent<HTMLFormElement>) {
+  function saveNames(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    update.mutate({ display_name: formValue(event.currentTarget, "display_name") })
+    update.mutate({
+      username: formValue(event.currentTarget, "username"),
+      display_name: formValue(event.currentTarget, "display_name"),
+    })
   }
 
   return (
@@ -134,7 +142,9 @@ function UserCard({ user }: { user: User }) {
               </span>
               {user.disabled && <span className="badge badge-error badge-sm">disabled</span>}
             </div>
-            <p className="text-base-content/60 text-sm">@{user.username}</p>
+            <p className="text-base-content/60 truncate text-sm" title={`@${user.username}`}>
+              @{user.username}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <select
@@ -171,20 +181,36 @@ function UserCard({ user }: { user: User }) {
             void queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
           }}
         />
-        <div>
-          <form className="join" onSubmit={saveName}>
+        <form className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]" onSubmit={saveNames}>
+          <label className="floating-label">
+            <span>Username</span>
+            <input
+              name="username"
+              aria-label={`Username for ${user.username}`}
+              defaultValue={user.username}
+              className="input input-sm w-full"
+              autoCapitalize="none"
+              autoCorrect="off"
+              required
+            />
+          </label>
+          <label className="floating-label">
+            <span>Display name</span>
             <input
               name="display_name"
               aria-label={`Display name for ${user.username}`}
               defaultValue={user.display_name}
-              className="input input-sm join-item min-w-0 flex-1"
+              className="input input-sm w-full"
               required
             />
-            <button className="btn btn-sm join-item" disabled={update.isPending}>
-              Save name
-            </button>
-          </form>
-        </div>
+          </label>
+          <button className="btn btn-sm" disabled={update.isPending}>
+            Save names
+          </button>
+        </form>
+        {errorMessage(update.error, "username") && (
+          <p className="text-error text-sm">{errorMessage(update.error, "username")}</p>
+        )}
       </div>
     </div>
   )
