@@ -122,6 +122,7 @@ export const getDecks = (playerId?: number) =>
   )
 export const getDeck = (id: string) =>
   api<{ data: Deck }>(`/api/decks/${id}`).then((body) => body.data)
+
 export const getGame = (id: string) =>
   api<{ data: Game }>(`/api/games/${id}`).then((body) => body.data)
 

@@ -18,17 +18,34 @@ export interface CardSummary {
   commander_pairing: string | null
 }
 
-export type SelectedCard = CardSummary & { catalog_id: string | null }
+export type CardSearchMode = "all" | "commander" | "partner"
 
-export function selectCatalogCard(card: CardSummary): SelectedCard {
-  return { ...card, catalog_id: card.id }
+export type CatalogCard = CardSummary & {
+  catalog_id: string
+  source: "catalog"
+}
+
+export type StoredCardSnapshot = Omit<CardSummary, "color_identity"> & {
+  catalog_id: string | null
+  source: "snapshot"
+  color_identity: null
+}
+
+export type SelectedCard = CatalogCard | StoredCardSnapshot
+
+export function selectCatalogCard(card: CardSummary): CatalogCard {
+  return { ...card, catalog_id: card.id, source: "catalog" }
+}
+
+export function cardForDisplay(card: SelectedCard | null): CardSummary | null {
+  return card ? { ...card, color_identity: card.color_identity ?? [] } : null
 }
 
 export function cardSnapshot(
   catalogId: string | null | undefined,
   name: string | null | undefined,
-  colorIdentity: string[] = [],
-): SelectedCard | null {
+  _unknownColorIdentity?: string[],
+): StoredCardSnapshot | null {
   if (!name) return null
   return {
     id: catalogId ?? `snapshot:${name}`,
@@ -37,16 +54,18 @@ export function cardSnapshot(
     name,
     mana_cost: null,
     type_line: catalogId ? "Stored card snapshot" : "Card not found in catalog",
-    color_identity: colorIdentity,
+    color_identity: null,
     image_uris: {},
     can_be_commander: true,
     commander_pairing: null,
+    source: "snapshot",
   }
 }
 
 const colorOrder = ["W", "U", "B", "R", "G"]
 
 export function combinedColorIdentity(cards: Array<SelectedCard | null>) {
+  if (cards.some((card) => card?.color_identity === null)) return null
   const colors = new Set(cards.flatMap((card) => card?.color_identity ?? []))
   return colorOrder.filter((color) => colors.has(color)).join("")
 }
@@ -60,10 +79,15 @@ export interface CatalogStatus {
   last_error: string | null
 }
 
-export async function searchCards(query: string, commanderOnly = false, limit = 20) {
+export async function searchCards(query: string, mode: CardSearchMode = "all", limit = 20) {
   const params = new URLSearchParams({ q: query, limit: String(limit) })
-  if (commanderOnly) params.set("commander", "true")
+  if (mode === "commander") params.set("commander", "true")
+  if (mode === "partner") params.set("partner", "true")
   return api<{ data: CardSummary[] }>(`/api/cards?${params}`).then((response) => response.data)
+}
+
+export function getCard(id: string) {
+  return api<{ data: CardSummary }>(`/api/cards/${id}`).then((response) => response.data)
 }
 
 export function fetchCatalogStatus() {

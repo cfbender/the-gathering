@@ -9,6 +9,7 @@ defmodule TheGatheringWeb.API.CardController do
     cards =
       Catalog.search(Map.get(params, "q", ""),
         commander: boolean_param(params["commander"]),
+        partner: boolean_param(params["partner"]),
         limit: limit_param(params["limit"])
       )
 

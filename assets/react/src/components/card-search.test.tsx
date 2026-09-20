@@ -32,12 +32,12 @@ const cards: CardSummary[] = [
 
 function Harness() {
   const [value, setValue] = useState<CardSummary | null>(null)
-  return <CardSearch label="Commander" value={value} onChange={setValue} commanderOnly />
+  return <CardSearch label="Commander" value={value} onChange={setValue} mode="commander" />
 }
 
 function SelectedHarness() {
   const [value, setValue] = useState<CardSummary | null>(cards[0] ?? null)
-  return <CardSearch label="Commander" value={value} onChange={setValue} commanderOnly />
+  return <CardSearch label="Commander" value={value} onChange={setValue} mode="commander" />
 }
 
 function renderSearch(component = <Harness />) {
@@ -89,5 +89,26 @@ describe("CardSearch", () => {
 
     expect((combobox as HTMLInputElement).value).toBe("Atraxa!")
     expect(screen.queryByText("Legendary Creature — Phyrexian Angel Horror")).toBeNull()
+  })
+
+  it("searches partner-eligible cards in partner mode instead of primary commanders", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetch)
+    renderSearch(<CardSearch label="Partner" value={null} onChange={() => {}} mode="partner" />)
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Partner" }), {
+      target: { value: "Background" },
+    })
+
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/cards?q=Background&limit=20&partner=true",
+      expect.anything(),
+    )
   })
 })

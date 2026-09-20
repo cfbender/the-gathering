@@ -5,13 +5,14 @@ import type { KeyboardEvent } from "react"
 import { CardImage } from "./card-image"
 import { ManaCost } from "./mana-symbols"
 import type { CardSummary } from "@/lib/cards"
-import { searchCards } from "@/lib/cards"
+import { searchCards, type CardSearchMode } from "@/lib/cards"
 import { cn } from "@/lib/cn"
 
 interface CardSearchProps {
   value: CardSummary | null
   onChange: (card: CardSummary | null) => void
-  commanderOnly?: boolean
+  /** Which cards to offer: any card, primary-commander-eligible cards, or partner-eligible cards (incl. Backgrounds). */
+  mode?: CardSearchMode
   placeholder?: string
   label: string
   required?: boolean
@@ -20,7 +21,7 @@ interface CardSearchProps {
 export function CardSearch({
   value,
   onChange,
-  commanderOnly = false,
+  mode = "all",
   placeholder = "Search cards by name…",
   label,
   required = false,
@@ -47,8 +48,8 @@ export function CardSearch({
   }, [value])
 
   const cards = useQuery({
-    queryKey: ["cards", { q: debounced, commander: commanderOnly }],
-    queryFn: () => searchCards(debounced, commanderOnly),
+    queryKey: ["cards", { q: debounced, mode }],
+    queryFn: () => searchCards(debounced, mode),
     enabled: open && debounced.length > 0,
   })
   const options = cards.data ?? []

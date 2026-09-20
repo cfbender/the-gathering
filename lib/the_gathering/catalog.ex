@@ -14,6 +14,7 @@ defmodule TheGathering.Catalog do
     normalized = query |> to_string() |> String.trim() |> CardData.normalize_name()
     limit = opts |> Keyword.get(:limit, @default_limit) |> min(@max_limit) |> max(1)
     commander = Keyword.get(opts, :commander)
+    partner = Keyword.get(opts, :partner)
 
     if normalized == "" do
       []
@@ -24,6 +25,7 @@ defmodule TheGathering.Catalog do
       Card
       |> where([card], fragment("? LIKE ? ESCAPE '\\'", card.normalized_name, ^pattern))
       |> commander_filter(commander)
+      |> partner_filter(partner)
       |> order_by(
         [card],
         asc:
@@ -112,6 +114,11 @@ defmodule TheGathering.Catalog do
   defp commander_filter(query, true), do: where(query, [card], card.can_be_commander)
   defp commander_filter(query, false), do: where(query, [card], not card.can_be_commander)
   defp commander_filter(query, _value), do: query
+
+  defp partner_filter(query, true),
+    do: where(query, [card], not is_nil(card.commander_pairing))
+
+  defp partner_filter(query, _value), do: query
 
   defp escape_like(value) do
     value
