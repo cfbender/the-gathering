@@ -49,6 +49,30 @@ defmodule TheGathering.Games.Deck do
     |> unique_constraint(:name)
   end
 
+  def update_changeset(deck, attrs) do
+    deck
+    |> cast(attrs, [
+      :name,
+      :commander_card_id,
+      :commander_name,
+      :partner_card_id,
+      :partner_name,
+      :color_identity,
+      :decklist_url,
+      :archived_at
+    ])
+    |> update_change(:name, &String.trim/1)
+    |> update_change(:commander_name, &String.trim/1)
+    |> put_decklist_source()
+    |> validate_required([:player_id, :name, :commander_name])
+    |> validate_length(:name, min: 1, max: 100)
+    |> validate_color_identity()
+    |> validate_inclusion(:decklist_source, @sources)
+    |> unique_constraint(:name, name: :decks_player_name_nocase_index)
+    |> unique_constraint(:name, name: :decks_player_id_name_index)
+    |> unique_constraint(:name)
+  end
+
   defp put_decklist_source(changeset) do
     case get_field(changeset, :decklist_url) do
       url when is_binary(url) and url != "" ->

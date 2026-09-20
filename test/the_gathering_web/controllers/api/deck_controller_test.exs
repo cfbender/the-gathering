@@ -2,7 +2,7 @@ defmodule TheGatheringWeb.API.DeckControllerTest do
   use TheGatheringWeb.ConnCase, async: false
 
   alias TheGathering.AccountsFixtures
-  alias TheGathering.Games
+  alias TheGathering.{Games, Stats}
 
   setup %{conn: conn} do
     admin = AccountsFixtures.admin_fixture()
@@ -25,6 +25,7 @@ defmodule TheGatheringWeb.API.DeckControllerTest do
       owner: owner,
       other: other,
       owner_player: owner_player,
+      guest: guest,
       deck: deck,
       guest_deck: guest_deck
     }
@@ -68,13 +69,46 @@ defmodule TheGatheringWeb.API.DeckControllerTest do
     assert body["data"]["name"] == "Krenko!"
   end
 
-  test "any member can maintain decks of unclaimed guest players", ctx do
+  test "members cannot edit decks of unclaimed guest players", ctx do
+    assert %{"errors" => %{"detail" => "Forbidden"}} =
+             ctx.conn
+             |> log_in_user(ctx.other)
+             |> patch(~p"/api/decks/#{ctx.guest_deck.id}", %{deck: %{name: "Tyvar Kell"}})
+             |> json_response(403)
+
+    assert Games.get_deck!(ctx.guest_deck.id).name == "Tyvar"
+  end
+
+  test "PATCH cannot transfer an owned or guest deck and historical stats remain valid", ctx do
+    {:ok, _game} =
+      Games.create_game(%{
+        played_at: ~U[2026-09-20 12:00:00Z],
+        seats: [
+          %{player_id: ctx.owner_player.id, deck_id: ctx.deck.id, seat: 1, result: "win"},
+          %{player_id: ctx.guest.id, seat: 2, result: "loss"}
+        ]
+      })
+
     body =
       ctx.conn
-      |> log_in_user(ctx.other)
-      |> patch(~p"/api/decks/#{ctx.guest_deck.id}", %{deck: %{name: "Tyvar Kell"}})
+      |> log_in_user(ctx.owner)
+      |> patch(~p"/api/decks/#{ctx.deck.id}", %{deck: %{player_id: ctx.guest.id}})
       |> json_response(200)
 
-    assert body["data"]["name"] == "Tyvar Kell"
+    assert body["data"]["player_id"] == ctx.owner_player.id
+    assert Games.get_deck!(ctx.deck.id).player_id == ctx.owner_player.id
+    assert %{player: %{id: owner_id}, record: %{games: 1}} = Stats.deck(ctx.deck.id)
+    assert owner_id == ctx.owner_player.id
+
+    assert %{"errors" => %{"detail" => "Forbidden"}} =
+             ctx.conn
+             |> recycle()
+             |> log_in_user(ctx.other)
+             |> patch(~p"/api/decks/#{ctx.guest_deck.id}", %{
+               deck: %{player_id: ctx.owner_player.id}
+             })
+             |> json_response(403)
+
+    assert Games.get_deck!(ctx.guest_deck.id).player_id == ctx.guest.id
   end
 end

@@ -3,14 +3,16 @@ import { Link, createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Clock, Pencil, Trophy } from "lucide-react"
-import { formatDate, getGame } from "@/lib/games"
+import { canManageGame, formatDate, getGame } from "@/lib/games"
 import { CardArtBackground } from "@/components/card-art-background"
+import { useCurrentUser } from "@/lib/auth"
 
 export const Route = createFileRoute("/games/$gameId")({ component: GameDetailPage })
 
 function GameDetailPage() {
   const { gameId } = Route.useParams()
   const query = useQuery({ queryKey: ["games", gameId], queryFn: () => getGame(gameId) })
+  const viewer = useCurrentUser()
   if (query.isPending)
     return (
       <div className="flex justify-center py-16">
@@ -25,9 +27,11 @@ function GameDetailPage() {
         eyebrow={`Game #${game.id}`}
         title={formatDate(game.played_at)}
         actions={
-          <Link to="/games/$gameId/edit" params={{ gameId }} className="btn btn-outline">
-            <Pencil className="size-4" /> Edit
-          </Link>
+          canManageGame(viewer.data, game) && (
+            <Link to="/games/$gameId/edit" params={{ gameId }} className="btn btn-outline">
+              <Pencil className="size-4" /> Edit
+            </Link>
+          )
         }
       >
         {(game.turns || game.duration_minutes) && (
