@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
-import { ColorIdentity } from "@/components/mana-symbols"
-import { CalendarDays, Plus, Trophy, X } from "lucide-react"
+import { CalendarDays, Plus, X } from "lucide-react"
 import { useEffect, useState } from "react"
-import { formatDate, getGames, getPlayers } from "@/features/games/games"
+import { getGames, getPlayers } from "@/features/games/games"
+import { GameCard } from "@/features/games/game-card"
 import {
   countActiveGameFilters,
   parseGamesSearch,
@@ -12,7 +12,6 @@ import {
   toGameFilters,
   type GameFilters,
 } from "@/features/games/game-filters"
-import { CardArtBackground } from "@/components/card-art-background"
 
 export const Route = createFileRoute("/games/")({
   validateSearch: parseGamesSearch,
@@ -193,50 +192,9 @@ function GamesPage() {
         />
       )}
       <div className="grid gap-4 lg:grid-cols-2">
-        {games.data?.data.map((game) => {
-          const winner = game.seats.find((seat) => seat.result === "win")
-          return (
-            <Link
-              key={game.id}
-              to="/games/$gameId"
-              params={{ gameId: String(game.id) }}
-              className="card border-base-300 bg-base-200 hover:border-primary border transition-colors"
-            >
-              <div className="card-body gap-4 p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="font-bold">{formatDate(game.played_at)}</h2>
-                  <span className="badge badge-ghost">{game.seats.length} players</span>
-                </div>
-                <ul className="grid gap-2 sm:grid-cols-2">
-                  {game.seats.map((seat) => (
-                    <li
-                      key={seat.id}
-                      className={`relative flex items-center gap-2 overflow-hidden rounded-lg px-3 py-2 ${seat.result === "win" ? "border-success border bg-success/15" : "bg-base-100"}`}
-                    >
-                      <CardArtBackground imageUrl={seat.deck?.commander_art_crop_url} />
-                      {seat.result === "win" && (
-                        <Trophy className="text-success relative z-10 size-4 shrink-0" />
-                      )}
-                      <span className="text-base-content relative z-10 min-w-0 flex-1">
-                        <strong className="block truncate">{seat.player.name}</strong>
-                        <span className="text-base-content/85 block truncate text-xs">
-                          {seat.deck?.commander_name ?? "Unknown commander"}
-                        </span>
-                      </span>
-                      {seat.deck && <ColorIdentity colors={seat.deck.color_identity} />}
-                    </li>
-                  ))}
-                </ul>
-                {winner && (
-                  <p className="text-success text-sm font-semibold">
-                    {winner.player.name} won with {winner.deck?.name ?? "an unknown deck"}
-                  </p>
-                )}
-                {!winner && <p className="text-info text-sm font-semibold">Draw</p>}
-              </div>
-            </Link>
-          )
-        })}
+        {games.data?.data.map((game) => (
+          <GameCard key={game.id} game={game} />
+        ))}
       </div>
       {games.data && games.data.pagination.total_pages > 1 && (
         <div className="join self-center">
