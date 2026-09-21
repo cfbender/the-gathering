@@ -1,7 +1,13 @@
 import { TrendingUp } from "lucide-react"
 import { EloChart } from "./elo-chart"
 import { StatCard } from "./stat-card"
-import type { PlayerStats } from "@/lib/stats"
+import { LEADERBOARD_MIN_GAMES, type PlayerStats } from "@/lib/stats"
+
+function eloDetail(elo: NonNullable<PlayerStats["elo"]>): string {
+  if (elo.rank !== null) return `#${elo.rank} of ${elo.players} · peak ${elo.peak}`
+  const remaining = LEADERBOARD_MIN_GAMES - elo.games
+  return `unranked · ${remaining} more ${remaining === 1 ? "game" : "games"} to rank`
+}
 
 export function EloStatCard({ elo, className }: { elo: PlayerStats["elo"]; className?: string }) {
   return (
@@ -9,7 +15,7 @@ export function EloStatCard({ elo, className }: { elo: PlayerStats["elo"]; class
       className={className}
       label="Elo rating"
       value={elo ? elo.rating : "—"}
-      detail={elo ? `#${elo.rank} of ${elo.players} · peak ${elo.peak}` : "no rated games yet"}
+      detail={elo ? eloDetail(elo) : "no rated games yet"}
       icon={<TrendingUp className="size-4" />}
     />
   )

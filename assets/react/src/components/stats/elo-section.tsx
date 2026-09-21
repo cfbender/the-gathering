@@ -5,6 +5,7 @@ import { LEADERBOARD_MIN_GAMES, type OverviewStats } from "@/lib/stats"
 
 export function EloSection({ players }: { players: OverviewStats["elo"] }) {
   const chartSeries = selectEloSeries(players, LEADERBOARD_MIN_GAMES)
+  const ranked = players.filter((player) => player.games >= LEADERBOARD_MIN_GAMES)
 
   return (
     <section aria-labelledby="ratings-heading">
@@ -28,7 +29,12 @@ export function EloSection({ players }: { players: OverviewStats["elo"] }) {
         <div className="border-base-300 bg-base-200/60 flex flex-col overflow-hidden rounded-xl border">
           <h3 className="border-base-300 border-b px-5 py-4 font-bold">Current ratings</h3>
           <div className="divide-base-300 min-h-0 flex-1 max-h-[28rem] divide-y overflow-y-auto lg:max-h-[40rem]">
-            {players.map((player, index) => (
+            {ranked.length === 0 && (
+              <p className="text-base-content/55 px-5 py-4 text-sm">
+                Players are ranked after {LEADERBOARD_MIN_GAMES} games.
+              </p>
+            )}
+            {ranked.map((player, index) => (
               <Link
                 key={player.id}
                 to="/players/$playerId"
