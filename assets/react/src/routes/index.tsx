@@ -9,13 +9,25 @@ import { EloSection } from "@/components/stats/elo-section"
 import { GameLengths } from "@/components/stats/game-lengths"
 import { MatchupHeatmap } from "@/components/stats/matchup-heatmap"
 import { StatCard } from "@/components/stats/stat-card"
+import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
 import { formatDate } from "@/features/games/games"
-import { LEADERBOARD_MIN_GAMES, getOverviewStats, leaderboardRows, sinceLabel } from "@/lib/stats"
+import {
+  LEADERBOARD_MIN_GAMES,
+  getOverviewStats,
+  leaderboardRows,
+  sinceLabel,
+  statsQueryKey,
+} from "@/lib/stats"
+import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
 
 export const Route = createFileRoute("/")({ component: HomePage })
 
 function HomePage() {
-  const query = useQuery({ queryKey: ["stats", "overview"], queryFn: getOverviewStats })
+  const { range, params } = useStatsRange()
+  const query = useQuery({
+    queryKey: statsQueryKey(params, "overview"),
+    queryFn: () => getOverviewStats(params),
+  })
   if (query.isPending)
     return (
       <div className="grid min-h-64 place-items-center">
@@ -26,28 +38,40 @@ function HomePage() {
     return <div className="alert alert-error">Could not load playgroup statistics.</div>
   const stats = query.data
 
-  if (stats.games_count === 0) return <EmptyDashboard />
+  if (stats.games_count === 0 && range === "all") return <EmptyDashboard />
   const leaderboard = leaderboardRows(stats.leaderboard)
   const leader = leaderboard[0]
   const since = sinceLabel(stats.detailed_stats_from)
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
-      <header>
-        <p className="text-primary text-xs font-bold tracking-[0.2em] uppercase">Playgroup pulse</p>
-        <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">
-          The table, by the numbers.
-        </h1>
-        <p className="text-base-content/60 mt-2">
-          Every rivalry, hot streak, and improbable topdeck.
-        </p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-primary text-xs font-bold tracking-[0.2em] uppercase">
+            Playgroup pulse
+          </p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-5xl">
+            The table, by the numbers.
+          </h1>
+          <p className="text-base-content/60 mt-2">
+            Every rivalry, hot streak, and improbable topdeck.
+          </p>
+        </div>
+        <StatsRangeToggle className="shrink-0" />
       </header>
+
+      {stats.games_count === 0 && (
+        <div className="alert">
+          <Gamepad2 className="size-5" />
+          <span>No games in the {statsRangeDetails[range]}. Try a wider range.</span>
+        </div>
+      )}
 
       <section aria-label="Highlights" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Games played"
           value={stats.games_count}
-          detail="all time"
+          detail={statsRangeDetails[range]}
           icon={<Gamepad2 className="size-4" />}
         />
         <StatCard

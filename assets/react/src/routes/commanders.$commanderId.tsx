@@ -8,16 +8,19 @@ import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart, LineChart } from "@/components/stats/charts"
 import { CommanderRivalries } from "@/components/stats/rivalries"
 import { StatCard } from "@/components/stats/stat-card"
+import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
 import { formatDate } from "@/features/games/games"
-import { getCommanderDetail, type NamedRecordRow } from "@/lib/stats"
+import { getCommanderDetail, statsQueryKey, type NamedRecordRow } from "@/lib/stats"
+import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
 
 export const Route = createFileRoute("/commanders/$commanderId")({ component: CommanderPage })
 
 function CommanderPage() {
   const { commanderId } = Route.useParams()
+  const { range, params } = useStatsRange()
   const query = useQuery({
-    queryKey: ["stats", "commanders", commanderId],
-    queryFn: () => getCommanderDetail(commanderId),
+    queryKey: statsQueryKey(params, "commanders", commanderId),
+    queryFn: () => getCommanderDetail(commanderId, params),
   })
   if (query.isPending) return <span className="loading loading-spinner" />
   if (query.isError) return <div className="alert alert-error">Commander not found.</div>
@@ -30,6 +33,7 @@ function CommanderPage() {
         eyebrow={<Link to="/commanders">Commanders</Link>}
         title={commander.name}
         backgroundImageUrl={commander.art_crop_url}
+        actions={<StatsRangeToggle />}
       >
         <ColorIdentity colors={commander.color_identity ?? ""} className="mt-4 text-lg" />
       </PageHeader>
@@ -41,7 +45,12 @@ function CommanderPage() {
           detail={`${record.wins}–${record.losses}–${record.draws}`}
           icon={<Target className="size-4" />}
         />
-        <StatCard label="Games" value={record.games} icon={<Gamepad2 className="size-4" />} />
+        <StatCard
+          label="Games"
+          value={record.games}
+          detail={statsRangeDetails[range]}
+          icon={<Gamepad2 className="size-4" />}
+        />
         <StatCard label="Pilots" value={stats.pilots.length} icon={<Users className="size-4" />} />
         <StatCard label="Decks" value={stats.decks.length} icon={<Layers className="size-4" />} />
       </div>

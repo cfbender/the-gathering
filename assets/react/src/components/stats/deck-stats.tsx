@@ -2,12 +2,15 @@ import { useQuery } from "@tanstack/react-query"
 import { Clock3, RotateCcw, Target } from "lucide-react"
 import { BarChart, LineChart } from "./charts"
 import { StatCard } from "./stat-card"
-import { getDeckStats, sinceLabel } from "@/lib/stats"
+import { StatsRangeToggle } from "./stats-range-toggle"
+import { getDeckStats, sinceLabel, statsQueryKey } from "@/lib/stats"
+import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
 
 export function DeckStats({ deckId }: { deckId: string }) {
+  const { range, params } = useStatsRange()
   const query = useQuery({
-    queryKey: ["stats", "decks", deckId],
-    queryFn: () => getDeckStats(deckId),
+    queryKey: statsQueryKey(params, "decks", deckId),
+    queryFn: () => getDeckStats(deckId, params),
   })
   if (query.isPending) return <span className="loading loading-spinner" />
   if (query.isError) return null
@@ -15,17 +18,20 @@ export function DeckStats({ deckId }: { deckId: string }) {
   const since = sinceLabel(stats.detailed_stats_from)
   return (
     <section className="space-y-4" aria-labelledby="deck-stats-heading">
-      <div>
-        <p className="text-primary text-xs font-bold tracking-wider uppercase">Deck analytics</p>
-        <h2 id="deck-stats-heading" className="text-2xl font-black">
-          Performance
-        </h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-primary text-xs font-bold tracking-wider uppercase">Deck analytics</p>
+          <h2 id="deck-stats-heading" className="text-2xl font-black">
+            Performance
+          </h2>
+        </div>
+        <StatsRangeToggle className="shrink-0" />
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatCard
           label="Win rate"
           value={`${stats.record.win_rate}%`}
-          detail={`${stats.record.wins}–${stats.record.losses}–${stats.record.draws}`}
+          detail={`${stats.record.wins}–${stats.record.losses}–${stats.record.draws} · ${statsRangeDetails[range]}`}
           icon={<Target className="size-4" />}
         />
         <StatCard
