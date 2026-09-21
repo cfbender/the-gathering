@@ -210,6 +210,15 @@ defmodule TheGathering.StatsTest do
     # for the group overview.
     refute Enum.any?(stats.color_win_rates, &(&1.id == "R"))
     assert %{games: 9} = Enum.find(Stats.overview().color_win_rates, &(&1.id == "R"))
+
+    # Retiring Rats keeps its games and record but flags the row so the profile can fold it.
+    {:ok, _rats} = Games.update_deck(rats, %{archived_at: ~U[2026-05-01 00:00:00Z]})
+    retired = Stats.player(players["Alice"].id)
+
+    assert retired.record == stats.record
+    assert %{retired: true, games: 2, wins: 1} = Enum.find(retired.decks, &(&1.id == rats.id))
+    refute Map.has_key?(Enum.find(retired.decks, &(&1.id == more_birds.id)), :retired)
+    refute Enum.any?(Stats.overview().leaderboard, &Map.has_key?(&1, :retired))
   end
 
   test "overview and player views add Elo, matchups, game lengths, colors, and rivals",

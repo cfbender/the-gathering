@@ -120,7 +120,8 @@ export interface PlayerStats {
   streaks: { current_wins: number; longest_wins: number }
   recent_form: ("win" | "loss" | "draw")[]
   win_rate_over_time: TrendPoint[]
-  decks: NamedRecordRow[]
+  /** Every deck the player has piloted; retired decks are flagged so the profile can fold them. */
+  decks: (NamedRecordRow & { retired?: true })[]
   /** This player's seats grouped by deck color identity; same shape as the overview's. */
   color_win_rates: NamedRecordRow[]
   color_exposure: ColorExposure[]

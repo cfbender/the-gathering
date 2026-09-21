@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { PlayerAvatar } from "@/components/player-avatar"
 import { SudoPrompt } from "@/components/sudo-prompt"
-import { ExternalLink, Merge, Trophy } from "lucide-react"
+import { Archive, ExternalLink, Merge, Trophy } from "lucide-react"
 import { useState } from "react"
 import { PlayerStats } from "@/components/stats/player-stats"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -14,6 +14,7 @@ import {
   SyncRemoteDecksResult,
   useSyncRemoteDecks,
 } from "@/features/decks/sync-remote-decks"
+import { isRetired, type DeckSummary } from "@/features/decks/decks"
 import { remoteDeckSourceLabels, type RemoteDeckSource } from "@/lib/remote-decks"
 import { errorMessage, isSudoRequired, useCurrentUser } from "@/lib/auth"
 import { formatDate, getPlayer, getPlayers, mergePlayers } from "@/features/games/games"
@@ -88,6 +89,8 @@ function PlayerDecks({ player }: { player: PlayerDetail }) {
   const viewer = useCurrentUser()
   const owner = viewer.data !== undefined && viewer.data.id === player.user_id
   const sync = useSyncRemoteDecks()
+  const active = player.decks.filter((deck) => !isRetired(deck))
+  const retired = player.decks.filter(isRetired)
 
   return (
     <section>
@@ -108,32 +111,56 @@ function PlayerDecks({ player }: { player: PlayerDetail }) {
         </div>
       )}
       {player.decks.length === 0 && <p className="text-base-content/60">No decks recorded yet.</p>}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {player.decks.map((deck) => (
-          <Link
-            key={deck.id}
-            to="/decks/$deckId"
-            params={{ deckId: String(deck.id) }}
-            className="card group border-base-300 bg-base-200 hover:border-primary/40 relative overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-xl"
-          >
-            <CardArtBackground imageUrl={deck.commander_art_crop_url} interactive />
-            <div className="card-body text-base-content relative z-10 p-4">
-              <span className="flex items-center justify-between gap-2">
-                <strong>{deck.name}</strong>
-                <ColorIdentity colors={deck.color_identity} />
-              </span>
-              <span className="text-base-content/85 text-sm">{deck.commander_name}</span>
-              {deck.decklist_url && (
-                <span className="text-base-content/70 inline-flex items-center gap-1 text-xs">
-                  <ExternalLink className="size-3" />
-                  {deckHostLabel(deck.decklist_source)}
-                </span>
-              )}
-            </div>
-          </Link>
-        ))}
-      </div>
+      {active.length === 0 && retired.length > 0 && (
+        <p className="text-base-content/60">Every deck is retired.</p>
+      )}
+      <DeckGrid decks={active} />
+      {retired.length > 0 && (
+        <details className="collapse-arrow border-base-300 bg-base-200/60 collapse mt-4 border">
+          <summary className="collapse-title flex items-center gap-2 font-bold">
+            <Archive className="size-4" /> Retired decks
+            <span className="badge badge-sm badge-neutral">{retired.length}</span>
+          </summary>
+          <div className="collapse-content">
+            <p className="text-base-content/60 mb-3 text-sm">
+              Shelved for now; their games still count.
+            </p>
+            <DeckGrid decks={retired} />
+          </div>
+        </details>
+      )}
     </section>
+  )
+}
+
+function DeckGrid({ decks }: { decks: DeckSummary[] }) {
+  if (decks.length === 0) return null
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {decks.map((deck) => (
+        <Link
+          key={deck.id}
+          to="/decks/$deckId"
+          params={{ deckId: String(deck.id) }}
+          className="card group border-base-300 bg-base-200 hover:border-primary/40 relative overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-xl"
+        >
+          <CardArtBackground imageUrl={deck.commander_art_crop_url} interactive />
+          <div className="card-body text-base-content relative z-10 p-4">
+            <span className="flex items-center justify-between gap-2">
+              <strong>{deck.name}</strong>
+              <ColorIdentity colors={deck.color_identity} />
+            </span>
+            <span className="text-base-content/85 text-sm">{deck.commander_name}</span>
+            {deck.decklist_url && (
+              <span className="text-base-content/70 inline-flex items-center gap-1 text-xs">
+                <ExternalLink className="size-3" />
+                {deckHostLabel(deck.decklist_source)}
+              </span>
+            )}
+          </div>
+        </Link>
+      ))}
+    </div>
   )
 }
 

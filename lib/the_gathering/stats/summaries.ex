@@ -2,6 +2,7 @@ defmodule TheGathering.Stats.Summaries do
   @moduledoc "Response shaping shared by statistics views."
 
   alias TheGathering.Catalog
+  alias TheGathering.Games.Deck
   alias TheGathering.Stats.Records
 
   def recent_game(game, tracked \\ nil) do
@@ -48,7 +49,14 @@ defmodule TheGathering.Stats.Summaries do
   defp maybe_recent_game(nil, _tracked_fun), do: nil
   defp maybe_recent_game(game, tracked_fun), do: recent_game(game, tracked_fun.(game))
 
-  def entity(%{id: id, name: name} = value) do
+  # A retired (archived) deck carries `retired: true` so the profile can fold it
+  # away while its games keep counting; other entities omit the key.
+  def entity(%Deck{} = deck),
+    do: deck |> named_entity() |> maybe_put(:retired, if(deck.archived_at, do: true))
+
+  def entity(value), do: named_entity(value)
+
+  defp named_entity(%{id: id, name: name} = value) do
     %{id: id, name: name}
     |> maybe_put(:commander_name, Map.get(value, :commander_name))
     |> maybe_put(:art_crop_url, Map.get(value, :art_crop_url))

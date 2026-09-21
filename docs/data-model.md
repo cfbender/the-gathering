@@ -21,7 +21,7 @@ Member API requests may set only guest-editable fields such as `name` and `archi
 
 Each deck belongs to a player. `name` is case-insensitively unique within that player. `commander_card_id` and `partner_card_id` hold Scryfall UUIDs without foreign keys until the catalog integration lands; the corresponding required `commander_name` and optional `partner_name` are durable display snapshots. `color_identity` is a compact, validated WUBRG string (for example `WUG` or the empty string), rather than catalog-derived JSON.
 
-`decklist_source` is derived from `decklist_url` as `moxfield`, `archidekt`, `manavault`, or `other`. `archived_at` has the same list semantics as players.
+`decklist_source` is derived from `decklist_url` as `moxfield`, `archidekt`, `manavault`, or `other`. `archived_at` has the same list semantics as players; the UI calls this "retiring" a deck. A retired deck is excluded from `GET /api/decks` and the deck chooser, but still appears (with its `archived_at`) in the player's `decks` so the profile can fold it under "Retired decks", and its rows in the player statistics payload carry `retired: true`. Owners retire or bring back a deck by `PATCH`ing `archived_at` to a timestamp or `null`.
 
 Members may update or delete only decks owned by their linked player, and administrators may
 manage any deck. A deck's owner cannot be changed through the API update operation. Creating a
