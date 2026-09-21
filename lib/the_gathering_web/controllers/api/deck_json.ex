@@ -15,12 +15,24 @@ defmodule TheGatheringWeb.API.DeckJSON do
       name: deck.name,
       commander_card_id: deck.commander_card_id,
       commander_name: deck.commander_name,
+      commander_printing_id: deck.commander_printing_id,
       commander_art_crop_url:
-        Catalog.art_crop_url(card_art, deck.commander_card_id, deck.commander_name),
+        Catalog.art_crop_url(
+          card_art,
+          deck.commander_card_id,
+          deck.commander_name,
+          deck.commander_printing_id
+        ),
       partner_card_id: deck.partner_card_id,
       partner_name: deck.partner_name,
+      partner_printing_id: deck.partner_printing_id,
       partner_art_crop_url:
-        Catalog.art_crop_url(card_art, deck.partner_card_id, deck.partner_name),
+        Catalog.art_crop_url(
+          card_art,
+          deck.partner_card_id,
+          deck.partner_name,
+          deck.partner_printing_id
+        ),
       color_identity: deck.color_identity,
       decklist_url: deck.decklist_url,
       decklist_source: deck.decklist_source,
@@ -33,7 +45,12 @@ defmodule TheGatheringWeb.API.DeckJSON do
 
   def card_refs(decks) when is_list(decks) do
     Enum.flat_map(decks, fn deck ->
-      [{deck.commander_card_id, deck.commander_name}, {deck.partner_card_id, deck.partner_name}]
+      [
+        {deck.commander_card_id, deck.commander_name},
+        {deck.partner_card_id, deck.partner_name},
+        {:printing, deck.commander_printing_id},
+        {:printing, deck.partner_printing_id}
+      ]
     end)
   end
 

@@ -86,8 +86,154 @@ describe("deck editor", () => {
     expect(payload.deck).toMatchObject({
       partner_card_id: null,
       partner_name: null,
+      partner_printing_id: null,
       color_identity: "G",
     })
+  })
+
+  it("selects a later-page printing, saves without changing identity or colors, reloads and resets", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    )
+    const printing = {
+      id: "green-old",
+      name: "Green Commander",
+      set_code: "old",
+      set_name: "Original Set",
+      collector_number: "17",
+      lang: "ja",
+      image_uris: { art_crop: "/old.jpg", normal: "/old-card.jpg" },
+    }
+    let saved: DeckDetail = { ...deck, color_identity: "WUG" }
+    const requests: Record<string, unknown>[] = []
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string, init?: RequestInit) => {
+        if (input === "/api/cards/green") return response(card("green", "Green Commander", "G"))
+        if (input === "/api/cards/blue") return response(card("blue", "Blue Partner", "U"))
+        if (input === "/api/card-printings/green-old") return response(printing)
+        if (input.startsWith("/api/card-printings?")) {
+          const page = new URL(input, "http://example.test").searchParams.get("page")
+          return new Response(
+            JSON.stringify({ data: page === "2" ? [printing] : [], has_more: page === "1" }),
+            { headers: { "content-type": "application/json" } },
+          )
+        }
+        if (input === "/api/decks/42" && init?.method === "PATCH") {
+          const attrs = JSON.parse(init.body as string).deck
+          requests.push(attrs)
+          saved = { ...saved, ...attrs }
+          return response(saved)
+        }
+        return response([])
+      }),
+    )
+    const mount = () =>
+      render(
+        <QueryClientProvider
+          client={
+            new QueryClient({
+              defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+            })
+          }
+        >
+          <DeckEditForm deck={saved} />
+        </QueryClientProvider>,
+      )
+    const first = mount()
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Commander printing: Catalog default" }),
+    )
+    fireEvent.click(await screen.findByRole("button", { name: "More printings" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Original Set (OLD) #17 · JA" }))
+    expect(screen.queryByRole("dialog")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Save deck" }))
+    await screen.findByText("Deck details saved.")
+    expect(requests[0]).toMatchObject({
+      commander_card_id: "green",
+      commander_name: "Green Commander",
+      commander_printing_id: "green-old",
+      partner_card_id: "blue",
+      color_identity: "WUG",
+    })
+    first.unmount()
+    mount()
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Commander printing: Original Set (OLD) #17 · JA",
+      }),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Use catalog default" }))
+    fireEvent.click(screen.getByRole("button", { name: "Save deck" }))
+    await screen.findByText("Deck details saved.")
+    expect(requests[1]).toMatchObject({
+      commander_card_id: "green",
+      commander_printing_id: null,
+      color_identity: "WUG",
+    })
+  })
+
+  it("keeps a saved printing when options fail and removes it with the partner", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    )
+    let patch: Record<string, unknown> | undefined
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string, init?: RequestInit) => {
+        if (input === "/api/cards/green") return response(card("green", "Green Commander", "G"))
+        if (input === "/api/cards/blue") return response(card("blue", "Blue Partner", "U"))
+        if (input === "/api/card-printings/blue-old")
+          return response({
+            id: "blue-old",
+            set_name: "Partner Set",
+            set_code: "ptr",
+            collector_number: "3",
+            lang: "en",
+            image_uris: {},
+          })
+        if (input.startsWith("/api/card-printings?"))
+          return new Response(JSON.stringify({ errors: { detail: "Bad Gateway" } }), {
+            status: 502,
+          })
+        if (init?.method === "PATCH") {
+          patch = JSON.parse(init.body as string).deck
+          return response(deck)
+        }
+        return response([])
+      }),
+    )
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <DeckEditForm deck={{ ...deck, partner_printing_id: "blue-old" }} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Partner printing: Partner Set (PTR) #3" }),
+    )
+    expect((await screen.findByRole("alert")).textContent).toContain("Your selection is unchanged")
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }))
+    fireEvent.click(screen.getByRole("button", { name: "Save deck" }))
+    await screen.findByText("Deck details saved.")
+    expect(patch?.partner_printing_id).toBe("blue-old")
+    const input = screen.getByRole("combobox", { name: "Partner (optional)" })
+    fireEvent.click(within(input.parentElement!).getByRole("button", { name: "Clear card" }))
+    expect(screen.queryByRole("button", { name: /Partner printing:/ })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Save deck" }))
+    await waitFor(() => expect(patch?.partner_printing_id).toBeNull())
+    expect(patch?.partner_card_id).toBeNull()
   })
 })
 

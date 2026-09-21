@@ -24,6 +24,7 @@ interface DeckFormFieldsProps {
   onChange: (patch: Partial<DeckFormValue>) => void
   onResolvedName?: (name: string) => void
   manualEditVersion?: number
+  allowPrintings?: boolean
 }
 
 export function DeckFormFields({
@@ -31,13 +32,14 @@ export function DeckFormFields({
   onChange,
   onResolvedName,
   manualEditVersion,
+  allowPrintings = false,
 }: DeckFormFieldsProps) {
   const applyDecklist = useApplyDecklist(onChange, onResolvedName, manualEditVersion)
 
   function changeCard(field: "commander" | "partner", card: SelectedCard | null) {
     applyDecklist.cancel()
     const cards = field === "commander" ? [card, value.partner] : [value.commander, card]
-    const colorIdentity = combinedColorIdentity(cards)
+    const colorIdentity = value[field]?.id === card?.id ? null : combinedColorIdentity(cards)
     onChange({ [field]: card, ...(colorIdentity === null ? {} : { colorIdentity }) })
   }
 
@@ -45,12 +47,14 @@ export function DeckFormFields({
     <>
       <CommanderField
         value={value.commander}
+        allowPrintings={allowPrintings}
         onChange={(card) => changeCard("commander", card)}
         required
       />
       <CommanderField
         label="Partner (optional)"
         mode="partner"
+        allowPrintings={allowPrintings}
         value={value.partner}
         onChange={(card) => changeCard("partner", card)}
       />
