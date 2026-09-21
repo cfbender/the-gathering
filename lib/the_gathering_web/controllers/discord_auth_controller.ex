@@ -67,6 +67,10 @@ defmodule TheGatheringWeb.DiscordAuthController do
        do: "#{inspect(module)} status=#{status}"
 
   defp oauth_error_summary({:error, %{__struct__: module}}), do: inspect(module)
+
+  defp oauth_error_summary({:error, {:invalid_user, %Ecto.Changeset{errors: errors}}}),
+    do: "invalid user #{inspect(Keyword.keys(errors))}"
+
   defp oauth_error_summary(_error), do: "unknown OAuth error"
 
   defp oauth_mode(conn, %{"sudo" => "1"}) do

@@ -146,6 +146,35 @@ defmodule TheGathering.AccountsTest do
     assert Accounts.get_user_by_discord_id("discord-conflict") == nil
   end
 
+  test "Discord sign-in derives a valid username from handles the format rule rejects" do
+    {:ok, _admin} = Accounts.create_admin(@valid)
+    {:ok, _settings} = Accounts.update_settings(%{"registration_enabled" => true})
+
+    # Discord allows a leading dot; our usernames must start with a letter or digit.
+    assert {:ok, dotted} =
+             Accounts.sign_in_with_discord(%{
+               "sub" => "dot-1",
+               "preferred_username" => ".dreamlan"
+             })
+
+    assert dotted.username == "dreamlan"
+    assert dotted.display_name == ".dreamlan"
+
+    # A handle that is only punctuation falls back to the generic base.
+    assert {:ok, punct} =
+             Accounts.sign_in_with_discord(%{"sub" => "dot-2", "preferred_username" => "._."})
+
+    assert punct.username == "discord"
+
+    # Truncation to 32 characters must not leave trailing punctuation behind.
+    long = String.duplicate("a", 31) <> "._long_tail"
+
+    assert {:ok, truncated} =
+             Accounts.sign_in_with_discord(%{"sub" => "dot-3", "preferred_username" => long})
+
+    assert truncated.username == String.duplicate("a", 31)
+  end
+
   test "reissued session tokens preserve the original password authentication time" do
     assert {:ok, user} = Accounts.create_admin(@valid)
 
