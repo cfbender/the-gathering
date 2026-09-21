@@ -1,4 +1,5 @@
 import { api } from "@/lib/api"
+import type { StatsRangeParams } from "@/lib/stats-range"
 
 export interface RecordCounts {
   games: number
@@ -170,13 +171,28 @@ export interface CommanderStats {
   recent_games: RecentStatGame[]
 }
 
-const data = <T>(path: string) => api<{ data: T }>(path).then((body) => body.data)
-export const getOverviewStats = () => data<OverviewStats>("/api/stats/overview")
-export const getPlayerStats = (id: string) => data<PlayerStats>(`/api/stats/players/${id}`)
-export const getDeckStats = (id: string) => data<DeckStats>(`/api/stats/decks/${id}`)
-export const getCommanderStats = () => data<CommanderSummary[]>("/api/stats/commanders")
-export const getCommanderDetail = (id: string) =>
-  data<CommanderStats>(`/api/stats/commanders/${encodeURIComponent(id)}`)
+const data = <T>(path: string, params: StatsRangeParams = {}) => {
+  const search = new URLSearchParams(params).toString()
+  return api<{ data: T }>(search ? `${path}?${search}` : path).then((body) => body.data)
+}
+
+/** Query key for a stats resource; the range must be part of the key because it changes the payload. */
+export const statsQueryKey = (params: StatsRangeParams, ...parts: string[]) => [
+  "stats",
+  ...parts,
+  params.date_from ?? "all",
+]
+
+export const getOverviewStats = (params?: StatsRangeParams) =>
+  data<OverviewStats>("/api/stats/overview", params)
+export const getPlayerStats = (id: string, params?: StatsRangeParams) =>
+  data<PlayerStats>(`/api/stats/players/${id}`, params)
+export const getDeckStats = (id: string, params?: StatsRangeParams) =>
+  data<DeckStats>(`/api/stats/decks/${id}`, params)
+export const getCommanderStats = (params?: StatsRangeParams) =>
+  data<CommanderSummary[]>("/api/stats/commanders", params)
+export const getCommanderDetail = (id: string, params?: StatsRangeParams) =>
+  data<CommanderStats>(`/api/stats/commanders/${encodeURIComponent(id)}`, params)
 
 /** Label for figures limited by the administrator's detailed-stats cutoff. */
 export function sinceLabel(detailedStatsFrom: string | null, fallback?: string) {

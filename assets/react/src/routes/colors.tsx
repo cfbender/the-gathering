@@ -6,15 +6,18 @@ import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart } from "@/components/stats/charts"
 import { ColorWheel } from "@/components/stats/color-wheel"
+import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/cn"
 import {
   LEADERBOARD_MIN_GAMES,
   getOverviewStats,
   sortByMetric,
+  statsQueryKey,
   type ColorMetric,
   type NamedRecordRow,
 } from "@/lib/stats"
+import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
 
 export const Route = createFileRoute("/colors")({ component: ColorsPage })
 
@@ -34,7 +37,11 @@ const tiers = [
 ]
 
 function ColorsPage() {
-  const query = useQuery({ queryKey: ["stats", "overview"], queryFn: getOverviewStats })
+  const { range, params } = useStatsRange()
+  const query = useQuery({
+    queryKey: statsQueryKey(params, "overview"),
+    queryFn: () => getOverviewStats(params),
+  })
   const [metric, setMetric] = useState<ColorMetric>("games")
   const identities = query.data?.color_win_rates ?? []
   const ranked = sortByMetric(identities, metric)
@@ -46,28 +53,31 @@ function ColorsPage() {
         title="Colors"
         description="Every color identity that has hit the table, from mono-color to five-color."
         actions={
-          query.data && (
-            <ToggleGroup
-              type="single"
-              value={metric}
-              onValueChange={(value) => value && setMetric(value as ColorMetric)}
-              aria-label="Sort colors by"
-              className="join"
-            >
-              {(Object.keys(metricLabels) as ColorMetric[]).map((value) => (
-                <ToggleGroupItem
-                  key={value}
-                  value={value}
-                  className={cn(
-                    "btn btn-sm join-item",
-                    metric === value ? "btn-primary" : "btn-ghost",
-                  )}
-                >
-                  {metricLabels[value]}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          )
+          <>
+            <StatsRangeToggle />
+            {query.data && (
+              <ToggleGroup
+                type="single"
+                value={metric}
+                onValueChange={(value) => value && setMetric(value as ColorMetric)}
+                aria-label="Sort colors by"
+                className="join"
+              >
+                {(Object.keys(metricLabels) as ColorMetric[]).map((value) => (
+                  <ToggleGroupItem
+                    key={value}
+                    value={value}
+                    className={cn(
+                      "btn btn-sm join-item",
+                      metric === value ? "btn-primary" : "btn-ghost",
+                    )}
+                  >
+                    {metricLabels[value]}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            )}
+          </>
         }
       />
       {query.isPending && <span className="loading loading-spinner" />}
@@ -75,8 +85,12 @@ function ColorsPage() {
       {query.data && identities.length === 0 && (
         <EmptyPanel
           icon={<Palette className="size-10" />}
-          title="No colors yet"
-          description="Color stats appear here once a game with a deck is logged."
+          title={range === "all" ? "No colors yet" : `No colors in the ${statsRangeDetails[range]}`}
+          description={
+            range === "all"
+              ? "Color stats appear here once a game with a deck is logged."
+              : "Try a wider time range to see older games."
+          }
           action={
             <Link to="/games/new" className="btn btn-primary">
               Log a game

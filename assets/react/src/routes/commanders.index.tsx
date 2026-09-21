@@ -5,9 +5,11 @@ import { useState } from "react"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { CardArtBackground } from "@/components/card-art-background"
 import { ColorIdentity } from "@/components/mana-symbols"
+import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/cn"
-import { getCommanderStats, sortByMetric, type ColorMetric } from "@/lib/stats"
+import { getCommanderStats, sortByMetric, statsQueryKey, type ColorMetric } from "@/lib/stats"
+import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
 
 export const Route = createFileRoute("/commanders/")({ component: CommandersPage })
 
@@ -17,7 +19,11 @@ const metricLabels: Record<ColorMetric, string> = {
 }
 
 function CommandersPage() {
-  const query = useQuery({ queryKey: ["stats", "commanders"], queryFn: () => getCommanderStats() })
+  const { range, params } = useStatsRange()
+  const query = useQuery({
+    queryKey: statsQueryKey(params, "commanders"),
+    queryFn: () => getCommanderStats(params),
+  })
   const [metric, setMetric] = useState<ColorMetric>("games")
   const rows = sortByMetric(query.data ?? [], metric)
 
@@ -28,28 +34,31 @@ function CommandersPage() {
         title="Commanders"
         description="Every commander that has hit the table, across all pilots and decks."
         actions={
-          query.data && (
-            <ToggleGroup
-              type="single"
-              value={metric}
-              onValueChange={(value) => value && setMetric(value as ColorMetric)}
-              aria-label="Sort commanders by"
-              className="join"
-            >
-              {(Object.keys(metricLabels) as ColorMetric[]).map((value) => (
-                <ToggleGroupItem
-                  key={value}
-                  value={value}
-                  className={cn(
-                    "btn btn-sm join-item",
-                    metric === value ? "btn-primary" : "btn-ghost",
-                  )}
-                >
-                  {metricLabels[value]}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          )
+          <>
+            <StatsRangeToggle />
+            {query.data && (
+              <ToggleGroup
+                type="single"
+                value={metric}
+                onValueChange={(value) => value && setMetric(value as ColorMetric)}
+                aria-label="Sort commanders by"
+                className="join"
+              >
+                {(Object.keys(metricLabels) as ColorMetric[]).map((value) => (
+                  <ToggleGroupItem
+                    key={value}
+                    value={value}
+                    className={cn(
+                      "btn btn-sm join-item",
+                      metric === value ? "btn-primary" : "btn-ghost",
+                    )}
+                  >
+                    {metricLabels[value]}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            )}
+          </>
         }
       />
       {query.isPending && <span className="loading loading-spinner" />}
@@ -57,10 +66,18 @@ function CommandersPage() {
       {query.data && rows.length === 0 && (
         <EmptyPanel
           icon={<Crown className="size-10" />}
-          title={metric === "games" ? "No commanders yet" : "Not enough games yet"}
+          title={
+            metric === "games"
+              ? range === "all"
+                ? "No commanders yet"
+                : `No commanders in the ${statsRangeDetails[range]}`
+              : "Not enough games yet"
+          }
           description={
             metric === "games"
-              ? "Commanders appear here once a game with a deck is logged."
+              ? range === "all"
+                ? "Commanders appear here once a game with a deck is logged."
+                : "Try a wider time range to see older games."
               : "A commander needs a couple of games before its win rate is ranked."
           }
           action={

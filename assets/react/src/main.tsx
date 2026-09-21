@@ -4,6 +4,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./app.css"
 import { installStaleBundleReload } from "./lib/stale-bundle"
+import { StatsRangeProvider } from "./lib/stats-range"
 import { ThemeProvider } from "./lib/theme"
 import { routeTree } from "./routeTree.gen"
 
@@ -27,7 +28,9 @@ createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <RouterProvider router={router} />
+        <StatsRangeProvider>
+          <RouterProvider router={router} />
+        </StatsRangeProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,
