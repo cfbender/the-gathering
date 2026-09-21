@@ -28,11 +28,11 @@ export function ActivityCalendar({ gameTimes }: { gameTimes: string[] }) {
       ) : (
         <>
           <div className="mt-5 overflow-x-auto pb-2">
-            <div className="grid min-w-max grid-cols-[2rem_auto] gap-2">
+            <div className="grid min-w-[57rem] grid-cols-[2rem_minmax(0,1fr)] gap-2">
               <div />
               <div
                 className="text-base-content/45 grid h-5 gap-[3px] text-[10px]"
-                style={{ gridTemplateColumns: "repeat(52, 0.875rem)" }}
+                style={{ gridTemplateColumns: "repeat(52, minmax(0, 1fr))" }}
               >
                 {weeks.map((_, index) => (
                   <span key={index} className="whitespace-nowrap">
@@ -40,14 +40,14 @@ export function ActivityCalendar({ gameTimes }: { gameTimes: string[] }) {
                   </span>
                 ))}
               </div>
-              <div className="text-base-content/45 grid grid-rows-7 gap-[3px] text-[9px] leading-3">
+              <div className="text-base-content/45 grid grid-rows-7 items-center gap-[3px] text-[9px] leading-3">
                 {weekdayLabels.map((label, index) => (
                   <span key={label}>{index % 2 === 1 ? label : ""}</span>
                 ))}
               </div>
               <div
                 className="grid grid-flow-col grid-rows-7 gap-[3px]"
-                style={{ gridTemplateColumns: "repeat(52, 0.875rem)" }}
+                style={{ gridTemplateColumns: "repeat(52, minmax(0, 1fr))" }}
               >
                 {weeks.flatMap((week, weekIndex) =>
                   week.map((day, weekday) => (
@@ -76,11 +76,11 @@ export function ActivityCalendar({ gameTimes }: { gameTimes: string[] }) {
 }
 
 function ActivityDay({ day, max }: { day: CalendarDay | null; max: number }) {
-  if (!day) return <span className="size-3.5" />
+  if (!day) return <span className="aspect-square w-full" />
   const intensity = day.games === 0 ? 0 : 20 + (day.games / max) * 80
   return (
     <span
-      className="border-base-300 size-3.5 rounded-[3px] border"
+      className="border-base-300 aspect-square w-full rounded-[3px] border"
       title={`${day.date.toLocaleDateString()}: ${day.games} ${day.games === 1 ? "game" : "games"}`}
       style={{
         background:

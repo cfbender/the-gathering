@@ -2,7 +2,7 @@ defmodule TheGathering.Stats.Overview do
   @moduledoc "Calculates the playgroup overview statistics view."
 
   alias TheGathering.{Accounts, Stats}
-  alias TheGathering.Stats.{Elo, Query, Records, Summaries}
+  alias TheGathering.Stats.{Elo, Outcomes, Query, Records, Summaries}
 
   def get(params \\ %{}) do
     games = Query.games(params)
@@ -14,6 +14,8 @@ defmodule TheGathering.Stats.Overview do
     %{
       detailed_stats_from: cutoff,
       games_count: length(games),
+      kills: Outcomes.kills(seats),
+      win_conditions: Outcomes.win_conditions(games),
       average_duration_minutes: Records.average(detailed, & &1.duration_minutes),
       average_turns: Records.average(detailed, & &1.turns),
       game_lengths: Summaries.game_lengths(detailed),
@@ -35,7 +37,7 @@ defmodule TheGathering.Stats.Overview do
       color_win_rates: Records.color_records(seats),
       color_exposure: Records.color_exposure(seats),
       commanders: params |> Stats.Commanders.list() |> Enum.take(8),
-      recent_games: games |> Enum.take(6) |> Enum.map(&Summaries.recent_game/1)
+      recent_games: games |> Enum.take(6) |> Summaries.recent_games()
     }
   end
 

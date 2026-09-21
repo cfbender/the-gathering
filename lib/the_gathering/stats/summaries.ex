@@ -5,6 +5,24 @@ defmodule TheGathering.Stats.Summaries do
   alias TheGathering.Games.Deck
   alias TheGathering.Stats.Records
 
+  def recent_games(games) do
+    card_art =
+      games
+      |> Enum.flat_map(& &1.seats)
+      |> Enum.flat_map(&commander_refs(&1.deck))
+      |> Enum.flat_map(fn {id, name, printing} -> [{id, name}, {:printing, printing}] end)
+      |> Catalog.art_crop_urls()
+
+    Enum.map(games, fn game ->
+      commanders =
+        game.seats
+        |> Enum.sort_by(&{&1.result != "win", &1.seat})
+        |> Enum.flat_map(&commander_portraits(&1, card_art))
+
+      game |> recent_game() |> Map.put(:commanders, commanders)
+    end)
+  end
+
   def recent_game(game, tracked \\ nil) do
     winner = Enum.find(game.seats, &(&1.result == "win"))
 
@@ -17,6 +35,25 @@ defmodule TheGathering.Stats.Summaries do
       winner: winner && entity(winner.player),
       players: length(game.seats)
     }
+  end
+
+  defp commander_portraits(seat, card_art) do
+    Enum.map(commander_refs(seat.deck), fn {id, name, printing} ->
+      %{
+        player_name: seat.player.name,
+        name: name,
+        art_crop_url: Catalog.art_crop_url(card_art, id, name, printing),
+        winner: seat.result == "win"
+      }
+    end)
+  end
+
+  defp commander_refs(nil), do: [{nil, nil, nil}]
+
+  defp commander_refs(deck) do
+    commander = {deck.commander_card_id, deck.commander_name, deck.commander_printing_id}
+    partner = {deck.partner_card_id, deck.partner_name, deck.partner_printing_id}
+    if deck.partner_name, do: [commander, partner], else: [commander]
   end
 
   @duration_bin_minutes 15

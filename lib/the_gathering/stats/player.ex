@@ -3,7 +3,7 @@ defmodule TheGathering.Stats.Player do
 
   alias TheGathering.{Accounts, Catalog, Games, Repo, Stats}
   alias TheGathering.Games.Player
-  alias TheGathering.Stats.{Commanders, Elo, Query, Records, Summaries}
+  alias TheGathering.Stats.{Commanders, Elo, Outcomes, Query, Records, Summaries}
 
   def get(player_id, params \\ %{}) do
     with %Player{} = player <- Repo.get(Player, player_id) do
@@ -20,6 +20,10 @@ defmodule TheGathering.Stats.Player do
         detailed_stats_from: cutoff,
         player: %{id: player.id, name: player.name},
         record: Records.record(seats),
+        win_conditions:
+          games |> Enum.filter(&(mine.(&1).result == "win")) |> Outcomes.win_conditions(),
+        loss_conditions:
+          games |> Enum.filter(&(mine.(&1).result == "loss")) |> Outcomes.win_conditions(),
         elo: elo(player.id, params),
         average_duration_minutes: Records.average(detailed, & &1.duration_minutes),
         average_turns: Records.average(detailed, & &1.turns),

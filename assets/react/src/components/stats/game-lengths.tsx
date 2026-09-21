@@ -78,88 +78,53 @@ function Histogram({
   average: number | null
   metric: LengthMetric
 }) {
-  const chartWidth = Math.max(480, bins.length * 58)
-  const chartHeight = 210
-  const top = 24
-  const bottom = 42
-  const plotHeight = chartHeight - top - bottom
   const maxGames = Math.max(...bins.map((bin) => bin.games), 1)
   const first = bins[0]!.from
   const last = bins.at(-1)!.to
-  const averageX = average === null ? null : ((average - first) / (last - first)) * chartWidth
+  const averageX = average === null ? null : ((average - first) / (last - first)) * 100
   const labelEvery = Math.ceil(bins.length / 10)
+  const columns = { gridTemplateColumns: `repeat(${bins.length}, minmax(0, 1fr))` }
 
   return (
-    <div className="mt-5 overflow-x-auto" role="img" aria-label={`${metric} histogram`}>
-      <svg
-        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-        width={chartWidth}
-        className="h-52 min-w-full max-w-none"
-      >
-        <path
-          d={`M0 ${top + plotHeight}H${chartWidth}`}
-          className="stroke-base-content/20"
-          strokeWidth="1"
-        />
-        {bins.map((bin, index) => {
-          const slot = chartWidth / bins.length
-          const height = (bin.games / maxGames) * plotHeight
-          const x = index * slot + 4
-          const y = top + plotHeight - height
-          const label = `${bin.from}–${bin.to - 1}`
-          return (
-            <g key={bin.from}>
-              <title>{`${label}: ${bin.games} games`}</title>
-              <rect
-                x={x}
-                y={y}
-                width={Math.max(slot - 8, 3)}
-                height={height}
-                rx="4"
-                className="fill-primary/75"
+    <div className="mt-5" role="img" aria-label={`${metric} histogram`}>
+      {average !== null && (
+        <p className="text-accent text-right text-xs font-bold">AVG {average}</p>
+      )}
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: `${Math.max(30, bins.length * 3.25)}rem` }}>
+          <div className="border-base-content/20 relative border-b pt-6">
+            <div className="grid h-36 items-end" style={columns}>
+              {bins.map((bin) => (
+                <div
+                  key={bin.from}
+                  title={`${bin.from}–${bin.to - 1}: ${bin.games} games`}
+                  className="bg-primary/75 relative mx-1 rounded-t"
+                  style={{ height: `${(bin.games / maxGames) * 100}%` }}
+                >
+                  {bin.games > 0 && (
+                    <span className="text-base-content/65 absolute bottom-full mb-1 w-full text-center text-[10px]">
+                      {bin.games}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            {averageX !== null && averageX >= 0 && averageX <= 100 && (
+              <div
+                className="border-accent pointer-events-none absolute top-6 bottom-0 border-l-2 border-dashed"
+                style={{ left: `${averageX}%` }}
               />
-              {bin.games > 0 && (
-                <text
-                  x={x + (slot - 8) / 2}
-                  y={y - 5}
-                  textAnchor="middle"
-                  className="fill-base-content/65 text-[10px]"
-                >
-                  {bin.games}
-                </text>
-              )}
-              {index % labelEvery === 0 && (
-                <text
-                  x={index * slot + slot / 2}
-                  y={chartHeight - 15}
-                  textAnchor="middle"
-                  className="fill-base-content/55 text-[10px]"
-                >
-                  {label}
-                </text>
-              )}
-            </g>
-          )
-        })}
-        {averageX !== null && averageX >= 0 && averageX <= chartWidth && (
-          <g>
-            <path
-              d={`M${averageX} ${top - 4}V${top + plotHeight}`}
-              className="stroke-accent"
-              strokeWidth="3"
-              strokeDasharray="5 4"
-            />
-            <text
-              x={averageX < chartWidth - 80 ? averageX + 5 : averageX - 5}
-              y={12}
-              textAnchor={averageX < chartWidth - 80 ? "start" : "end"}
-              className="fill-accent text-[10px] font-bold"
-            >
-              AVG {average}
-            </text>
-          </g>
-        )}
-      </svg>
+            )}
+          </div>
+          <div className="text-base-content/55 grid pt-2 text-center text-[10px]" style={columns}>
+            {bins.map((bin, index) => (
+              <span key={bin.from}>
+                {index % labelEvery === 0 ? `${bin.from}–${bin.to - 1}` : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
