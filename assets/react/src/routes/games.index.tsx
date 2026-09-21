@@ -5,6 +5,8 @@ import { CalendarDays, Plus, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { getGames, getPlayers } from "@/features/games/games"
 import { GameCard } from "@/features/games/game-card"
+import { GameTable } from "@/features/games/game-table"
+import { GameViewToggle, type GameView } from "@/features/games/game-view-toggle"
 import {
   countActiveGameFilters,
   parseGamesSearch,
@@ -26,6 +28,7 @@ function GamesPage() {
   const navigate = Route.useNavigate()
   const filters = toGameFilters(search)
   const page = search.page ?? 1
+  const [view, setView] = useState<GameView>("cards")
 
   function update(patch: Partial<GameFilters>) {
     void navigate({ search: patchGamesSearch(search, patch), replace: true })
@@ -173,6 +176,14 @@ function GamesPage() {
         </div>
       </section>
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-base-content/65 text-sm">
+          {games.data &&
+            `${games.data.pagination.total} ${games.data.pagination.total === 1 ? "game" : "games"}`}
+        </p>
+        <GameViewToggle value={view} onChange={setView} />
+      </div>
+
       {games.isPending && (
         <div className="flex justify-center py-16">
           <span className="loading loading-spinner loading-lg" />
@@ -191,11 +202,17 @@ function GamesPage() {
           }
         />
       )}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {games.data?.data.map((game) => (
-          <GameCard key={game.id} game={game} />
+      {games.data &&
+        games.data.data.length > 0 &&
+        (view === "table" ? (
+          <GameTable games={games.data.data} />
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {games.data.data.map((game) => (
+              <GameCard key={game.id} game={game} />
+            ))}
+          </div>
         ))}
-      </div>
       {games.data && games.data.pagination.total_pages > 1 && (
         <div className="join self-center">
           <button className="btn join-item" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
