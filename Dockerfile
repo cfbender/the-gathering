@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 ARG ELIXIR_VERSION=1.20.4
-ARG OTP_VERSION=29.0.6
+# OTP 29.1 fixes alternate signal stack sizing on Alpine/AMX hosts (OTP-20292).
+ARG OTP_VERSION=29.1
 ARG ALPINE_VERSION=3.24
 ARG NODE_VERSION=26.9.0
 ARG AUBE_VERSION=1.21.0
