@@ -33,9 +33,11 @@ if [[ "$(uname -s)" == "Linux" ]] && command -v apt-get >/dev/null 2>&1; then
     build-essential
     ca-certificates
     curl
+    fonts-dejavu-core
     git
     inotify-tools
     libncurses-dev
+    librsvg2-bin
     libsqlite3-dev
     libssl-dev
     m4

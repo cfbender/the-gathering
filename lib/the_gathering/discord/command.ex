@@ -2,7 +2,7 @@ defmodule TheGathering.Discord.Command do
   @moduledoc false
 
   alias Nostrum.Api.ApplicationCommand
-  alias TheGathering.Discord.Tracker
+  alias TheGathering.Discord.{SummaryCommand, Tracker}
 
   @ephemeral 64
 
@@ -23,25 +23,29 @@ defmodule TheGathering.Discord.Command do
   end
 
   @doc """
-  Registers `/won` for the application identified by the `READY` payload.
+  Registers `/won` and `/summary` for the application identified by the `READY` payload.
 
   Returns `{:ok, description}` for logging, or the Nostrum API error.
   """
   def register(application_id) do
-    case guild_id() do
-      nil ->
-        with {:ok, _command} <-
-               ApplicationCommand.create_global_command(application_id, definition()) do
-          {:ok,
-           "registered /won globally; Discord can take up to an hour to show new global commands"}
-        end
+    guild = guild_id()
 
-      guild_id ->
-        with {:ok, _command} <-
-               ApplicationCommand.create_guild_command(application_id, guild_id, definition()) do
-          {:ok, "registered /won in guild #{guild_id}"}
+    Enum.reduce_while(
+      [definition(), SummaryCommand.definition()],
+      {:ok,
+       "registered /won and /summary #{if guild, do: "in guild #{guild}", else: "globally; new commands can take up to an hour to appear"}"},
+      fn command, success ->
+        result =
+          if guild,
+            do: ApplicationCommand.create_guild_command(application_id, guild, command),
+            else: ApplicationCommand.create_global_command(application_id, command)
+
+        case result do
+          {:ok, _} -> {:cont, success}
+          error -> {:halt, error}
         end
-    end
+      end
+    )
   end
 
   defp guild_id do

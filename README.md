@@ -128,7 +128,7 @@ response's `errors`.
 | `DISCORD_CLIENT_ID` | unset | Discord application client ID; enables member OAuth sign-in when paired with the secret. |
 | `DISCORD_CLIENT_SECRET` | unset | Discord application client secret. |
 | `DISCORD_BOT_TOKEN` | unset | Discord bot token; enables automatic recording of completed SpellBot games when set. |
-| `DISCORD_GUILD_ID` | unset | Optional development/server ID for immediate guild-scoped `/won` registration; without it the command is global. |
+| `DISCORD_GUILD_ID` | unset | Optional server ID for immediate guild-scoped `/won` and `/summary` registration; without it commands are global. Restricts summaries to that server when set. |
 | `DISCORD_SPELLBOT_USER_ID` | `725510263251402832` | Discord user ID accepted as SpellBot, useful when running a private SpellBot deployment. |
 | `THE_GATHERING_ADMIN_USERNAME` | unset | Creates this admin on container startup when paired with the password. |
 | `THE_GATHERING_ADMIN_PASSWORD` | unset | Password for container or Mix-task admin bootstrap. |
