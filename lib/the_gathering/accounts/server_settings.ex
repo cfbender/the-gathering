@@ -5,6 +5,7 @@ defmodule TheGathering.Accounts.ServerSettings do
   @primary_key {:id, :integer, autogenerate: false}
   schema "server_settings" do
     field :registration_enabled, :boolean, default: false
+    field :registration_invite_hash, :binary, redact: true
     # Games before this date count toward win/loss records only (see TheGathering.Stats).
     field :detailed_stats_from, :date
 

@@ -17,10 +17,12 @@ defmodule TheGatheringWeb.DiscordAuthController do
       oauth_session = %{
         session_params: session_params,
         return_to: safe_return_to(params["returnTo"]),
-        sudo_discord_id: mode
+        sudo_discord_id: mode,
+        registration_invite_hash: get_session(conn, :registration_invite_hash)
       }
 
       conn
+      |> delete_session(:registration_invite_hash)
       |> put_session(@oauth_session, oauth_session)
       |> redirect(external: url)
     else
@@ -41,7 +43,11 @@ defmodule TheGatheringWeb.DiscordAuthController do
              params
            ),
          :ok <- verify_sudo_identity(oauth_session.sudo_discord_id, claims),
-         {:ok, user} <- Accounts.sign_in_with_discord(claims) do
+         {:ok, user} <-
+           Accounts.sign_in_with_discord(
+             claims,
+             Map.get(oauth_session, :registration_invite_hash)
+           ) do
       conn
       |> UserAuth.log_in_user(user)
       |> redirect(to: oauth_session.return_to)

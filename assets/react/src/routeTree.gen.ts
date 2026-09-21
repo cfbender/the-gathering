@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from "./routes/index"
 import { Route as AdminRouteImport } from "./routes/admin"
 import { Route as ColorsRouteImport } from "./routes/colors"
 import { Route as ImportRouteImport } from "./routes/import"
+import { Route as InviteRouteImport } from "./routes/invite"
 import { Route as LoginRouteImport } from "./routes/login"
 import { Route as RegisterRouteImport } from "./routes/register"
 import { Route as SettingsRouteImport } from "./routes/settings"
@@ -50,6 +51,11 @@ const ColorsRoute = ColorsRouteImport.update({
 const ImportRoute = ImportRouteImport.update({
   id: "/import",
   path: "/import",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteRoute = InviteRouteImport.update({
+  id: "/invite",
+  path: "/invite",
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -148,6 +154,7 @@ export interface FileRoutesByFullPath {
   "/admin": typeof AdminRouteWithChildren
   "/colors": typeof ColorsRoute
   "/import": typeof ImportRoute
+  "/invite": typeof InviteRoute
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
@@ -172,6 +179,7 @@ export interface FileRoutesByTo {
   "/admin": typeof AdminRouteWithChildren
   "/colors": typeof ColorsRoute
   "/import": typeof ImportRoute
+  "/invite": typeof InviteRoute
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
@@ -197,6 +205,7 @@ export interface FileRoutesById {
   "/admin": typeof AdminRouteWithChildren
   "/colors": typeof ColorsRoute
   "/import": typeof ImportRoute
+  "/invite": typeof InviteRoute
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
@@ -223,6 +232,7 @@ export interface FileRouteTypes {
     | "/admin"
     | "/colors"
     | "/import"
+    | "/invite"
     | "/login"
     | "/register"
     | "/settings"
@@ -247,6 +257,7 @@ export interface FileRouteTypes {
     | "/admin"
     | "/colors"
     | "/import"
+    | "/invite"
     | "/login"
     | "/register"
     | "/settings"
@@ -271,6 +282,7 @@ export interface FileRouteTypes {
     | "/admin"
     | "/colors"
     | "/import"
+    | "/invite"
     | "/login"
     | "/register"
     | "/settings"
@@ -296,6 +308,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   ColorsRoute: typeof ColorsRoute
   ImportRoute: typeof ImportRoute
+  InviteRoute: typeof InviteRoute
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   SettingsRoute: typeof SettingsRoute
@@ -340,6 +353,13 @@ declare module "@tanstack/react-router" {
       path: "/import"
       fullPath: "/import"
       preLoaderRoute: typeof ImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/invite": {
+      id: "/invite"
+      path: "/invite"
+      fullPath: "/invite"
+      preLoaderRoute: typeof InviteRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/login": {
@@ -492,6 +512,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   ColorsRoute: ColorsRoute,
   ImportRoute: ImportRoute,
+  InviteRoute: InviteRoute,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   SettingsRoute: SettingsRoute,

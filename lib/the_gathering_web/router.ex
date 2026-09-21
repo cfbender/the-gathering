@@ -43,6 +43,8 @@ defmodule TheGatheringWeb.Router do
 
     get "/health", HealthController, :show
     get "/registration", RegistrationController, :show
+    get "/registration-invite", RegistrationInviteController, :show
+    post "/registration-invite", RegistrationInviteController, :create
     get "/session", SessionController, :show
     delete "/session", SessionController, :delete
   end
@@ -125,6 +127,8 @@ defmodule TheGatheringWeb.Router do
     put "/users/:id/player", AdminUserController, :link_player
     get "/settings", AdminSettingsController, :show
     patch "/settings", AdminSettingsController, :update
+    get "/registration-invite", AdminRegistrationInviteController, :show
+    post "/registration-invite", AdminRegistrationInviteController, :create
     get "/discord/pending", AdminDiscordPendingController, :index
     patch "/discord/pending/:id", AdminDiscordPendingController, :update
     delete "/discord/pending/:id", AdminDiscordPendingController, :delete
