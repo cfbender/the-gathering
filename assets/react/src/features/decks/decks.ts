@@ -40,6 +40,19 @@ export const getDecks = (playerId?: number) =>
 export const getDeck = (id: string) =>
   api<{ data: DeckDetail }>(`/api/decks/${id}`).then((body) => body.data)
 
+export const isRetired = (deck: Pick<DeckSummary, "archived_at">) => deck.archived_at !== null
+
+/**
+ * Retires a deck (or brings it back). A retired deck keeps its games and stats but is
+ * hidden from the deck list, the game form's deck picker, and the front of the owner's
+ * profile; `archived_at` is the existing column that carries this.
+ */
+export const setDeckRetired = (id: number, retired: boolean) =>
+  api<{ data: DeckDetail }>(`/api/decks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ deck: { archived_at: retired ? new Date().toISOString() : null } }),
+  }).then((body) => body.data)
+
 /** Deletes a deck; its games move to `replacementDeckId` or, without one, keep no deck. */
 export const deleteDeck = (id: number, replacementDeckId?: number) =>
   api<void>(

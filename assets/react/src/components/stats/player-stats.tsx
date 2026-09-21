@@ -21,6 +21,8 @@ export function PlayerStats({ playerId }: { playerId: string }) {
   if (query.isError) return null
   const stats = query.data
   const since = sinceLabel(stats.detailed_stats_from)
+  const activeDecks = stats.decks.filter((deck) => !deck.retired)
+  const retiredDecks = stats.decks.length - activeDecks.length
   return (
     <section className="space-y-4" aria-labelledby="player-stats-heading">
       <div>
@@ -67,10 +69,14 @@ export function PlayerStats({ playerId }: { playerId: string }) {
       <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
         <div className="mb-4 flex items-baseline justify-between gap-3">
           <h3 className="font-bold">Deck performance</h3>
-          <span className="text-base-content/60 text-xs">Click a deck to see its games</span>
+          <span className="text-base-content/60 text-xs">
+            {retiredDecks > 0
+              ? `Click a deck to see its games · ${retiredDecks} retired ${retiredDecks === 1 ? "deck" : "decks"} hidden`
+              : "Click a deck to see its games"}
+          </span>
         </div>
         <BarChart
-          rows={byWinRateThenName(stats.decks)}
+          rows={byWinRateThenName(activeDecks)}
           columns={2}
           renderLabel={(row) => (
             <>

@@ -120,6 +120,33 @@ defmodule TheGatheringWeb.API.DeckControllerTest do
     assert deck.skip_count == 0
   end
 
+  test "the owner retires a deck, which hides it from the list but keeps it on the player", ctx do
+    conn = log_in_user(ctx.conn, ctx.owner)
+
+    body =
+      conn
+      |> patch(~p"/api/decks/#{ctx.deck.id}", %{deck: %{archived_at: "2026-09-21T03:00:00.123Z"}})
+      |> json_response(200)
+
+    assert body["data"]["archived_at"] == "2026-09-21T03:00:00Z"
+
+    listed = conn |> get(~p"/api/decks", %{player_id: ctx.owner_player.id}) |> json_response(200)
+    assert listed["data"] == []
+
+    player = conn |> get(~p"/api/players/#{ctx.owner_player.id}") |> json_response(200)
+    assert [%{"id" => id, "archived_at" => "2026-09-21T03:00:00Z"}] = player["data"]["decks"]
+    assert id == ctx.deck.id
+
+    body =
+      conn
+      |> patch(~p"/api/decks/#{ctx.deck.id}", %{deck: %{archived_at: nil}})
+      |> json_response(200)
+
+    assert body["data"]["archived_at"] == nil
+    listed = conn |> get(~p"/api/decks", %{player_id: ctx.owner_player.id}) |> json_response(200)
+    assert [%{"id" => ^id}] = listed["data"]
+  end
+
   test "members cannot edit decks of unclaimed guest players", ctx do
     assert %{"errors" => %{"detail" => "Forbidden"}} =
              ctx.conn

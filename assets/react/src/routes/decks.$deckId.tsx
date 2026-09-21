@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
-import { ExternalLink, Trophy } from "lucide-react"
+import { Archive, ExternalLink, Trophy } from "lucide-react"
 import { useState, type FormEvent } from "react"
 import { DeckFormFields, type DeckFormValue } from "@/features/decks/deck-form-fields"
 import { DeckStats } from "@/components/stats/deck-stats"
@@ -11,8 +11,9 @@ import { api, ApiError } from "@/lib/api"
 import { cardSnapshot, getCard, selectCatalogCard, type CardSummary } from "@/lib/cards"
 import { useCurrentUser } from "@/lib/auth"
 import { formatDate, invalidateGameRelated } from "@/features/games/games"
-import { canManageDeck, getDeck, type DeckDetail } from "@/features/decks/decks"
+import { canManageDeck, getDeck, isRetired, type DeckDetail } from "@/features/decks/decks"
 import { DeleteDeckCard } from "@/features/decks/delete-deck"
+import { RetireDeckCard } from "@/features/decks/retire-deck"
 
 export const Route = createFileRoute("/decks/$deckId")({ component: DeckDetailPage })
 
@@ -37,15 +38,24 @@ function DeckDetailPage() {
         description={`${deck.commander_name ?? ""}${deck.partner_name ? ` + ${deck.partner_name}` : ""}`}
         backgroundImageUrl={deck.commander_art_crop_url}
         actions={
-          deck.decklist_url ? (
-            <a
-              href={deck.decklist_url}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-outline btn-sm"
-            >
-              <ExternalLink className="size-4" /> Open deck list
-            </a>
+          isRetired(deck) || deck.decklist_url ? (
+            <>
+              {isRetired(deck) && (
+                <span className="badge badge-neutral gap-1">
+                  <Archive className="size-3" /> Retired
+                </span>
+              )}
+              {deck.decklist_url && (
+                <a
+                  href={deck.decklist_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-outline btn-sm"
+                >
+                  <ExternalLink className="size-4" /> Open deck list
+                </a>
+              )}
+            </>
           ) : undefined
         }
       >
@@ -92,7 +102,12 @@ function DeckDetailPage() {
           ))}
         </div>
       </section>
-      {canManageDeck(viewer.data, deck) && <DeleteDeckCard deck={deck} />}
+      {canManageDeck(viewer.data, deck) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <RetireDeckCard deck={deck} />
+          <DeleteDeckCard deck={deck} />
+        </div>
+      )}
     </div>
   )
 }
@@ -211,7 +226,7 @@ function DeckEditFormReady({
             <span>
               <span className="block text-sm font-bold">Include in deck chooser</span>
               <span className="text-base-content/60 block text-sm">
-                Archived decks are always excluded from random picks.
+                Retired decks are always excluded from random picks.
               </span>
             </span>
             <Switch
