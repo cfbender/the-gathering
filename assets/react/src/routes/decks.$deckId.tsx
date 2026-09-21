@@ -59,15 +59,17 @@ function DeckDetailPage() {
           ) : undefined
         }
       >
-        <ColorIdentity colors={deck.color_identity} className="mt-4 text-lg" />
-        <div className="stats border-base-300 bg-base-100/60 mt-5 border">
-          <div className="stat">
-            <div className="stat-title">Games</div>
-            <div className="stat-value text-2xl">{deck.games_played}</div>
-          </div>
-          <div className="stat">
-            <div className="stat-title">Wins</div>
-            <div className="stat-value text-success text-2xl">{deck.wins}</div>
+        <div className="mt-4 flex flex-col items-start gap-5">
+          <ColorIdentity colors={deck.color_identity} className="text-lg" />
+          <div className="stats border-base-300 bg-base-100/60 border">
+            <div className="stat">
+              <div className="stat-title">Games</div>
+              <div className="stat-value text-2xl">{deck.games_played}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-title">Wins</div>
+              <div className="stat-value text-success text-2xl">{deck.wins}</div>
+            </div>
           </div>
         </div>
       </PageHeader>

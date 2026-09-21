@@ -13,6 +13,7 @@ defmodule TheGathering.Imports do
 
   alias TheGathering.Imports.{
     Commit,
+    CSVTransfer,
     PortableExport,
     PortableImport,
     Preview,
@@ -30,10 +31,14 @@ defmodule TheGathering.Imports do
   def import_sheet(params, revision, user_id), do: SheetCommit.run(params, revision, user_id)
 
   def preview_csv(csv), do: preview(:csv, csv)
-  def import_csv(csv, user_id), do: import(:csv, csv, user_id)
+  def import_csv(csv, user_id, revision \\ nil), do: CSVTransfer.run(csv, user_id, revision)
+
+  def preview(:csv, payload) when is_binary(payload), do: CSVTransfer.preview(payload)
 
   def preview(source, payload) when is_map_key(@sources, source) and is_binary(payload),
     do: Preview.run(source, payload)
+
+  def import(:csv, payload, user_id) when is_binary(payload), do: import_csv(payload, user_id)
 
   def import(source, payload, user_id) when is_map_key(@sources, source) and is_binary(payload) do
     Commit.run(source, payload, @sources[source], user_id)

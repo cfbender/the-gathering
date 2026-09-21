@@ -1,4 +1,5 @@
 import { api } from "@/lib/api"
+import type { WinCondition } from "@/features/games/games"
 
 export interface CSVImportError {
   line: number
@@ -14,7 +15,7 @@ export interface CSVImportSeat {
   seat: number
   result: "win" | "loss" | "draw"
   mvp_card: string | null
-  /** Present for Mythic Track exports only. */
+  kills?: number | null
   partner?: string | null
   color_identity?: string
 }
@@ -30,7 +31,22 @@ export interface CSVImportGame {
   duration_minutes: number | null
   turns: number | null
   notes: string | null
+  win_condition?: WinCondition | null
   seats: CSVImportSeat[]
+}
+
+export interface CSVImportChange {
+  field: string
+  player: string | null
+  before: string | number | null
+  after: string | number | null
+}
+
+export interface CSVImportReview {
+  game_id: string
+  action: "create" | "update" | "skip"
+  target_id: number | null
+  changes: CSVImportChange[]
 }
 
 export interface MatchSet<T> {
@@ -51,10 +67,13 @@ export interface CSVImportPreview {
   }>
   errors: CSVImportError[]
   warnings: ImportWarning[]
+  revision?: string
+  review?: CSVImportReview[]
 }
 
 export interface CSVImportResult {
   created: number
+  updated?: number
   skipped: number
   game_ids: number[]
 }
@@ -73,10 +92,10 @@ export const previewCSV = (csv: string) =>
     body: JSON.stringify({ csv }),
   }).then((body) => body.data)
 
-export const importCSV = (csv: string) =>
+export const importCSV = (csv: string, revision?: string) =>
   api<{ data: CSVImportResult }>("/api/imports/csv", {
     method: "POST",
-    body: JSON.stringify({ csv }),
+    body: JSON.stringify({ csv, ...(revision ? { revision } : {}) }),
   }).then((body) => body.data)
 
 export const previewMythicTrack = (json: string) =>
@@ -94,8 +113,8 @@ export const importMythicTrack = (json: string) =>
 export const previewImport = (source: ImportSource, payload: string) =>
   source === "csv" ? previewCSV(payload) : previewMythicTrack(payload)
 
-export const commitImport = (source: ImportSource, payload: string) =>
-  source === "csv" ? importCSV(payload) : importMythicTrack(payload)
+export const commitImport = (source: ImportSource, payload: string, revision?: string) =>
+  source === "csv" ? importCSV(payload, revision) : importMythicTrack(payload)
 
 /**
  * Snippet users run in the browser console while signed in to mythictrack.com.

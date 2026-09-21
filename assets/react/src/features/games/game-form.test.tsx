@@ -49,6 +49,7 @@ function gameFixture(): Game {
     played_at: "2026-09-19T18:00:00Z",
     duration_minutes: 75,
     turns: 9,
+    win_condition: "combat_damage",
     notes: "Original notes",
     source: "manual",
     external_id: null,
@@ -112,6 +113,7 @@ async function submitPayload(fetch: ReturnType<typeof vi.fn>) {
   expect(call).toBeTruthy()
   return JSON.parse(String(call?.[1]?.body)).game as {
     notes: string | null
+    win_condition: string | null
     turns: number | null
     seats: Array<{
       id: number
@@ -182,6 +184,30 @@ describe("GameForm submissions", () => {
     const payload = await submitPayload(fetch)
     expect(payload.notes).toBe("Unsaved local notes")
     expect(payload.turns).toBe(9)
+  })
+
+  it("edits and submits the optional win condition", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    })
+    const { fetch } = renderGame()
+    const select = screen.getByRole("combobox", { name: "Win condition" })
+    expect(select.textContent).toContain("Combat Damage")
+
+    fireEvent.click(select)
+    fireEvent.click(await screen.findByRole("option", { name: "Infinite Combo" }))
+    const payload = await submitPayload(fetch)
+
+    expect(payload.win_condition).toBe("infinite_combo")
+  })
+
+  it("submits a blank win condition as null", async () => {
+    const { fetch } = renderGame({ ...gameFixture(), win_condition: null })
+
+    const payload = await submitPayload(fetch)
+
+    expect(payload.win_condition).toBeNull()
   })
 
   it("sends null for both MVP fields when a persisted selection is cleared", async () => {

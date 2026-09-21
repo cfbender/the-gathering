@@ -14,6 +14,7 @@ defmodule TheGathering.Imports.MythicTrack do
   """
 
   alias TheGathering.Games
+  alias TheGathering.Games.WinCondition
   alias TheGathering.Imports.{Game, Seat}
 
   @status_complete 3
@@ -118,6 +119,7 @@ defmodule TheGathering.Imports.MythicTrack do
            played_at: played_at,
            duration_minutes: positive_or_nil(game["gameTimeInMinutes"]),
            turns: positive_or_nil(game["totalTurns"]),
+           win_condition: WinCondition.from_mythic(game["winCondition"]),
            notes: notes(game, key_cards, seats),
            lines: [line],
            seats: seats
@@ -261,14 +263,29 @@ defmodule TheGathering.Imports.MythicTrack do
   defp parse_datetime(value) when is_binary(value) do
     with {:error, _reason} <- DateTime.from_iso8601(value),
          {:ok, naive} <- NaiveDateTime.from_iso8601(value) do
-      naive |> DateTime.from_naive!("Etc/UTC") |> DateTime.truncate(:second)
+      naive
+      |> normalize_calendar_date()
+      |> DateTime.from_naive!("Etc/UTC")
+      |> DateTime.truncate(:second)
     else
       {:ok, datetime, _offset} -> DateTime.truncate(datetime, :second)
-      _other -> :invalid
+      _other -> parse_date(value)
     end
   end
 
   defp parse_datetime(_value), do: :invalid
+
+  defp parse_date(value) do
+    case Date.from_iso8601(value) do
+      {:ok, date} -> DateTime.new!(date, ~T[12:00:00], "Etc/UTC")
+      {:error, _reason} -> :invalid
+    end
+  end
+
+  defp normalize_calendar_date(%NaiveDateTime{hour: 0, minute: 0, second: 0} = datetime),
+    do: %{datetime | hour: 12}
+
+  defp normalize_calendar_date(datetime), do: datetime
 
   defp positive_or_nil(value) when is_integer(value) and value > 0, do: value
   defp positive_or_nil(_value), do: nil

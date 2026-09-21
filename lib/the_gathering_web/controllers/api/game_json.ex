@@ -15,6 +15,7 @@ defmodule TheGatheringWeb.API.GameJSON do
       played_at: game.played_at,
       duration_minutes: game.duration_minutes,
       turns: game.turns,
+      win_condition: game.win_condition,
       notes: game.notes,
       source: game.source,
       external_id: game.external_id,

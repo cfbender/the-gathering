@@ -7,7 +7,8 @@ defmodule TheGathering.Imports.PortableFile do
     players: ~w(name archived_at)a,
     decks:
       ~w(name commander_card_id commander_name commander_printing_id partner_card_id partner_name partner_printing_id color_identity decklist_url archived_at skip_count included_for_play)a,
-    games: ~w(portable_id played_at duration_minutes turns notes source external_id)a,
+    games:
+      ~w(portable_id played_at duration_minutes turns win_condition notes source external_id)a,
     seats:
       ~w(player_id deck_id seat result kills eliminated_turn eliminated_by_player_id mvp_card_id mvp_card_name notes)a
   }

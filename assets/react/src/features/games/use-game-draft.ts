@@ -88,6 +88,7 @@ export function useGameDraft(game?: Game) {
   })
   const [turns, setTurns] = useState(game?.turns?.toString() ?? "")
   const [duration, setDuration] = useState(game?.duration_minutes?.toString() ?? "")
+  const [winCondition, setWinCondition] = useState(game?.win_condition ?? "")
   const [notes, setNotes] = useState(game?.notes ?? "")
 
   function updateSeat(index: number, patch: Partial<DraftSeat>) {
@@ -107,6 +108,8 @@ export function useGameDraft(game?: Game) {
     setTurns,
     duration,
     setDuration,
+    winCondition,
+    setWinCondition,
     notes,
     setNotes,
     updateSeat,

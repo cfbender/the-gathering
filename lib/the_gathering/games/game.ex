@@ -2,12 +2,13 @@ defmodule TheGathering.Games.Game do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias TheGathering.Games.GamePlayer
+  alias TheGathering.Games.{GamePlayer, WinCondition}
 
   schema "games" do
     field :played_at, :utc_datetime
     field :duration_minutes, :integer
     field :turns, :integer
+    field :win_condition, :string
     field :notes, :string
     field :source, :string, default: "manual"
     field :external_id, :string
@@ -25,10 +26,12 @@ defmodule TheGathering.Games.Game do
       :played_at,
       :duration_minutes,
       :turns,
+      :win_condition,
       :notes
     ])
     |> validate_required([:played_at, :source])
     |> validate_inclusion(:source, ~w(manual csv mythic_track discord))
+    |> validate_inclusion(:win_condition, WinCondition.keys())
     |> validate_number(:duration_minutes, greater_than: 0)
     |> validate_number(:turns, greater_than: 0)
     |> cast_assoc(:seats, required: true, with: &GamePlayer.changeset/2)

@@ -40,6 +40,12 @@ All routes require admin access: `GET /api/exports/portable` downloads the docum
 | `duration_minutes` | no | Positive whole number. Use the same value on every row for a game. |
 | `turns` | no | Positive whole number. Use the same value on every row for a game. |
 | `notes` | no | Game notes. Use the same value on every row for a game. |
+| `kills` | no | Per-player total, 0–5. Zero is known zero; blank is unknown on creation and preserves the existing value on update. |
+| `partner` | no | Partner commander name. |
+| `win_condition` | no | One of the enum keys below; identical on every row for a game. |
+| `action` | no | `create` (default), `update`, or `skip`. |
+| `source`, `external_id` | for source-linked updates | The existing game's original identity, e.g. `mythic_track` and its exported GUID. Both are required together. |
+| `portable_id` | alternative update identity | UUID from a portable JSON export. Never use an instance-local numeric game ID. |
 
 Each game needs 2–6 rows. A player can only appear once in a game.
 
@@ -59,9 +65,23 @@ Mythic Track's published template has commander columns but no deck-name columns
 
 Imported games have source `csv`. The importer hashes each normalized game group into a deterministic external ID. Re-importing the same file skips games already present and reports the created/skipped counts. Changing a game's data changes its identity and creates a new game rather than editing the earlier import.
 
+## Correcting existing games
+
+Use the **normal CSV importer** with `action=update` and either `source` + `external_id` or `portable_id`. This is an explicit correction to that game, independent of dates or participant names. `game_id` only groups rows within the file. If both identities are supplied, they must resolve to the same game. Missing targets, conflicting identities and two groups targeting one game block the batch; updates never fall back to creating a game.
+
+Supply the complete corrected seat list and date. Preview shows actual before/after changes and separates creates, updates and unchanged games. Game IDs, source identities and portable IDs survive corrections. Retained players keep their seat IDs, seat notes, MVPs and elimination details; removing a participant removes their seat, and clears any remaining elimination attribution to them. Seat order can be corrected. Decks are reused by owner/name or commander pair; a same-name deck with conflicting commanders blocks the import instead of changing a shared deck. Give the replacement deck a different name.
+
+Blank optional game/seat fields preserve existing values during updates; explicit `0` kills replaces the count. A supplied notes value replaces game notes, so include any old notes you want to retain. This format does not provide an explicit-clear operation. Dates without a time become noon UTC; full timestamps retain their supplied instant. When repairing a date-only historical record stored at midnight UTC, supply `YYYY-MM-DD` to avoid the usual previous-day display in American timezones. This is not a general timezone conversion.
+
+Preview validates persistence in a rolled-back transaction. Confirmation revalidates atomically and requires the returned `revision` alongside `csv` when any group has `action=update`. A changed CSV or database invalidates that revision. Repeating an unchanged correction skips it without rewriting the game. Take a fresh export before repairing production history, especially if it has edits not present in the original source.
+
+Win-condition keys: `damage`, `infinite_combo`, `mill`, `poison`, `alternate_win_con`, `hard_lock`, `commander_damage`, `draw`, `non_combat_damage`, `combat_damage`, `concede`, `unknown`. Leave blank when not recorded. Specific descriptions such as a card combo belong in notes; the category is not free text.
+
 ## Reconciling the original Google Sheet
 
-Use **Import → Reconcile Google Sheet with existing games** for the one-game-per-row sheet with `Date`, `Winner`, `Deck`, named kill columns, `Win Con`, `Other Decks`, and `Notes`. Upload CSV/TSV or paste cells, including the header. A decorative `K I L L S` row is allowed. Dates accept `M/D/YY` (2000–2099), `M/D/YYYY`, and ISO dates.
+The group-specific Google Sheet screen has been retired in favor of the generic CSV workflow above. Transform a sheet into seat-per-row CSV, resolving aliases and matching source IDs before upload. Do not guess missing opponents or commanders. The following describes the legacy sheet API, retained for compatibility.
+
+It accepts the one-game-per-row sheet with `Date`, `Winner`, `Deck`, named kill columns, `Win Con`, `Other Decks`, and `Notes`. A decorative `K I L L S` row is allowed. Dates accept `M/D/YY` (2000–2099), `M/D/YYYY`, and ISO dates.
 
 1. Read the sheet. The preview automatically matches games by mapped participants and date, preferring the exact UTC day and falling back to the preceding/following day. When multiple games qualify, a unique best deck-name/commander match can distinguish them; winners are not used to hide result discrepancies. Ambiguous matches and invalid rows stay skipped for review. Nothing is saved until confirmation.
 2. Map player aliases to existing players. Mappings apply to both participants and kill-column headers. Missing players require an explicit create choice. Deck mappings apply to the same sheet player/deck pair throughout the batch.

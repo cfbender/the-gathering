@@ -2,6 +2,7 @@ defmodule TheGathering.Imports.CSV do
   @moduledoc false
 
   alias TheGathering.Games
+  alias TheGathering.Games.WinCondition
   alias TheGathering.Imports.{Game, Seat}
 
   NimbleCSV.define(Parser, separator: ",", escape: "\"")
@@ -56,10 +57,17 @@ defmodule TheGathering.Imports.CSV do
       commander: value(values, "commander"),
       seat: parse_integer(value(values, "seat")),
       result: values |> value("result") |> String.downcase(),
+      kills: parse_optional_integer(value(values, "kills")),
+      partner_name: blank_to_nil(value(values, "partner")),
       mvp_card: blank_to_nil(value(values, "mvpcard")),
       duration_minutes: parse_optional_integer(value(values, "durationminutes")),
       turns: parse_optional_integer(value(values, "turns")),
       notes: blank_to_nil(value(values, "notes")),
+      win_condition: blank_to_nil(value(values, "wincondition")),
+      action: value(values, "action") |> then(&if(&1 == "", do: "create", else: &1)),
+      target_source: blank_to_nil(value(values, "source")),
+      target_external_id: blank_to_nil(value(values, "externalid")),
+      target_portable_id: blank_to_nil(value(values, "portableid")),
       line: line
     }
 
@@ -100,10 +108,17 @@ defmodule TheGathering.Imports.CSV do
         commander: commander,
         seat: index,
         result: mythic_result(winner, player),
+        kills: nil,
+        partner_name: nil,
         mvp_card: nil,
         duration_minutes: parse_optional_integer(value(values, "gametimeminutes")),
         turns: parse_optional_integer(value(values, "totalturns")),
         notes: blank_to_nil(value(values, "notes")),
+        win_condition: nil,
+        action: "create",
+        target_source: nil,
+        target_external_id: nil,
+        target_portable_id: nil,
         line: line
       }
 
@@ -146,20 +161,46 @@ defmodule TheGathering.Imports.CSV do
         |> Enum.map_join("|", &to_string(&1 || ""))
       end)
 
+    extras =
+      seats |> Enum.sort_by(& &1.seat) |> Enum.map(&{&1.kills, &1.partner_name, &1.win_condition})
+
+    normalized =
+      if Enum.all?(extras, &(&1 == {nil, nil, nil})),
+        do: normalized,
+        else: normalized <> :erlang.term_to_binary(extras)
+
     %Game{
       external_id: Base.encode16(:crypto.hash(:sha256, normalized), case: :lower),
       game_id: first.game_id,
+      action: first.action,
+      target_source: first.target_source,
+      target_external_id: first.target_external_id,
+      target_portable_id: first.target_portable_id,
       played_at: first.date,
       duration_minutes: first.duration_minutes,
       turns: first.turns,
       notes: first.notes,
+      win_condition: first.win_condition,
       lines: seats |> Enum.map(& &1.line) |> Enum.uniq() |> Enum.sort(),
       seats: seats |> Enum.sort_by(& &1.seat) |> Enum.map(&normalize_seat/1)
     }
   end
 
   defp normalize_seat(seat) do
-    struct!(Seat, Map.take(seat, [:line, :player, :deck, :commander, :seat, :result, :mvp_card]))
+    struct!(
+      Seat,
+      Map.take(seat, [
+        :line,
+        :player,
+        :deck,
+        :commander,
+        :partner_name,
+        :seat,
+        :result,
+        :kills,
+        :mvp_card
+      ])
+    )
   end
 
   defp validate_row(row) do
@@ -175,12 +216,49 @@ defmodule TheGathering.Imports.CSV do
     |> valid_result(row.line, row.result)
     |> valid_optional_positive(row.line, "duration_minutes", row.duration_minutes)
     |> valid_optional_positive(row.line, "turns", row.turns)
+    |> validate_extensions(row)
+  end
+
+  defp validate_extensions(errors, row) do
+    checks = [
+      {row.action not in ~w(create update skip), "action", "must be create, update, or skip"},
+      {row.kills != nil and (not is_integer(row.kills) or row.kills not in 0..5), "kills",
+       "must be 0–5 or blank"},
+      {row.win_condition != nil and row.win_condition not in WinCondition.keys(), "win_condition",
+       "must be a supported win condition key"},
+      {row.target_source != nil and row.target_source not in ~w(manual csv mythic_track discord),
+       "source", "is not supported"},
+      {is_nil(row.target_source) != is_nil(row.target_external_id), "external_id",
+       "requires both source and external_id"},
+      {row.target_portable_id != nil and
+         not match?({:ok, _}, Ecto.UUID.cast(row.target_portable_id)), "portable_id",
+       "must be a UUID"},
+      {row.action == "update" and is_nil(row.target_portable_id) and
+         is_nil(row.target_external_id), "action",
+       "updates require portable_id or source and external_id"}
+    ]
+
+    Enum.reduce(checks, errors, fn {invalid, field, message}, errors ->
+      if invalid, do: errors ++ [error(row.line, field, message)], else: errors
+    end)
   end
 
   defp validate_game(seats) do
     lines = seats |> Enum.map(& &1.line) |> Enum.uniq() |> Enum.sort()
 
-    []
+    Enum.reduce(
+      [:action, :target_source, :target_external_id, :target_portable_id, :win_condition],
+      [],
+      fn field, errors ->
+        add_game_error(
+          errors,
+          not consistent?(seats, field),
+          lines,
+          Atom.to_string(field),
+          "must match for every row in the game"
+        )
+      end
+    )
     |> add_game_error(
       length(seats) not in 2..6,
       lines,

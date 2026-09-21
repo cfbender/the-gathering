@@ -72,6 +72,7 @@ defmodule TheGatheringWeb.API.GameControllerTest do
         played_at: "2026-09-19T18:30:00Z",
         duration_minutes: 57,
         turns: 9,
+        win_condition: "commander_damage",
         notes: "Close finish",
         source: "csv",
         external_id: "forged-import-id",
@@ -98,6 +99,7 @@ defmodule TheGatheringWeb.API.GameControllerTest do
                "source" => "manual",
                "created_by_user_id" => created_by_user_id,
                "duration_minutes" => 57,
+               "win_condition" => "commander_damage",
                "seats" => [
                  %{
                    "seat" => 1,
@@ -163,11 +165,17 @@ defmodule TheGatheringWeb.API.GameControllerTest do
     response =
       conn
       |> patch(~p"/api/games/#{update_game.id}", %{
-        game: %{notes: "creator edit", source: "discord", external_id: "forged"}
+        game: %{
+          notes: "creator edit",
+          win_condition: "alternate_win_con",
+          source: "discord",
+          external_id: "forged"
+        }
       })
       |> json_response(200)
 
     assert response["data"]["notes"] == "creator edit"
+    assert response["data"]["win_condition"] == "alternate_win_con"
     assert response["data"]["source"] == "manual"
     assert response["data"]["external_id"] == nil
 
@@ -180,6 +188,15 @@ defmodule TheGatheringWeb.API.GameControllerTest do
            |> response(204)
 
     assert Games.get_game(delete_game.id) == nil
+  end
+
+  test "rejects a win condition outside the canonical enum", %{conn: conn, alice: alice, bob: bob} do
+    response =
+      conn
+      |> post(~p"/api/games", %{game: Map.put(game_attrs(alice, bob), :win_condition, "combo")})
+      |> json_response(422)
+
+    assert response["errors"]["win_condition"] == ["is invalid"]
   end
 
   test "a seated linked player can update and delete a game", %{

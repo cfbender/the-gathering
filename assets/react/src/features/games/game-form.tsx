@@ -16,11 +16,20 @@ import { cardSnapshot } from "@/lib/cards"
 import {
   getPlayers,
   invalidateGameRelated,
+  WIN_CONDITIONS,
   type Game,
   type PlayerSummary,
 } from "@/features/games/games"
 import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { SeatEditor } from "@/features/games/seat-editor"
+import {
+  SELECT_NONE_VALUE,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface GameFormProps {
   game?: Game
@@ -88,6 +97,8 @@ function GameFormDraft({ game }: GameFormProps) {
     setTurns,
     duration,
     setDuration,
+    winCondition,
+    setWinCondition,
     notes,
     setNotes,
     updateSeat,
@@ -120,6 +131,7 @@ function GameFormDraft({ game }: GameFormProps) {
           played_at: new Date(playedAt).toISOString(),
           turns: turns ? Number(turns) : null,
           duration_minutes: duration ? Number(duration) : null,
+          win_condition: winCondition || null,
           notes: notes.trim() || null,
           seats: payloadSeats,
         },
@@ -339,6 +351,25 @@ function GameFormDraft({ game }: GameFormProps) {
               onChange={(event) => setDuration(event.target.value)}
             />
           </label>
+          <div className="form-control sm:col-span-3">
+            <span className="label-text mb-1 text-sm font-medium">Win condition</span>
+            <Select
+              value={winCondition || SELECT_NONE_VALUE}
+              onValueChange={(value) => setWinCondition(value === SELECT_NONE_VALUE ? "" : value)}
+            >
+              <SelectTrigger aria-label="Win condition">
+                <SelectValue placeholder="Not recorded" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SELECT_NONE_VALUE}>Not recorded</SelectItem>
+                {WIN_CONDITIONS.map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <label className="form-control sm:col-span-3">
             <span className="label-text mb-1 text-sm font-medium">Notes</span>
             <textarea

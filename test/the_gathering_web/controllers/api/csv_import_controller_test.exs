@@ -37,6 +37,22 @@ defmodule TheGatheringWeb.API.CSVImportControllerTest do
     assert game.created_by_user_id == admin.id
   end
 
+  test "preview includes partner, zero kills and the win condition", %{conn: conn} do
+    csv = """
+    game_id,date,player,deck,commander,partner,seat,result,kills,win_condition
+    paired,2026-09-18,Alice,Partners,Ardenn,Kediss,1,win,0,alternate_win_con
+    paired,2026-09-18,Bob,Goblins,Krenko,,2,loss,,alternate_win_con
+    """
+
+    response = conn |> post(~p"/api/imports/csv/preview", %{csv: csv}) |> json_response(200)
+    assert response["data"]["valid"]
+    assert [game] = response["data"]["games"]
+    assert game["win_condition"] == "alternate_win_con"
+
+    assert [%{"partner" => "Kediss", "kills" => 0}, %{"partner" => nil, "kills" => nil}] =
+             game["seats"]
+  end
+
   test "commit requires authentication inside the ten-minute sudo window", %{conn: conn} do
     expire_sudo(conn, 602)
 
