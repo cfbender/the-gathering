@@ -182,6 +182,91 @@ defmodule TheGathering.GamesTest do
     assert errors_on(game_changeset).created_by_user_id == ["does not exist"]
   end
 
+  test "find_deck falls back from name to an order-insensitive commander pairing" do
+    alice = player("Alice")
+    bob = player("Bob")
+
+    {:ok, party} =
+      Games.create_deck(%{
+        player_id: alice.id,
+        name: "Party time",
+        commander_name: "Gandalf, Party Guest"
+      })
+
+    {:ok, partners} =
+      Games.create_deck(%{
+        player_id: alice.id,
+        name: "Tyvar + Ellivere",
+        commander_name: "Tyvar, the Bellicose",
+        partner_name: "Ellivere of the Wild Court"
+      })
+
+    {:ok, _solo} =
+      Games.create_deck(%{
+        player_id: alice.id,
+        name: "Solo Tyvar",
+        commander_name: "Tyvar, the Bellicose"
+      })
+
+    # Name still wins over commander.
+    assert Games.find_deck(alice, "party TIME", "Something else").id == party.id
+    # A differently named seat with the same commander reuses the deck instead of creating one.
+    assert Games.find_deck(alice, "Gandalf, Party Guest", "gandalf, party guest").id == party.id
+
+    assert {:ok, reused} =
+             Games.find_or_create_deck(alice, "Gandalf", %{commander_name: "Gandalf, Party Guest"})
+
+    assert reused.id == party.id
+    # Commander and partner match as a set, in either order, and never match the solo deck.
+    assert Games.find_deck(alice, "x", "Ellivere of the Wild Court", "Tyvar, the Bellicose").id ==
+             partners.id
+
+    assert Games.find_deck(alice, "x", "Tyvar, the Bellicose", "Ellivere of the Wild Court").id ==
+             partners.id
+
+    refute Games.find_deck(alice, "x", "Tyvar, the Bellicose", "Someone Else")
+    # Other players' decks are never matched, and no commander means no fallback.
+    refute Games.find_deck(bob, "x", "Gandalf, Party Guest")
+    refute Games.find_deck(alice, "x", nil)
+    assert Repo.aggregate(Deck, :count) == 3
+  end
+
+  test "deleting a deck moves its seats to a replacement of the same player or clears them" do
+    alice = player("Alice")
+    bob = player("Bob")
+    {:ok, dupe} = Games.find_or_create_deck(alice, "Dupe", %{commander_name: "Krenko"})
+
+    {:ok, keeper} =
+      Games.find_or_create_deck(alice, "Keeper", %{commander_name: "Krenko, Mob Boss"})
+
+    {:ok, bobs} = Games.find_or_create_deck(bob, "Bob's", %{commander_name: "Krenko"})
+
+    {:ok, game} =
+      Games.create_game(
+        game_attrs([alice, bob], %{
+          seats: [
+            %{player_id: alice.id, deck_id: dupe.id, seat: 1, result: "win"},
+            %{player_id: bob.id, deck_id: bobs.id, seat: 2, result: "loss"}
+          ]
+        })
+      )
+
+    alice_seat = fn -> Repo.get_by!(GamePlayer, game_id: game.id, player_id: alice.id) end
+
+    assert {:error, :bad_request} = Games.delete_deck(dupe, bobs)
+    assert {:error, :bad_request} = Games.delete_deck(dupe, dupe)
+    assert alice_seat.().deck_id == dupe.id
+
+    assert {:ok, %Deck{id: dupe_id}} = Games.delete_deck(dupe, keeper)
+    assert dupe_id == dupe.id
+    refute Games.get_deck(dupe.id)
+    assert alice_seat.().deck_id == keeper.id
+
+    assert {:ok, _deck} = Games.delete_deck(keeper)
+    assert alice_seat.().deck_id == nil
+    assert Repo.get_by!(GamePlayer, game_id: game.id, player_id: bob.id).deck_id == bobs.id
+  end
+
   test "merging players moves seats and decks, collapses same-named decks, and carries identity" do
     drew = player("Drew")
     alice = player("Alice")

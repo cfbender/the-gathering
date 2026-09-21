@@ -4,7 +4,7 @@ defmodule TheGathering.Imports.Preview do
   import Ecto.Query
 
   alias TheGathering.Games
-  alias TheGathering.Games.{Deck, Player}
+  alias TheGathering.Games.Player
   alias TheGathering.Imports.{CSV, MythicTrack}
   alias TheGathering.Repo
 
@@ -64,17 +64,12 @@ defmodule TheGathering.Imports.Preview do
     seats = all_seats(games)
     players = existing_players(seats)
 
-    existing =
-      Deck
-      |> preload(:player)
-      |> Repo.all()
-      |> Map.new(fn deck -> {{deck.player_id, Games.fold_name(deck.name)}, deck} end)
-
     seats
     |> Enum.uniq_by(&{player_key(&1), Games.fold_name(&1.deck)})
     |> Enum.reduce(%{create: [], matched: []}, fn seat, result ->
       player = existing_player(players, seat)
-      deck = player && existing[{player.id, Games.fold_name(seat.deck)}]
+      # Same rule as the commit: a deck is reused by name, or by commander pairing.
+      deck = player && Games.find_deck(player, seat.deck, seat.commander, seat.partner_name)
 
       case deck do
         nil ->

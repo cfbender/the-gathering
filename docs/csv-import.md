@@ -16,7 +16,7 @@ The API routes are `POST /api/imports/csv/preview`, `POST /api/imports/csv`, and
 | `game_id` | yes | A value that groups all seats from one game. It only needs to be unique within the file. |
 | `date` | yes | ISO 8601 date/time or `YYYY-MM-DD`. A date without a time becomes noon UTC. |
 | `player` | yes | Player name. Matching is case-insensitive; a missing player is created. |
-| `deck` | yes | Deck name, unique for that player. A missing deck is created. |
+| `deck` | yes | Deck name, unique for that player. An existing deck is reused when its name matches, or when the same player already has a deck with the same commander (and partner). Otherwise the deck is created. |
 | `commander` | yes | Commander name used when creating the deck. |
 | `seat` | yes | Consecutive number from 1 through the number of players. |
 | `result` | yes | `win`, `loss`, or `draw`. A game has one winner and all other players lose, or every player draws. |

@@ -77,6 +77,28 @@ defmodule TheGathering.ImportsTest do
            ]
   end
 
+  test "reuses a player's deck with the same commander even when the deck name differs" do
+    user = AccountsFixtures.user_fixture()
+    {:ok, alice} = Games.create_player(%{name: "Alice"})
+
+    {:ok, birds} =
+      Games.create_deck(%{
+        player_id: alice.id,
+        name: "Feathered friends",
+        commander_name: "Kangee, Sky Warden"
+      })
+
+    preview = Imports.preview_csv(@csv)
+    assert [%{id: birds_id, name: "Feathered friends"}] = preview.decks.matched
+    assert birds_id == birds.id
+    assert preview.decks.create == [%{player: "Bob", name: "Goblins", commander: "Krenko"}]
+
+    assert {:ok, %{created: 1, game_ids: [game_id]}} = Imports.import_csv(@csv, user.id)
+    alice_seat = Games.get_game!(game_id).seats |> Enum.find(&(&1.player.name == "Alice"))
+    assert alice_seat.deck_id == birds.id
+    assert Games.list_decks(%{player_id: alice.id}) |> length() == 1
+  end
+
   test "commit links only imported rows instead of running global repair" do
     user = AccountsFixtures.user_fixture()
     insert_card("kangee", "Kangee, Sky Warden", ["W", "U"])
