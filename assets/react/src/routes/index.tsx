@@ -144,7 +144,14 @@ function HomePage() {
       <EloSection players={stats.elo} />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <ColorSection rows={stats.color_win_rates} />
+        <ColorSection
+          rows={stats.color_win_rates}
+          action={
+            <Link to="/colors" className="btn btn-ghost btn-sm">
+              View all
+            </Link>
+          }
+        />
         <ColorWheel rows={stats.color_exposure} eyebrow="Playgroup colors" />
       </div>
 
