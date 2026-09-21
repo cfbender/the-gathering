@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart } from "@/components/stats/charts"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -23,10 +23,13 @@ export function ColorSection({
   rows,
   eyebrow = "Color check",
   minGames = LEADERBOARD_MIN_GAMES,
+  action,
 }: {
   rows: NamedRecordRow[]
   eyebrow?: string
   minGames?: number
+  /** Rendered after the metric toggle, for example a "View all" link. */
+  action?: ReactNode
 }) {
   const [metric, setMetric] = useState<ColorMetric>("games")
   const shown = sortByMetric(rows, metric, minGames).slice(0, 6)
@@ -39,23 +42,29 @@ export function ColorSection({
             {metric === "games" ? "Most played colors" : "Color win rates"}
           </h2>
         </div>
-        <ToggleGroup
-          type="single"
-          value={metric}
-          onValueChange={(value) => value && setMetric(value as ColorMetric)}
-          aria-label="Color metric"
-          className="join"
-        >
-          {(Object.keys(colorMetricLabels) as ColorMetric[]).map((value) => (
-            <ToggleGroupItem
-              key={value}
-              value={value}
-              className={cn("btn btn-xs join-item", metric === value ? "btn-primary" : "btn-ghost")}
-            >
-              {colorMetricLabels[value]}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        <div className="flex items-center gap-2">
+          <ToggleGroup
+            type="single"
+            value={metric}
+            onValueChange={(value) => value && setMetric(value as ColorMetric)}
+            aria-label="Color metric"
+            className="join"
+          >
+            {(Object.keys(colorMetricLabels) as ColorMetric[]).map((value) => (
+              <ToggleGroupItem
+                key={value}
+                value={value}
+                className={cn(
+                  "btn btn-xs join-item",
+                  metric === value ? "btn-primary" : "btn-ghost",
+                )}
+              >
+                {colorMetricLabels[value]}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          {action}
+        </div>
       </div>
       {shown.length === 0 ? (
         <p className="text-base-content/50 text-sm">
