@@ -37,6 +37,19 @@ defmodule TheGathering.Discord.SpellBotParserTest do
     assert {:error, :not_spellbot} = SpellBotParser.parse(message, @spellbot_id)
   end
 
+  test "ignores Nostrum messages with nullable author bot flags, including partial updates" do
+    for author <- [nil, %Nostrum.Struct.User{}, %Nostrum.Struct.User{bot: false}] do
+      message = %Nostrum.Struct.Message{author: author}
+      assert {:error, :not_spellbot} = SpellBotParser.parse(message, @spellbot_id)
+    end
+
+    message = %Nostrum.Struct.Message{
+      author: %Nostrum.Struct.User{id: String.to_integer(@spellbot_id), bot: true}
+    }
+
+    assert {:error, :no_embeds} = SpellBotParser.parse(message, @spellbot_id)
+  end
+
   test "rejects malformed and unrelated messages without raising" do
     assert {:error, :not_spellbot} = SpellBotParser.parse(%{}, @spellbot_id)
 
