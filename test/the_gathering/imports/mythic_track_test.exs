@@ -18,6 +18,7 @@ defmodule TheGathering.Imports.MythicTrackTest do
         "gameType" => 1,
         "totalTurns" => 9,
         "gameTimeInMinutes" => 55,
+        "winCondition" => 10,
         "players" => [
           # Listed out of turn order on purpose: seats must follow turnOrder.
           seat("Drew", 2, false, "Krenko, Mob Boss", %{"discordUserId" => "200000000000000002"}),
@@ -72,6 +73,7 @@ defmodule TheGathering.Imports.MythicTrackTest do
     assert parsed.played_at == ~U[2026-03-14 19:30:15Z]
     assert parsed.turns == 9
     assert parsed.duration_minutes == 55
+    assert parsed.win_condition == "combat_damage"
     assert parsed.notes == "Close one"
 
     assert Enum.map(parsed.seats, &{&1.seat, &1.player, &1.result, &1.deck}) == [
@@ -85,6 +87,40 @@ defmodule TheGathering.Imports.MythicTrackTest do
     assert daniel.color_identity == "G"
     assert Enum.at(parsed.seats, 1).discord_id == "200000000000000002"
     assert preview.players.create == ["Daniel", "Drew", "Kaylyn"]
+  end
+
+  test "maps every Mythic Track win condition and defaults unrecognized values to unknown" do
+    expected =
+      ~w(damage infinite_combo mill poison alternate_win_con hard_lock commander_damage draw non_combat_damage combat_damage concede)
+
+    for {key, number} <- Enum.with_index(expected, 1) do
+      assert %{games: [%{win_condition: ^key}]} =
+               Imports.preview(:mythic_track, json([game(%{"winCondition" => number})]))
+    end
+
+    for value <- [99, 0, 12, nil, "10"] do
+      assert %{games: [%{win_condition: "unknown"}]} =
+               Imports.preview(:mythic_track, json([game(%{"winCondition" => value})]))
+    end
+  end
+
+  test "normalizes naive midnight calendar dates to noon UTC and preserves real timestamps" do
+    midnight = game(%{"createdOn" => "2025-03-17T00:00:00"})
+    date_only = game(%{"createdOn" => "2025-03-17"})
+    nonmidnight = game(%{"createdOn" => "2025-03-17T00:00:01"})
+    offset = game(%{"createdOn" => "2025-03-17T00:00:00-04:00"})
+
+    assert %{games: [%{played_at: ~U[2025-03-17 12:00:00Z]}]} =
+             Imports.preview(:mythic_track, json([midnight]))
+
+    assert %{games: [%{played_at: ~U[2025-03-17 12:00:00Z]}]} =
+             Imports.preview(:mythic_track, json([date_only]))
+
+    assert %{games: [%{played_at: ~U[2025-03-17 00:00:01Z]}]} =
+             Imports.preview(:mythic_track, json([nonmidnight]))
+
+    assert %{games: [%{played_at: ~U[2025-03-17 04:00:00Z]}]} =
+             Imports.preview(:mythic_track, json([offset]))
   end
 
   test "a game with no winner is an all-player draw and two winners is skipped" do

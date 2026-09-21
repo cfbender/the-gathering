@@ -71,6 +71,7 @@ defmodule TheGathering.Imports.PortableTransferTest do
       played_at: ~U[2025-03-17 21:04:00Z],
       turns: 11,
       duration_minutes: 83,
+      win_condition: "combat_damage",
       notes: "Line one\nLine two",
       seats: [
         %{
@@ -136,8 +137,8 @@ defmodule TheGathering.Imports.PortableTransferTest do
 
     assert saved.played_at == ~U[2025-03-17 21:04:00Z]
 
-    assert {saved.duration_minutes, saved.turns, saved.notes} ==
-             {83, 11, "Line one\nLine two"}
+    assert {saved.duration_minutes, saved.turns, saved.win_condition, saved.notes} ==
+             {83, 11, "combat_damage", "Line one\nLine two"}
 
     seats = Enum.sort_by(saved.seats, & &1.seat)
 

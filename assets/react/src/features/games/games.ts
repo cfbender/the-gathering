@@ -39,11 +39,33 @@ export interface Game {
   played_at: string
   duration_minutes: number | null
   turns: number | null
+  win_condition: WinCondition | null
   notes: string | null
   source: "manual" | "csv" | "mythic_track" | "discord"
   external_id: string | null
   created_by_user_id: number | null
   seats: Seat[]
+}
+
+export const WIN_CONDITIONS = [
+  ["damage", "Damage"],
+  ["infinite_combo", "Infinite Combo"],
+  ["mill", "Mill"],
+  ["poison", "Poison"],
+  ["alternate_win_con", "On-card Alternate Win Con"],
+  ["hard_lock", "Hard Lock"],
+  ["commander_damage", "Commander Damage"],
+  ["draw", "Draw"],
+  ["non_combat_damage", "Non-Combat Damage"],
+  ["combat_damage", "Combat Damage"],
+  ["concede", "Concede"],
+  ["unknown", "Unknown"],
+] as const
+
+export type WinCondition = (typeof WIN_CONDITIONS)[number][0]
+
+export function winConditionLabel(value: WinCondition) {
+  return WIN_CONDITIONS.find(([key]) => key === value)?.[1] ?? "Unknown"
 }
 
 export interface RecentGame {

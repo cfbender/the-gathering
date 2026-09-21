@@ -3,7 +3,7 @@ import { Link, createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Clock, Pencil, Trophy } from "lucide-react"
-import { canManageGame, formatDate, getGame } from "@/features/games/games"
+import { canManageGame, formatDate, getGame, winConditionLabel } from "@/features/games/games"
 import { CardArtBackground } from "@/components/card-art-background"
 import { useCurrentUser } from "@/lib/auth"
 
@@ -107,6 +107,14 @@ function GameDetailPage() {
           </article>
         ))}
       </section>
+      {game.win_condition && (
+        <section className="card border-base-300 bg-base-200 border">
+          <div className="card-body">
+            <h2 className="font-bold">Win condition</h2>
+            <p>{winConditionLabel(game.win_condition)}</p>
+          </div>
+        </section>
+      )}
       {game.notes && (
         <section className="card border-base-300 bg-base-200 border">
           <div className="card-body">

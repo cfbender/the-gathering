@@ -17,8 +17,9 @@ The API routes are `POST /api/imports/mythic_track/preview` and `POST /api/impor
 | Mythic Track | The Gathering |
 | --- | --- |
 | Game `id` (GUID) | `games.external_id` with `source = "mythic_track"`, so re-imports skip existing games |
-| `createdOn` | `played_at`, read as UTC (Mythic Track stores no offset) |
+| `createdOn` | `played_at`; naive date-only midnight values are normalized to noon UTC, while actual times and explicit offsets are preserved |
 | `gameTimeInMinutes`, `totalTurns` | `duration_minutes`, `turns` |
+| `winCondition` | Canonical win condition (`1` Damage through `11` Concede, with `8` Draw and `99`/unrecognized values Unknown), using the enum extracted from Mythic Track's public `MtgDataTracker.Shared` assembly |
 | `name` + `notes` | `notes`, joined when both are present |
 | Player `discordUserId`, then `name` | Existing player with that Discord ID; otherwise a case-insensitive name match; otherwise a new player. A name-matched player without a Discord ID gains the exported one. |
 | Commander `deckName`, else commander name(s) | Deck name, owned by that player |

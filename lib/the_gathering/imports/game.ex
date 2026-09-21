@@ -10,9 +10,14 @@ defmodule TheGathering.Imports.Game do
     :played_at,
     :duration_minutes,
     :turns,
+    :win_condition,
     :notes,
     :lines,
-    :seats
+    :seats,
+    :action,
+    :target_source,
+    :target_external_id,
+    :target_portable_id
   ]
 
   @type t :: %__MODULE__{
@@ -21,6 +26,7 @@ defmodule TheGathering.Imports.Game do
           played_at: DateTime.t(),
           duration_minutes: pos_integer() | nil,
           turns: pos_integer() | nil,
+          win_condition: String.t() | nil,
           notes: String.t() | nil,
           lines: [pos_integer()],
           seats: [Seat.t()]

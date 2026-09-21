@@ -15,6 +15,7 @@ defmodule TheGathering.Imports.Seat do
     :decklist_url,
     :seat,
     :result,
+    :kills,
     :mvp_card,
     :mvp_card_id
   ]

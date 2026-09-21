@@ -24,10 +24,10 @@ defmodule TheGatheringWeb.API.CSVImportController do
 
   def preview(_conn, _params), do: {:error, :bad_request}
 
-  def create(conn, %{"csv" => csv}) when is_binary(csv) do
+  def create(conn, %{"csv" => csv} = params) when is_binary(csv) do
     user_id = conn.assigns.current_scope.user.id
 
-    case Imports.import_csv(csv, user_id) do
+    case Imports.import_csv(csv, user_id, params["revision"]) do
       {:ok, result} ->
         render(conn, :result, result: result)
 

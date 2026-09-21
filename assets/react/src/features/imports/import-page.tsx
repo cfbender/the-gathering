@@ -17,20 +17,19 @@ import type { ChangeEvent } from "react"
 import { errorMessage, isSudoRequired } from "@/lib/auth"
 import { commitImport, importRowLabel, previewImport } from "@/features/imports/imports"
 import type { CSVImportPreview, ImportSource } from "@/features/imports/imports"
-import { invalidateGameRelated } from "@/features/games/games"
+import { invalidateGameRelated, winConditionLabel } from "@/features/games/games"
 import { MythicTrackInstructions } from "@/features/imports/mythic-track-instructions"
-import { SheetImportPage } from "./sheet-import-page"
+import { CSVCorrectionReview } from "./csv-correction-review"
 import { PortableTransfer } from "./portable-transfer"
 
 export function ImportPage() {
-  const [mode, setMode] = useState<"file" | "sheet" | "portable">("file")
+  const [mode, setMode] = useState<"file" | "portable">("file")
   return (
-    <div className="flex flex-col gap-4">
+    <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-4">
       <nav aria-label="Import and export tools" className="flex flex-wrap gap-2">
         {(
           [
             ["file", "Import games"],
-            ["sheet", "Reconcile Google Sheet with existing games"],
             ["portable", "Export / transfer"],
           ] as const
         ).map(([value, label]) => (
@@ -45,26 +44,22 @@ export function ImportPage() {
           </button>
         ))}
       </nav>
-      {mode === "sheet" ? (
-        <SheetImportPage />
-      ) : mode === "portable" ? (
-        <PortableTransfer />
-      ) : (
-        <FileImportPage />
-      )}
+      {mode === "portable" ? <PortableTransfer /> : <FileImportPage />}
     </div>
   )
 }
 
-function FileImportPage() {
+export function FileImportPage() {
   const queryClient = useQueryClient()
   const [source, setSource] = useState<ImportSource>("csv")
   const [payload, setPayload] = useState("")
   const preview = useMutation({
-    mutationFn: (input: string) => previewImport(source, input),
+    mutationFn: (input: { source: ImportSource; payload: string }) =>
+      previewImport(input.source, input.payload),
   })
   const commit = useMutation({
-    mutationFn: (input: string) => commitImport(source, input),
+    mutationFn: (input: { source: ImportSource; payload: string; revision?: string }) =>
+      commitImport(input.source, input.payload, input.revision),
     onSuccess: () => {
       void invalidateGameRelated(queryClient)
     },
@@ -86,11 +81,16 @@ function FileImportPage() {
     if (file) updatePayload(await file.text())
   }
 
-  const data = preview.data
+  const reviewed =
+    preview.data && preview.variables?.payload === payload && preview.variables.source === source
+      ? { data: preview.data, source, payload }
+      : undefined
+  const data = reviewed?.data
   const isCSV = source === "csv"
+  const locked = commit.isPending
 
   return (
-    <div className="mx-auto flex min-w-0 max-w-5xl flex-col gap-6">
+    <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-6">
       <PageHeader
         eyebrow="Administration"
         title="Import game history"
@@ -106,10 +106,10 @@ function FileImportPage() {
 
       <Tabs value={source} onValueChange={switchSource}>
         <TabsList aria-label="Import source">
-          <TabsTrigger value="csv">
+          <TabsTrigger value="csv" disabled={locked}>
             <FileSpreadsheet className="size-4" /> CSV
           </TabsTrigger>
-          <TabsTrigger value="mythic_track">
+          <TabsTrigger value="mythic_track" disabled={locked}>
             <FileJson className="size-4" /> Mythic Track
           </TabsTrigger>
         </TabsList>
@@ -135,6 +135,7 @@ function FileImportPage() {
                 type="file"
                 accept={isCSV ? ".csv,text/csv" : ".json,application/json"}
                 className="sr-only"
+                disabled={locked}
                 onChange={chooseFile}
               />
             </label>
@@ -143,6 +144,7 @@ function FileImportPage() {
               <textarea
                 className="textarea textarea-bordered min-h-40 w-full font-mono text-xs"
                 value={payload}
+                disabled={locked}
                 onChange={(event) => updatePayload(event.target.value)}
                 placeholder={
                   isCSV
@@ -161,7 +163,7 @@ function FileImportPage() {
                 type="button"
                 className="btn btn-primary"
                 disabled={!payload.trim() || preview.isPending}
-                onClick={() => preview.mutate(payload)}
+                onClick={() => preview.mutate({ source, payload })}
               >
                 {preview.isPending ? (
                   <span className="loading loading-spinner loading-sm" />
@@ -176,6 +178,7 @@ function FileImportPage() {
       </Tabs>
 
       {data && <Preview preview={data} source={source} />}
+      {isCSV && data?.review && <CSVCorrectionReview review={data.review} />}
 
       <SudoPrompt
         error={commit.error}
@@ -192,7 +195,14 @@ function FileImportPage() {
             type="button"
             className="btn btn-success"
             disabled={commit.isPending}
-            onClick={() => commit.mutate(payload)}
+            onClick={() =>
+              reviewed &&
+              commit.mutate({
+                source: reviewed.source,
+                payload: reviewed.payload,
+                revision: reviewed.data.revision,
+              })
+            }
           >
             {commit.isPending && <span className="loading loading-spinner loading-sm" />}
             Confirm import
@@ -206,8 +216,8 @@ function FileImportPage() {
           <div>
             <h2 className="font-bold">Import complete</h2>
             <p>
-              Created {commit.data.created} and skipped {commit.data.skipped} already-imported{" "}
-              {commit.data.skipped === 1 ? "game" : "games"}.
+              Created {commit.data.created}, updated {commit.data.updated ?? 0}, and skipped{" "}
+              {commit.data.skipped} already-imported {commit.data.skipped === 1 ? "game" : "games"}.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {commit.data.game_ids.map((id) => (
@@ -231,6 +241,12 @@ function FileImportPage() {
 function Preview({ preview, source }: { preview: CSVImportPreview; source: ImportSource }) {
   const errorLines = new Set(preview.errors.map((error) => error.line))
   const rowLabel = importRowLabel[source]
+  const createIds = new Set(
+    preview.review?.filter((item) => item.action === "create").map((item) => item.game_id),
+  )
+  const previewGames = (
+    preview.review ? preview.games.filter((game) => createIds.has(game.game_id)) : preview.games
+  ).slice(0, 50)
 
   return (
     <section className="flex min-w-0 flex-col gap-4" aria-labelledby="preview-heading">
@@ -305,7 +321,7 @@ function Preview({ preview, source }: { preview: CSVImportPreview; source: Impor
         </ul>
       )}
 
-      {preview.games.length > 0 && (
+      {previewGames.length > 0 && (
         <div className="rounded-box border-base-300 w-full max-w-full overflow-x-auto border">
           <table className="table bg-base-100 min-w-180">
             <thead>
@@ -316,10 +332,12 @@ function Preview({ preview, source }: { preview: CSVImportPreview; source: Impor
                 <th>Player</th>
                 <th>Deck / commander</th>
                 <th>Result</th>
+                <th>Kills</th>
+                <th>Win condition</th>
               </tr>
             </thead>
             <tbody>
-              {preview.games.flatMap((game) =>
+              {previewGames.flatMap((game) =>
                 game.seats.map((seat) => (
                   <tr
                     key={`${game.game_id}-${seat.line}-${seat.seat}`}
@@ -328,7 +346,7 @@ function Preview({ preview, source }: { preview: CSVImportPreview; source: Impor
                     <td className="max-w-40 truncate font-mono text-xs" title={game.game_id}>
                       {game.game_id}
                     </td>
-                    <td>{new Date(game.played_at).toLocaleDateString()}</td>
+                    <td>{game.played_at.slice(0, 10)}</td>
                     <td>{seat.seat}</td>
                     <td className="font-semibold">{seat.player}</td>
                     <td>
@@ -349,11 +367,16 @@ function Preview({ preview, source }: { preview: CSVImportPreview; source: Impor
                         </span>
                       )}
                     </td>
+                    <td>{seat.kills ?? "—"}</td>
+                    <td>{game.win_condition ? winConditionLabel(game.win_condition) : "—"}</td>
                   </tr>
                 )),
               )}
             </tbody>
           </table>
+          {(preview.review ? createIds.size : preview.games.length) > previewGames.length && (
+            <p className="text-base-content/60 p-3 text-sm">Showing the first 50 new games.</p>
+          )}
         </div>
       )}
     </section>

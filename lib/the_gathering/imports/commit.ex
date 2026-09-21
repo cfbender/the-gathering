@@ -56,6 +56,7 @@ defmodule TheGathering.Imports.Commit do
           played_at: game.played_at,
           duration_minutes: game.duration_minutes,
           turns: game.turns,
+          win_condition: game.win_condition,
           notes: game.notes,
           source: source,
           external_id: game.external_id,
@@ -72,7 +73,7 @@ defmodule TheGathering.Imports.Commit do
     end
   end
 
-  defp commit_seat(seat) do
+  def commit_seat(seat) do
     player = seat |> resolve_player() |> unwrap!()
 
     deck_attrs =
@@ -88,6 +89,7 @@ defmodule TheGathering.Imports.Commit do
       deck_id: deck.id,
       seat: seat.seat,
       result: seat.result,
+      kills: seat.kills,
       mvp_card_name: seat.mvp_card,
       mvp_card_id: seat.mvp_card_id
     }

@@ -49,6 +49,7 @@ async function renderCard(seats: Seat[]) {
     played_at: "2026-09-19T18:00:00Z",
     duration_minutes: null,
     turns: null,
+    win_condition: null,
     notes: null,
     source: "manual",
     external_id: null,
