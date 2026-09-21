@@ -5,56 +5,57 @@ import { ColorIdentity } from "@/components/mana-symbols"
 import { CalendarDays, Plus, Trophy, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { formatDate, getGames, getPlayers } from "@/features/games/games"
+import {
+  countActiveGameFilters,
+  parseGamesSearch,
+  patchGamesSearch,
+  toGameFilters,
+  type GameFilters,
+} from "@/features/games/game-filters"
 import { CardArtBackground } from "@/components/card-art-background"
 
-export const Route = createFileRoute("/games/")({ component: GamesPage })
-
-const emptyFilters = {
-  player_id: "",
-  winner_id: "",
-  commander: "",
-  player_count: "",
-  date_from: "",
-  date_to: "",
-  min_turns: "",
-  max_turns: "",
-  min_duration: "",
-  max_duration: "",
-}
-
-type Filters = typeof emptyFilters
+export const Route = createFileRoute("/games/")({
+  validateSearch: parseGamesSearch,
+  component: GamesPage,
+})
 
 const seatCounts = ["2", "3", "4", "5", "6"]
 
 function GamesPage() {
-  const [filters, setFilters] = useState<Filters>(emptyFilters)
-  const [page, setPage] = useState(1)
-  // Commander is free text; wait for a pause in typing before querying.
-  const [commander, setCommander] = useState("")
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setFilters((current) =>
-        current.commander === commander.trim()
-          ? current
-          : { ...current, commander: commander.trim() },
-      )
-      setPage(1)
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [commander])
+  // Filters live in the URL so other pages can link to a filtered list.
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
+  const filters = toGameFilters(search)
+  const page = search.page ?? 1
 
-  function update(patch: Partial<Filters>) {
-    setFilters((current) => ({ ...current, ...patch }))
-    setPage(1)
+  function update(patch: Partial<GameFilters>) {
+    void navigate({ search: patchGamesSearch(search, patch), replace: true })
   }
 
   function clear() {
-    setFilters(emptyFilters)
-    setCommander("")
-    setPage(1)
+    void navigate({ search: {}, replace: true })
   }
 
-  const activeCount = Object.values(filters).filter((value) => value !== "").length
+  function goToPage(next: number) {
+    void navigate({ search: { ...search, page: next > 1 ? next : undefined } })
+  }
+
+  // Commander is free text; wait for a pause in typing before writing it to the URL.
+  const [commander, setCommander] = useState(filters.commander)
+  const urlCommander = filters.commander
+  useEffect(() => {
+    if (commander.trim() === urlCommander) return
+    const timer = window.setTimeout(() => update({ commander: commander.trim() }), 250)
+    return () => window.clearTimeout(timer)
+  }, [commander, urlCommander])
+  // The URL changed underneath the input (back button, external link): follow it.
+  const [seenUrlCommander, setSeenUrlCommander] = useState(urlCommander)
+  if (urlCommander !== seenUrlCommander) {
+    setSeenUrlCommander(urlCommander)
+    if (commander.trim() !== urlCommander) setCommander(urlCommander)
+  }
+
+  const activeCount = countActiveGameFilters(search)
   const params = { ...filters, page }
   const games = useQuery({ queryKey: ["games", params], queryFn: () => getGames(params) })
   const players = useQuery({ queryKey: ["players"], queryFn: getPlayers })
@@ -239,11 +240,7 @@ function GamesPage() {
       </div>
       {games.data && games.data.pagination.total_pages > 1 && (
         <div className="join self-center">
-          <button
-            className="btn join-item"
-            disabled={page <= 1}
-            onClick={() => setPage((value) => value - 1)}
-          >
+          <button className="btn join-item" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
             Previous
           </button>
           <span className="btn join-item pointer-events-none">
@@ -252,7 +249,7 @@ function GamesPage() {
           <button
             className="btn join-item"
             disabled={page >= games.data.pagination.total_pages}
-            onClick={() => setPage((value) => value + 1)}
+            onClick={() => goToPage(page + 1)}
           >
             Next
           </button>

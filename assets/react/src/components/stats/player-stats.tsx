@@ -65,8 +65,26 @@ export function PlayerStats({ playerId }: { playerId: string }) {
         <EloTrendCard elo={stats.elo} />
       </div>
       <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-        <h3 className="mb-4 font-bold">Deck performance</h3>
-        <BarChart rows={byWinRateThenName(stats.decks)} columns={2} />
+        <div className="mb-4 flex items-baseline justify-between gap-3">
+          <h3 className="font-bold">Deck performance</h3>
+          <span className="text-base-content/60 text-xs">Click a deck to see its games</span>
+        </div>
+        <BarChart
+          rows={byWinRateThenName(stats.decks)}
+          columns={2}
+          renderLabel={(row) => (
+            <>
+              {row.name}
+              {row.commander_name && !row.name.includes(row.commander_name) && (
+                <span className="text-base-content/70 font-normal"> · {row.commander_name}</span>
+              )}
+            </>
+          )}
+          linkTo={(row) => ({
+            to: "/games",
+            search: { player_id: Number(playerId), commander: row.commander_name ?? row.name },
+          })}
+        />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <ColorSection rows={stats.color_win_rates} eyebrow="Their colors" />
