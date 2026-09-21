@@ -71,75 +71,81 @@ function HomePage() {
       </section>
 
       <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
-        <section className="border-base-300 bg-base-200/60 overflow-hidden rounded-xl border">
-          <div className="border-base-300 flex items-center justify-between border-b p-5">
-            <div>
-              <p className="text-primary text-xs font-bold uppercase">Standings</p>
-              <h2 className="text-xl font-bold">Playgroup leaderboard</h2>
+        {/* The right column sets this row's height; the leaderboard fills it and scrolls past it. */}
+        <div className="relative min-h-0">
+          <section className="border-base-300 bg-base-200/60 flex max-h-[36rem] flex-col overflow-hidden rounded-xl border lg:absolute lg:inset-0 lg:max-h-none">
+            <div className="border-base-300 flex items-center justify-between gap-3 border-b p-5">
+              <div>
+                <p className="text-primary text-xs font-bold uppercase">Standings</p>
+                <h2 className="text-xl font-bold">Playgroup leaderboard</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <Trophy className="text-accent size-6" />
+                <Link to="/players" className="btn btn-ghost btn-sm">
+                  View all
+                </Link>
+              </div>
             </div>
-            <Trophy className="text-accent size-6" />
-          </div>
-          <div className="divide-base-300 divide-y">
-            {leaderboard.length === 0 && (
-              <p className="text-base-content/55 p-5 text-sm">
-                Players appear here after {LEADERBOARD_MIN_GAMES} games.
-              </p>
-            )}
-            {leaderboard.map((player, index) => (
-              <Link
-                key={player.id}
-                to="/players/$playerId"
-                params={{ playerId: String(player.id) }}
-                className="hover:bg-base-300/40 grid grid-cols-[2rem_1fr_auto] items-center gap-3 px-5 py-3 transition-colors"
-              >
-                <span className="text-base-content/35 font-mono font-bold">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span>
-                  <strong className="block">{player.name}</strong>
-                  <small className="text-base-content/55">
-                    {player.wins}–{player.losses}–{player.draws} · {player.games} games
-                  </small>
-                </span>
-                <strong className="text-primary text-lg tabular-nums">{player.win_rate}%</strong>
-              </Link>
-            ))}
-          </div>
-        </section>
+            <div className="divide-base-300 min-h-0 flex-1 divide-y overflow-y-auto">
+              {leaderboard.length === 0 && (
+                <p className="text-base-content/55 p-5 text-sm">
+                  Players appear here after {LEADERBOARD_MIN_GAMES} games.
+                </p>
+              )}
+              {leaderboard.map((player, index) => (
+                <Link
+                  key={player.id}
+                  to="/players/$playerId"
+                  params={{ playerId: String(player.id) }}
+                  className="hover:bg-base-300/40 grid grid-cols-[2rem_1fr_auto] items-center gap-3 px-5 py-3 transition-colors"
+                >
+                  <span className="text-base-content/35 font-mono font-bold">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span>
+                    <strong className="block">{player.name}</strong>
+                    <small className="text-base-content/55">
+                      {player.wins}–{player.losses}–{player.draws} · {player.games} games
+                    </small>
+                  </span>
+                  <strong className="text-primary text-lg tabular-nums">{player.win_rate}%</strong>
+                </Link>
+              ))}
+            </div>
+          </section>
+        </div>
 
-        <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-          <div className="mb-5 flex items-start justify-between gap-3">
-            <div>
-              <p className="text-primary text-xs font-bold uppercase">The meta</p>
-              <h2 className="text-xl font-bold">Most played commanders</h2>
+        <div className="flex flex-col gap-4">
+          <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-primary text-xs font-bold uppercase">The meta</p>
+                <h2 className="text-xl font-bold">Most played commanders</h2>
+              </div>
+              <Link to="/commanders" className="btn btn-ghost btn-sm">
+                View all
+              </Link>
             </div>
-            <Link to="/commanders" className="btn btn-ghost btn-sm">
-              View all
-            </Link>
-          </div>
-          <BarChart rows={stats.commanders.slice(0, 6)} value="games" />
-        </section>
+            <BarChart rows={stats.commanders} value="games" />
+          </section>
+          <section className="border-base-300 bg-base-200/60 flex-1 rounded-xl border p-5">
+            <p className="text-primary text-xs font-bold uppercase">Opening advantage</p>
+            <h2 className="mb-5 text-xl font-bold">
+              Wins by seat
+              {since && (
+                <span className="text-base-content/50 ml-2 text-sm font-medium">{since}</span>
+              )}
+            </h2>
+            <BarChart rows={stats.seat_win_rates} />
+          </section>
+        </div>
       </div>
 
       <EloSection players={stats.elo} />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-          <p className="text-primary text-xs font-bold uppercase">Opening advantage</p>
-          <h2 className="mb-5 text-xl font-bold">
-            Wins by seat
-            {since && (
-              <span className="text-base-content/50 ml-2 text-sm font-medium">{since}</span>
-            )}
-          </h2>
-          <BarChart rows={stats.seat_win_rates} />
-        </section>
         <ColorSection rows={stats.color_win_rates} />
-        <ColorWheel
-          rows={stats.color_exposure}
-          eyebrow="Playgroup colors"
-          className="md:col-span-2"
-        />
+        <ColorWheel rows={stats.color_exposure} eyebrow="Playgroup colors" />
       </div>
 
       <MatchupHeatmap players={stats.leaderboard} matchups={stats.matchups} />

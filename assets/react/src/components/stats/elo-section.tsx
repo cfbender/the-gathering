@@ -14,8 +14,8 @@ export function EloSection({ players }: { players: OverviewStats["elo"] }) {
           Elo standings
         </h2>
       </div>
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(18rem,1fr)]">
-        <div className="border-base-300 bg-base-200/60 min-w-0 rounded-xl border p-5">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(18rem,1fr)]">
+        <div className="border-base-300 bg-base-200/60 flex min-w-0 flex-col rounded-xl border p-5">
           <h3 className="mb-4 font-bold">Top players over time</h3>
           {chartSeries.length > 0 ? (
             <EloChart series={chartSeries} />
@@ -25,9 +25,9 @@ export function EloSection({ players }: { players: OverviewStats["elo"] }) {
             </p>
           )}
         </div>
-        <div className="border-base-300 bg-base-200/60 overflow-hidden rounded-xl border">
+        <div className="border-base-300 bg-base-200/60 flex flex-col overflow-hidden rounded-xl border">
           <h3 className="border-base-300 border-b px-5 py-4 font-bold">Current ratings</h3>
-          <div className="divide-base-300 max-h-[28rem] divide-y overflow-y-auto">
+          <div className="divide-base-300 min-h-0 flex-1 max-h-[28rem] divide-y overflow-y-auto lg:max-h-[40rem]">
             {players.map((player, index) => (
               <Link
                 key={player.id}
