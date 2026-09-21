@@ -9,6 +9,7 @@ defmodule TheGathering.Games do
   alias TheGathering.Games.{
     Deck,
     DeckPicker,
+    DeleteDeck,
     Game,
     GamePlayer,
     MergePlayers,
@@ -177,7 +178,11 @@ defmodule TheGathering.Games do
   def update_deck(%Deck{} = deck, attrs),
     do: deck |> Deck.update_changeset(attrs) |> Repo.update() |> preload_ok(:player)
 
-  def delete_deck(%Deck{} = deck), do: Repo.delete(deck)
+  @doc """
+  Deletes a deck. Games that used it move to `replacement` (another deck of the same player)
+  or, without one, keep their seat with no deck.
+  """
+  def delete_deck(%Deck{} = deck, replacement \\ nil), do: DeleteDeck.run(deck, replacement)
 
   def pick_deck(%User{} = user, opts \\ []), do: DeckPicker.random_deck(user, opts)
 
@@ -186,25 +191,69 @@ defmodule TheGathering.Games do
 
   def sync_remote_decks(%User{} = user), do: SyncRemoteDecks.run(user)
 
+  @doc """
+  Finds a player's deck by name, or failing that by commander pairing.
+
+  Names fold case like SQLite. The commander match is order-insensitive across commander and
+  partner, so an imported "Thrasios + Tymna" seat lands on an existing "Tymna + Thrasios" deck.
+  When several decks share the commander pairing, the earliest wins.
+  """
+  def find_deck(player_or_id, name, commander_name \\ nil, partner_name \\ nil)
+      when is_binary(name) do
+    player_id = player_id(player_or_id)
+
+    Repo.one(deck_by_name_query(player_id, name)) ||
+      find_deck_by_commanders(player_id, commander_name, partner_name)
+  end
+
   def find_or_create_deck(player_or_id, name, attrs \\ %{}) when is_binary(name) do
-    player_id = if is_struct(player_or_id, Player), do: player_or_id.id, else: player_or_id
+    player_id = player_id(player_or_id)
+    attrs = Map.new(attrs)
 
-    query =
-      from deck in Deck,
-        where: deck.player_id == ^player_id,
-        where: fragment("lower(?)", deck.name) == ^fold_name(name)
-
-    case Repo.one(query) do
+    case find_deck(player_id, name, attrs[:commander_name], attrs[:partner_name]) do
       nil ->
         attrs
-        |> Map.new()
         |> Map.merge(%{player_id: player_id, name: name})
         |> create_deck()
-        |> recover_deck(query)
+        |> recover_deck(deck_by_name_query(player_id, name))
 
       deck ->
         {:ok, deck}
     end
+  end
+
+  defp player_id(%Player{id: id}), do: id
+  defp player_id(id), do: id
+
+  defp deck_by_name_query(player_id, name) do
+    from deck in Deck,
+      where: deck.player_id == ^player_id,
+      where: fragment("lower(?)", deck.name) == ^fold_name(name)
+  end
+
+  defp find_deck_by_commanders(player_id, commander_name, partner_name) do
+    case commander_key(commander_name, partner_name) do
+      [] ->
+        nil
+
+      key ->
+        from(deck in Deck,
+          where: deck.player_id == ^player_id,
+          where:
+            fragment("lower(?)", deck.commander_name) in ^key or
+              fragment("lower(?)", deck.partner_name) in ^key,
+          order_by: deck.id
+        )
+        |> Repo.all()
+        |> Enum.find(&(commander_key(&1.commander_name, &1.partner_name) == key))
+    end
+  end
+
+  defp commander_key(commander_name, partner_name) do
+    [commander_name, partner_name]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.map(&fold_name/1)
+    |> Enum.sort()
   end
 
   def list_games(opts \\ %{}) do

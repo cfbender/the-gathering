@@ -40,14 +40,26 @@ defmodule TheGatheringWeb.API.DeckController do
     end
   end
 
-  def delete(conn, %{"id" => id}) do
+  # `replacement_deck_id` moves the deck's games to another of the player's decks;
+  # without it those seats keep no deck.
+  def delete(conn, %{"id" => id} = params) do
     with deck when not is_nil(deck) <- Games.get_deck(id),
          :ok <- authorize(conn, deck),
-         {:ok, _deck} <- Games.delete_deck(deck) do
+         {:ok, replacement} <- replacement_deck(params["replacement_deck_id"]),
+         {:ok, _deck} <- Games.delete_deck(deck, replacement) do
       send_resp(conn, :no_content, "")
     else
       nil -> {:error, :not_found}
       error -> error
+    end
+  end
+
+  defp replacement_deck(id) when id in [nil, ""], do: {:ok, nil}
+
+  defp replacement_deck(id) do
+    case Games.get_deck(id) do
+      nil -> {:error, :bad_request}
+      deck -> {:ok, deck}
     end
   end
 

@@ -51,6 +51,42 @@ defmodule TheGatheringWeb.API.DeckControllerTest do
            |> json_response(403)
   end
 
+  test "the owner deletes a deck and can move its games to another of their decks", ctx do
+    conn = log_in_user(ctx.conn, ctx.owner)
+
+    {:ok, keeper} =
+      Games.create_deck(%{player_id: ctx.owner_player.id, name: "Keeper", commander_name: "K"})
+
+    {:ok, game} =
+      Games.create_game(%{
+        played_at: ~U[2026-09-19 18:00:00Z],
+        source: "manual",
+        seats: [
+          %{player_id: ctx.owner_player.id, deck_id: ctx.deck.id, seat: 1, result: "win"},
+          %{player_id: ctx.guest.id, deck_id: ctx.guest_deck.id, seat: 2, result: "loss"}
+        ]
+      })
+
+    # A replacement that belongs to someone else is refused and nothing changes.
+    assert conn
+           |> delete(~p"/api/decks/#{ctx.deck.id}?replacement_deck_id=#{ctx.guest_deck.id}")
+           |> json_response(400)
+
+    assert Games.get_deck(ctx.deck.id)
+
+    assert conn
+           |> delete(~p"/api/decks/#{ctx.deck.id}?replacement_deck_id=#{keeper.id}")
+           |> response(204)
+
+    refute Games.get_deck(ctx.deck.id)
+    seat = Games.get_game!(game.id).seats |> Enum.find(&(&1.player_id == ctx.owner_player.id))
+    assert seat.deck_id == keeper.id
+
+    assert conn |> delete(~p"/api/decks/#{keeper.id}") |> response(204)
+    seat = Games.get_game!(game.id).seats |> Enum.find(&(&1.player_id == ctx.owner_player.id))
+    assert seat.deck_id == nil
+  end
+
   test "the linked member and administrators can edit the deck", ctx do
     body =
       ctx.conn

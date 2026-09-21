@@ -12,6 +12,7 @@ import { cardSnapshot, getCard, selectCatalogCard, type CardSummary } from "@/li
 import { useCurrentUser } from "@/lib/auth"
 import { formatDate, invalidateGameRelated } from "@/features/games/games"
 import { canManageDeck, getDeck, type DeckDetail } from "@/features/decks/decks"
+import { DeleteDeckCard } from "@/features/decks/delete-deck"
 
 export const Route = createFileRoute("/decks/$deckId")({ component: DeckDetailPage })
 
@@ -91,6 +92,7 @@ function DeckDetailPage() {
           ))}
         </div>
       </section>
+      {canManageDeck(viewer.data, deck) && <DeleteDeckCard deck={deck} />}
     </div>
   )
 }

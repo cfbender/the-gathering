@@ -39,3 +39,10 @@ export const getDecks = (playerId?: number) =>
 
 export const getDeck = (id: string) =>
   api<{ data: DeckDetail }>(`/api/decks/${id}`).then((body) => body.data)
+
+/** Deletes a deck; its games move to `replacementDeckId` or, without one, keep no deck. */
+export const deleteDeck = (id: number, replacementDeckId?: number) =>
+  api<void>(
+    `/api/decks/${id}${replacementDeckId ? `?replacement_deck_id=${replacementDeckId}` : ""}`,
+    { method: "DELETE" },
+  )
