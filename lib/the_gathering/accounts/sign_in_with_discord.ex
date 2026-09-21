@@ -49,22 +49,28 @@ defmodule TheGathering.Accounts.SignInWithDiscord do
       discord_id: discord_id,
       avatar_url: discord_avatar_url(claims)
     })
-    |> Repo.insert!()
+    |> Repo.insert()
+    |> case do
+      {:ok, user} -> user
+      {:error, changeset} -> Repo.rollback({:invalid_user, changeset})
+    end
   end
 
   defp registration_allowed? do
     Repo.aggregate(User, :count) > 0 and Repo.get!(ServerSettings, 1).registration_enabled
   end
 
+  # Usernames must start with a letter or digit and may contain `_ . -` after
+  # that (see User.validate_account_fields/1). Discord handles allow a leading
+  # dot, so strip punctuation from the edges rather than trusting the handle.
   defp available_username(preferred_username, discord_id) do
     base =
       preferred_username
       |> to_string()
-      |> String.trim()
       |> String.downcase()
       |> String.replace(~r/[^a-z0-9_.-]/, "_")
-      |> String.trim("_.-")
       |> String.slice(0, 32)
+      |> String.replace(~r/^[_.-]+|[_.-]+$/, "")
 
     base = if String.length(base) >= 3, do: base, else: "discord"
 
