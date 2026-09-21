@@ -7,6 +7,22 @@ Administrators can import past games at **Import** in the main navigation. The f
 
 The API routes are `POST /api/imports/csv/preview`, `POST /api/imports/csv`, and `GET /api/imports/csv/sample`. The POST routes accept JSON shaped as `{"csv":"..."}`. They are restricted to administrators; committing an import also requires reauthentication within the previous ten minutes.
 
+## Transfer between The Gathering instances
+
+Use **Import → Export / transfer → Download JSON export** to download a versioned JSON file. On another instance running a version that supports portable transfers, open the same page, choose the file, and select **Preview transfer**. Review the new/existing player, deck and game counts, then confirm. No CSV conversion or manual ID mapping is needed.
+
+The export includes all players, decks and games, including unused/archived records, deck selection settings, notes, kills (preserving zero versus unknown), results, seat order, eliminations, duration, turns and MVPs. It also includes referenced card metadata, selected printings and Google Sheet reconciliation receipts. Artwork URLs are preserved; image files are not embedded.
+
+This is a gameplay transfer, **not a full database/account backup**. It excludes accounts, passwords, sessions, Discord IDs, account links, server settings and audit timestamps. New players are unlinked and can be linked to accounts afterward. Keep exports private: player names and notes are included.
+
+Imports are additive and atomic. Preview validates the entire file in a rolled-back transaction; confirmation revalidates and saves everything together or nothing. Existing records are never overwritten or deleted:
+
+- Players match by case-insensitive name; decks match by owner and case-insensitive deck name. Existing settings are kept. A same-name deck with different commanders blocks the transfer; rename one first. Review names before combining unrelated playgroups.
+- Games retain a stable portable UUID, so repeat transfers do not duplicate games, even if they were edited afterward. Original CSV/Mythic Track/Discord identities are also checked to recognize games already imported independently. Manual games recorded independently on both instances cannot be automatically recognized as the same game.
+- Selected card metadata is restored locally without fetching Scryfall. Existing cached metadata is retained. Sheet receipts prevent unchanged sheet rows from being applied again after transfer.
+
+All routes require admin access: `GET /api/exports/portable` downloads the document; `POST /api/imports/portable/preview` and `POST /api/imports/portable` accept `{"json":"<export file text>"}`. Confirmation also requires recent reauthentication. Files declare `format: "the-gathering"` and `version: 1`; unknown format versions are rejected rather than guessed.
+
 ## Native format
 
 [Download a sample CSV](/api/imports/csv/sample), or use these columns:

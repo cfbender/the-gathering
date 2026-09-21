@@ -11,6 +11,7 @@ defmodule TheGathering.Games.Game do
     field :notes, :string
     field :source, :string, default: "manual"
     field :external_id, :string
+    field :portable_id, Ecto.UUID, autogenerate: true
 
     belongs_to :created_by, TheGathering.Accounts.User, foreign_key: :created_by_user_id
     has_many :seats, GamePlayer, on_replace: :delete
@@ -33,6 +34,7 @@ defmodule TheGathering.Games.Game do
     |> cast_assoc(:seats, required: true, with: &GamePlayer.changeset/2)
     |> validate_seats()
     |> unique_constraint([:source, :external_id])
+    |> unique_constraint(:portable_id)
     |> foreign_key_constraint(:created_by_user_id)
   end
 

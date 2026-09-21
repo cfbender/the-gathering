@@ -96,6 +96,8 @@ defmodule TheGatheringWeb.Router do
     post "/imports/csv/preview", CSVImportController, :preview
     post "/imports/mythic_track/preview", MythicTrackImportController, :preview
     post "/imports/sheet/preview", SheetImportController, :preview
+    get "/exports/portable", PortableImportController, :export
+    post "/imports/portable/preview", PortableImportController, :preview
   end
 
   scope "/api", TheGatheringWeb.API do
@@ -104,6 +106,7 @@ defmodule TheGatheringWeb.Router do
     post "/imports/csv", CSVImportController, :create
     post "/imports/mythic_track", MythicTrackImportController, :create
     post "/imports/sheet", SheetImportController, :create
+    post "/imports/portable", PortableImportController, :create
     post "/players/:id/merge", PlayerController, :merge
   end
 
