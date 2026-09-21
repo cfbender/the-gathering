@@ -29,11 +29,10 @@ defmodule TheGathering.Catalog.Scryfall do
     options = [
       headers: headers(),
       params: [
-        q: "oracleid:#{oracle_id} game:paper",
+        q: "oracleid:#{oracle_id} game:paper lang:en",
         unique: "prints",
         order: "released",
         include_variations: true,
-        include_multilingual: true,
         page: page
       ],
       connect_options: [timeout: 3_000],

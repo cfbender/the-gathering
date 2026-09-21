@@ -8,7 +8,9 @@ defmodule TheGathering.Catalog.Printings do
     with {:ok, cards, has_more} <- Scryfall.printings(card.oracle_id, page) do
       rows =
         cards
-        |> Enum.filter(&(&1["oracle_id"] == card.oracle_id and "paper" in &1["games"]))
+        |> Enum.filter(
+          &(&1["oracle_id"] == card.oracle_id and "paper" in &1["games"] and &1["lang"] == "en")
+        )
         |> Enum.map(&printing_data/1)
 
       Repo.insert_all(Printing, rows, on_conflict: :replace_all, conflict_target: :id)

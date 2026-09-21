@@ -52,20 +52,19 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
     %{deck: deck, player: player}
   end
 
-  test "lists and caches paper printings by oracle identity with pagination and front-face images",
+  test "lists and caches English paper printings by oracle identity with pagination and front-face images",
        %{conn: conn} do
     Req.Test.expect(__MODULE__, fn conn ->
       params = Plug.Conn.fetch_query_params(conn).query_params
-      assert params["q"] == "oracleid:oracle-commander game:paper"
+      assert params["q"] == "oracleid:oracle-commander game:paper lang:en"
       assert params["unique"] == "prints"
-      assert params["include_multilingual"] == "true"
+      refute params["include_multilingual"]
       assert params["page"] == "2"
       assert get_req_header(conn, "user-agent") != []
 
       printing =
         scryfall_card("commander", "Tymna the Weaver")
         |> Map.put("id", "double-faced-print")
-        |> Map.put("lang", "ja")
         |> Map.delete("image_uris")
         |> Map.put("card_faces", [
           %{"image_uris" => %{"art_crop" => "https://img.example/front.jpg"}}
@@ -73,18 +72,20 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
 
       other = scryfall_card("partner", "Thrasios, Triton Hero")
       digital = printing |> Map.put("id", "digital") |> Map.put("games", ["arena"])
-      Req.Test.json(conn, %{data: [printing, other, digital], has_more: true})
+      japanese = printing |> Map.put("id", "japanese") |> Map.put("lang", "ja")
+      Req.Test.json(conn, %{data: [printing, other, digital, japanese], has_more: true})
     end)
 
     body = conn |> get(~p"/api/card-printings?card_id=commander&page=2") |> json_response(200)
 
-    assert %{"data" => [%{"id" => "double-faced-print", "lang" => "ja"}], "has_more" => true} =
+    assert %{"data" => [%{"id" => "double-faced-print", "lang" => "en"}], "has_more" => true} =
              body
 
     assert Catalog.get_printing("double-faced-print").image_uris["art_crop"] ==
              "https://img.example/front.jpg"
 
     refute Catalog.get_printing("digital")
+    refute Catalog.get_printing("japanese")
     assert Catalog.get_card("double-faced-print") == nil
 
     assert conn
@@ -98,7 +99,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
   } do
     Req.Test.expect(__MODULE__, fn conn ->
       assert Plug.Conn.fetch_query_params(conn).query_params["q"] ==
-               "oracleid:oracle-commander game:paper"
+               "oracleid:oracle-commander game:paper lang:en"
 
       Req.Test.json(%{conn | status: 503}, %{error: "Unavailable"})
     end)
