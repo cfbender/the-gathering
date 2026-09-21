@@ -74,6 +74,7 @@ const game = (created_by_user_id: number | null, playerUserIds: (number | null)[
     deck_id: null,
     seat: index + 1,
     result: index === 0 ? "win" : "loss",
+    kills: null,
     mvp_card_id: null,
     mvp_card_name: null,
     mvp_art_crop_url: null,

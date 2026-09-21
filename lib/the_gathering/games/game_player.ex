@@ -5,6 +5,7 @@ defmodule TheGathering.Games.GamePlayer do
   schema "game_players" do
     field :seat, :integer
     field :result, :string
+    field :kills, :integer
     field :eliminated_turn, :integer
     field :mvp_card_id, :string
     field :mvp_card_name, :string
@@ -26,6 +27,7 @@ defmodule TheGathering.Games.GamePlayer do
       :deck_id,
       :seat,
       :result,
+      :kills,
       :eliminated_turn,
       :eliminated_by_player_id,
       :mvp_card_id,
@@ -34,6 +36,7 @@ defmodule TheGathering.Games.GamePlayer do
     ])
     |> validate_required([:player_id, :seat, :result])
     |> validate_number(:seat, greater_than_or_equal_to: 1, less_than_or_equal_to: 6)
+    |> validate_number(:kills, greater_than_or_equal_to: 0, less_than_or_equal_to: 5)
     |> validate_number(:eliminated_turn, greater_than: 0)
     |> validate_inclusion(:result, ~w(win loss draw))
     |> assoc_constraint(:player)

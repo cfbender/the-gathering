@@ -109,6 +109,7 @@ function GameFormDraft({ game }: GameFormProps) {
           deck_id: deckId,
           seat: index + 1,
           result: results[index],
+          kills: draft.kills === "" ? null : Number(draft.kills),
           mvp_card_id: draft.mvpCard?.catalog_id ?? null,
           mvp_card_name: draft.mvpCard?.name ?? null,
         })
@@ -265,6 +266,18 @@ function GameFormDraft({ game }: GameFormProps) {
                       value={seat.mvpCard}
                       onChange={(mvpCard) => updateSeat(index, { mvpCard })}
                     />
+                    <label className="form-control">
+                      <span className="label-text mb-1 text-xs font-medium">Kills (optional)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="5"
+                        step="1"
+                        className="input input-bordered input-sm w-full"
+                        value={seat.kills}
+                        onChange={(event) => updateSeat(index, { kills: event.target.value })}
+                      />
+                    </label>
                   </div>
                   {seat.playerName && seat.playerId === null && !player && (
                     <p className="text-info mt-2 text-xs">

@@ -81,6 +81,7 @@ defmodule TheGatheringWeb.API.GameControllerTest do
             deck_id: deck.id,
             seat: 1,
             result: "win",
+            kills: 0,
             mvp_card_id: "swan-song",
             mvp_card_name: "Swan Song"
           },
@@ -101,12 +102,19 @@ defmodule TheGatheringWeb.API.GameControllerTest do
                  %{
                    "seat" => 1,
                    "result" => "win",
+                   "kills" => 0,
                    "player" => %{"id" => alice_id, "name" => "Alice"},
                    "deck" => %{"id" => deck_id, "commander_name" => "Kangee, Sky Warden"},
                    "mvp_card_name" => "Swan Song",
                    "mvp_art_crop_url" => "https://cards.example/swan-song-art.jpg"
                  },
-                 %{"seat" => 2, "result" => "loss", "player" => %{"name" => "Bob"}, "deck" => nil}
+                 %{
+                   "seat" => 2,
+                   "result" => "loss",
+                   "kills" => nil,
+                   "player" => %{"name" => "Bob"},
+                   "deck" => nil
+                 }
                ]
              }
            } = response

@@ -25,6 +25,7 @@ export interface Seat {
   deck_id: number | null
   seat: number
   result: "win" | "loss" | "draw"
+  kills: number | null
   mvp_card_id: string | null
   mvp_card_name: string | null
   mvp_art_crop_url: string | null

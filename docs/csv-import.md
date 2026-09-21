@@ -42,3 +42,22 @@ Mythic Track's published template has commander columns but no deck-name columns
 ## Re-importing
 
 Imported games have source `csv`. The importer hashes each normalized game group into a deterministic external ID. Re-importing the same file skips games already present and reports the created/skipped counts. Changing a game's data changes its identity and creates a new game rather than editing the earlier import.
+
+## Reconciling the original Google Sheet
+
+Use **Import → Reconcile Google Sheet with existing games** for the one-game-per-row sheet with `Date`, `Winner`, `Deck`, named kill columns, `Win Con`, `Other Decks`, and `Notes`. Upload CSV/TSV or paste cells, including the header. A decorative `K I L L S` row is allowed. Dates accept `M/D/YY` (2000–2099), `M/D/YYYY`, and ISO dates.
+
+1. Read the sheet. The preview automatically matches games by mapped participants and date, preferring the exact UTC day and falling back to the preceding/following day. When multiple games qualify, a unique best deck-name/commander match can distinguish them; winners are not used to hide result discrepancies. Ambiguous matches and invalid rows stay skipped for review. Nothing is saved until confirmation.
+2. Map player aliases to existing players. Mappings apply to both participants and kill-column headers. Missing players require an explicit create choice. Deck mappings apply to the same sheet player/deck pair throughout the batch.
+3. Review actual **before → after** values. Matching games with changes are selected together; unchanged games are skipped. Filters separate result/deck corrections from kills/notes-only changes, unresolved rows, and unchanged games. Preserved fields and deck nicknames do not count as changes. All selected rows are confirmed, including rows hidden by a filter. You can skip any match, choose another game, or explicitly create a missing game. An update must have the same mapped player set. Repair differing participants in the sheet or game editor first.
+4. Refresh the preview after changing any choice, then confirm selected changes. Invalid skipped rows do not block other rows. Invalid selected rows block the entire batch. Commits require admin and recent password authentication.
+
+Updates retain game/seat IDs, original source/external ID, timestamps, turn order, duration, turns, MVPs and seat notes. Existing deck links are retained unless explicitly mapped. Sheet results and nonempty notes (including `Win con:`) replace existing values. Empty notes leave existing notes intact. No games outside the selected targets are removed or changed.
+
+Kills are per-player totals, not victim assignments. In this Google Sheet, blank cells mean **zero**, including participants without a kill column. Both blank and explicit zero replace existing counts. Manually entered games can still leave kills unknown. Fewer kills than opponents are allowed (scoops and alternate wins). Impossible totals, alias collisions, malformed opponents and missing participants require repair. Blank/`N/A` winners produce draws for every listed player; prose notes never infer results.
+
+New games use noon UTC and sheet ordering as placeholder seat order; the sheet does not record time or turn order. Missing decks need explicit mapping or creation; creation uses the sheet text as the deck and unverified commander name, without guessing card identity. Prefer mappings to cleaned-up decks.
+
+Reconciliation receipts remember each imported row independently of the game's original source. Re-uploading the same rows skips them, even after subsequent game edits. Edited sheet content is a new row to review, not permission to overwrite automatically. Two rows cannot target one game in a batch. A database change after preview invalidates confirmation; refresh instead. Selected changes and receipts commit in one transaction or roll back together. Back up the database before reconciling production history.
+
+The admin API is `POST /api/imports/sheet/preview` with `{text, players, decks, actions}`. `players` maps raw names to player IDs or `"new"`; `decks` maps JSON-encoded `[rawPlayer, rawDeck]` keys to deck IDs or `"new"`; `actions` maps preview row keys to existing game IDs, `"create"`, or `"skip"`. Commit to `POST /api/imports/sheet` with the same input plus the returned `revision`.

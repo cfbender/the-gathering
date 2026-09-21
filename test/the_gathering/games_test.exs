@@ -42,6 +42,25 @@ defmodule TheGathering.GamesTest do
     assert Enum.at(seat_errors, 6).seat == ["must be less than or equal to 6"]
   end
 
+  test "keeps unknown kills distinct from zero and validates kill counts" do
+    players = [player("Alice"), player("Bob")]
+    [alice, bob] = seats(players)
+
+    assert {:ok, game} =
+             Games.create_game(game_attrs(players, %{seats: [Map.put(alice, :kills, 0), bob]}))
+
+    assert Enum.map(game.seats, & &1.kills) == [0, nil]
+
+    for invalid <- [-1, 1.5, 6] do
+      assert {:error, changeset} =
+               Games.create_game(
+                 game_attrs(players, %{seats: [Map.put(alice, :kills, invalid), bob]})
+               )
+
+      assert %{seats: [%{kills: [_message]} | _]} = errors_on(changeset)
+    end
+  end
+
   test "rejects a duplicate player even when seat numbers differ" do
     first = player("Alice")
     second = player("Bob")
