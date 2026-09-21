@@ -3,7 +3,16 @@ defmodule TheGathering.Catalog do
 
   import Ecto.Query
 
-  alias TheGathering.Catalog.{Backfill, Card, CardData, SyncServer, SyncState}
+  alias TheGathering.Catalog.{
+    Backfill,
+    Card,
+    CardData,
+    Printing,
+    Printings,
+    SyncServer,
+    SyncState
+  }
+
   alias TheGathering.Games.ColorIdentity
   alias TheGathering.Repo
 
@@ -47,6 +56,19 @@ defmodule TheGathering.Catalog do
   def get_card(id), do: Repo.get(Card, id)
   def get_card!(id), do: Repo.get!(Card, id)
   def count_cards, do: Repo.aggregate(Card, :count)
+
+  def resolve_card(id, name) do
+    (id && get_card(id)) || (is_binary(name) && find_card_by_name(name)) || nil
+  end
+
+  def get_printing(id), do: Repo.get(Printing, id)
+
+  def list_printings(id, name, page) when is_integer(page) and page > 0 do
+    case resolve_card(id, name) do
+      nil -> {:error, :not_found}
+      card -> Printings.list(card, page)
+    end
+  end
 
   @doc "Finds a catalog card by printed name, preferring commanders and current printings."
   def find_card_by_name(name) when is_binary(name) do
@@ -105,13 +127,24 @@ defmodule TheGathering.Catalog do
   end
 
   def art_crop_urls(card_refs) do
-    card_refs
-    |> card_summaries()
-    |> Map.new(fn {key, summary} -> {key, summary.art_crop_url} end)
+    {printing_refs, identity_refs} = Enum.split_with(card_refs, &match?({:printing, _id}, &1))
+    ids = Enum.map(printing_refs, &elem(&1, 1)) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    urls =
+      identity_refs
+      |> card_summaries()
+      |> Map.new(fn {key, summary} -> {key, summary.art_crop_url} end)
+
+    Printing
+    |> where([printing], printing.id in ^ids)
+    |> Repo.all()
+    |> Enum.reduce(urls, fn printing, acc ->
+      Map.put(acc, {:printing, printing.id}, printing.image_uris["art_crop"])
+    end)
   end
 
-  def art_crop_url(urls, id, name) do
-    Map.get(urls, {:id, id}) ||
+  def art_crop_url(urls, id, name, printing_id \\ nil) do
+    Map.get(urls, {:printing, printing_id}) || Map.get(urls, {:id, id}) ||
       (is_binary(name) && Map.get(urls, {:name, CardData.normalize_name(name)})) || nil
   end
 

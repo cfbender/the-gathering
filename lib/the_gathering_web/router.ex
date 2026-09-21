@@ -67,6 +67,8 @@ defmodule TheGatheringWeb.Router do
 
     get "/cards", CardController, :index
     get "/cards/:id", CardController, :show
+    get "/card-printings", CardPrintingController, :index
+    get "/card-printings/:id", CardPrintingController, :show
     get "/catalog", CatalogController, :show
     get "/stats/overview", StatsController, :overview
     get "/stats/players/:id", StatsController, :player

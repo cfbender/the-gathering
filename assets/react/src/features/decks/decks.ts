@@ -7,9 +7,11 @@ export interface DeckSummary {
   name: string
   commander_card_id: string | null
   commander_name: string
+  commander_printing_id?: string | null
   commander_art_crop_url: string | null
   partner_card_id: string | null
   partner_name: string | null
+  partner_printing_id?: string | null
   partner_art_crop_url: string | null
   color_identity: string
   decklist_url: string | null

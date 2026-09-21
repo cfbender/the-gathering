@@ -2,14 +2,18 @@ defmodule TheGathering.Games.Deck do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias TheGathering.Games.DeckPrintings
+
   @sources ~w(moxfield archidekt manavault other)
 
   schema "decks" do
     field :name, :string
     field :commander_card_id, :string
     field :commander_name, :string
+    field :commander_printing_id, :string
     field :partner_card_id, :string
     field :partner_name, :string
+    field :partner_printing_id, :string
     field :color_identity, :string, default: ""
     field :decklist_url, :string
     field :decklist_source, :string
@@ -30,8 +34,10 @@ defmodule TheGathering.Games.Deck do
       :name,
       :commander_card_id,
       :commander_name,
+      :commander_printing_id,
       :partner_card_id,
       :partner_name,
+      :partner_printing_id,
       :color_identity,
       :decklist_url,
       :archived_at,
@@ -40,6 +46,7 @@ defmodule TheGathering.Games.Deck do
     |> update_change(:name, &String.trim/1)
     |> update_change(:commander_name, &String.trim/1)
     |> put_decklist_source()
+    |> DeckPrintings.validate()
     |> validate_required([:player_id, :name, :commander_name])
     |> validate_length(:name, min: 1, max: 100)
     |> validate_number(:skip_count, greater_than_or_equal_to: 0)
@@ -59,8 +66,10 @@ defmodule TheGathering.Games.Deck do
       :name,
       :commander_card_id,
       :commander_name,
+      :commander_printing_id,
       :partner_card_id,
       :partner_name,
+      :partner_printing_id,
       :color_identity,
       :decklist_url,
       :archived_at,
@@ -69,6 +78,7 @@ defmodule TheGathering.Games.Deck do
     |> update_change(:name, &String.trim/1)
     |> update_change(:commander_name, &String.trim/1)
     |> put_decklist_source()
+    |> DeckPrintings.validate()
     |> validate_required([:player_id, :name, :commander_name])
     |> validate_length(:name, min: 1, max: 100)
     |> validate_color_identity()

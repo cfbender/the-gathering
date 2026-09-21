@@ -31,7 +31,9 @@ export type StoredCardSnapshot = Omit<CardSummary, "color_identity"> & {
   color_identity: null
 }
 
-export type SelectedCard = CatalogCard | StoredCardSnapshot
+export type SelectedCard = (CatalogCard | StoredCardSnapshot) & {
+  printing_id?: string | null
+}
 
 export function selectCatalogCard(card: CardSummary): CatalogCard {
   return { ...card, catalog_id: card.id, source: "catalog" }

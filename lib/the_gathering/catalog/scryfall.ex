@@ -4,6 +4,49 @@ defmodule TheGathering.Catalog.Scryfall do
   @bulk_url "https://api.scryfall.com/bulk-data"
   @user_agent "TheGathering/0.1 (+https://github.com/cfbender/the-gathering)"
 
+  def printings(oracle_id, page) do
+    limit = Application.get_env(:the_gathering, :scryfall_search_limit, 1)
+
+    with {:allow, _count} <- TheGathering.RateLimiter.hit(:scryfall_search, 500, limit),
+         {:ok, response} <- search_printings(oracle_id, page) do
+      case response do
+        %{status: 200, body: %{"data" => cards, "has_more" => has_more}}
+        when is_list(cards) and is_boolean(has_more) ->
+          {:ok, cards, has_more}
+
+        %{status: 404} ->
+          {:ok, [], false}
+
+        _other ->
+          {:error, :bad_gateway}
+      end
+    else
+      _error -> {:error, :bad_gateway}
+    end
+  end
+
+  defp search_printings(oracle_id, page) do
+    options = [
+      headers: headers(),
+      params: [
+        q: "oracleid:#{oracle_id} game:paper",
+        unique: "prints",
+        order: "released",
+        include_variations: true,
+        include_multilingual: true,
+        page: page
+      ],
+      connect_options: [timeout: 3_000],
+      receive_timeout: 10_000,
+      retry: false
+    ]
+
+    options =
+      Keyword.merge(options, Application.get_env(:the_gathering, :scryfall_req_options, []))
+
+    Req.get("https://api.scryfall.com/cards/search", options)
+  end
+
   def fetch do
     response = Req.get!(@bulk_url, headers: headers())
 

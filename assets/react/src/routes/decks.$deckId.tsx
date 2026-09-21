@@ -136,14 +136,30 @@ export function DeckEditForm({ deck }: { deck: DeckDetail }) {
   return (
     <DeckEditFormReady
       deck={deck}
-      commander={selectedCard(commander.data, deck.commander_card_id, deck.commander_name)}
-      partner={selectedCard(partner.data, deck.partner_card_id, deck.partner_name)}
+      commander={selectedCard(
+        commander.data,
+        deck.commander_card_id,
+        deck.commander_name,
+        deck.commander_printing_id,
+      )}
+      partner={selectedCard(
+        partner.data,
+        deck.partner_card_id,
+        deck.partner_name,
+        deck.partner_printing_id,
+      )}
     />
   )
 }
 
-function selectedCard(card: CardSummary | undefined, id: string | null, name: string | null) {
-  return card ? selectCatalogCard(card) : cardSnapshot(id, name)
+function selectedCard(
+  card: CardSummary | undefined,
+  id: string | null,
+  name: string | null,
+  printingId?: string | null,
+) {
+  const selected = card ? selectCatalogCard(card) : cardSnapshot(id, name)
+  return selected ? { ...selected, printing_id: printingId ?? null } : null
 }
 
 function DeckEditFormReady({
@@ -172,10 +188,12 @@ function DeckEditFormReady({
         body: JSON.stringify({
           deck: {
             name: name.trim(),
-            commander_card_id: details.commander?.catalog_id,
-            commander_name: details.commander?.name,
+            commander_card_id: details.commander?.catalog_id ?? null,
+            commander_name: details.commander?.name ?? null,
+            commander_printing_id: details.commander?.printing_id ?? null,
             partner_card_id: details.partner?.catalog_id ?? null,
             partner_name: details.partner?.name ?? null,
+            partner_printing_id: details.partner?.printing_id ?? null,
             color_identity: details.colorIdentity,
             decklist_url: details.decklistUrl.trim() || null,
             included_for_play: includedForPlay,
@@ -218,7 +236,11 @@ function DeckEditFormReady({
           </label>
           <DeckFormFields
             value={details}
-            onChange={(patch) => setDetails((current) => ({ ...current, ...patch }))}
+            allowPrintings
+            onChange={(patch) => {
+              setDetails((current) => ({ ...current, ...patch }))
+              mutation.reset()
+            }}
             onResolvedName={setName}
             manualEditVersion={nameEditVersion}
           />
@@ -238,7 +260,12 @@ function DeckEditFormReady({
         </div>
         {mutation.isError && (
           <div role="alert" className="alert alert-error">
-            {error?.detail ?? "Could not save deck details."}
+            {error?.detail ??
+              ([
+                ...(error?.fieldErrors("commander_printing_id") ?? []),
+                ...(error?.fieldErrors("partner_printing_id") ?? []),
+              ].join(". ") ||
+                "Could not save deck details.")}
           </div>
         )}
         {mutation.isSuccess && <p className="text-success text-sm">Deck details saved.</p>}
