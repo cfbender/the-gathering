@@ -13,8 +13,8 @@ export interface RouterContext {
   queryClient: QueryClient
 }
 
-/** Only the sign-in and sign-up pages are reachable without a session. */
-const publicPaths = new Set(["/login", "/register"])
+/** Sign-in, bootstrap, and invitations are reachable without a session. */
+const publicPaths = new Set(["/login", "/register", "/invite"])
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   beforeLoad: async ({ context, location }) => {

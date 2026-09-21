@@ -4,7 +4,15 @@ defmodule TheGathering.Accounts do
   import Ecto.Query
 
   alias Ecto.Multi
-  alias TheGathering.Accounts.{ServerSettings, SignInWithDiscord, User, UserToken}
+
+  alias TheGathering.Accounts.{
+    RegistrationInvite,
+    ServerSettings,
+    SignInWithDiscord,
+    User,
+    UserToken
+  }
+
   alias TheGathering.Games.Player
   alias TheGathering.Repo
 
@@ -163,7 +171,12 @@ defmodule TheGathering.Accounts do
     |> Repo.update()
   end
 
-  def sign_in_with_discord(claims), do: SignInWithDiscord.run(claims)
+  defdelegate rotate_registration_invite(), to: RegistrationInvite, as: :rotate
+  defdelegate registration_invite_hash(token), to: RegistrationInvite, as: :hash
+  defdelegate valid_registration_invite_hash?(hash), to: RegistrationInvite, as: :valid_hash?
+
+  def sign_in_with_discord(claims, invite_hash \\ nil),
+    do: SignInWithDiscord.run(claims, invite_hash)
 
   defp register_when_allowed(%{allowed: false}, _attrs), do: Repo.rollback(:registration_closed)
   defp register_when_allowed(%{bootstrap: false}, _attrs), do: Repo.rollback(:registration_closed)

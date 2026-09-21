@@ -49,6 +49,124 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
     refute get_session(conn, :user_token)
   end
 
+  test "one invitation admits multiple passwordless members without opening registration" do
+    create_admin()
+    {:ok, token} = Accounts.rotate_registration_invite()
+
+    for id <- ["200000000000000001", "200000000000000002"] do
+      conn = build_conn() |> accept_invite(token) |> discord_callback(id)
+      assert redirected_to(conn) == "/"
+      assert {user, _} = Accounts.get_user_by_session_token(get_session(conn, :user_token))
+      assert user.role == "member"
+      assert is_nil(user.hashed_password)
+      assert %Player{user_id: user_id} = Repo.get_by(Player, discord_id: id)
+      assert user_id == user.id
+      refute get_session(conn, :discord_oauth)
+      refute get_session(conn, :registration_invite_hash)
+    end
+
+    assert %{allowed: false, bootstrap: false} = Accounts.registration_status()
+  end
+
+  test "invalid invitations cannot register a new Discord member", %{conn: conn} do
+    create_admin()
+    {:ok, _token} = Accounts.rotate_registration_invite()
+    conn = post(conn, "/api/registration-invite", %{token: String.duplicate("x", 43)})
+    assert json_response(conn, 200) == %{"data" => %{"valid" => false}}
+    conn = conn |> recycle() |> discord_callback("200000000000000009")
+    assert redirected_to(conn) == "/login?error=registration_closed"
+    refute Accounts.get_user_by_discord_id("200000000000000009")
+    refute get_session(conn, :user_token)
+  end
+
+  test "rotation revokes an invitation after OAuth starts, not just at landing", %{conn: conn} do
+    create_admin()
+    {:ok, token} = Accounts.rotate_registration_invite()
+    conn = conn |> accept_invite(token) |> get("/auth/discord")
+    state = oauth_state(conn)
+    refute redirected_to(conn) =~ token
+    refute get_session(conn, :registration_invite_hash)
+    assert get_session(conn, :discord_oauth).registration_invite_hash
+
+    {:ok, new_token} = Accounts.rotate_registration_invite()
+    conn = finish_callback(conn, "200000000000000003", state)
+    assert redirected_to(conn) == "/login?error=registration_closed"
+    refute Accounts.get_user_by_discord_id("200000000000000003")
+    refute get_session(conn, :discord_oauth)
+    refute get_session(conn, :user_token)
+
+    conn = build_conn() |> accept_invite(new_token) |> discord_callback("200000000000000003")
+    assert redirected_to(conn) == "/"
+  end
+
+  test "rotation before OAuth starts revokes the accepted invitation", %{conn: conn} do
+    create_admin()
+    {:ok, token} = Accounts.rotate_registration_invite()
+    conn = accept_invite(conn, token)
+    {:ok, _new_token} = Accounts.rotate_registration_invite()
+    conn = discord_callback(conn, "200000000000000004")
+    assert redirected_to(conn) == "/login?error=registration_closed"
+    refute Accounts.get_user_by_discord_id("200000000000000004")
+  end
+
+  test "an invitation cannot bypass OAuth state verification or be supplied at callback", %{
+    conn: conn
+  } do
+    create_admin()
+    {:ok, token} = Accounts.rotate_registration_invite()
+    conn = conn |> accept_invite(token) |> get("/auth/discord")
+    conn = finish_callback(conn, "200000000000000005", "wrong-state")
+    assert redirected_to(conn) == "/login?error=discord_failed"
+    refute get_session(conn, :discord_oauth)
+    refute Accounts.get_user_by_discord_id("200000000000000005")
+
+    conn = get(build_conn(), "/auth/discord")
+    state = oauth_state(conn)
+
+    conn =
+      conn
+      |> recycle()
+      |> get("/auth/discord/callback", %{
+        "code" => "discord-code:200000000000000005",
+        "state" => state,
+        "token" => token
+      })
+
+    assert redirected_to(conn) == "/login?error=registration_closed"
+    refute Accounts.get_user_by_discord_id("200000000000000005")
+  end
+
+  test "valid invitations cannot bypass disabled accounts or password bootstrap", %{conn: conn} do
+    {:ok, token} = Accounts.rotate_registration_invite()
+    conn = conn |> accept_invite(token) |> discord_callback("200000000000000006")
+    assert redirected_to(conn) == "/login?error=registration_closed"
+    assert %{bootstrap: true} = Accounts.registration_status()
+
+    create_admin()
+    conn = build_conn() |> accept_invite(token) |> discord_callback("200000000000000006")
+    assert redirected_to(conn) == "/"
+    user = Accounts.get_user_by_discord_id("200000000000000006")
+    {:ok, _user} = Accounts.disable_user(user)
+    conn = build_conn() |> accept_invite(token) |> discord_callback(user.discord_id)
+    assert redirected_to(conn) == "/login?error=account_disabled"
+    refute get_session(conn, :user_token)
+  end
+
+  test "revoked invitations do not block existing members or normal open registration" do
+    create_admin()
+    open_registration()
+    user = create_discord_user("200000000000000007")
+    close_registration()
+    {:ok, token} = Accounts.rotate_registration_invite()
+    existing = accept_invite(build_conn(), token)
+    newcomer = accept_invite(build_conn(), token)
+    {:ok, _new_token} = Accounts.rotate_registration_invite()
+
+    assert existing |> discord_callback(user.discord_id) |> redirected_to() == "/"
+    open_registration()
+    assert newcomer |> discord_callback("200000000000000008") |> redirected_to() == "/"
+  end
+
   test "OAuth failures log only their class and status", %{conn: conn} do
     sentinel = "sentinel-discord-oauth-body"
 
@@ -206,16 +324,31 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
   defp discord_callback(conn, discord_id, return_to \\ "/", request_params \\ %{}) do
     request_params = Map.put(request_params, "returnTo", return_to)
     conn = get(conn, "/auth/discord?" <> URI.encode_query(request_params))
+    finish_callback(conn, discord_id, oauth_state(conn))
+  end
 
-    authorize_params =
-      conn |> redirected_to() |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+  defp oauth_state(conn) do
+    conn
+    |> redirected_to()
+    |> URI.parse()
+    |> Map.fetch!(:query)
+    |> URI.decode_query()
+    |> Map.fetch!("state")
+  end
 
+  defp finish_callback(conn, discord_id, state) do
     conn
     |> recycle()
     |> get(
       "/auth/discord/callback?" <>
-        URI.encode_query(%{code: "discord-code:#{discord_id}", state: authorize_params["state"]})
+        URI.encode_query(%{code: "discord-code:#{discord_id}", state: state})
     )
+  end
+
+  defp accept_invite(conn, token) do
+    conn = post(conn, "/api/registration-invite", %{token: token})
+    assert json_response(conn, 200) == %{"data" => %{"valid" => true}}
+    recycle(conn)
   end
 
   defp discord_response(%{method: "POST", request_path: "/api/oauth2/token"} = conn) do

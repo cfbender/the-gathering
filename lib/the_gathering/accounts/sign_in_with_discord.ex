@@ -3,15 +3,15 @@ defmodule TheGathering.Accounts.SignInWithDiscord do
 
   import Ecto.Query
 
-  alias TheGathering.Accounts.{ServerSettings, User}
+  alias TheGathering.Accounts.{RegistrationInvite, ServerSettings, User}
   alias TheGathering.Games
   alias TheGathering.Repo
 
   @suffix_attempts 2..9
 
-  def run(%{"sub" => discord_id} = claims) when is_binary(discord_id) do
+  def run(%{"sub" => discord_id} = claims, invite_hash) when is_binary(discord_id) do
     Repo.transaction(fn ->
-      user = find_or_create_user(discord_id, claims)
+      user = find_or_create_user(discord_id, claims, invite_hash)
 
       case Games.resolve_player(user.display_name, user.discord_id, user_id: user.id) do
         {:ok, _player} -> user
@@ -20,9 +20,9 @@ defmodule TheGathering.Accounts.SignInWithDiscord do
     end)
   end
 
-  def run(_claims), do: {:error, :invalid_discord_user}
+  def run(_claims, _invite_hash), do: {:error, :invalid_discord_user}
 
-  defp find_or_create_user(discord_id, claims) do
+  defp find_or_create_user(discord_id, claims, invite_hash) do
     case Repo.get_by(User, discord_id: discord_id) do
       %User{disabled_at: disabled_at} when not is_nil(disabled_at) ->
         Repo.rollback(:disabled)
@@ -33,12 +33,12 @@ defmodule TheGathering.Accounts.SignInWithDiscord do
         |> Repo.update!()
 
       nil ->
-        create_user(discord_id, claims)
+        create_user(discord_id, claims, invite_hash)
     end
   end
 
-  defp create_user(discord_id, claims) do
-    unless registration_allowed?(), do: Repo.rollback(:registration_closed)
+  defp create_user(discord_id, claims, invite_hash) do
+    unless registration_allowed?(invite_hash), do: Repo.rollback(:registration_closed)
 
     username = available_username(claims["preferred_username"], discord_id)
 
@@ -56,8 +56,12 @@ defmodule TheGathering.Accounts.SignInWithDiscord do
     end
   end
 
-  defp registration_allowed? do
-    Repo.aggregate(User, :count) > 0 and Repo.get!(ServerSettings, 1).registration_enabled
+  defp registration_allowed?(invite_hash) do
+    # Check the current digest inside the same write transaction as member creation,
+    # so rotation also revokes invitations already on their way back from Discord.
+    Repo.aggregate(User, :count) > 0 and
+      (Repo.get!(ServerSettings, 1).registration_enabled or
+         RegistrationInvite.valid_hash?(invite_hash))
   end
 
   # Usernames must start with a letter or digit and may contain `_ . -` after

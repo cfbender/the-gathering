@@ -37,6 +37,21 @@ The app listens on port 4000 and stores its SQLite database and files under `./d
 
 Health check: `GET /api/health` returns `{"status":"ok"}` when the database is reachable.
 
+### Invite members while registration is closed
+
+Under **Administration → Server settings → Sign-up invitation**, create a reusable
+Discord sign-up link. Copy and save it before leaving the page: only its hash is
+stored, so the secret cannot be retrieved later. Anyone with the link can join as
+a member even with **Open registration** off. Links do not expire or limit uses.
+
+**Rotate link** generates a replacement and immediately revokes the old link's
+registration permission, including OAuth sign-ups that have not completed yet.
+Already registered users keep their access; disabled accounts remain blocked.
+Normal open registration and the initial password administrator setup are unchanged.
+Creating or rotating links requires administrator sudo authentication. The secret
+uses a URL fragment (not a logged request path or query), then a signed session
+carries its digest through Discord OAuth. Treat the full link as a credential.
+
 ### Deck-list links
 
 `POST /api/decklists/resolve` accepts `{"url":"..."}` for a public Moxfield,

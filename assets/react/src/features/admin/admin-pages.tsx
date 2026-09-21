@@ -21,6 +21,7 @@ import type { User } from "@/lib/auth"
 import { formValue } from "@/lib/form"
 import { getPlayers, invalidateGameRelated, linkUserPlayer } from "@/features/games/games"
 import type { PlayerSummary } from "@/features/games/games"
+import { RegistrationInvite } from "./registration-invite"
 
 interface Data<T> {
   data: T
@@ -146,6 +147,7 @@ export function AdminSettingsPage() {
         error={toggleRegistration.error}
         onSuccess={() => toggleRegistration.mutate(toggleRegistration.variables ?? false)}
       />
+      <RegistrationInvite />
       <StatsCutoff settings={settings.data} />
     </div>
   )

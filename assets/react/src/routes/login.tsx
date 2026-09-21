@@ -118,7 +118,7 @@ function useOneShotDiscordError(error: string | undefined, returnTo: string) {
 function discordError(error?: string) {
   switch (error) {
     case "registration_closed":
-      return "Registration is closed. Ask your administrator to enable new member registration, then try Continue with Discord again."
+      return "Registration is closed. Ask your administrator for a current sign-up link, then try again."
     case "account_disabled":
       return "This account is disabled. Ask your administrator for help."
     case "discord_sudo_mismatch":
