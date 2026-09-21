@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="<%= @height %>" viewBox="0 0 1200 <%= @height %>">
+  <defs>
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#10131c" stop-opacity="0.1"/>
+      <stop offset="0.45" stop-color="#10131c" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#10131c" stop-opacity="0.98"/>
+    </linearGradient>
+    <clipPath id="hero"><rect x="32" y="100" width="520" height="<%= @body_height %>" rx="18"/></clipPath>
+    <%= for seat <- @seats do %>
+      <% y = 100 + (seat.seat - 1) * @row_height + (@row_height - 88) / 2 %>
+      <clipPath id="portrait-<%= seat.seat %>"><circle cx="614" cy="<%= y + 37 %>" r="27"/></clipPath>
+      <clipPath id="partner-<%= seat.seat %>"><circle cx="634" cy="<%= y + 51 %>" r="18"/></clipPath>
+    <% end %>
+  </defs>
+  <rect width="1200" height="<%= @height %>" fill="#131620"/>
+  <g font-family="DejaVu Sans, sans-serif" fill="#f0edf8">
+    <text x="32" y="46" font-size="22" font-weight="bold" letter-spacing="3">THE GATHERING</text>
+    <text x="32" y="73" font-size="15" fill="#aaa6bc">THE LAST WORD AT THE TABLE</text>
+    <text x="1168" y="44" text-anchor="end" font-size="18" font-weight="bold">GAME #<%= @game.id %><%= if @game.source == "discord", do: " · " <> String.replace_prefix(@game.external_id || "", "spellbot:", "") |> escape() %></text>
+    <text x="1168" y="73" text-anchor="end" font-size="15" fill="#aaa6bc"><%= Calendar.strftime(@game.played_at, "%b %-d, %Y · %H:%M UTC") %></text>
+
+    <rect x="32" y="100" width="520" height="<%= @body_height %>" rx="18" fill="#29263c"/>
+    <%= if @winner && art(@winner.deck, @images, :commander) do %>
+      <image x="32" y="100" width="520" height="<%= @body_height %>" preserveAspectRatio="xMidYMid slice" clip-path="url(#hero)" xlink:href="<%= art(@winner.deck, @images, :commander) %>"/>
+    <% end %>
+    <rect x="32" y="100" width="520" height="<%= @body_height %>" rx="18" fill="url(#shade)"/>
+    <rect x="52" y="120" width="480" height="40" rx="20" fill="#171923" fill-opacity="0.88"/>
+    <text x="72" y="146" font-size="17" font-weight="bold" fill="#e8c67e"><%= escape(WinCondition.label(@game.win_condition)) %></text>
+    <text x="56" y="<%= @name_y - 42 %>" font-size="15" font-weight="bold" letter-spacing="3" fill="#e8c67e"><%= if @winner, do: "WINNER", else: "DRAW" %></text>
+    <%= for {line, index} <- Enum.with_index(@names) do %>
+      <text x="56" y="<%= @name_y + index * 40 %>" font-family="DejaVu Sans Mono" font-size="34" font-weight="bold"><%= escape(line) %></text>
+    <% end %>
+    <%= for {line, index} <- Enum.with_index(@commanders) do %>
+      <text x="56" y="<%= @commander_y + index * 23 %>" font-family="DejaVu Sans Mono" font-size="17" fill="#d2cddd"><%= escape(line) %></text>
+    <% end %>
+
+    <%= for seat <- @seats do %>
+      <% top = 100 + (seat.seat - 1) * @row_height %>
+      <% y = top + (@row_height - 88) / 2 %>
+      <rect x="572" y="<%= top %>" width="596" height="<%= @row_height - 10 %>" rx="14" fill="<%= if seat.result == "win", do: "#302c28", else: "#202330" %>"/>
+      <circle cx="614" cy="<%= y + 37 %>" r="28" fill="#49445e"/>
+      <text x="614" y="<%= y + 44 %>" text-anchor="middle" font-size="20"><%= escape(String.first(seat.player.name)) %></text>
+      <%= if art(seat.deck, @images, :commander) do %>
+        <image x="587" y="<%= y + 10 %>" width="54" height="54" preserveAspectRatio="xMidYMid slice" clip-path="url(#portrait-<%= seat.seat %>)" xlink:href="<%= art(seat.deck, @images, :commander) %>"/>
+      <% end %>
+      <%= if art(seat.deck, @images, :partner) do %>
+        <image x="616" y="<%= y + 33 %>" width="36" height="36" preserveAspectRatio="xMidYMid slice" clip-path="url(#partner-<%= seat.seat %>)" xlink:href="<%= art(seat.deck, @images, :partner) %>"/>
+      <% end %>
+      <text x="662" y="<%= y + 26 %>" font-family="DejaVu Sans Mono" font-size="19" font-weight="bold" fill="<%= if seat.result == "win", do: "#e8c67e", else: "#f0edf8" %>"><%= escape(truncate(seat.player.name, 31)) %></text>
+      <%= for {line, index} <- Enum.with_index(lines(commanders(seat.deck), 48, 2)) do %>
+        <text x="662" y="<%= y + 47 + index * 18 %>" font-family="DejaVu Sans Mono" font-size="14" fill="#bcb6cb"><%= escape(line) %></text>
+      <% end %>
+      <text x="1132" y="<%= y + 26 %>" text-anchor="middle" font-size="10" fill="#aaa6bc" letter-spacing="1">KILLS</text>
+      <text x="1132" y="<%= y + 55 %>" text-anchor="middle" font-size="25" font-weight="bold"><%= if is_nil(seat.kills), do: "—", else: seat.kills %></text>
+    <% end %>
+
+    <text x="32" y="<%= @body_height + 141 %>" font-size="17" fill="#d2cddd"><%= length(@seats) %> PLAYERS  ·  <%= @game.turns || "—" %> TURNS  ·  <%= @game.duration_minutes || "—" %> MINUTES</text>
+    <line x1="32" x2="1168" y1="<%= @body_height + 160 %>" y2="<%= @body_height + 160 %>" stroke="#383446"/>
+    <text x="32" y="<%= @body_height + 185 %>" font-size="11" font-weight="bold" fill="#aaa6bc" letter-spacing="2">TABLE TALK</text>
+    <%= for {line, index} <- Enum.with_index(@notes) do %>
+      <text x="32" y="<%= @body_height + 213 + index * 24 %>" font-family="DejaVu Sans Mono" font-size="18" fill="#d2cddd"><%= escape(line) %></text>
+    <% end %>
+  </g>
+</svg>

@@ -34,6 +34,19 @@ defmodule TheGatheringWeb.API.GameController do
     end
   end
 
+  def summary(conn, %{"id" => id}) do
+    with {:ok, game} <- Games.find_summary_game(id),
+         {:ok, png} <- Games.render_summary(game) do
+      conn
+      |> put_resp_content_type("image/png", nil)
+      |> put_resp_header("cache-control", "private, no-store")
+      |> send_resp(:ok, png)
+    else
+      {:error, reason} when reason in [:not_found, :bad_request] -> {:error, reason}
+      {:error, _reason} -> {:error, :bad_gateway}
+    end
+  end
+
   def update(conn, %{"id" => id, "game" => attrs}) when is_map(attrs) do
     with game when not is_nil(game) <- Games.get_game(id),
          :ok <- authorize(conn, game),

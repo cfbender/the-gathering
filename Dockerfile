@@ -71,7 +71,7 @@ RUN mix release
 FROM ${RUNNER_IMAGE} AS runner
 
 RUN apk upgrade --no-cache \
-  && apk add --no-cache libstdc++ openssl ncurses-libs ca-certificates lksctp-tools su-exec
+  && apk add --no-cache libstdc++ openssl ncurses-libs ca-certificates lksctp-tools su-exec rsvg-convert font-dejavu
 
 ENV LANG=C.UTF-8
 ENV LANGUAGE=C.UTF-8

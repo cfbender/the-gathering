@@ -16,6 +16,8 @@ defmodule TheGathering.Games do
     Player,
     RecordGame,
     ResolvePlayer,
+    Summary,
+    SummaryImage,
     SyncRemoteDecks
   }
 
@@ -292,6 +294,16 @@ defmodule TheGathering.Games do
     do: Game |> Repo.get!(id) |> Repo.preload(seats: [:player, :deck, :eliminated_by_player])
 
   def get_game(id), do: Repo.get(Game, id)
+
+  @doc "Finds a recorded game by local ID, SB-prefixed SpellBot ID, or latest played date."
+  def find_summary_game(reference \\ ""), do: Summary.find(reference)
+
+  def render_summary(%Game{} = game) do
+    case TheGathering.RateLimiter.hit(:summary_images, :timer.minutes(1), 30) do
+      {:allow, _} -> SummaryImage.render(game)
+      {:deny, _} -> {:error, :rate_limited}
+    end
+  end
 
   def can_manage_game?(%User{role: "admin"}, %Game{}), do: true
   def can_manage_game?(%User{id: id}, %Game{created_by_user_id: id}), do: true

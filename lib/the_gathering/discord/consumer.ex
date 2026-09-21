@@ -6,7 +6,7 @@ defmodule TheGathering.Discord.Consumer do
   require Logger
 
   alias Nostrum.Api.{Interaction, Self}
-  alias TheGathering.Discord.{Command, SpellBotParser, Tracker}
+  alias TheGathering.Discord.{Command, SpellBotParser, SummaryCommand, Tracker}
 
   # Discord activity type 3 renders as "Watching …" under the bot's name.
   @watching 3
@@ -22,7 +22,7 @@ defmodule TheGathering.Discord.Consumer do
 
     case Command.register(ready.application.id) do
       {:ok, description} -> Logger.info("Discord #{description}")
-      error -> Logger.error("Could not register the Discord /won command: #{inspect(error)}")
+      error -> Logger.error("Could not register Discord commands: #{inspect(error)}")
     end
   end
 
@@ -30,6 +30,15 @@ defmodule TheGathering.Discord.Consumer do
 
   def handle_event({:MESSAGE_UPDATE, {_old_message, message}, _ws_state}),
     do: observe(message, "edited")
+
+  def handle_event({:INTERACTION_CREATE, %{data: %{name: "summary"}} = interaction, _ws_state}) do
+    case SummaryCommand.respond(interaction) do
+      {:ok, _message} -> :ok
+      {:ok} -> :ok
+      :ok -> :ok
+      _error -> Logger.error("Could not respond to Discord /summary")
+    end
+  end
 
   def handle_event({:INTERACTION_CREATE, %{data: %{name: "won"}} = interaction, _ws_state}) do
     Logger.info("Discord /won invoked by user #{interaction_user_id(interaction)}")

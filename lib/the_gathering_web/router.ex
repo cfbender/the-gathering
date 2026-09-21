@@ -79,6 +79,7 @@ defmodule TheGatheringWeb.Router do
     post "/deck-chooser/:id/outcomes", DeckChooserController, :create_outcome
     resources "/players", PlayerController, except: [:new, :edit]
     resources "/decks", DeckController, except: [:new, :edit]
+    get "/games/:id/summary", GameController, :summary
     resources "/games", GameController, except: [:new, :edit]
     post "/decklists/resolve", DecklistController, :resolve
   end

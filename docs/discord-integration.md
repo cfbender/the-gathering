@@ -244,12 +244,46 @@ crashing the gateway consumer.
 
 ## Configuration and self-host setup
 
+### Rendered game summaries
+
+`/summary` posts a PNG recap of the **latest recorded game across the instance**,
+ordered by played date (then game ID). It does not look at unfinished SpellBot
+tables or limit the result to the current channel. Use `/summary game:123` for a
+Gathering game ID or `/summary game:SB12345` for a recorded SpellBot game. The
+`SB` prefix disambiguates the two ID namespaces; lowercase `sb` and `#SB` work too.
+
+The image includes winner artwork, commander/partner portraits, the table's
+kills, win condition, date/time (explicitly UTC), duration, turns, and a bounded
+notes excerpt. Unknown kills display as `—`, not zero. Draws and missing artwork
+have fallback layouts. The message includes a link to the full game and image
+alt text; the image is uploaded directly to Discord, not exposed at a public
+image URL. Long text is truncated in the image, not in the saved game.
+
+Only active users who have signed into this instance with Discord can invoke it.
+DMs are rejected; when `DISCORD_GUILD_ID` is set, other servers are rejected too.
+The recap is **public in the invoking channel**, including its notes. Restrict
+the command's channels/roles in Discord's integration settings if necessary.
+Errors before rendering are private. Rendering is deferred to meet Discord's
+three-second acknowledgement deadline, with a server-wide cap of 30 renders
+per minute. An acknowledgement failure is not retried to avoid duplicate posts.
+
+The runtime needs `rsvg-convert` and DejaVu fonts. The Docker image includes
+Alpine's `rsvg-convert` and `font-dejavu`; Debian development hosts need
+`sudo apt-get install librsvg2-bin fonts-dejavu-core`. Orb setup and CI install
+these too. Only HTTPS artwork on `cards.scryfall.io` is fetched, with redirects
+disabled, size/time limits and raster-only data embedded in the SVG. Temporary
+render files are deleted after conversion. Art failures do not prevent summaries.
+
+Signed-in members can preview the exact PNG at `GET /api/games/:id/summary`.
+This endpoint remains session-protected with `private, no-store` caching; it is
+also subject to the render cap. No summary request modifies the game.
+
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `DISCORD_CLIENT_ID` | yes for member sign-in | Discord application ID. |
 | `DISCORD_CLIENT_SECRET` | yes for member sign-in | OAuth2 client secret. |
 | `DISCORD_BOT_TOKEN` | yes to enable | Secret bot token. Unset/empty means no Discord process starts. |
-| `DISCORD_GUILD_ID` | no | Register `/won` immediately in one server; omit for a global command, which can take up to an hour to appear. |
+| `DISCORD_GUILD_ID` | no | Register `/won` and `/summary` immediately in one server; omit for global commands, which can take up to an hour to appear. Also restricts summary invocation to that server. |
 | `DISCORD_SPELLBOT_USER_ID` | no | Trusted SpellBot bot user ID; defaults to production SpellBot (`725510263251402832`). |
 
 1. In the [Discord Developer Portal](https://discord.com/developers/applications),
@@ -257,11 +291,11 @@ crashing the gateway consumer.
 2. On **Bot**, enable **Message Content Intent**. No Guild Members or Presence
    intent is needed.
 3. On **OAuth2 → URL Generator**, select `bot` and `applications.commands`.
-   Grant only **View Channels** (`permissions=1024`). Ensure the bot can view the
-   specific channel where SpellBot posts games. This MVP does not backfill, so
-   it does not need Read Message History or Send Messages.
+   Grant **View Channels**, **Send Messages**, and **Attach Files**
+   (`permissions=35840`) for public image summaries. Ensure the bot can view the
+   specific channel where SpellBot posts games. It does not need Read Message History.
 4. Invite the bot with a URL shaped like
-   `https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=1024`.
+   `https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=35840`.
 5. Put the token and optional IDs in `.env`, then restart the container. Never
    paste the token into logs or support messages.
 6. Start a SpellBot game and confirm the container logs
@@ -291,9 +325,9 @@ how far it got. Read the log from the top of the last start:
 | `Shard websocket closed (errno 4014, …)` repeating, no `READY` | Discord rejected the requested intents. Enable **Message Content Intent** on the **Bot** page. |
 | `Discord bot connected as <bot> in 0 guild(s)` | The bot was never invited to the server. Use the invite URL from step 4. |
 | `Discord bot connected …` but the bot looks offline in Discord | The bot sets an online presence ("Watching SpellBot games") right after this line. If the member list still shows it offline, the gateway session dropped afterwards; look for `Shard websocket closed` lines below it. |
-| `Discord registered /won in guild …` but `/won` is missing in Discord | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
-| `Discord registered /won globally` but `/won` is missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
-| `Could not register the Discord /won command: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |
+| `Discord registered /won and /summary in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
+| `Discord registered /won and /summary globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
+| `Could not register Discord commands: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |
 | No `Discord observed SpellBot game …` line when a game starts | The line appears only once the post reads **Your game is ready!** (see the message flow above). Otherwise the bot cannot see the channel (grant **View Channels** there), or the message is from a different SpellBot deployment: set `DISCORD_SPELLBOT_USER_ID` to that bot's user ID. Set `LOG_LEVEL=debug` to log why each SpellBot message was ignored. |
 
 A real Discord smoke test was not run in the orb because no throwaway
