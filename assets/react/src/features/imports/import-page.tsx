@@ -20,19 +20,38 @@ import type { CSVImportPreview, ImportSource } from "@/features/imports/imports"
 import { invalidateGameRelated } from "@/features/games/games"
 import { MythicTrackInstructions } from "@/features/imports/mythic-track-instructions"
 import { SheetImportPage } from "./sheet-import-page"
+import { PortableTransfer } from "./portable-transfer"
 
 export function ImportPage() {
-  const [sheet, setSheet] = useState(false)
+  const [mode, setMode] = useState<"file" | "sheet" | "portable">("file")
   return (
     <div className="flex flex-col gap-4">
-      <button
-        type="button"
-        className="btn btn-outline btn-sm self-start"
-        onClick={() => setSheet(!sheet)}
-      >
-        {sheet ? "Back to CSV / Mythic Track import" : "Reconcile Google Sheet with existing games"}
-      </button>
-      {sheet ? <SheetImportPage /> : <FileImportPage />}
+      <nav aria-label="Import and export tools" className="flex flex-wrap gap-2">
+        {(
+          [
+            ["file", "Import games"],
+            ["sheet", "Reconcile Google Sheet with existing games"],
+            ["portable", "Export / transfer"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={mode === value}
+            className={`btn btn-sm ${mode === value ? "btn-primary" : "btn-outline"}`}
+            onClick={() => setMode(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {mode === "sheet" ? (
+        <SheetImportPage />
+      ) : mode === "portable" ? (
+        <PortableTransfer />
+      ) : (
+        <FileImportPage />
+      )}
     </div>
   )
 }

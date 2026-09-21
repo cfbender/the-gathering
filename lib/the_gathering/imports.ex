@@ -11,9 +11,20 @@ defmodule TheGathering.Imports do
   explicit mappings and update/create/skip choices, preserving existing game identities.
   """
 
-  alias TheGathering.Imports.{Commit, Preview, SheetCommit, SheetPreview}
+  alias TheGathering.Imports.{
+    Commit,
+    PortableExport,
+    PortableImport,
+    Preview,
+    SheetCommit,
+    SheetPreview
+  }
 
   @sources %{csv: "csv", mythic_track: "mythic_track"}
+
+  def export_portable, do: PortableExport.run()
+  def preview_portable(json), do: PortableImport.preview(json)
+  def import_portable(json, user_id), do: PortableImport.run(json, user_id)
 
   def preview_sheet(params), do: SheetPreview.run(params)
   def import_sheet(params, revision, user_id), do: SheetCommit.run(params, revision, user_id)
