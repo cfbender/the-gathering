@@ -26,16 +26,24 @@ defmodule TheGathering.Discord.SummaryCommand do
   end
 
   def respond(interaction, api \\ Interaction) do
+    Logger.info("Discord /summary invoked")
+
     case prepare(interaction) do
       {:ok, game} ->
+        Logger.info("Discord /summary selected game #{game.id}")
+
         # Acknowledge before downloading art or rasterizing. Never retry a failed
         # acknowledgement: Discord may already have accepted it.
-        with :ok <- api.create_response(interaction, %{type: 5}) do
+        with :ok <- api.create_response(interaction, %{type: 5}) |> log_response(:acknowledge) do
           api.edit_response(interaction, render_response(game))
+          |> log_response(:upload)
         end
 
       {:error, reason} ->
+        Logger.info("Discord /summary rejected: #{reason}")
+
         api.create_response(interaction, %{type: 4, data: %{content: message(reason), flags: 64}})
+        |> log_response(:rejection)
     end
   end
 
@@ -74,6 +82,28 @@ defmodule TheGathering.Discord.SummaryCommand do
         %{content: message(reason), allowed_mentions: %{parse: []}}
     end
   end
+
+  defp log_response({:error, reason} = result, stage) do
+    Logger.error("Discord /summary #{stage} failed: #{failure_details(reason)}")
+    result
+  end
+
+  defp log_response(result, stage) do
+    Logger.info("Discord /summary #{stage} completed")
+    result
+  end
+
+  # API error messages/bodies may include request data. Log only numeric codes,
+  # never the interaction token, webhook URL, message content or raw response.
+  defp failure_details(%Nostrum.Error.ApiError{status_code: status, response: response}) do
+    code = if is_map(response), do: Map.get(response, :code, Map.get(response, "code"))
+    status = if is_integer(status), do: status, else: "unknown"
+    code = if is_integer(code), do: code, else: "unknown"
+    "HTTP #{status}, Discord code #{code}"
+  end
+
+  defp failure_details(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp failure_details(_reason), do: "transport error"
 
   defp message(:forbidden),
     do:

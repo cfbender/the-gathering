@@ -1,6 +1,7 @@
 defmodule TheGathering.Discord.SummaryCommandTest do
   use TheGatheringWeb.ConnCase, async: false
 
+  alias Nostrum.Struct.Interaction
   alias TheGathering.{Accounts, AccountsFixtures, Games, Repo}
   alias TheGathering.Accounts.User
   alias TheGathering.Discord.SummaryCommand
@@ -25,7 +26,7 @@ defmodule TheGathering.Discord.SummaryCommandTest do
       ]
     }
 
-    interaction = %Nostrum.Struct.Interaction{
+    interaction = %Interaction{
       guild_id: 9090,
       user: %Nostrum.Struct.User{id: 551_122},
       member: %Nostrum.Struct.Guild.Member{user_id: 551_122},
@@ -83,7 +84,17 @@ defmodule TheGathering.Discord.SummaryCommandTest do
   test "defers publicly before uploading PNG, includes alt text, link and mention suppression",
        context do
     {:ok, game} = Games.create_game(context.attrs)
-    assert {:ok, :sent} = SummaryCommand.respond(context.interaction, __MODULE__)
+
+    # Discord omits options for /summary and nests the invoking user under member.
+    interaction =
+      Interaction.to_struct(%{
+        guild_id: "9090",
+        member: %{user: %{id: "551122"}},
+        data: %{name: "summary", type: 1}
+      })
+
+    assert interaction.data.options == nil
+    assert {:ok, :sent} = SummaryCommand.respond(interaction, __MODULE__)
     assert_receive {:initial_response, %{type: 5}}
     assert_receive {:edited_response, response}
     assert response.allowed_mentions == %{parse: []}
@@ -117,9 +128,44 @@ defmodule TheGathering.Discord.SummaryCommandTest do
   test "failed acknowledgement is not retried and never uploads", context do
     {:ok, _} = Games.create_game(context.attrs)
     Process.put(:fail_summary_ack, true)
-    assert {:error, :network} = SummaryCommand.respond(context.interaction, __MODULE__)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, :network} = SummaryCommand.respond(context.interaction, __MODULE__)
+      end)
+
+    assert log =~ "Discord /summary acknowledge failed: network"
     assert_receive {:initial_response, %{type: 5}}
     refute_receive {:initial_response, _}
+    refute_receive {:edited_response, _}
+  end
+
+  test "upload failure logs the stage and numeric codes without exposing response data",
+       context do
+    {:ok, _} = Games.create_game(context.attrs)
+
+    error = %Nostrum.Error.ApiError{
+      status_code: 403,
+      response: %{"code" => 50_013, "message" => "private response body"}
+    }
+
+    Process.put(:summary_upload_result, {:error, error})
+    interaction = %{context.interaction | token: "private interaction token"}
+    level = Logger.level()
+    Logger.configure(level: :info)
+    on_exit(fn -> Logger.configure(level: level) end)
+
+    log =
+      ExUnit.CaptureLog.capture_log([level: :info], fn ->
+        assert {:error, ^error} = SummaryCommand.respond(interaction, __MODULE__)
+      end)
+
+    assert log =~ "Discord /summary acknowledge completed"
+    assert log =~ "Discord /summary upload failed: HTTP 403, Discord code 50013"
+    refute log =~ "private response body"
+    refute log =~ interaction.token
+    assert_receive {:initial_response, %{type: 5}}
+    assert_receive {:edited_response, _}
     refute_receive {:edited_response, _}
   end
 
@@ -143,6 +189,6 @@ defmodule TheGathering.Discord.SummaryCommandTest do
 
   def edit_response(_interaction, response) do
     send(self(), {:edited_response, response})
-    {:ok, :sent}
+    Process.get(:summary_upload_result, {:ok, :sent})
   end
 end

@@ -32,12 +32,7 @@ defmodule TheGathering.Discord.Consumer do
     do: observe(message, "edited")
 
   def handle_event({:INTERACTION_CREATE, %{data: %{name: "summary"}} = interaction, _ws_state}) do
-    case SummaryCommand.respond(interaction) do
-      {:ok, _message} -> :ok
-      {:ok} -> :ok
-      :ok -> :ok
-      _error -> Logger.error("Could not respond to Discord /summary")
-    end
+    SummaryCommand.respond(interaction)
   end
 
   def handle_event({:INTERACTION_CREATE, %{data: %{name: "won"}} = interaction, _ws_state}) do

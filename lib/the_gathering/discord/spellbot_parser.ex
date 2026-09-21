@@ -39,7 +39,8 @@ defmodule TheGathering.Discord.SpellBotParser do
   defp validate_author(message, spellbot_user_id) do
     author = value(message, :author, %{})
 
-    if value(author, :bot, false) and string_id(value(author, :id)) == string_id(spellbot_user_id) do
+    if value(author, :bot) == true and
+         string_id(value(author, :id)) == string_id(spellbot_user_id) do
       :ok
     else
       {:error, :not_spellbot}
