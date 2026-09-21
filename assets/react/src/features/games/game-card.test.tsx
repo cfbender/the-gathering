@@ -43,13 +43,13 @@ function seat(id: number, name: string, result: Seat["result"]): Seat {
   }
 }
 
-async function renderCard(seats: Seat[]) {
+async function renderCard(seats: Seat[], winCondition: Game["win_condition"] = null) {
   const game: Game = {
     id: 42,
     played_at: "2026-09-19T18:00:00Z",
     duration_minutes: null,
     turns: null,
-    win_condition: null,
+    win_condition: winCondition,
     notes: null,
     source: "manual",
     external_id: null,
@@ -78,6 +78,7 @@ describe("GameCard", () => {
     expect(winner.getByText("Bob")).toBeTruthy()
     expect(winner.getByText("Bob's commander")).toBeTruthy()
     expect(winner.getByText("Bob's deck")).toBeTruthy()
+    expect(winner.queryByLabelText(/^Win condition:/)).toBeNull()
     expect(winner.getByRole("presentation").getAttribute("src")).toBe("/art/2.jpg")
     const others = within(screen.getByRole("list", { name: "Other players" }))
     expect(others.queryByText("Bob")).toBeNull()
@@ -90,6 +91,21 @@ describe("GameCard", () => {
     ])
     expect(link.getAttribute("href")).toBe("/games/42")
     expect(screen.getByText("3 players")).toBeTruthy()
+  })
+
+  it.each([
+    ["infinite_combo", "Infinite Combo"],
+    ["alternate_win_con", "On-card Alternate Win Con"],
+    ["unknown", "Unknown"],
+  ] as const)("shows %s as a readable badge inside the winner's art", async (value, label) => {
+    await renderCard([seat(1, "Alice", "loss"), seat(2, "Bob", "win")], value)
+
+    const winner = within(screen.getByRole("region", { name: "Winner" }))
+    expect(winner.getByLabelText(`Win condition: ${label}`).textContent).toBe(label)
+    expect(screen.getAllByLabelText(`Win condition: ${label}`)).toHaveLength(1)
+    expect(
+      within(screen.getByRole("list", { name: "Other players" })).queryByText(label),
+    ).toBeNull()
   })
 
   it("keeps every player on equal footing in a draw", async () => {

@@ -11,6 +11,7 @@ import { EloStatCard, EloTrendCard } from "./player-elo"
 import { Rivalries } from "./rivalries"
 import { StatCard } from "./stat-card"
 import { StatsRangeToggle } from "./stats-range-toggle"
+import { PlayerWinConditions } from "./win-conditions"
 import { byWinRateThenName, getPlayerStats, sinceLabel, statsQueryKey } from "@/lib/stats"
 import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
 
@@ -65,6 +66,7 @@ export function PlayerStats({ playerId }: { playerId: string }) {
         />
         <EloStatCard elo={stats.elo} className="col-span-2 sm:col-span-1" />
       </div>
+      <PlayerWinConditions wins={stats.win_conditions} losses={stats.loss_conditions} />
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="border-base-300 bg-base-200/60 min-w-0 rounded-xl border p-5">
           <h3 className="mb-4 font-bold">Win rate over time</h3>

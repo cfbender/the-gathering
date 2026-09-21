@@ -7,10 +7,12 @@ import { ColorSection } from "@/components/stats/color-section"
 import { ColorWheel } from "@/components/stats/color-wheel"
 import { EloSection } from "@/components/stats/elo-section"
 import { GameLengths } from "@/components/stats/game-lengths"
+import { KillStats } from "@/components/stats/kill-stats"
 import { MatchupHeatmap } from "@/components/stats/matchup-heatmap"
+import { RecentGames } from "@/components/stats/recent-games"
 import { StatCard } from "@/components/stats/stat-card"
 import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
-import { formatDate } from "@/features/games/games"
+import { WinConditions } from "@/components/stats/win-conditions"
 import {
   LEADERBOARD_MIN_GAMES,
   getOverviewStats,
@@ -44,7 +46,7 @@ function HomePage() {
   const since = sinceLabel(stats.detailed_stats_from)
 
   return (
-    <div className="flex flex-col gap-6 sm:gap-8">
+    <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-primary text-xs font-bold tracking-[0.2em] uppercase">
@@ -94,78 +96,88 @@ function HomePage() {
         />
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
-        {/* The right column sets this row's height; the leaderboard fills it and scrolls past it. */}
-        <div className="relative min-h-0">
-          <section className="border-base-300 bg-base-200/60 flex max-h-[36rem] flex-col overflow-hidden rounded-xl border lg:absolute lg:inset-0 lg:max-h-none">
-            <div className="border-base-300 flex items-center justify-between gap-3 border-b p-5">
-              <div>
-                <p className="text-primary text-xs font-bold uppercase">Standings</p>
-                <h2 className="text-xl font-bold">Playgroup leaderboard</h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <Trophy className="text-accent size-6" />
-                <Link to="/players" className="btn btn-ghost btn-sm">
-                  View all
-                </Link>
-              </div>
+      <div className="space-y-4">
+        <section
+          aria-label="Playgroup leaderboard"
+          className="border-base-300 bg-base-200/60 overflow-hidden rounded-xl border"
+        >
+          <div className="border-base-300 flex items-center justify-between gap-3 border-b p-5">
+            <div>
+              <p className="text-primary text-xs font-bold uppercase">Standings</p>
+              <h2 className="text-xl font-bold">Playgroup leaderboard</h2>
             </div>
-            <div className="divide-base-300 min-h-0 flex-1 divide-y overflow-y-auto">
-              {leaderboard.length === 0 && (
-                <p className="text-base-content/55 p-5 text-sm">
-                  Players appear here after {LEADERBOARD_MIN_GAMES} games.
-                </p>
-              )}
-              {leaderboard.map((player, index) => (
-                <Link
-                  key={player.id}
-                  to="/players/$playerId"
-                  params={{ playerId: String(player.id) }}
-                  className="hover:bg-base-300/40 grid grid-cols-[2rem_1fr_auto] items-center gap-3 px-5 py-3 transition-colors"
-                >
-                  <span className="text-base-content/35 font-mono font-bold">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span>
-                    <strong className="block">{player.name}</strong>
-                    <small className="text-base-content/55">
-                      {player.wins}–{player.losses}–{player.draws} · {player.games} games
-                    </small>
-                  </span>
-                  <strong className="text-primary text-lg tabular-nums">{player.win_rate}%</strong>
-                </Link>
-              ))}
-            </div>
-          </section>
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-            <div className="mb-5 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-primary text-xs font-bold uppercase">The meta</p>
-                <h2 className="text-xl font-bold">Most played commanders</h2>
-              </div>
-              <Link to="/commanders" className="btn btn-ghost btn-sm">
+            <div className="flex items-center gap-2">
+              <Trophy className="text-accent size-6" />
+              <Link to="/players" className="btn btn-ghost btn-sm">
                 View all
               </Link>
             </div>
-            <BarChart rows={stats.commanders} value="games" />
-          </section>
-          <section className="border-base-300 bg-base-200/60 flex-1 rounded-xl border p-5">
-            <p className="text-primary text-xs font-bold uppercase">Opening advantage</p>
-            <h2 className="mb-5 text-xl font-bold">
-              Wins by seat
-              {since && (
-                <span className="text-base-content/50 ml-2 text-sm font-medium">{since}</span>
-              )}
-            </h2>
-            <BarChart rows={stats.seat_win_rates} />
-          </section>
-        </div>
+          </div>
+          <div
+            className="grid md:grid-flow-col md:grid-cols-2"
+            style={{
+              gridTemplateRows: `repeat(${Math.max(1, Math.ceil(leaderboard.length / 2))}, auto)`,
+            }}
+          >
+            {leaderboard.length === 0 && (
+              <p className="text-base-content/55 p-5 text-sm">
+                Players appear here after {LEADERBOARD_MIN_GAMES} games.
+              </p>
+            )}
+            {leaderboard.map((player, index) => (
+              <Link
+                key={player.id}
+                to="/players/$playerId"
+                params={{ playerId: String(player.id) }}
+                className="border-base-300 hover:bg-base-300/40 grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-t px-5 py-3 transition-colors"
+              >
+                <span className="text-base-content/35 font-mono font-bold">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span>
+                  <strong className="block truncate" title={player.name}>
+                    {player.name}
+                  </strong>
+                  <small className="text-base-content/55">
+                    {player.wins}–{player.losses}–{player.draws} · {player.games} games
+                  </small>
+                </span>
+                <strong className="text-primary text-lg tabular-nums">{player.win_rate}%</strong>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-primary text-xs font-bold uppercase">The meta</p>
+              <h2 className="text-xl font-bold">Most played commanders</h2>
+            </div>
+            <Link to="/commanders" className="btn btn-ghost btn-sm">
+              View all
+            </Link>
+          </div>
+          <BarChart rows={stats.commanders} value="games" columns={2} />
+        </section>
+        <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
+          <p className="text-primary text-xs font-bold uppercase">Opening advantage</p>
+          <h2 className="mb-5 text-xl font-bold">
+            Wins by seat
+            {since && (
+              <span className="text-base-content/50 ml-2 text-sm font-medium">{since}</span>
+            )}
+          </h2>
+          <BarChart rows={stats.seat_win_rates} columns={2} />
+        </section>
       </div>
 
       <EloSection players={stats.elo} />
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <KillStats stats={stats.kills} />
+        <WinConditions stats={stats.win_conditions} />
+      </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <ColorSection
@@ -190,33 +202,7 @@ function HomePage() {
 
       <ActivityCalendar gameTimes={stats.game_times} />
 
-      <section>
-        <div className="mb-3 flex items-end justify-between">
-          <div>
-            <p className="text-primary text-xs font-bold uppercase">Fresh from the table</p>
-            <h2 className="text-xl font-bold">Recent games</h2>
-          </div>
-          <Link to="/games" className="btn btn-ghost btn-sm">
-            View all
-          </Link>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {stats.recent_games.map((game) => (
-            <Link
-              key={game.id}
-              to="/games/$gameId"
-              params={{ gameId: String(game.id) }}
-              className="border-base-300 bg-base-200/60 hover:border-primary/40 rounded-xl border p-4 transition-colors"
-            >
-              <strong>{game.winner ? `${game.winner.name} won` : "Draw game"}</strong>
-              <p className="text-base-content/55 mt-1 text-sm">
-                {formatDate(game.played_at)} · {game.players} players
-                {game.duration_minutes ? ` · ${game.duration_minutes}m` : ""}
-              </p>
-            </Link>
-          ))}
-        </div>
-      </section>
+      <RecentGames games={stats.recent_games} />
     </div>
   )
 }

@@ -370,11 +370,11 @@ function GameFormDraft({ game }: GameFormProps) {
               </SelectContent>
             </Select>
           </div>
-          <label className="form-control sm:col-span-3">
-            <span className="label-text mb-1 text-sm font-medium">Notes</span>
+          <label className="flex min-w-0 flex-col gap-2 sm:col-span-3">
+            <span className="text-sm font-semibold">Notes</span>
             <textarea
-              className="textarea textarea-bordered min-h-24"
-              placeholder="How did the game end?"
+              className="textarea textarea-bordered min-h-32 w-full resize-y text-base leading-relaxed"
+              placeholder="Memorable plays, turning points, or how the game ended…"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
             />

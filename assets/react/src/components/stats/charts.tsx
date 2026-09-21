@@ -20,7 +20,17 @@ export function BarChart({
 }) {
   const max = Math.max(...rows.map((row) => row[value]), 1)
   return (
-    <div className={cn("grid grid-cols-1 gap-3", columns === 2 && "md:grid-cols-2 md:gap-x-8")}>
+    <div
+      className={cn(
+        "grid grid-cols-1 gap-3",
+        columns === 2 && "md:grid-flow-col md:grid-cols-2 md:gap-x-8",
+      )}
+      style={
+        columns === 2
+          ? { gridTemplateRows: `repeat(${Math.max(1, Math.ceil(rows.length / 2))}, auto)` }
+          : undefined
+      }
+    >
       {rows.map((row) => {
         const link = linkTo?.(row)
         const className = cn(

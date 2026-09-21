@@ -122,6 +122,151 @@ defmodule TheGathering.StatsTest do
     assert %{games: 3, wins: 2, losses: 1} = kangee
   end
 
+  test "recent games include winner-first commander and partner portraits with catalog name fallback",
+       %{
+         decks: decks
+       } do
+    {:ok, _} = Games.update_deck(decks["Bob"], %{partner_name: "Kangee, Sky Warden"})
+    stats = Stats.overview(%{"date_from" => "2026-01-15", "date_to" => "2026-01-15"})
+
+    assert [game] = stats.recent_games
+    assert game.players == 3
+    assert [bob, partner, cara, alice] = game.commanders
+    assert %{player_name: "Bob", name: "Krenko, Mob Boss", winner: true, art_crop_url: nil} = bob
+
+    assert %{
+             player_name: "Bob",
+             name: "Kangee, Sky Warden",
+             winner: true,
+             art_crop_url: "https://cards.example/kangee-art.jpg"
+           } = partner
+
+    assert %{player_name: "Cara", winner: false} = cara
+
+    assert %{
+             player_name: "Alice",
+             winner: false,
+             art_crop_url: "https://cards.example/kangee-art.jpg"
+           } = alice
+
+    assert hd(Stats.overview().recent_games).winner == nil
+    refute Enum.any?(hd(Stats.overview().recent_games).commanders, & &1.winner)
+  end
+
+  test "outcomes include historical data, retain zeros, and count only a player's own wins", %{
+    players: players
+  } do
+    {:ok, _} = Accounts.update_settings(%{detailed_stats_from: ~D[2027-01-01]})
+
+    rows = [
+      {"Alice", "combat_damage", [2, 0, nil]},
+      {"Bob", "combat_damage", [1, 1, 0]},
+      {"Alice", "infinite_combo", [0, nil, nil]},
+      {"Alice", "unknown", [nil, nil, nil]},
+      {nil, "draw", [nil, nil, nil]},
+      {"Alice", nil, [nil, nil, nil]}
+    ]
+
+    for {{winner, condition, kills}, day} <- Enum.with_index(rows, 1) do
+      seats =
+        ~w(Alice Bob Cara)
+        |> Enum.zip(kills)
+        |> Enum.with_index(1)
+        |> Enum.map(fn {{name, count}, seat} ->
+          %{
+            player_id: players[name].id,
+            seat: seat,
+            kills: count,
+            result:
+              if(is_nil(winner), do: "draw", else: if(name == winner, do: "win", else: "loss"))
+          }
+        end)
+
+      {:ok, _} =
+        Games.create_game(%{
+          played_at: DateTime.new!(Date.new!(2026, 4, day), ~T[00:00:00]),
+          win_condition: condition,
+          seats: seats
+        })
+    end
+
+    range = %{"date_from" => "2026-04-01", "date_to" => "2026-04-06"}
+    stats = Stats.overview(range)
+
+    assert Enum.all?(
+             hd(stats.recent_games).commanders,
+             &(is_nil(&1.name) and is_nil(&1.art_crop_url))
+           )
+
+    assert stats.kills.total == 4
+    assert stats.kills.recorded_seats == 6
+    assert stats.kills.total_seats == 18
+
+    assert Enum.map(stats.kills.players, &{&1.name, &1.kills, &1.recorded_games, &1.average}) ==
+             [{"Alice", 3, 3, 1.0}, {"Bob", 1, 2, 0.5}, {"Cara", 0, 1, 0.0}]
+
+    assert stats.win_conditions == %{
+             total_games: 6,
+             recorded_games: 4,
+             conditions: [
+               %{condition: "combat_damage", games: 2},
+               %{condition: "draw", games: 1},
+               %{condition: "infinite_combo", games: 1}
+             ]
+           }
+
+    assert Stats.player(players["Alice"].id, range).win_conditions == %{
+             total_games: 4,
+             recorded_games: 2,
+             conditions: [
+               %{condition: "combat_damage", games: 1},
+               %{condition: "infinite_combo", games: 1}
+             ]
+           }
+
+    narrow = %{"date_from" => "2026-04-02", "date_to" => "2026-04-03"}
+    assert Stats.overview(narrow).kills.total == 2
+    assert Stats.overview(narrow).win_conditions.recorded_games == 2
+
+    assert Stats.player(players["Alice"].id, range).loss_conditions == %{
+             total_games: 1,
+             recorded_games: 1,
+             conditions: [%{condition: "combat_damage", games: 1}]
+           }
+
+    assert Stats.player(players["Cara"].id, range).loss_conditions == %{
+             total_games: 5,
+             recorded_games: 3,
+             conditions: [
+               %{condition: "combat_damage", games: 2},
+               %{condition: "infinite_combo", games: 1}
+             ]
+           }
+
+    assert Stats.player(players["Cara"].id, narrow).loss_conditions.total_games == 2
+
+    assert Stats.player(players["Alice"].id, narrow).win_conditions.conditions == [
+             %{condition: "infinite_combo", games: 1}
+           ]
+  end
+
+  test "missing outcomes remain empty instead of becoming zero counts or favorites", %{
+    players: players
+  } do
+    assert Stats.overview().kills == %{total: 0, recorded_seats: 0, total_seats: 18, players: []}
+    assert Stats.overview().win_conditions == %{total_games: 6, recorded_games: 0, conditions: []}
+
+    assert Stats.player(players["Alice"].id).win_conditions == %{
+             total_games: 3,
+             recorded_games: 0,
+             conditions: []
+           }
+
+    empty = Stats.overview(%{"date_from" => "2027-01-01"})
+    assert empty.kills == %{total: 0, recorded_seats: 0, total_seats: 0, players: []}
+    assert empty.win_conditions == %{total_games: 0, recorded_games: 0, conditions: []}
+  end
+
   test "player stats compute ordered current and longest streaks plus head-to-head", %{
     players: players
   } do

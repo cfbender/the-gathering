@@ -1,5 +1,6 @@
 import { api } from "@/lib/api"
 import type { StatsRangeParams } from "@/lib/stats-range"
+import type { WinCondition } from "@/features/games/games"
 
 export interface RecordCounts {
   games: number
@@ -76,10 +77,25 @@ export interface GameLengths {
   longest_game: RecentStatGame | null
 }
 
+export interface WinConditionStats {
+  recorded_games: number
+  total_games: number
+  conditions: { condition: WinCondition; games: number }[]
+}
+
+export interface KillStats {
+  total: number
+  recorded_seats: number
+  total_seats: number
+  players: { id: number; name: string; kills: number; recorded_games: number; average: number }[]
+}
+
 export interface OverviewStats {
   /** ISO date; seat, timing, and MVP figures only include games from this date on. */
   detailed_stats_from: string | null
   games_count: number
+  kills: KillStats
+  win_conditions: WinConditionStats
   average_duration_minutes: number | null
   average_turns: number | null
   game_lengths: GameLengths
@@ -100,12 +116,23 @@ export interface OverviewStats {
   color_exposure: ColorExposure[]
   /** The top eight rows of `getCommanderStats()`, keyed by the same canonical IDs. */
   commanders: CommanderSummary[]
-  recent_games: RecentStatGame[]
+  recent_games: (RecentStatGame & {
+    commanders: {
+      player_name: string
+      name: string | null
+      art_crop_url: string | null
+      winner: boolean
+    }[]
+  })[]
 }
 
 export interface PlayerStats {
   detailed_stats_from: string | null
   record: RecordCounts
+  /** Only this player's wins; missing and unknown conditions do not enter the breakdown. */
+  win_conditions: WinConditionStats
+  /** Conditions used in games this player lost; draws are excluded. */
+  loss_conditions: WinConditionStats
   elo: {
     rating: number
     peak: number

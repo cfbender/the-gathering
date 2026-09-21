@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import { Trophy, UsersRound } from "lucide-react"
 import { ColorIdentity } from "@/components/mana-symbols"
-import { formatDate, type Game, type Seat } from "./games"
+import { formatDate, winConditionLabel, type Game, type Seat } from "./games"
 
 function TablePlayer({ seat }: { seat: Seat }) {
   return (
@@ -74,6 +74,16 @@ export function GameCard({ game }: { game: Game }) {
             aria-hidden="true"
             className="absolute inset-0 -z-10 bg-gradient-to-t from-black/95 via-black/30 to-transparent"
           />
+          {game.win_condition && (
+            <div className="mb-auto pb-4">
+              <span
+                aria-label={`Win condition: ${winConditionLabel(game.win_condition)}`}
+                className="inline-flex max-w-full rounded-full border border-white/25 bg-black/65 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm"
+              >
+                {winConditionLabel(game.win_condition)}
+              </span>
+            </div>
+          )}
           <p className="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-widest text-amber-200 uppercase">
             <Trophy aria-hidden="true" className="size-4" /> Winner
           </p>
