@@ -54,8 +54,15 @@ function GameDetailPage() {
           >
             <CardArtBackground imageUrl={seat.deck?.commander_art_crop_url} />
             <div className="card-body text-base-content relative z-10 gap-2 p-5">
-              <div className="flex items-center justify-between">
-                <span className="badge badge-neutral">Seat {seat.seat}</span>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="badge badge-neutral">Seat {seat.seat}</span>
+                  <span className="badge badge-neutral">
+                    {seat.kills === null
+                      ? "Kills unknown"
+                      : `${seat.kills} ${seat.kills === 1 ? "kill" : "kills"}`}
+                  </span>
+                </div>
                 {seat.result === "win" && (
                   <span className="bg-base-100 text-accent flex items-center gap-1 rounded-full px-2 py-1 text-sm font-bold">
                     <Trophy className="size-4" /> Winner

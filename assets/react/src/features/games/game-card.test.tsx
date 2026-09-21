@@ -16,6 +16,7 @@ function seat(id: number, name: string, result: Seat["result"]): Seat {
     deck_id: id,
     seat: id,
     result,
+    kills: null,
     mvp_card_id: null,
     mvp_card_name: null,
     mvp_art_crop_url: null,

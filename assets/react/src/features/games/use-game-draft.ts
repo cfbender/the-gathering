@@ -14,6 +14,7 @@ export interface DraftSeat {
   partner: SelectedCard | null
   colorIdentity: string
   decklistUrl: string
+  kills: string
   mvpCard: SelectedCard | null
 }
 
@@ -29,6 +30,7 @@ export const blankSeat = (): DraftSeat => ({
   partner: null,
   colorIdentity: "",
   decklistUrl: "",
+  kills: "",
   mvpCard: null,
 })
 
@@ -68,6 +70,7 @@ function draftsFromGame(game: Game): DraftSeat[] {
     partner: cardSnapshot(seat.deck?.partner_card_id, seat.deck?.partner_name),
     colorIdentity: seat.deck?.color_identity ?? "",
     decklistUrl: seat.deck?.decklist_url ?? "",
+    kills: seat.kills?.toString() ?? "",
     mvpCard: cardSnapshot(seat.mvp_card_id, seat.mvp_card_name),
   }))
 }

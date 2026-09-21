@@ -30,6 +30,7 @@ defmodule TheGatheringWeb.API.GameJSON do
       deck_id: seat.deck_id,
       seat: seat.seat,
       result: seat.result,
+      kills: seat.kills,
       eliminated_turn: seat.eliminated_turn,
       eliminated_by_player_id: seat.eliminated_by_player_id,
       mvp_card_id: seat.mvp_card_id,

@@ -2,15 +2,21 @@ defmodule TheGathering.Imports do
   @moduledoc """
   Imports game history from external data sources.
 
-  Every source parses into normalized `Imports.Game` and `Imports.Seat` structs.
+  CSV and Mythic Track parse into normalized `Imports.Game` and `Imports.Seat` structs.
   `preview/2` matches players and decks against existing records, while `import/3` commits the whole
   batch in one transaction. Games are keyed by `{source, external_id}`, so
   re-importing the same data skips games that already exist.
+
+  `preview_sheet/1` and `import_sheet/3` reconcile the original Google Sheet using
+  explicit mappings and update/create/skip choices, preserving existing game identities.
   """
 
-  alias TheGathering.Imports.{Commit, Preview}
+  alias TheGathering.Imports.{Commit, Preview, SheetCommit, SheetPreview}
 
   @sources %{csv: "csv", mythic_track: "mythic_track"}
+
+  def preview_sheet(params), do: SheetPreview.run(params)
+  def import_sheet(params, revision, user_id), do: SheetCommit.run(params, revision, user_id)
 
   def preview_csv(csv), do: preview(:csv, csv)
   def import_csv(csv, user_id), do: import(:csv, csv, user_id)

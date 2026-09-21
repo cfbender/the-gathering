@@ -59,6 +59,7 @@ function gameFixture(): Game {
       deck_id: index === 1 ? archivedDeck.id : null,
       seat: index + 1,
       result: index === 1 ? "win" : "loss",
+      kills: index === 0 ? 0 : null,
       mvp_card_id: index === 0 ? "rhystic-study" : null,
       mvp_card_name: index === 0 ? "Rhystic Study" : null,
       mvp_art_crop_url: null,
@@ -118,6 +119,7 @@ async function submitPayload(fetch: ReturnType<typeof vi.fn>) {
       deck_id: number | null
       seat: number
       result: "win" | "loss" | "draw"
+      kills: number | null
       mvp_card_id: string | null
       mvp_card_name: string | null
     }>
@@ -192,6 +194,45 @@ describe("GameForm submissions", () => {
       mvp_card_id: null,
       mvp_card_name: null,
     })
+  })
+
+  it("preserves explicit zero kills and submits a blank count as unknown", async () => {
+    const { fetch } = renderGame()
+    const killInputs = screen.getAllByRole("spinbutton", { name: "Kills (optional)" })
+
+    expect((killInputs[0] as HTMLInputElement).value).toBe("0")
+    expect((killInputs[1] as HTMLInputElement).value).toBe("")
+
+    const payload = await submitPayload(fetch)
+    expect(payload.seats.map((seat) => seat.kills)).toEqual([0, null, null])
+  })
+
+  it("clears a recorded zero to unknown when the input is emptied", async () => {
+    const { fetch } = renderGame()
+    fireEvent.change(screen.getAllByRole("spinbutton", { name: "Kills (optional)" })[0]!, {
+      target: { value: "" },
+    })
+    const payload = await submitPayload(fetch)
+    expect(payload.seats[0]?.kills).toBeNull()
+  })
+
+  it.each([
+    ["-1", "rangeUnderflow"],
+    ["1.5", "stepMismatch"],
+  ])("rejects an invalid kill count of %s", (value, validityFlag) => {
+    const { fetch } = renderGame()
+    const input = screen.getAllByRole("spinbutton", { name: "Kills (optional)" })[0]
+    expect(input).toBeTruthy()
+
+    fireEvent.change(input as HTMLInputElement, { target: { value } })
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }))
+
+    expect((input as HTMLInputElement).validity[validityFlag as "rangeUnderflow"]).toBe(true)
+    expect(
+      fetch.mock.calls.some(
+        ([request, init]) => request === "/api/games/44" && init?.method === "PATCH",
+      ),
+    ).toBe(false)
   })
 
   it("invalidates stats after saving", async () => {

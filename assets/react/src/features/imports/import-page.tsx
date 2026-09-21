@@ -19,8 +19,25 @@ import { commitImport, importRowLabel, previewImport } from "@/features/imports/
 import type { CSVImportPreview, ImportSource } from "@/features/imports/imports"
 import { invalidateGameRelated } from "@/features/games/games"
 import { MythicTrackInstructions } from "@/features/imports/mythic-track-instructions"
+import { SheetImportPage } from "./sheet-import-page"
 
 export function ImportPage() {
+  const [sheet, setSheet] = useState(false)
+  return (
+    <div className="flex flex-col gap-4">
+      <button
+        type="button"
+        className="btn btn-outline btn-sm self-start"
+        onClick={() => setSheet(!sheet)}
+      >
+        {sheet ? "Back to CSV / Mythic Track import" : "Reconcile Google Sheet with existing games"}
+      </button>
+      {sheet ? <SheetImportPage /> : <FileImportPage />}
+    </div>
+  )
+}
+
+function FileImportPage() {
   const queryClient = useQueryClient()
   const [source, setSource] = useState<ImportSource>("csv")
   const [payload, setPayload] = useState("")
