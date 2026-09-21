@@ -108,7 +108,9 @@ export interface PlayerStats {
   elo: {
     rating: number
     peak: number
-    rank: number
+    games: number
+    /** Position among players with at least `LEADERBOARD_MIN_GAMES`; null below the floor. */
+    rank: number | null
     players: number
     history: { date: string; rating: number }[]
   } | null
@@ -195,8 +197,12 @@ export function linePoints(values: number[], width = 300, height = 100): string 
     .join(" ")
 }
 
-/** Players need this many games before they appear in the playgroup leaderboard. */
-export const LEADERBOARD_MIN_GAMES = 2
+/**
+ * Games a player (or color, commander, …) needs before a win-rate or Elo ranking
+ * shows it. Must match `TheGathering.Stats.min_games/0`, which applies the same
+ * floor to the server-computed Elo rank.
+ */
+export const LEADERBOARD_MIN_GAMES = 3
 
 /** Leaderboard rows with enough games, best win rate first (more games breaks ties). */
 export function leaderboardRows<T extends NamedRecordRow>(

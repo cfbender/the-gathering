@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
+  LEADERBOARD_MIN_GAMES,
   byWinRateThenName,
   leaderboardRows,
   linePoints,
@@ -35,8 +36,13 @@ describe("leaderboardRows", () => {
   })
 
   it("keeps players exactly at the floor and breaks ties by games played", () => {
-    const rows = [row("two", 2, 1), row("eight", 8, 4)]
-    expect(leaderboardRows(rows).map((r) => r.id)).toEqual(["eight", "two"])
+    const floor = LEADERBOARD_MIN_GAMES
+    const rows = [row("at-floor", floor, 1), row("eight", 8, 4), row("under", floor - 1, 1)]
+    expect(leaderboardRows(rows).map((r) => r.id)).toEqual(["eight", "at-floor"])
+  })
+
+  it("requires three games", () => {
+    expect(LEADERBOARD_MIN_GAMES).toBe(3)
   })
 })
 

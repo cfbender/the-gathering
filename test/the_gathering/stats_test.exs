@@ -279,7 +279,7 @@ defmodule TheGathering.StatsTest do
 
     player = Stats.player(players["Alice"].id)
 
-    assert %{rank: 1, players: 3} = player.elo
+    assert %{rank: 1, players: 3, games: 7} = player.elo
     assert length(player.elo.history) == 7
     assert player.average_duration_minutes == 69.2
     assert player.average_turns == 8.5
@@ -304,6 +304,36 @@ defmodule TheGathering.StatsTest do
     # The commander page counts how often Kangee beat each opponent, not just their record.
     kangee = Stats.commander("kangee")
     assert %{games: 7, wins: 2, beaten: 3} = Enum.find(kangee.opponents, &(&1.name == "Bob"))
+  end
+
+  test "players below the game floor are rated but unranked", %{players: players, decks: decks} do
+    {:ok, dana} = Games.create_player(%{name: "Dana"})
+
+    # Dana wins both of her games, which would put her first without a floor.
+    for played_at <- [~U[2026-04-02 12:00:00Z], ~U[2026-04-03 12:00:00Z]] do
+      {:ok, _game} =
+        Games.create_game(%{
+          played_at: played_at,
+          source: "manual",
+          seats: [
+            %{player_id: dana.id, seat: 1, result: "win"},
+            %{
+              player_id: players["Alice"].id,
+              deck_id: decks["Alice"].id,
+              seat: 2,
+              result: "loss"
+            },
+            %{player_id: players["Bob"].id, deck_id: decks["Bob"].id, seat: 3, result: "loss"}
+          ]
+        })
+    end
+
+    assert Stats.min_games() == 3
+    assert hd(Stats.overview().elo).name == "Dana"
+
+    assert %{rank: nil, players: 3, games: 2} = Stats.player(dana.id).elo
+    assert %{rank: rank, players: 3, games: 8} = Stats.player(players["Alice"].id).elo
+    assert rank in 1..3
   end
 
   test "deck stats include record, opponents, averages, and recent results", %{decks: decks} do

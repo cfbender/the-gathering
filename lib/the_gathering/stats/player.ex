@@ -1,7 +1,7 @@
 defmodule TheGathering.Stats.Player do
   @moduledoc "Calculates one player's statistics view."
 
-  alias TheGathering.{Accounts, Catalog, Games, Repo}
+  alias TheGathering.{Accounts, Catalog, Games, Repo, Stats}
   alias TheGathering.Games.Player
   alias TheGathering.Stats.{Commanders, Elo, Query, Records, Summaries}
 
@@ -59,19 +59,23 @@ defmodule TheGathering.Stats.Player do
   end
 
   # Ratings depend on every game at the table, so the whole playgroup is replayed.
+  # Only players at or above `Stats.min_games/0` hold a rank; a newer player still
+  # sees their rating but is unranked until they reach the floor.
   defp elo(player_id, params) do
     ratings = params |> Query.games() |> Elo.ratings()
+    ranked = Enum.filter(ratings, &(&1.games >= Stats.min_games()))
 
-    case Enum.find_index(ratings, &(&1.id == player_id)) do
+    case Enum.find(ratings, &(&1.id == player_id)) do
       nil ->
         nil
 
-      index ->
-        ratings
-        |> Enum.at(index)
-        |> Map.take([:rating, :peak, :history])
-        |> Map.put(:rank, index + 1)
-        |> Map.put(:players, length(ratings))
+      rating ->
+        rank = Enum.find_index(ranked, &(&1.id == player_id))
+
+        rating
+        |> Map.take([:rating, :peak, :games, :history])
+        |> Map.put(:rank, rank && rank + 1)
+        |> Map.put(:players, length(ranked))
     end
   end
 
