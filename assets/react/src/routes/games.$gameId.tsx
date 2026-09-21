@@ -57,7 +57,7 @@ function GameDetailPage() {
               <div className="flex items-center justify-between">
                 <span className="badge badge-neutral">Seat {seat.seat}</span>
                 {seat.result === "win" && (
-                  <span className="text-success flex items-center gap-1 text-sm font-bold">
+                  <span className="bg-base-100 text-accent flex items-center gap-1 rounded-full px-2 py-1 text-sm font-bold">
                     <Trophy className="size-4" /> Winner
                   </span>
                 )}
