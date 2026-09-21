@@ -3,8 +3,11 @@ import { RouterProvider, createRouter } from "@tanstack/react-router"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./app.css"
+import { installStaleBundleReload } from "./lib/stale-bundle"
 import { ThemeProvider } from "./lib/theme"
 import { routeTree } from "./routeTree.gen"
+
+installStaleBundleReload()
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
