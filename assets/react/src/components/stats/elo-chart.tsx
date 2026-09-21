@@ -27,41 +27,48 @@ export function EloChart({
 
   const baselineY = PADDING_Y + ratingToY(1000, bounds.minRating, bounds.maxRating, PLOT_HEIGHT)
 
+  // The SVG stretches to whatever box it is given (the section grid may make it
+  // taller than its 600x210 viewBox), so strokes are drawn in screen space and
+  // the baseline label lives outside the SVG to avoid distortion.
   return (
-    <div>
-      <svg
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="h-48 w-full overflow-visible"
-        role="img"
-        aria-label="Elo rating over time"
-      >
-        <path
-          d={`M${PADDING_X} ${baselineY}H${WIDTH - PADDING_X}`}
-          className="stroke-base-content/25"
-          strokeWidth="1"
-          strokeDasharray="5 5"
-        />
-        <text
-          x={WIDTH - PADDING_X - 4}
-          y={Math.max(12, baselineY - 5)}
-          textAnchor="end"
-          className="fill-base-content/45 text-[10px]"
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="relative min-h-48 flex-1">
+        <svg
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          preserveAspectRatio="none"
+          className="absolute inset-0 h-full w-full overflow-visible"
+          role="img"
+          aria-label="Elo rating over time"
+        >
+          <path
+            d={`M${PADDING_X} ${baselineY}H${WIDTH - PADDING_X}`}
+            className="stroke-base-content/25"
+            strokeWidth="1"
+            strokeDasharray="5 5"
+            vectorEffect="non-scaling-stroke"
+          />
+          {series.map((player, index) => (
+            <polyline
+              key={player.id}
+              points={buildEloPath(player.history, bounds, PLOT_WIDTH, PLOT_HEIGHT)}
+              transform={`translate(${PADDING_X} ${PADDING_Y})`}
+              fill="none"
+              stroke={COLORS[index % COLORS.length]}
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        </svg>
+        <span
+          className="text-base-content/45 pointer-events-none absolute right-3 -translate-y-full text-[10px] leading-none"
+          style={{ top: `${(baselineY / HEIGHT) * 100}%` }}
+          aria-hidden="true"
         >
           1000
-        </text>
-        {series.map((player, index) => (
-          <polyline
-            key={player.id}
-            points={buildEloPath(player.history, bounds, PLOT_WIDTH, PLOT_HEIGHT)}
-            transform={`translate(${PADDING_X} ${PADDING_Y})`}
-            fill="none"
-            stroke={COLORS[index % COLORS.length]}
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
-      </svg>
+        </span>
+      </div>
       <div className="text-base-content/50 flex justify-between text-xs">
         <span>{bounds.startDate}</span>
         <span>{bounds.endDate}</span>
