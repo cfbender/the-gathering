@@ -202,15 +202,26 @@ The command opens a modal for optional **turns, duration in minutes, winner's MV
 card, and notes**. Duration starts as an estimate from the SpellBot start time;
 edit or clear it when reporting an older game. Submitting opens a private review
 message with **winner** and **win-condition** dropdowns, **Edit details**,
-**Player kills**, **Save game**, and **Cancel**. The reporter is the initial
+**Player kills**, **Commanders**, **Save game**, and **Cancel**. The reporter is the initial
 winner, but any roster member can be selected. Win conditions use the same enum
 as the web app; Unknown is available. Draws still use the web editor.
 
-MVP names are resolved against the local card catalog. Ambiguous names show a
-card-selection dropdown; an unmatched name must be corrected or cleared. MVP
+Card names are resolved against the local card catalog. Case, accents, and
+straight/curly/omitted apostrophes are tolerated (`Jeskas will` finds `Jeska's
+Will`). A unique partial name such as `lumra` resolves automatically; ambiguous
+names show a card-selection dropdown. An unmatched name must be corrected or cleared. MVP
 belongs only to the selected winner. Notes allow up to 4,000 characters; the
 review truncates its preview, not the saved note. Mentions in review messages do
 not ping anyone.
+
+**Commanders** opens a private roster panel. Choose a player to enter their
+commander and optional partner/Background, resolve any ambiguous matches, then
+choose another player or **Back to review**. Commanders are optional; unresolved
+entries block saving until corrected or cleared. Second commanders support
+rule-zero pairings rather than enforcing tournament pairing legality. Existing
+decks with the same commander pair are reused even if the pair is reversed;
+new decks receive catalog IDs and the combined color identity. Changes to an
+existing deck's metadata are left to the web editor.
 
 The kills modal labels each field with a player name. Enter `0` for no kills or
 leave it blank for unknown. Visit each kills page before saving, even when all
@@ -224,7 +235,10 @@ the pending game intact. Drafts persist across restarts for one hour and are
 bound to the reporter, server, channel, and original roster/start time. Changed
 or expired drafts must be reopened. Saving consumes the pending game in the
 same transaction as recording the result; competing drafts cannot overwrite it.
-Already recorded games must be edited in the web app.
+Already recorded games must be edited in the web app. To remove a test game,
+open its game-detail page and choose **Delete game**, then confirm. Admins,
+the creator, and linked participants have the same deletion permission as Edit.
+Deletion removes the game and seats, not the players or decks, and cannot be undone.
 
 Winnerless reports are staged in SQLite, so `/won` continues to work after an
 application or Tracker restart. Re-observing the same SpellBot external ID
@@ -264,10 +278,9 @@ order SpellBot listed them. The selected player is the winner and every other
 seat is a loss. Win condition, turns, duration, notes, individual kills, and the
 winner's resolved MVP are persisted with the result.
 
-If a report supplies a commander, the sink creates or reuses a deck named for
-that commander. It leaves `commander_card_id` unset and the color identity empty;
-the ready embed currently supplies no commander, and this path does not query
-the card catalog.
+Commander selections from `/won` resolve to catalog-backed deck attributes
+before saving. The ready embed itself supplies no commander. Legacy reports
+that supply only a commander name retain their name-only deck fallback.
 
 Repeated sink reports are idempotent by `{source, external_id}`. A completed replay
 replaces the existing game's timestamp, seats, decks, and results, so corrected
