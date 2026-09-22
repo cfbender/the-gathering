@@ -11,6 +11,8 @@ defmodule TheGatheringWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  socket "/socket", TheGatheringWeb.UserSocket, websocket: true, longpoll: false
+
   # Vite output (hashed filenames) is safe to cache forever.
   plug Plug.Static,
     at: "/assets/react",

@@ -19,13 +19,20 @@ export default defineConfig({
       "aube-lock.yaml",
       "assets/react/src/routeTree.gen.ts",
       "priv/static/**",
+      "ml/**",
       "deps/**",
       "_build/**",
       "*.md",
     ],
   },
   lint: {
-    ignorePatterns: ["assets/react/src/routeTree.gen.ts", "priv/static/**", "deps/**", "_build/**"],
+    ignorePatterns: [
+      "assets/react/src/routeTree.gen.ts",
+      "priv/static/**",
+      "ml/**",
+      "deps/**",
+      "_build/**",
+    ],
     options: { typeAware: true, typeCheck: true },
   },
   test: {
@@ -62,6 +69,10 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: [".onamp.dev"],
     proxy: {
+      "/socket": {
+        target: phoenixOrigin,
+        ws: true,
+      },
       "^/.*": {
         target: phoenixOrigin,
         headers: { "x-the-gathering-vite-proxy": "1" },
