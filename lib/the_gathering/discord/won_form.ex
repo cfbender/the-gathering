@@ -33,6 +33,88 @@ defmodule TheGathering.Discord.WonForm do
     modal_response(draft, action, "Player kills · page #{String.to_integer(page) + 1}", inputs)
   end
 
+  def commander_modal(draft, player) do
+    choices = get_in(draft.data, ["commanders", player.discord_id])
+
+    values =
+      if choices do
+        Map.new(choices, fn {role, choice} -> {role, choice["name"]} end)
+      else
+        %{"commander" => player.commander_name || "", "partner" => ""}
+      end
+
+    inputs = [
+      input(%{draft | data: values}, "commander", "Commander (name or partial name)", 1, 150),
+      input(%{draft | data: values}, "partner", "Partner / Background (optional)", 1, 150)
+    ]
+
+    modal_response(
+      draft,
+      "commander_#{player.discord_id}",
+      short(player.display_name, 30) <> " · commander",
+      inputs
+    )
+  end
+
+  def commanders(draft, pending, type, player_id \\ nil) do
+    players = WonReport.players(pending)
+    choices = get_in(draft.data, ["commanders", player_id]) || %{}
+    lines = Enum.map(players, &commander_line(draft, &1))
+
+    errors =
+      Enum.map(~w(commander partner), &get_in(choices, [&1, "error"])) |> Enum.reject(&is_nil/1)
+
+    content = Enum.join(["**Player commanders** — not saved yet" | lines] ++ errors, "\n")
+
+    matches =
+      Enum.flat_map(~w(commander partner), fn role ->
+        candidates = get_in(choices, [role, "candidates"]) || []
+
+        if candidates == [],
+          do: [],
+          else: [
+            select(
+              draft,
+              "#{role}_choice_#{player_id}",
+              "Choose #{role}",
+              Enum.map(candidates, &{&1["id"], &1["name"]}),
+              nil
+            )
+          ]
+      end)
+
+    components =
+      [
+        select(
+          draft,
+          "player",
+          "Choose a player to enter or edit commanders",
+          Enum.map(players, &{&1.discord_id, &1.display_name}),
+          nil
+        )
+      ] ++ matches ++ [row([button(draft, "review", "Back to review", 2)])]
+
+    response(content, components, type)
+  end
+
+  defp commander_line(draft, player) do
+    choices = get_in(draft.data, ["commanders", player.discord_id])
+
+    names =
+      if choices do
+        Enum.map(~w(commander partner), &choice_name(choices[&1]))
+        |> Enum.reject(&(&1 == ""))
+        |> Enum.join(" + ")
+      else
+        player.commander_name || ""
+      end
+
+    "#{short(player.display_name, 32)}: #{short(if(names == "", do: "Not recorded", else: names), 160)}"
+  end
+
+  defp choice_name(%{"error" => nil, "name" => name}), do: name
+  defp choice_name(choice), do: choice["name"] <> " (unresolved)"
+
   def review(draft, pending, type \\ 4, error \\ nil) do
     players = WonReport.players(pending)
     winner = Enum.find(players, &(&1.discord_id == draft.data["winner"]))
@@ -54,6 +136,7 @@ defmodule TheGathering.Discord.WonForm do
             "Turns: #{display(draft.data["turns"])} · Minutes: #{display(draft.data["duration"])}",
             "MVP: #{short(draft.data["mvp"] || "", 150)}",
             "Kills: #{kills}",
+            "Commander entries: #{map_size(draft.data["commanders"] || %{})} · use Commanders to review",
             "Notes: #{short(draft.data["notes"] || "", 500)}",
             "Use the dropdowns and buttons to finish. Blank kills mean unknown, not zero. Draft expires after one hour."
           ],
@@ -84,7 +167,8 @@ defmodule TheGathering.Discord.WonForm do
 
     edit_buttons = [
       button(draft, "details", "Edit details", 2),
-      button(draft, "kills0", "Player kills", 2)
+      button(draft, "kills0", "Player kills", 2),
+      button(draft, "commanders", "Commanders", 2)
     ]
 
     edit_buttons =

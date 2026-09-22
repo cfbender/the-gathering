@@ -39,6 +39,34 @@ defmodule TheGathering.Discord.WonCommand do
   def handle(_), do: WonForm.message("Invalid result form. Run /won again.")
 
   defp handle_action(%{type: 3} = interaction, id, action)
+       when action in ["commanders", "review"] do
+    case WonReport.load(id, actor(interaction)) do
+      {:ok, draft, pending} when action == "commanders" -> WonForm.commanders(draft, pending, 7)
+      {:ok, draft, pending} -> WonForm.review(draft, pending, 7)
+      {:error, error} -> WonForm.message(error)
+    end
+  end
+
+  defp handle_action(%{type: 3} = interaction, id, "player") do
+    with {:ok, draft, pending} <- WonReport.load(id, actor(interaction)),
+         %{} = player <- WonReport.player(pending, values(interaction)["value"]) do
+      WonForm.commander_modal(draft, player)
+    else
+      nil -> WonForm.message("Select a player from this game.")
+      {:error, error} -> WonForm.message(error)
+    end
+  end
+
+  defp handle_action(%{type: 3} = interaction, id, "commander_choice_" <> player_id),
+    do: update_commanders(interaction, id, {:choose_commander, player_id, "commander"}, player_id)
+
+  defp handle_action(%{type: 3} = interaction, id, "partner_choice_" <> player_id),
+    do: update_commanders(interaction, id, {:choose_commander, player_id, "partner"}, player_id)
+
+  defp handle_action(%{type: 5} = interaction, id, "commander_" <> player_id),
+    do: update_commanders(interaction, id, {:commander, player_id}, player_id)
+
+  defp handle_action(%{type: 3} = interaction, id, action)
        when action in ["details", "kills0", "kills1"] do
     case WonReport.load(id, actor(interaction)) do
       {:ok, draft, pending} ->
@@ -65,6 +93,13 @@ defmodule TheGathering.Discord.WonCommand do
       render_result(result, update_type)
     else
       WonForm.message("Invalid result action.")
+    end
+  end
+
+  defp update_commanders(interaction, id, action, player_id) do
+    case WonReport.act(id, action, values(interaction), actor(interaction)) do
+      {:ok, draft, pending} -> WonForm.commanders(draft, pending, 7, player_id)
+      {:error, error} -> WonForm.message(error)
     end
   end
 

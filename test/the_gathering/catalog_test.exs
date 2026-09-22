@@ -29,7 +29,47 @@ defmodule TheGathering.CatalogTest do
     assert [%{name: "Jötun Grunt"}] = Catalog.search("Jotun")
   end
 
-  defp insert_card(id, oracle_id, name) do
+  test "matches omitted, straight, and curly apostrophes while retaining ranking" do
+    insert_card("jeska-exact", "oracle-jeska-exact", "Jeska's Will")
+    insert_card("jeska-prefix", "oracle-jeska-prefix", "Jeskas Willpower")
+    insert_card("jeska-substring", "oracle-jeska-substring", "Copy of Jeska’s Will")
+
+    expected = ["jeska-exact", "jeska-prefix", "jeska-substring"]
+
+    assert Enum.map(Catalog.search("Jeskas Will"), & &1.id) == expected
+    assert Enum.map(Catalog.search("Jeska's Will"), & &1.id) == expected
+    assert Enum.map(Catalog.search("Jeska’s Will"), & &1.id) == expected
+  end
+
+  test "matches partial unique names" do
+    insert_card("lumra", "oracle-lumra", "Lumra, Bellow of the Woods")
+
+    assert [%{id: "lumra", name: "Lumra, Bellow of the Woods"}] = Catalog.search("lumra")
+  end
+
+  test "applies commander and partner filters to apostrophe-insensitive matches" do
+    insert_card("spell", "oracle-spell", "Hero's Aid")
+
+    insert_card("partner", "oracle-partner", "Heros Aid Captain", %{
+      "type_line" => "Legendary Creature — Human",
+      "oracle_text" => "Partner"
+    })
+
+    assert Enum.map(Catalog.search("heros aid", commander: true), & &1.id) == ["partner"]
+    assert Enum.map(Catalog.search("hero’s aid", partner: true), & &1.id) == ["partner"]
+  end
+
+  test "treats SQL wildcard characters literally" do
+    insert_card("percent", "oracle-percent", "A 100% Real Card")
+    insert_card("percent-decoy", "oracle-percent-decoy", "A 100X Real Card")
+    insert_card("underscore", "oracle-underscore", "Under_score")
+    insert_card("underscore-decoy", "oracle-underscore-decoy", "UnderXscore")
+
+    assert Enum.map(Catalog.search("100%"), & &1.id) == ["percent"]
+    assert Enum.map(Catalog.search("under_score"), & &1.id) == ["underscore"]
+  end
+
+  defp insert_card(id, oracle_id, name, overrides \\ %{}) do
     attrs =
       %{
         "id" => id,
@@ -45,6 +85,7 @@ defmodule TheGathering.CatalogTest do
         "rarity" => "common",
         "legalities" => %{"commander" => "legal"}
       }
+      |> Map.merge(overrides)
       |> CardData.from_scryfall()
       |> Map.delete(:selection_key)
 

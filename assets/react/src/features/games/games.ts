@@ -122,6 +122,7 @@ export const linkUserPlayer = (userId: number, playerId: number) =>
   }).then((body) => body.data)
 export const getGame = (id: string) =>
   api<{ data: Game }>(`/api/games/${id}`).then((body) => body.data)
+export const deleteGame = (id: number) => api<void>(`/api/games/${id}`, { method: "DELETE" })
 
 /** Invalidates every cache derived from game, player, or deck records. */
 export const invalidateGameRelated = (queryClient: QueryClient) =>

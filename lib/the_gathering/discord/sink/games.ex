@@ -67,7 +67,7 @@ defmodule TheGathering.Discord.Sink.Games do
     |> Enum.reduce_while({:ok, []}, fn {reported_player, seat_number}, {:ok, seats} ->
       with {:ok, player} <-
              Games.resolve_player(reported_player.display_name, reported_player.discord_id),
-           {:ok, deck} <- find_or_create_deck(player, reported_player.commander_name) do
+           {:ok, deck} <- find_or_create_deck(player, reported_player, report.details) do
         seat = %{
           player_id: player.id,
           deck_id: deck && deck.id,
@@ -92,6 +92,22 @@ defmodule TheGathering.Discord.Sink.Games do
     do: Map.merge(seat, Map.take(details, [:mvp_card_id, :mvp_card_name]))
 
   defp with_mvp(seat, _details), do: seat
+
+  defp find_or_create_deck(player, reported, details) do
+    case Map.fetch(details[:commanders] || %{}, reported.discord_id) do
+      {:ok, nil} ->
+        {:ok, nil}
+
+      {:ok, attrs} ->
+        name =
+          [attrs.commander_name, attrs.partner_name] |> Enum.reject(&is_nil/1) |> Enum.join(" + ")
+
+        Games.find_or_create_deck(player, String.slice(name, 0, 100), attrs)
+
+      :error ->
+        find_or_create_deck(player, reported.commander_name)
+    end
+  end
 
   defp find_or_create_deck(_player, commander_name)
        when commander_name in [nil, ""],

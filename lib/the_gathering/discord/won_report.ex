@@ -4,7 +4,7 @@ defmodule TheGathering.Discord.WonReport do
   import Ecto.Query, only: [from: 2]
 
   alias TheGathering.{Accounts, Discord, Repo}
-  alias TheGathering.Discord.{PendingGame, ResultDetails, ResultDraft, Sink}
+  alias TheGathering.Discord.{PendingGame, ResultCommanders, ResultDetails, ResultDraft, Sink}
   alias TheGathering.Discord.Sink.Games, as: GamesSink
   alias TheGathering.Games.{Game, WinCondition}
 
@@ -75,6 +75,26 @@ defmodule TheGathering.Discord.WonReport do
 
   def kills_page(pending, page),
     do: pending |> players() |> Enum.chunk_every(5) |> Enum.at(page, [])
+
+  def player(pending, id), do: Enum.find(players(pending), &(&1.discord_id == id))
+
+  defp apply_action(draft, pending, {:commander, player_id}, fields) do
+    if player(pending, player_id) do
+      update(draft, pending, ResultCommanders.put(draft.data, player_id, fields))
+    else
+      Repo.rollback("Select a player from this game.")
+    end
+  end
+
+  defp apply_action(draft, pending, {:choose_commander, player_id, role}, %{"value" => value}) do
+    with %{} <- player(pending, player_id),
+         {:ok, data} <- ResultCommanders.choose(draft.data, player_id, role, value) do
+      update(draft, pending, data)
+    else
+      nil -> Repo.rollback("Select a player from this game.")
+      {:error, error} -> Repo.rollback(error)
+    end
+  end
 
   defp apply_action(draft, pending, "details", fields) do
     data = Map.merge(draft.data, Map.take(fields, ~w(turns duration mvp notes)))

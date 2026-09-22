@@ -104,7 +104,7 @@ defmodule TheGathering.Discord.WonCommandTest do
     review =
       submit(id, "details", %{"turns" => "", "duration" => "", "mvp" => "Sol", "notes" => ""})
 
-    assert review.data.content =~ "Choose an MVP"
+    assert review.data.content =~ "Choose a matching MVP"
     assert length(review.data.components) == 5
     assert click(id, "mvp", "forged-id").data.content =~ "matching MVP"
     assert click(id, "mvp", "talisman").data.content =~ "MVP: Sol Talisman"
@@ -246,6 +246,136 @@ defmodule TheGathering.Discord.WonCommandTest do
     assert Enum.all?(rows, &match?(%{type: 1, components: [%{type: 4}]}, &1))
   end
 
+  test "partial commanders and punctuation-free MVP names resolve and save on the correct seats" do
+    stage(6)
+    card("will", "Jeska's Will")
+    card("lumra", "Lumra, Bellow of the Woods", can_be_commander: true, color_identity: ["G"])
+
+    card("ardenn", "Ardenn, Intrepid Archaeologist",
+      can_be_commander: true,
+      color_identity: ["W"]
+    )
+
+    card("kediss", "Kediss, Emberclaw Familiar", can_be_commander: true, color_identity: ["R"])
+    {:ok, player} = Games.resolve_player("Player 1", "111")
+
+    {:ok, deck} =
+      Games.create_deck(%{
+        player_id: player.id,
+        name: "My voltron deck",
+        commander_name: "Kediss, Emberclaw Familiar",
+        partner_name: "Ardenn, Intrepid Archaeologist"
+      })
+
+    id = open()
+
+    review =
+      submit(id, "details", %{
+        "mvp" => "Jeskas will",
+        "turns" => "",
+        "duration" => "",
+        "notes" => ""
+      })
+
+    assert review.data.content =~ "MVP: Jeska's Will"
+    assert click(id, "commanders").data.content =~ "Player 6: Not recorded"
+
+    assert %{type: 9, data: %{custom_id: custom_id, components: rows}} =
+             click(id, "player", "116")
+
+    assert custom_id == "won:#{id}:commander_116"
+    assert length(rows) == 2
+    panel = submit(id, "commander_116", %{"commander" => "lumra", "partner" => ""}, true)
+    assert panel.type == 7
+    refute Map.has_key?(panel.data, :flags)
+    assert panel.data.content =~ "Player 6: Lumra, Bellow of the Woods"
+    assert length(panel.data.components) <= 5
+    submit(id, "commander_111", %{"commander" => "ardenn", "partner" => "kediss"}, true)
+    assert Repo.aggregate(Game, :count) == 0
+    assert click(id, "review").data.content =~ "Commander entries: 2"
+    submit(id, "kills0", Map.new(111..115, &{"kills_#{&1}", "0"}))
+    submit(id, "kills1", %{"kills_116" => "0"})
+    assert click(id, "save").data.content =~ "Recorded"
+    game = Repo.one!(Game) |> then(&Games.get_game!(&1.id))
+    seats = Map.new(game.seats, &{&1.player.discord_id, &1})
+    assert seats["111"].deck_id == deck.id
+    assert seats["111"].mvp_card_name == "Jeska's Will"
+    assert seats["116"].deck.commander_card_id == "lumra"
+    assert seats["116"].deck.color_identity == "G"
+    assert seats["112"].deck_id == nil
+  end
+
+  test "ambiguous commander and partner choices are validated, then create a catalog-linked pair" do
+    stage(2)
+    card("akroma1", "Akroma, Angel of Wrath", can_be_commander: true, color_identity: ["W"])
+    card("akroma2", "Akroma, Vision of Ixidor", can_be_commander: true, color_identity: ["W"])
+
+    card("sakashima1", "Sakashima of a Thousand Faces",
+      can_be_commander: true,
+      color_identity: ["U"]
+    )
+
+    card("sakashima2", "Sakashima the Impostor", can_be_commander: true, color_identity: ["U"])
+    id = open()
+    submit(id, "details", %{"mvp" => "", "turns" => "", "duration" => "", "notes" => ""})
+    submit(id, "kills0", %{"kills_111" => "1", "kills_112" => "0"})
+
+    panel =
+      submit(id, "commander_112", %{"commander" => "akroma", "partner" => "sakashima"}, true)
+
+    assert length(panel.data.components) == 4
+    assert panel.data.content =~ "Choose a matching Commander"
+    assert click(id, "save").data.content =~ "Player 2: Choose"
+    assert click(id, "player", "999").data.content =~ "Select a player"
+
+    assert submit(id, "commander_999", %{"commander" => "akroma"}).data.content =~
+             "Select a player"
+
+    assert click(id, "commanders", nil, "112").data.content =~ "not yours"
+    assert click(id, "commander_choice_112", "sakashima1").data.content =~ "matching cards"
+    assert click(id, "commander_choice_112", "akroma2").data.content =~ "Akroma, Vision"
+
+    assert click(id, "partner_choice_112", "sakashima1").data.content =~
+             "Sakashima of a Thousand Faces"
+
+    assert click(id, "save").data.content =~ "Recorded"
+    game = Repo.one!(Game) |> then(&Games.get_game!(&1.id))
+    seat = Enum.find(game.seats, &(&1.player.discord_id == "112"))
+    assert seat.deck.commander_card_id == "akroma2"
+    assert seat.deck.partner_card_id == "sakashima1"
+    assert seat.deck.color_identity == "WU"
+    assert seat.result == "loss"
+  end
+
+  test "unresolved or invalid commanders block saving and can be cleared without losing other details" do
+    stage(2)
+    card("ring", "Sol Ring")
+    card("lumra", "Lumra, Bellow of the Woods", can_be_commander: true)
+    id = open()
+
+    submit(id, "details", %{
+      "mvp" => "ring",
+      "turns" => "9",
+      "duration" => "75",
+      "notes" => "Keep me"
+    })
+
+    submit(id, "kills0", %{"kills_111" => "1", "kills_112" => "0"})
+    submit(id, "commander_111", %{"commander" => "Sol Ring", "partner" => ""}, true)
+    assert click(id, "save").data.content =~ "Commander card not found"
+    submit(id, "commander_111", %{"commander" => "", "partner" => "lumra"}, true)
+    assert click(id, "save").data.content =~ "before adding a partner"
+    submit(id, "commander_111", %{"commander" => "lumra", "partner" => "lumra"}, true)
+    assert click(id, "save").data.content =~ "different cards"
+    assert Repo.aggregate(Game, :count) == 0
+    submit(id, "commander_111", %{"commander" => "", "partner" => ""}, true)
+    assert click(id, "save").data.content =~ "Recorded"
+    game = Repo.one!(Game) |> then(&Games.get_game!(&1.id))
+    assert game.notes == "Keep me"
+    assert game.turns == 9
+    assert Enum.all?(game.seats, &is_nil(&1.deck_id))
+  end
+
   def create_response(_interaction, response) do
     send(self(), {:response, response})
     {:ok}
@@ -315,8 +445,8 @@ defmodule TheGathering.Discord.WonCommandTest do
     report
   end
 
-  defp card(id, name) do
-    Repo.insert!(%Card{
+  defp card(id, name, attrs \\ []) do
+    %Card{
       id: id,
       oracle_id: id,
       name: name,
@@ -330,6 +460,8 @@ defmodule TheGathering.Discord.WonCommandTest do
       color_identity: [],
       colors: [],
       can_be_commander: false
-    })
+    }
+    |> struct(attrs)
+    |> Repo.insert!()
   end
 end

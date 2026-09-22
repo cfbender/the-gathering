@@ -20,7 +20,13 @@ defmodule TheGathering.Catalog do
   @max_limit 50
 
   def search(query, opts \\ []) do
-    normalized = query |> to_string() |> String.trim() |> CardData.normalize_name()
+    normalized =
+      query
+      |> to_string()
+      |> String.trim()
+      |> CardData.normalize_name()
+      |> strip_apostrophes()
+
     limit = opts |> Keyword.get(:limit, @default_limit) |> min(@max_limit) |> max(1)
     commander = Keyword.get(opts, :commander)
     partner = Keyword.get(opts, :partner)
@@ -32,14 +38,21 @@ defmodule TheGathering.Catalog do
       prefix = "#{escape_like(normalized)}%"
 
       Card
-      |> where([card], fragment("? LIKE ? ESCAPE '\\'", card.normalized_name, ^pattern))
+      |> where(
+        [card],
+        fragment(
+          "replace(replace(?, '''', ''), '’', '') LIKE ? ESCAPE '\\'",
+          card.normalized_name,
+          ^pattern
+        )
+      )
       |> commander_filter(commander)
       |> partner_filter(partner)
       |> order_by(
         [card],
         asc:
           fragment(
-            "CASE WHEN ? = ? THEN 0 WHEN ? LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END",
+            "CASE WHEN replace(replace(?, '''', ''), '’', '') = ? THEN 0 WHEN replace(replace(?, '''', ''), '’', '') LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END",
             card.normalized_name,
             ^normalized,
             card.normalized_name,
@@ -183,4 +196,6 @@ defmodule TheGathering.Catalog do
     |> String.replace("%", "\\%")
     |> String.replace("_", "\\_")
   end
+
+  defp strip_apostrophes(value), do: String.replace(value, ["'", "’"], "")
 end

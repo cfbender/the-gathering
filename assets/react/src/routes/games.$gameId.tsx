@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Clock, Pencil, Trophy } from "lucide-react"
 import { canManageGame, formatDate, getGame, winConditionLabel } from "@/features/games/games"
+import { DeleteGame } from "@/features/games/delete-game"
 import { CardArtBackground } from "@/components/card-art-background"
 import { useCurrentUser } from "@/lib/auth"
 
@@ -28,9 +29,12 @@ function GameDetailPage() {
         title={formatDate(game.played_at)}
         actions={
           canManageGame(viewer.data, game) && (
-            <Link to="/games/$gameId/edit" params={{ gameId }} className="btn btn-outline">
-              <Pencil className="size-4" /> Edit
-            </Link>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Link to="/games/$gameId/edit" params={{ gameId }} className="btn btn-outline">
+                <Pencil className="size-4" /> Edit
+              </Link>
+              <DeleteGame game={game} />
+            </div>
           )
         }
       >
