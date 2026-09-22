@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import type { Game, PlayerSummary } from "@/features/games/games"
 import type { DeckSummary } from "@/features/decks/decks"
+import type { DiscordResultDraft } from "./use-game-draft"
 import { GameForm } from "./game-form"
 
 const navigate = vi.hoisted(() => vi.fn())
@@ -102,6 +103,38 @@ function renderGame(game = gameFixture()) {
   )
   const view = render(<GameForm game={game} />, { wrapper: Wrapper })
   return { ...view, fetch, game, queryClient }
+}
+
+function renderDiscordGame(winner: string | null = "discord-bob") {
+  const draft: DiscordResultDraft = {
+    id: "draft-uuid",
+    external_id: "spellbot-123",
+    played_at: "2026-09-19T18:00:00Z",
+    duration_minutes: 83,
+    winner_discord_id: winner,
+    seats: [
+      { discord_id: "discord-alice", player_id: 1, player_name: "Alice" },
+      { discord_id: "discord-bob", player_id: 2, player_name: "Bob" },
+      { discord_id: "discord-cara", player_id: null, player_name: "Cara" },
+    ],
+  }
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } },
+  })
+  queryClient.setQueryData(["players"], [alice, bob, cara])
+  queryClient.setQueryData(["decks", {}], [archivedDeck])
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+    if (url === "/api/discord/result-drafts/draft-uuid" && init?.method === "POST") {
+      return response(gameFixture())
+    }
+    throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`)
+  })
+  vi.stubGlobal("fetch", fetch)
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+  return { ...render(<GameForm discordDraft={draft} />, { wrapper: Wrapper }), fetch }
 }
 
 async function submitPayload(fetch: ReturnType<typeof vi.fn>) {
@@ -268,5 +301,79 @@ describe("GameForm submissions", () => {
     await submitPayload(fetch)
 
     expect(queryClient.getQueryState(["stats", "overview"])?.isInvalidated).toBe(true)
+  })
+})
+
+describe("GameForm Discord handoff", () => {
+  it("does not assume a winner or draw when /log omitted the winner", () => {
+    const { fetch } = renderDiscordGame(null)
+    expect(screen.getByRole("button", { name: "Log game" }).hasAttribute("disabled")).toBe(true)
+    expect(
+      screen.getAllByRole("radio").every((radio) => !(radio as HTMLInputElement).checked),
+    ).toBe(true)
+    expect(
+      (screen.getByRole("checkbox", { name: "Game ended in a draw" }) as HTMLInputElement).checked,
+    ).toBe(false)
+    expect(fetch).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("radio", { name: "Cara won" }))
+    expect(screen.getByRole("button", { name: "Log game" }).hasAttribute("disabled")).toBe(false)
+  })
+
+  it("prefills the roster and metadata, keeps identities fixed, and submits one atomic request", async () => {
+    const { fetch } = renderDiscordGame()
+
+    expect(screen.getByText(/SpellBot game spellbot-123/)).toBeTruthy()
+    expect((screen.getByRole("spinbutton", { name: "Minutes" }) as HTMLInputElement).value).toBe(
+      "83",
+    )
+    expect(screen.getAllByRole("combobox", { name: "Player" })).toHaveLength(3)
+    expect(
+      screen
+        .getAllByRole("combobox", { name: "Player" })
+        .every((input) => input.hasAttribute("disabled")),
+    ).toBe(true)
+    expect(screen.getByRole("button", { name: "Add seat" }).hasAttribute("disabled")).toBe(true)
+    expect(
+      screen
+        .getAllByRole("button", { name: "Remove seat" })
+        .every((button) => button.hasAttribute("disabled")),
+    ).toBe(true)
+
+    const bobSeat = screen.getByDisplayValue("Bob").closest("article") as HTMLElement
+    fireEvent.change(within(bobSeat).getByRole("combobox", { name: "Deck (optional)" }), {
+      target: { value: "Retired artifacts" },
+    })
+    fireEvent.click(within(bobSeat).getByRole("button", { name: "Move seat down" }))
+    fireEvent.click(screen.getByRole("button", { name: "Log game" }))
+    await waitFor(() => expect(navigate).toHaveBeenCalled())
+
+    const atomicCalls = fetch.mock.calls.filter(
+      ([url, init]) => url === "/api/discord/result-drafts/draft-uuid" && init?.method === "POST",
+    )
+    expect(atomicCalls).toHaveLength(1)
+    const [, init] = atomicCalls[0]!
+    expect(typeof init?.body).toBe("string")
+    const payload = JSON.parse(init?.body as string).game
+    expect(
+      payload.seats.map((seat: { discord_id: string; result: string }) => [
+        seat.discord_id,
+        seat.result,
+      ]),
+    ).toEqual([
+      ["discord-alice", "loss"],
+      ["discord-cara", "loss"],
+      ["discord-bob", "win"],
+    ])
+    expect(payload.seats[2]).toMatchObject({
+      discord_id: "discord-bob",
+      deck_id: 22,
+      deck: null,
+    })
+    expect(
+      fetch.mock.calls.some(
+        ([url, request]) =>
+          (url === "/api/players" || url === "/api/decks") && request?.method === "POST",
+      ),
+    ).toBe(false)
   })
 })

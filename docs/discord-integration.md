@@ -152,11 +152,10 @@ home-grown gateway state machine.
 **Primary:** run a gateway bot alongside Phoenix. Accept only messages authored
 by the configured SpellBot user ID, then require the known started color, title,
 footer, start timestamp, and player field. Emit an incomplete normalized report
-when a game starts. A listed player finishes it with `/won`, which defaults to
+when a game starts. Any server member finishes it with `/log`, which defaults to
 the most recently started game the bot has seen in that channel, or
-`/won game:SB12345` to pick a specific one; the reply is ephemeral, and a
-non-player cannot report the game. A participant chooses the winner from the
-roster and confirms the result after reviewing the details.
+`/log game:SB12345` to pick a specific one. The ephemeral reply opens the regular
+web game form; optionally mention `winner:@player` to preselect the winner.
 
 This fills the exact gap SpellBot leaves while avoiding screen-scraping its HTML
 or depending on private Convoke APIs. It also keeps the integration usable for
@@ -169,7 +168,7 @@ can improve missed-roster recovery but cannot recover winners.
 
 Reactions were rejected for the initial UX: they are easy to place on the wrong
 message, add reaction intent/permission complexity, and still require a policy
-for who may choose another player's winner. `/won` is explicit and attributable.
+for who may choose another player's winner. `/log` is explicit and attributable.
 
 ## Implemented flow
 
@@ -180,15 +179,16 @@ SpellBot edits ready embed
 Discord gateway (MESSAGE_UPDATE / MESSAGE_CREATE)
         │ author ID + embed contract validation
         ▼
-GameReport (winner_discord_ids: []) ───────┐
-        │ staged in SQLite                 │
-        │                                  ▼
-Player runs /won [game:SB12345]     pluggable Sink
-        │                                  ▲
-        ▼                                  │
-membership check + private draft           │
-        │ details, winner, kills, review    │
-        └── Save → GameReport ─────────────┘
+GameReport (winner_discord_ids: [])
+        │ staged in SQLite
+        ▼
+Member runs /log [winner:@player] [game:SB12345]
+        │
+        ▼
+server check + private web link
+        │ sign in, complete game form
+        ▼
+Save → atomic game creation + consume pending report
 ```
 
 `GameReport` contains `external_id` (`spellbot:SB12345`), `source`
@@ -196,61 +196,49 @@ membership check + private draft           │
 name/nullable commander, winner Discord IDs, and scrub-safe raw embed data.
 Commanders are `nil` because the ready embed does not contain them.
 
-### Recording a result with `/won`
+### Recording a result with `/log`
 
-The command opens a modal for optional **turns, duration in minutes, winner's MVP
-card, and notes**. Duration starts as an estimate from the SpellBot start time;
-edit or clear it when reporting an older game. Submitting opens a private review
-message with **winner** and **win-condition** dropdowns, **Edit details**,
-**Player kills**, **Commanders**, **Save game**, and **Cancel**. The reporter is the initial
-winner, but any roster member can be selected. Win conditions use the same enum
-as the web app; Unknown is available. Draws still use the web editor.
+Any member of the game's server can run `/log`, even if they did not play.
+Use `/log winner:@player` to preselect a roster member, and optionally add
+`game:SB12345`. The reply, including errors, is visible only to the command
+runner. **Open game log** opens `/games/new` with a private draft ID. Sign in
+with the same Discord account; administrators can also access drafts. The link
+does not bypass registration or disabled-account restrictions.
 
-Card names are resolved against the local card catalog. Case, accents, and
-straight/curly/omitted apostrophes are tolerated (`Jeskas will` finds `Jeska's
-Will`). A unique partial name such as `lumra` resolves automatically; ambiguous
-names show a card-selection dropdown. An unmatched name must be corrected or cleared. MVP
-belongs only to the selected winner. Notes allow up to 4,000 characters; the
-review truncates its preview, not the saved note. Mentions in review messages do
-not ping anyone.
+The web form prefills the roster, date, estimated duration, and optional winner.
+Without a winner mention, choose a winner or draw before saving. Edit or clear
+the duration when reporting an older game. Use the normal web controls for
+**decks/commanders per player, win condition, turns, kills, MVP cards, and notes**.
+The SpellBot roster is fixed, but seats can be reordered. Enter `0` kills for
+none or leave blank for unknown.
 
-**Commanders** opens a private roster panel. Choose a player to enter their
-commander and optional partner/Background, resolve any ambiguous matches, then
-choose another player or **Back to review**. Commanders are optional; unresolved
-entries block saving until corrected or cleared. Second commanders support
-rule-zero pairings rather than enforcing tournament pairing legality. Existing
-decks with the same commander pair are reused even if the pair is reversed;
-new decks receive catalog IDs and the combined color identity. Changes to an
-existing deck's metadata are left to the web editor.
+Card search tolerates case, accents, omitted apostrophes and commas: `Jeskas
+will`, `sephiroth fabled soldier`, and `Terra magical adept` find the catalog
+names. Leading names such as `Bello` rank ahead of broad substring matches.
+Choose from the web search results rather than typing names into Discord modals.
 
-The kills modal labels each field with a player name. Enter `0` for no kills or
-leave it blank for unknown. Visit each kills page before saving, even when all
-values are unknown. Discord allows five inputs per modal, so six-player games
-have a **More player kills** page. The installed Nostrum version decodes legacy
-ActionRow text inputs, so selection dropdowns live in the review message rather
-than inside the modal.
-
-Nothing is recorded until **Save game**. Closing a modal or cancelling leaves
-the pending game intact. Drafts persist across restarts for one hour and are
-bound to the reporter, server, channel, and original roster/start time. Changed
-or expired drafts must be reopened. Saving consumes the pending game in the
-same transaction as recording the result; competing drafts cannot overwrite it.
+Opening the link creates no players, decks, or games. Nothing is recorded until
+**Save game**. Drafts persist across restarts for one hour and are bound to the
+runner and original roster/start time. Changed or expired drafts must be
+reopened with `/log`. Saving resolves players by the staged Discord identities,
+validates deck ownership, creates the game, and consumes the pending report in
+one transaction; competing drafts cannot overwrite it. Failed validation rolls
+back new players and decks as well. The authenticated submitter is the creator.
 Already recorded games must be edited in the web app. To remove a test game,
 open its game-detail page and choose **Delete game**, then confirm. Admins,
 the creator, and linked participants have the same deletion permission as Edit.
 Deletion removes the game and seats, not the players or decks, and cannot be undone.
 
-Winnerless reports are staged in SQLite, so `/won` continues to work after an
+Winnerless reports are staged in SQLite, so `/log` continues to work after an
 application or Tracker restart. Re-observing the same SpellBot external ID
 updates its staged timestamp, roster, commander names, and scrub-safe normalized
-data rather than creating a duplicate. Without a `game` option, `/won` queries
+data rather than creating a duplicate. Without a `game` option, `/log` queries
 the latest staged report in the invoking channel that does not already have a
 recorded Discord game with the same external ID. This skips games whose winners
 were previously recorded but which a later SpellBot edit re-staged, and reports
 that no game is available when every staged game in the channel is already
-recorded. If the invoker was not in the latest winnerless game they are told to
-pass the ID. Completed reports are persisted by the games sink described below
-and removed from staging only after the sink succeeds.
+recorded. An explicit ID may select a game from another channel in the same
+server. The authenticated API is `GET`/`POST /api/discord/result-drafts/:id`.
 
 Administrators can review staged reports under **Admin → Pending Discord games**,
 which applies the same winnerless filter so re-staged games that already have a
@@ -264,27 +252,23 @@ Pending reports are retained for 30 days after their latest observation.
 the entry point used by both Tracker and the admin API. Tracker explicitly
 prunes stale rows after staging; reading the pending list never writes. Game
 persistence and pending-row consumption occur in one transaction. This bounds
-storage while leaving a month for `/won` or administrator recovery. The staged
+storage while leaving a month for `/log` or administrator recovery. The staged
 data is normalized; raw Discord payloads are never stored in full or logged.
 
 ## Game tracking
 
 The Discord supervisor uses `TheGathering.Discord.Sink.Games` by default. A
 winnerless SpellBot start remains in durable staging rather than being recorded
-as a draw. When a listed player confirms **Save game** in `/won`,
-the sink creates or reuses players by Discord ID and records one `games` row
-with `source: "discord"`, the SpellBot ID as `external_id`, and seats in the
-order SpellBot listed them. The selected player is the winner and every other
-seat is a loss. Win condition, turns, duration, notes, individual kills, and the
-winner's resolved MVP are persisted with the result.
-
-Commander selections from `/won` resolve to catalog-backed deck attributes
-before saving. The ready embed itself supplies no commander. Legacy reports
-that supply only a commander name retain their name-only deck fallback.
+as a draw. `/log` hands off to `WebGameDraft` and `SaveWebGame`, which create or
+reuse players by Discord ID and record `source: "discord"` with the SpellBot ID
+as `external_id`. The submitted seat order, results, decks, win condition,
+turns, duration, notes, kills, and MVP cards are saved through the games context.
+The ready embed itself supplies no commander. Legacy reports that supply only
+a commander name retain their name-only deck fallback in the games sink.
 
 Repeated sink reports are idempotent by `{source, external_id}`. A completed replay
 replaces the existing game's timestamp, seats, decks, and results, so corrected
-seat order or winner data does not create a duplicate. The `/won` flow rejects
+seat order or winner data does not create a duplicate. The `/log` flow rejects
 already recorded games before reaching this sink. Validation failures are
 logged without raw Discord payloads and returned to the tracker without
 crashing the gateway consumer.
@@ -337,7 +321,7 @@ also subject to the render cap. No summary request modifies the game.
 | `DISCORD_CLIENT_ID` | yes for member sign-in | Discord application ID. |
 | `DISCORD_CLIENT_SECRET` | yes for member sign-in | OAuth2 client secret. |
 | `DISCORD_BOT_TOKEN` | yes to enable | Secret bot token. Unset/empty means no Discord process starts. |
-| `DISCORD_GUILD_ID` | no | Register `/won` and `/summary` immediately in one server; omit for global commands, which can take up to an hour to appear. Also restricts summary invocation to that server. |
+| `DISCORD_GUILD_ID` | no | Register `/log` and `/summary` immediately in one server; omit for global commands, which can take up to an hour to appear. Also restricts invocation to that server. |
 | `DISCORD_SPELLBOT_USER_ID` | no | Trusted SpellBot bot user ID; defaults to production SpellBot (`725510263251402832`). |
 
 1. In the [Discord Developer Portal](https://discord.com/developers/applications),
@@ -354,10 +338,15 @@ also subject to the render cap. No summary request modifies the game.
    paste the token into logs or support messages.
 6. Start a SpellBot game and confirm the container logs
    `Discord observed SpellBot game spellbot:SB… with N player(s)`; raw message
-   content is never logged. A listed player then runs `/won` in the game's
-   channel (or `/won game:SB…` from another channel in the same server), fills
-   out the result draft, and clicks **Save game**. The private confirmation
-   names the recorded game ID; `/summary` can then share the recap publicly.
+   content is never logged. Any member then runs `/log` in the game's channel
+   (or `/log game:SB…` from another channel in the same server), opens the private
+   link, completes the web form, and clicks **Save game**. `/summary` can then
+   share the recap publicly.
+
+Registration replaces `/won` with `/log` in the configured command scope while
+preserving unrelated commands. Existing modal drafts remain supported briefly
+for users who opened them before upgrading. Set `PHX_HOST`, `PHX_SCHEME`, and
+`PHX_URL_PORT` to the public app address so the generated links work externally.
 
 What the bot sees during a SpellBot game, per the [SpellBot source](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/actions/lfg_action.py):
 `/lfg` and `/game` are deferred, so the first `MESSAGE_CREATE` is an empty
@@ -380,8 +369,8 @@ how far it got. Read the log from the top of the last start:
 | `Shard websocket closed (errno 4014, …)` repeating, no `READY` | Discord rejected the requested intents. Enable **Message Content Intent** on the **Bot** page. |
 | `Discord bot connected as <bot> in 0 guild(s)` | The bot was never invited to the server. Use the invite URL from step 4. |
 | `Discord bot connected …` but the bot looks offline in Discord | The bot sets an online presence ("Watching SpellBot games") right after this line. If the member list still shows it offline, the gateway session dropped afterwards; look for `Shard websocket closed` lines below it. |
-| `Discord registered /won and /summary in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
-| `Discord registered /won and /summary globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
+| `Discord registered /log and /summary in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
+| `Discord registered /log and /summary globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
 | `Could not register Discord commands: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |
 | No `Discord observed SpellBot game …` line when a game starts | The line appears only once the post reads **Your game is ready!** (see the message flow above). Otherwise the bot cannot see the channel (grant **View Channels** there), or the message is from a different SpellBot deployment: set `DISCORD_SPELLBOT_USER_ID` to that bot's user ID. Set `LOG_LEVEL=debug` to log why each SpellBot message was ignored. |
 

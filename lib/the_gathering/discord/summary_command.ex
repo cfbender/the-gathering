@@ -124,7 +124,7 @@ defmodule TheGathering.Discord.SummaryCommand do
       "Sign in to The Gathering with Discord first. Summaries are only available to active members in the bot's server."
 
   defp message(:not_found),
-    do: "No recorded game found. SpellBot games must have a recorded result first (use `/won`)."
+    do: "No recorded game found. SpellBot games must have a recorded result first (use `/log`)."
 
   defp message(:bad_request),
     do: "Use a Gathering game ID such as `123`, or a SpellBot ID such as `SB12345`."

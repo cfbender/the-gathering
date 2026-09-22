@@ -2,12 +2,14 @@ defmodule TheGathering.Discord.CardChoice do
   @moduledoc false
 
   alias TheGathering.Catalog
+  alias TheGathering.Catalog.CardData
 
   def resolve(name, label, mode \\ :all) do
     name = String.trim(name || "")
     matches = matches(name, mode)
     exact = Catalog.find_card_by_name(name)
     matches = if exact && Enum.any?(matches, &(&1.id == exact.id)), do: [exact], else: matches
+    matches = prefer_unique_leading_name(matches, name)
 
     choice = %{"name" => name, "id" => nil, "candidates" => [], "error" => nil}
 
@@ -57,5 +59,23 @@ defmodule TheGathering.Discord.CardChoice do
     (Catalog.search(name, commander: true, limit: 26) ++
        Catalog.search(name, partner: true, limit: 26))
     |> Enum.uniq_by(& &1.id)
+  end
+
+  defp prefer_unique_leading_name([_card] = matches, _name), do: matches
+
+  defp prefer_unique_leading_name(matches, name) do
+    prefix = search_name(name) <> " "
+    leading = Enum.filter(matches, &String.starts_with?(search_name(&1.name), prefix))
+
+    case leading do
+      [card] -> [card]
+      _other -> matches
+    end
+  end
+
+  defp search_name(name) do
+    name
+    |> CardData.normalize_name()
+    |> String.replace(["'", "’", ","], "")
   end
 end

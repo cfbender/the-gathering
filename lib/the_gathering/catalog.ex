@@ -25,7 +25,7 @@ defmodule TheGathering.Catalog do
       |> to_string()
       |> String.trim()
       |> CardData.normalize_name()
-      |> strip_apostrophes()
+      |> strip_search_punctuation()
 
     limit = opts |> Keyword.get(:limit, @default_limit) |> min(@max_limit) |> max(1)
     commander = Keyword.get(opts, :commander)
@@ -36,12 +36,13 @@ defmodule TheGathering.Catalog do
     else
       pattern = "%#{escape_like(normalized)}%"
       prefix = "#{escape_like(normalized)}%"
+      whole_name_prefix = "#{escape_like(normalized)} %"
 
       Card
       |> where(
         [card],
         fragment(
-          "replace(replace(?, '''', ''), '’', '') LIKE ? ESCAPE '\\'",
+          "replace(replace(replace(?, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\\'",
           card.normalized_name,
           ^pattern
         )
@@ -52,9 +53,11 @@ defmodule TheGathering.Catalog do
         [card],
         asc:
           fragment(
-            "CASE WHEN replace(replace(?, '''', ''), '’', '') = ? THEN 0 WHEN replace(replace(?, '''', ''), '’', '') LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END",
+            "CASE WHEN replace(replace(replace(?, '''', ''), '’', ''), ',', '') = ? THEN 0 WHEN replace(replace(replace(?, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\\' THEN 1 WHEN replace(replace(replace(?, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END",
             card.normalized_name,
             ^normalized,
+            card.normalized_name,
+            ^whole_name_prefix,
             card.normalized_name,
             ^prefix
           ),
@@ -197,5 +200,5 @@ defmodule TheGathering.Catalog do
     |> String.replace("_", "\\_")
   end
 
-  defp strip_apostrophes(value), do: String.replace(value, ["'", "’"], "")
+  defp strip_search_punctuation(value), do: String.replace(value, ["'", "’", ","], "")
 end

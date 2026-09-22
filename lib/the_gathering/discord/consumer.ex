@@ -6,7 +6,15 @@ defmodule TheGathering.Discord.Consumer do
   require Logger
 
   alias Nostrum.Api.Self
-  alias TheGathering.Discord.{Command, SpellBotParser, SummaryCommand, Tracker, WonCommand}
+
+  alias TheGathering.Discord.{
+    Command,
+    LogCommand,
+    SpellBotParser,
+    SummaryCommand,
+    Tracker,
+    WonCommand
+  }
 
   # Discord activity type 3 renders as "Watching …" under the bot's name.
   @watching 3
@@ -35,8 +43,9 @@ defmodule TheGathering.Discord.Consumer do
     SummaryCommand.respond(interaction)
   end
 
-  def handle_event({:INTERACTION_CREATE, %{data: %{name: "won"}} = interaction, _ws_state}) do
-    WonCommand.respond(interaction)
+  def handle_event({:INTERACTION_CREATE, %{data: %{name: name}} = interaction, _ws_state})
+      when name in ["log", "won"] do
+    LogCommand.respond(interaction)
   end
 
   def handle_event(
