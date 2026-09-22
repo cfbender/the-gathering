@@ -1,15 +1,17 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { getPlayers } from "@/features/games/games"
 import { useCurrentUser } from "@/lib/auth"
 import { ActiveBoard, CameraTile, OpenSeat, capturePoint } from "./board"
-import { CardSuggestions } from "./card-suggestions"
+import { CardSuggestions, type Recognition } from "./card-suggestions"
 import { FinishGame } from "./finish-game"
+import type { GalleryArt } from "./recognition/pipeline"
+import { decodeImage, useRecognizer, type RecognizerState } from "./recognition/use-recognizer"
 import { SeatBar, TileCommanderRow } from "./seat-bar"
 import { SidePanel, type PanelTab } from "./side-panel"
-import { useWebcamRoom, type TableParticipant } from "./use-webcam-room"
+import { useWebcamRoom, type CapturedCard, type TableParticipant } from "./use-webcam-room"
 
 const MAX_PLAYERS = 4
 
@@ -66,8 +68,60 @@ function useActiveBoard(participants: TableParticipant[], localPeerId: string) {
   }
 }
 
+/** Why a click did not get recognized, for the suggestion panel footer. */
+function skippedReason(state: RecognizerState): string {
+  switch (state.status) {
+    case "unavailable":
+      return "not installed on this server"
+    case "checking":
+    case "loading":
+      return "still loading"
+    case "failed":
+      return `failed: ${state.message}`
+    case "ready":
+      return "unavailable"
+  }
+}
+
+/** Runs the recognizer on every new capture: decode the owner's crop, identify at the click,
+ * and hold the outcome next to the capture it belongs to. */
+function useRecognition(capture: CapturedCard | null) {
+  const recognizer = useRecognizer()
+  const [recognition, setRecognition] = useState<Recognition>({ status: "identifying" })
+
+  useEffect(() => {
+    if (!capture) return
+    if (!recognizer.ready) {
+      setRecognition({ status: "skipped", reason: skippedReason(recognizer.state) })
+      return
+    }
+    let stale = false
+    setRecognition({ status: "identifying" })
+    decodeImage(capture.image)
+      .then((image) => recognizer.identify(image, capture.clickX, capture.clickY))
+      .then((result) => {
+        if (!stale) setRecognition({ status: "done", result })
+      })
+      .catch((error: unknown) => {
+        if (stale) return
+        const message = error instanceof Error ? error.message : String(error)
+        setRecognition({
+          status: "skipped",
+          reason: message.startsWith("no result") ? "timed out" : message,
+        })
+      })
+    return () => {
+      stale = true
+    }
+    // Re-run for a new capture only; the recognizer becoming ready later does not re-identify.
+  }, [capture])
+
+  return { recognizer, recognition }
+}
+
 function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   const room = useWebcamRoom(roomId, playerId, null)
+  const { recognizer, recognition } = useRecognition(room.capture)
   const [inviteCopied, setInviteCopied] = useState(false)
   const [finishOpen, setFinishOpen] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
@@ -98,18 +152,43 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     ? seated.find((participant) => participant.peer_id === room.capture?.peerId)
     : undefined
   const suggestions = captureOwner ? decksFor(captureOwner).slice(0, 5) : []
+  const candidates = recognition.status === "done" ? recognition.result.candidates : []
+
+  /** Logs the card at every seat; a card that is one of the owner's commanders also picks
+   * that deck when they have not chosen one yet. */
+  const chooseCard = useCallback(
+    (art: GalleryArt) => {
+      if (!captureOwner) return
+      const commanderDeck = decksFor(captureOwner).find(
+        (deck) => deck.commander_name.toLowerCase() === art.name.toLowerCase(),
+      )
+      if (commanderDeck && !captureOwner.deck_id)
+        room.suggestDeck(captureOwner.peer_id, commanderDeck.id)
+      room.announceCard(captureOwner.peer_id, playerName, {
+        id: art.id,
+        name: art.name,
+        set: art.set,
+        collector_number: art.collector_number,
+      })
+    },
+    // decksFor closes over `decks`, which is stable for the room's lifetime
+    [captureOwner, decks, playerName, room],
+  )
 
   useEffect(() => {
     function choose(event: KeyboardEvent) {
       if (!room.capture || event.key < "1" || event.key > "5") return
       if (event.target instanceof HTMLElement && event.target.matches("input, textarea, select"))
         return
-      const deck = suggestions[Number(event.key) - 1]
-      if (deck) room.suggestDeck(room.capture.peerId, deck.id)
+      const index = Number(event.key) - 1
+      const art = candidates[index]
+      if (art) return chooseCard(art)
+      const deck = suggestions[index]
+      if (deck && recognition.status === "skipped") room.suggestDeck(room.capture.peerId, deck.id)
     }
     window.addEventListener("keydown", choose)
     return () => window.removeEventListener("keydown", choose)
-  }, [room, suggestions])
+  }, [candidates, chooseCard, recognition.status, room, suggestions])
 
   useEffect(() => {
     if (!inviteCopied) return
@@ -179,8 +258,12 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             <CardSuggestions
               capture={room.capture}
               playerName={captureOwner.player_name}
-              suggestions={suggestions}
-              onChoose={(deckId) => room.suggestDeck(captureOwner.peer_id, deckId)}
+              recognition={recognition}
+              deckSuggestions={suggestions}
+              gallerySearchable={recognizer.ready}
+              onChooseCard={chooseCard}
+              onChooseDeck={(deckId) => room.suggestDeck(captureOwner.peer_id, deckId)}
+              onSearch={recognizer.search}
               onDismiss={room.dismissCapture}
             />
           )}
@@ -202,6 +285,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         status={room.status}
         error={room.error}
         connectedPeers={Object.keys(room.streams).length}
+        recognizer={recognizer.state}
         inviteCopied={inviteCopied}
         onInvite={() => {
           void navigator.clipboard.writeText(window.location.href)

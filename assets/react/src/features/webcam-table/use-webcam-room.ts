@@ -1,7 +1,9 @@
 import { Channel, Presence, Socket } from "phoenix"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
+import type { GalleryArt } from "./recognition/pipeline"
 import {
+  describeCardIdentified,
   describeParticipantChange,
   describeParticipantLeft,
   orderBySeats,
@@ -39,10 +41,19 @@ interface TableConfig {
 export interface CapturedCard {
   peerId: string
   playerId: number
+  /** JPEG data URL of the native crop around the click. */
   image: string
   nativeWidth: number
   nativeHeight: number
+  /** Side of the square crop in native pixels (640 unless the camera is smaller). */
+  cropSize: number
+  /** The click in crop pixels; the crop is clamped to the frame so it is not always centred. */
+  clickX: number
+  clickY: number
 }
+
+/** A card a seat named on someone's board, recognized or picked by hand. */
+export type IdentifiedCard = Pick<GalleryArt, "id" | "name" | "set" | "collector_number">
 
 type Signal = { description: RTCSessionDescriptionInit } | { candidate: RTCIceCandidateInit }
 
@@ -54,8 +65,12 @@ type DataMessage =
       image: string
       nativeWidth: number
       nativeHeight: number
+      cropSize: number
+      clickX: number
+      clickY: number
     }
   | { type: "deck_suggestion"; deckId: number }
+  | { type: "card_identified"; ownerPeerId: string; byPlayerName: string; card: IdentifiedCard }
 
 interface PeerState {
   connection: RTCPeerConnection
@@ -77,7 +92,14 @@ function captureCrop(video: HTMLVideoElement, x: number, y: number) {
   canvas.width = size
   canvas.height = size
   canvas.getContext("2d")?.drawImage(video, left, top, size, size, 0, 0, size, size)
-  return { image: canvas.toDataURL("image/jpeg", 0.82), nativeWidth: width, nativeHeight: height }
+  return {
+    image: canvas.toDataURL("image/jpeg", 0.82),
+    nativeWidth: width,
+    nativeHeight: height,
+    cropSize: size,
+    clickX: x * width - left,
+    clickY: y * height - top,
+  }
 }
 
 export function useWebcamRoom(roomId: string, playerId: number, deckId: number | null) {
@@ -138,9 +160,12 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         if (owner) setCapture({ peerId: fromPeerId, playerId: owner.player_id, ...message })
       } else if (message.type === "deck_suggestion") {
         chooseDeck(message.deckId)
+      } else if (message.type === "card_identified") {
+        const owner = participantsRef.current.find((item) => item.peer_id === message.ownerPeerId)
+        log([describeCardIdentified(message.byPlayerName, owner, message.card)])
       }
     },
-    [chooseDeck],
+    [chooseDeck, log],
   )
 
   useEffect(() => {
@@ -345,6 +370,17 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     setStatus("Requesting native camera crop…")
   }
 
+  /** Names a card on `ownerPeerId`'s board: logged here and at every other seat. */
+  function announceCard(ownerPeerId: string, byPlayerName: string, card: IdentifiedCard) {
+    const owner = participantsRef.current.find((item) => item.peer_id === ownerPeerId)
+    log([describeCardIdentified(byPlayerName, owner, card)])
+    const message = JSON.stringify({ type: "card_identified", ownerPeerId, byPlayerName, card })
+    for (const peer of peersRef.current.values()) {
+      if (peer.channel?.readyState === "open") peer.channel.send(message)
+    }
+    setCapture(null)
+  }
+
   function suggestDeck(targetPeerId: string, suggestedDeckId: number) {
     if (targetPeerId === peerIdRef.current) chooseDeck(suggestedDeckId)
     else
@@ -375,6 +411,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     error,
     requestCapture,
     suggestDeck,
+    announceCard,
     chooseDeck,
     life,
     changeLife,

@@ -9,10 +9,12 @@ and ends the game with a result form that records through `Games.create_game/2`.
 indistinguishable from a manually logged game, so existing history and statistics need no
 special cases.
 
-Card clicks assist the room rather than define its durable record. The first slice captures a
-native-resolution crop from the camera owner's browser and offers that player's known commanders
-as correctable deck suggestions. The production recognizer boundary is in place, but model and
-gallery artifacts are not committed yet; see **Recognition rollout**.
+Card clicks assist the room rather than define its durable record. A click on any board fetches
+a native-resolution crop from the camera owner's browser, runs the card recognizer in the
+clicking browser, and shows five numbered candidates plus a gallery search; confirming one posts
+an "identified" line to every seat's log. The recognizer bundle is published to the server from
+`ml/` (see **Recognition** and `ml/README.md`); when the server has none, the panel falls back
+to that player's known commanders as deck-based suggestions.
 
 ## Decisions
 
@@ -51,14 +53,17 @@ another relay. Credentials are returned only from the authenticated config endpo
 credential is acceptable for a self-hosted first release; time-limited TURN credentials are the
 follow-up for internet-exposed installations.
 
-### Browser inference, with WASM fallback
+### Browser inference in the clicking browser
 
-Run the detector, perspective warp, art crop, embedder, and cosine search in the camera owner's
-browser. ONNX Runtime Web supports WebGPU in current Chromium and WASM with full ONNX operator
-coverage; WASM is the compatibility fallback. This avoids uploading board images, scales with
-players, and follows the “browser where possible” constraint. The normalized 49k × 128 gallery
-is about 25 MB as float32 (about 6 MB int8) and should be a versioned static binary loaded once by
-a Web Worker alongside a small card-ID/name manifest. References:
+The detector, perspective warp, art crop, embedder, and cosine search run in the browser of the
+player who clicked, on the crop the camera owner already returns over the data channel (see the
+next section). Running it there rather than in the owner's browser costs nothing extra: the crop
+transfer already solves the resolution problem, each browser loads the bundle once, and the
+result needs no second round trip before it can be shown, corrected, and announced. ONNX Runtime
+Web (`onnxruntime-web`) executes the three exported graphs on its single-threaded WASM backend;
+the glue around them (`recognition/pipeline.ts`) is a line-for-line port of the Python
+`cardid.bundle` reference runtime, and the two give the same top five on rendered scenes. WebGPU
+is a later optimisation. References:
 
 - <https://onnxruntime.ai/docs/tutorials/web/>
 - <https://onnxruntime.ai/docs/tutorials/web/ep-webgpu.html>
@@ -72,14 +77,13 @@ but would add a second supervised runtime and duplicate the spike runtime in pro
 `getUserMedia` requests a hard minimum of 1920 × 1080. A click on a remote tile is sent as
 normalized coordinates over that pair's WebRTC data channel. The camera owner's browser maps the
 coordinates to its native `videoWidth`/`videoHeight`, captures the same 640 px JPEG crop used by
-`cardid.capture`, and returns it on the data channel. Production recognition runs there and sends
-only candidates back; the current artifact-less slice returns the crop so the requester can use
-the deck suggestion UI. Shift-click manual four-corner capture and detector-produced top five are
-the next recognizer UI increment.
+`cardid.capture`, and returns it on the data channel together with the click position inside the
+crop. The requester recognizes the card from that crop.
 
-This protocol does not depend on the resolution selected by WebRTC congestion control and keeps
-the click-to-candidate latency budget local: capture + detector + embedder + gallery search, with
-no server image round trip.
+This protocol does not depend on the resolution selected by WebRTC congestion control (a
+960 × 540 received stream still yields a crop of the owner's 1920 × 1080 frame) and keeps the
+click-to-candidate latency budget local: capture + detector + embedder + gallery search, with no
+server image round trip.
 
 ## Lifecycle and ownership
 
@@ -184,7 +188,17 @@ controls. Players use their usual voice app alongside the table.
 - `features/webcam-table/seat-bar.tsx` — the name/life/camera bar under a board or tile.
 - `features/webcam-table/commander-picker.tsx` — popover listing a player's decks; any seat can
   set another player's commander (the server still verifies deck ownership).
-- `features/webcam-table/card-suggestions.tsx` — the click-to-identify overlay.
+- `features/webcam-table/card-suggestions.tsx` — the click-to-identify overlay: crop with the
+  detected quad, five numbered candidates, gallery search, timings.
+- `features/webcam-table/recognition/` — `use-recognizer.ts` (hook owning the worker and its
+  checking/loading/ready/unavailable/failed state), `recognizer.worker.ts` (ONNX Runtime Web
+  sessions, warm-up, identify and search), `pipeline.ts` (pure port of `ml/cardid/bundle.py`:
+  window resample, detector refine pass, upright vote, gallery search parsing; unit-tested in
+  `pipeline.test.ts`), and `messages.ts` (worker protocol types).
+- `TheGathering.CardId` + `CardIdBundleController` serve the published bundle from
+  `DATA_DIR/cardid/current` (`GET /api/cardid/bundle` for the manifest and file URLs,
+  `GET /api/cardid/bundles/:version/:name` for the immutable files). `404` means no bundle is
+  published and the UI falls back to deck suggestions.
 - `features/webcam-table/side-panel.tsx` — icon strip and Table/Decks/Log tabs.
 - `features/webcam-table/finish-game.tsx` — the End game result dialog.
 - `features/webcam-table/table-events.ts` — pure helpers for log lines, seat ordering, and
@@ -195,18 +209,35 @@ The finish mutation posts the normal game payload (`played_at`, optional duratio
 condition/notes, and consecutive seats with player/deck/result) to `/api/games`. The controller
 already strips provenance fields and delegates to `Games.RecordGame`.
 
-## Recognition rollout
+## Recognition
 
-The repository currently contains neither exported ONNX files nor the production gallery. Before
-claiming ML-backed identification, export/version these deployable artifacts from `ml/`:
+The recognizer ships as a **bundle** exported and published from `ml/` (`cardid.export`,
+`cardid.publish`; see `ml/README.md`, "Shipping"). Phoenix serves whatever
+`DATA_DIR/cardid/current` points at; nothing model-related is committed to this repository or
+baked into the container image, so a new bundle (new model, or the same model with a refreshed
+gallery after a set release) is a `publish` away and browsers pick it up on their next table
+because they cache bundle files by version.
 
-1. detector ONNX and embedder ONNX;
-2. normalized gallery binary plus ordered `{id,name,set}` manifest;
-3. golden crop fixtures and expected top-five outputs shared by Python and browser tests;
-4. a Web Worker implementing the two-pass 640→256 detector, upright perspective warp, art crop,
-   ImageNet normalization, embedding, and top-five cosine search;
-5. WebGPU/WASM latency telemetry and a hard one-second UI timeout that still opens name search.
+In the browser, `useRecognizer` fetches `GET /api/cardid/bundle` once per table, starts a Web
+Worker, loads the three graphs plus `arts.json`, and runs one warm-up identify so the first real
+click is not slow. The "Identify cards" section of the side panel shows `checking`, `loading`,
+`ready` (with gallery size and load time), `unavailable` (no bundle published) or `failed`.
 
-The candidate panel must always show five numbered choices and `/` name search; low similarity
-must not suppress results. Until those artifacts exist, the UI labels suggestions as deck-based
-and does not imply that image recognition occurred.
+Each capture runs identify with a two second timeout: detector pass over the 640 px crop, a
+refine pass on the detected card, upright vote, embed all six art cuts, gallery search. The
+panel always shows five numbered candidates (top-1 highlighted only when it leads by at least
+`CLEAR_MARGIN` = 0.08), the crop with the detected quad, and per-stage timings; low similarity
+never suppresses results. `/` focuses a gallery search that understands names, set codes
+(`forest fin`, `set:fin`) and collector numbers (`#280`) so basics and staples with hundreds of
+printings can be narrowed. Confirming a candidate (`1`–`5`, click, or a search result)
+broadcasts `card_identified` on the data channels and every seat's Log gets "Theo identified X
+[SET #n] on Cody's board". If the card name matches one of the owner's commanders and they have
+no deck selected yet, it also selects that deck.
+
+Backlog:
+
+- record confirmed cards against the game (currently only in the ephemeral Log);
+- record corrections (a confirmed candidate that was not top-1) as labelled captures for the
+  real-capture training set in `ml/data/real/`;
+- WebGPU execution provider with WASM fallback;
+- shift-click manual four-corner capture when the detector misses.
