@@ -113,7 +113,7 @@ defmodule TheGathering.Discord.SummaryCommandTest do
           {nil, "No recorded game"},
           {[%{name: "game", value: "oops"}], "Use a Gathering"}
         ] do
-      assert :ok =
+      assert {:ok} =
                SummaryCommand.respond(
                  %{interaction | data: %{name: "summary", options: options}},
                  __MODULE__,
@@ -188,7 +188,8 @@ defmodule TheGathering.Discord.SummaryCommandTest do
 
   def create_response(_interaction, response) do
     send(self(), {:initial_response, response})
-    if Process.get(:fail_summary_ack), do: {:error, :network}, else: :ok
+    # Nostrum returns the one-element tuple for Discord's HTTP 204, not :ok.
+    if Process.get(:fail_summary_ack), do: {:error, :network}, else: {:ok}
   end
 
   def edit_response(_interaction, response) do
