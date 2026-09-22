@@ -44,7 +44,10 @@ defmodule TheGathering.Discord.Sink.Games do
   defp persist_report(report) do
     case build_seats(report) do
       {:ok, seats} ->
-        attrs = %{played_at: report.played_at, seats: seats}
+        attrs =
+          report.details
+          |> Map.take([:win_condition, :turns, :duration_minutes, :notes])
+          |> Map.merge(%{played_at: report.played_at, seats: seats})
 
         case Games.upsert_game_by_external_id("discord", report.external_id, attrs) do
           {:ok, game} -> {:ok, game}
@@ -69,11 +72,12 @@ defmodule TheGathering.Discord.Sink.Games do
           player_id: player.id,
           deck_id: deck && deck.id,
           seat: seat_number,
+          kills: get_in(report.details, [:kills, reported_player.discord_id]),
           result:
             if(MapSet.member?(winner_ids, reported_player.discord_id), do: "win", else: "loss")
         }
 
-        {:cont, {:ok, [seat | seats]}}
+        {:cont, {:ok, [with_mvp(seat, report.details) | seats]}}
       else
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -83,6 +87,11 @@ defmodule TheGathering.Discord.Sink.Games do
       error -> error
     end
   end
+
+  defp with_mvp(%{result: "win"} = seat, details),
+    do: Map.merge(seat, Map.take(details, [:mvp_card_id, :mvp_card_name]))
+
+  defp with_mvp(seat, _details), do: seat
 
   defp find_or_create_deck(_player, commander_name)
        when commander_name in [nil, ""],

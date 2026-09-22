@@ -11,7 +11,7 @@ defmodule TheGathering.Discord.GameReport do
     :winner_discord_ids,
     :raw
   ]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [details: %{}]
 
   @type player :: %{
           discord_id: String.t(),
@@ -27,6 +27,7 @@ defmodule TheGathering.Discord.GameReport do
           channel_id: String.t(),
           players: [player()],
           winner_discord_ids: [String.t()],
-          raw: map()
+          raw: map(),
+          details: map()
         }
 end
