@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { UserMenu } from "@/components/user-menu"
 import { requireUser, useCurrentUser } from "@/lib/auth"
 import { cn } from "@/lib/cn"
+import { useTheme } from "@/lib/theme"
 
 /** Router context available to every route's `loader` and `beforeLoad`. */
 export interface RouterContext {
@@ -39,6 +40,26 @@ function navItemActive(pathname: string, to: (typeof navItems)[number]["to"]) {
   return pathname === to || pathname.startsWith(`${to}/`)
 }
 
+/** Webcam tables are a dark stage around live video regardless of the chosen theme, so the
+ * shell omits the app header and forces the dark palette (restored on leave) so portalled
+ * popovers and dialogs match too. */
+function TableShell() {
+  const { resolved } = useTheme()
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = "dark"
+    return () => {
+      document.documentElement.dataset.theme = resolved
+    }
+  }, [resolved])
+
+  return (
+    <main className="text-base-content min-h-dvh bg-black">
+      <Outlet />
+    </main>
+  )
+}
+
 function RootLayout() {
   const session = useCurrentUser()
   const { pathname } = useLocation()
@@ -51,13 +72,7 @@ function RootLayout() {
   const user = session.data
   const items = navItems.filter((item) => !item.adminOnly || user?.role === "admin")
 
-  if (pathname.startsWith("/table/")) {
-    return (
-      <main className="bg-neutral text-neutral-content min-h-dvh">
-        <Outlet />
-      </main>
-    )
-  }
+  if (pathname.startsWith("/table/")) return <TableShell />
 
   return (
     <div className="app-shell-root bg-base-100 text-base-content flex min-h-dvh flex-col">

@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vite-plus/test"
 import { buildGamePayload } from "./game-result"
 
+const seat = { life: 40, muted: true, camera_off: false, joined_at: 1_000 }
 const participants = [
-  { peer_id: "peer-a", player_id: 12, player_name: "Alice", deck_id: 41, deck_name: "Birds" },
-  { peer_id: "peer-b", player_id: 27, player_name: "Bob" },
+  {
+    ...seat,
+    peer_id: "peer-a",
+    player_id: 12,
+    player_name: "Alice",
+    deck_id: 41,
+    deck_name: "Birds",
+  },
+  { ...seat, peer_id: "peer-b", player_id: 27, player_name: "Bob" },
 ]
 
 describe("buildGamePayload", () => {
