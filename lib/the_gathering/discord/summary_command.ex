@@ -6,6 +6,7 @@ defmodule TheGathering.Discord.SummaryCommand do
   alias Nostrum.Api.Interaction
   alias TheGathering.{Accounts, Games}
   alias TheGathering.Accounts.User
+  alias TheGathering.Discord.SummaryUpload
   alias TheGathering.Games.SummaryCard
   alias TheGatheringWeb.Endpoint
 
@@ -25,7 +26,7 @@ defmodule TheGathering.Discord.SummaryCommand do
     }
   end
 
-  def respond(interaction, api \\ Interaction) do
+  def respond(interaction, api \\ Interaction, uploader \\ SummaryUpload) do
     Logger.info("Discord /summary invoked")
 
     case prepare(interaction) do
@@ -35,7 +36,10 @@ defmodule TheGathering.Discord.SummaryCommand do
         # Acknowledge before downloading art or rasterizing. Never retry a failed
         # acknowledgement: Discord may already have accepted it.
         with :ok <- api.create_response(interaction, %{type: 5}) |> log_response(:acknowledge) do
-          api.edit_response(interaction, render_response(game))
+          response = render_response(game)
+          Logger.info("Discord /summary upload started for game #{game.id}")
+
+          uploader.edit_response(interaction, response)
           |> log_response(:upload)
         end
 
@@ -66,8 +70,15 @@ defmodule TheGathering.Discord.SummaryCommand do
   end
 
   def render_response(game) do
+    started = System.monotonic_time(:millisecond)
+    Logger.info("Discord /summary rendering game #{game.id}")
+
     case Games.render_summary(game) do
       {:ok, png} ->
+        Logger.info(
+          "Discord /summary rendered game #{game.id} in #{System.monotonic_time(:millisecond) - started} ms (#{byte_size(png)} bytes)"
+        )
+
         name = "game-#{game.id}-summary.png"
 
         %{
@@ -101,6 +112,9 @@ defmodule TheGathering.Discord.SummaryCommand do
     code = if is_integer(code), do: code, else: "unknown"
     "HTTP #{status}, Discord code #{code}"
   end
+
+  defp failure_details(%Req.TransportError{reason: reason}) when is_atom(reason),
+    do: Atom.to_string(reason)
 
   defp failure_details(reason) when is_atom(reason), do: Atom.to_string(reason)
   defp failure_details(_reason), do: "transport error"

@@ -267,6 +267,13 @@ Errors before rendering are private. Rendering is deferred to meet Discord's
 three-second acknowledgement deadline, with a server-wide cap of 30 renders
 per minute. An acknowledgement failure is not retried to avoid duplicate posts.
 
+Summary uploads use a direct HTTPS interaction-webhook request with a 15-second
+request timeout and three-second connection/pool limits, rather than Nostrum's
+indefinitely waiting REST queue. Uploads do not follow redirects or retry,
+including on rate limits. Logs separately mark rendering, rendered PNG size/time,
+and upload start/completion; failures include safe HTTP/Discord codes or timeout
+reasons, never interaction tokens or response bodies.
+
 The runtime needs `rsvg-convert` and DejaVu fonts. The Docker image includes
 Alpine's `rsvg-convert` and `font-dejavu`; Debian development hosts need
 `sudo apt-get install librsvg2-bin fonts-dejavu-core`. Orb setup and CI install
