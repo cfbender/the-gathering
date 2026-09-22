@@ -35,7 +35,7 @@ defmodule TheGathering.Discord.SummaryCommand do
 
         # Acknowledge before downloading art or rasterizing. Never retry a failed
         # acknowledgement: Discord may already have accepted it.
-        with :ok <- api.create_response(interaction, %{type: 5}) |> log_response(:acknowledge) do
+        with {:ok} <- api.create_response(interaction, %{type: 5}) |> log_response(:acknowledge) do
           response = render_response(game)
           Logger.info("Discord /summary upload started for game #{game.id}")
 
