@@ -17,9 +17,6 @@ export function describeParticipantChange(
   if (next.camera_off !== previous.camera_off) {
     lines.push(`${next.player_name} turned their camera ${next.camera_off ? "off" : "on"}`)
   }
-  if (next.muted !== previous.muted) {
-    lines.push(`${next.player_name} ${next.muted ? "muted" : "unmuted"}`)
-  }
   return lines
 }
 

@@ -12,7 +12,6 @@ function seat(overrides: Partial<TableParticipant> & { peer_id: string }): Table
     player_id: 1,
     player_name: "Alice",
     life: 40,
-    muted: true,
     camera_off: false,
     joined_at: 1_000,
     ...overrides,

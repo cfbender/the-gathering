@@ -15,14 +15,13 @@ export interface TableParticipant {
   life: number
   /** Server clock (ms) when the seat was taken; default seat order is join order. */
   joined_at: number
-  muted: boolean
   camera_off: boolean
   deck_id?: number
   deck_name?: string
 }
 
 /** Status a player publishes about their own seat; mirrors the channel's `update_status`. */
-export type SeatStatus = Partial<Pick<TableParticipant, "life" | "muted" | "camera_off">>
+export type SeatStatus = Partial<Pick<TableParticipant, "life" | "camera_off">>
 
 export interface TableEvent {
   id: number

@@ -124,17 +124,17 @@ always large, everyone else is small, and controls live in a collapsible column.
 │ └──────┘ │                                             │  │ Identify  ▸  │
 │ Cody ♥37 │                                             │  │ Connection ▸ │
 │ Open seat├─────────────────────────────────────────────┤  │              │
-│          │ Theo ♥40   −  +            🎤 📷  Select cmd │  │              │
+│          │ Theo ♥40   −  +               📷  Select cmd │  │              │
 └──────────┴─────────────────────────────────────────────┴──┴──────────────┘
 ```
 
 - **Camera rail** (left, `lg:` 13 rem): every seat as a 16:9 tile with a life badge, a compact
-  name bar (mute/camera indicators, ± for your own seat), and that seat's commander action.
+  name bar (camera indicator, ± for your own seat), and that seat's commander action.
   Empty seats up to four render as dashed "Open seat" placeholders. Clicking a tile makes it the
   active board and pins it.
 - **Active board** (center): the stage fills the remaining viewport. The large life badge sits
   top-left, a Pin/Pinned toggle top-right, and a name bar underneath carries life controls,
-  mic/camera toggles, and the "Select commander" popover. Unpinned, the stage follows the newest
+  the camera toggle, and the "Select commander" popover. Unpinned, the stage follows the newest
   remote joiner; when the active player leaves it falls back to your own board. Clicking the
   video starts the click-to-identify flow, and the suggestion card floats bottom-center over the
   stage (keys 1–5 still pick).
@@ -150,7 +150,7 @@ always large, everyone else is small, and controls live in a collapsible column.
 
 ### Shared seat state
 
-Presence metadata carries, per seat, `life` (starts at 40), `muted`, `camera_off`, and a
+Presence metadata carries, per seat, `life` (starts at 40), `camera_off`, and a
 server-stamped `joined_at`. Players publish their own changes through the channel's
 `update_status` event (validated: life −999…999, booleans, no other keys) and the channel merges
 them into presence, so every browser shows the same totals without another round trip. Your own
@@ -165,8 +165,8 @@ that order and records them the same way.
 The Log tab is client-side only: it is derived from presence joins/leaves/changes and the
 `seat_order` broadcast, capped at 200 lines, and not persisted.
 
-Audio is not captured. The mic button is a disabled, labelled stub so the layout matches the
-eventual voice control without introducing autoplay-with-sound risk today.
+Audio is not part of the webcam table: no microphone is captured and there are no mute
+controls. Players use their usual voice app alongside the table.
 
 ## File and component structure
 
@@ -181,7 +181,7 @@ eventual voice control without introducing autoplay-with-sound risk today.
   the active-board selection (`useActiveBoard`).
 - `features/webcam-table/board.tsx` — `ActiveBoard`, `CameraTile`, `OpenSeat`, `LifeBadge`,
   and `capturePoint` (click → normalized coordinates).
-- `features/webcam-table/seat-bar.tsx` — the name/life/mic/camera bar under a board or tile.
+- `features/webcam-table/seat-bar.tsx` — the name/life/camera bar under a board or tile.
 - `features/webcam-table/commander-picker.tsx` — popover listing a player's decks; any seat can
   set another player's commander (the server still verifies deck ownership).
 - `features/webcam-table/card-suggestions.tsx` — the click-to-identify overlay.
