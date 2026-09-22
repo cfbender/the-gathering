@@ -2,14 +2,12 @@ defmodule TheGathering.Discord.Command do
   @moduledoc false
 
   alias Nostrum.Api.ApplicationCommand
-  alias TheGathering.Discord.{SummaryCommand, Tracker}
-
-  @ephemeral 64
+  alias TheGathering.Discord.{SummaryCommand, WonCommand}
 
   def definition do
     %{
       name: "won",
-      description: "Record yourself as the winner of a SpellBot game",
+      description: "Report a SpellBot game's winner, kills, and game details",
       options: [
         %{
           type: 3,
@@ -55,44 +53,5 @@ defmodule TheGathering.Discord.Command do
     end
   end
 
-  def handle(%{data: %{name: "won", options: options}} = interaction) do
-    user = interaction.user || interaction.member.user
-
-    result =
-      case String.trim(option_value(options, "game")) do
-        "" -> Tracker.record_latest_winner(interaction.channel_id, user.id)
-        game_id -> Tracker.record_winner(game_id, user.id)
-      end
-
-    content =
-      case result do
-        {:ok, report} ->
-          "Recorded you as the winner of #{String.replace_prefix(report.external_id, "spellbot:", "")}."
-
-        {:error, :unknown_game} ->
-          "I haven't seen that SpellBot game start. Check the game ID and make sure I can read the game channel."
-
-        {:error, :no_game_in_channel} ->
-          "I haven't seen a SpellBot game start in this channel. Run `/won game:SB12345` with the game ID from SpellBot's post."
-
-        {:error, :not_a_player} ->
-          "You weren't listed as a player in that SpellBot game, so I didn't change it."
-
-        {:error, {:sink_failed, _reason}} ->
-          "I couldn't save that game. Please try again or ask an administrator to check the logs."
-      end
-
-    response(content)
-  end
-
-  def handle(_interaction), do: response("I don't recognize that command.")
-
-  defp option_value(options, name) do
-    case Enum.find(options || [], &(&1.name == name)) do
-      nil -> ""
-      option -> option.value
-    end
-  end
-
-  defp response(content), do: %{type: 4, data: %{content: content, flags: @ephemeral}}
+  defdelegate handle(interaction), to: WonCommand
 end

@@ -155,7 +155,8 @@ footer, start timestamp, and player field. Emit an incomplete normalized report
 when a game starts. A listed player finishes it with `/won`, which defaults to
 the most recently started game the bot has seen in that channel, or
 `/won game:SB12345` to pick a specific one; the reply is ephemeral, and a
-non-player cannot report themselves as winner.
+non-player cannot report the game. A participant chooses the winner from the
+roster and confirms the result after reviewing the details.
 
 This fills the exact gap SpellBot leaves while avoiding screen-scraping its HTML
 or depending on private Convoke APIs. It also keeps the integration usable for
@@ -185,14 +186,45 @@ GameReport (winner_discord_ids: []) ───────┐
 Player runs /won [game:SB12345]     pluggable Sink
         │                                  ▲
         ▼                                  │
-membership check + ephemeral reply         │
-        └── GameReport (winner set) ───────┘
+membership check + private draft           │
+        │ details, winner, kills, review    │
+        └── Save → GameReport ─────────────┘
 ```
 
 `GameReport` contains `external_id` (`spellbot:SB12345`), `source`
 (`discord`), `played_at`, guild/channel IDs, players with Discord ID/display
 name/nullable commander, winner Discord IDs, and scrub-safe raw embed data.
 Commanders are `nil` because the ready embed does not contain them.
+
+### Recording a result with `/won`
+
+The command opens a modal for optional **turns, duration in minutes, winner's MVP
+card, and notes**. Duration starts as an estimate from the SpellBot start time;
+edit or clear it when reporting an older game. Submitting opens a private review
+message with **winner** and **win-condition** dropdowns, **Edit details**,
+**Player kills**, **Save game**, and **Cancel**. The reporter is the initial
+winner, but any roster member can be selected. Win conditions use the same enum
+as the web app; Unknown is available. Draws still use the web editor.
+
+MVP names are resolved against the local card catalog. Ambiguous names show a
+card-selection dropdown; an unmatched name must be corrected or cleared. MVP
+belongs only to the selected winner. Notes allow up to 4,000 characters; the
+review truncates its preview, not the saved note. Mentions in review messages do
+not ping anyone.
+
+The kills modal labels each field with a player name. Enter `0` for no kills or
+leave it blank for unknown. Visit each kills page before saving, even when all
+values are unknown. Discord allows five inputs per modal, so six-player games
+have a **More player kills** page. The installed Nostrum version decodes legacy
+ActionRow text inputs, so selection dropdowns live in the review message rather
+than inside the modal.
+
+Nothing is recorded until **Save game**. Closing a modal or cancelling leaves
+the pending game intact. Drafts persist across restarts for one hour and are
+bound to the reporter, server, channel, and original roster/start time. Changed
+or expired drafts must be reopened. Saving consumes the pending game in the
+same transaction as recording the result; competing drafts cannot overwrite it.
+Already recorded games must be edited in the web app.
 
 Winnerless reports are staged in SQLite, so `/won` continues to work after an
 application or Tracker restart. Re-observing the same SpellBot external ID
@@ -225,20 +257,22 @@ data is normalized; raw Discord payloads are never stored in full or logged.
 
 The Discord supervisor uses `TheGathering.Discord.Sink.Games` by default. A
 winnerless SpellBot start remains in durable staging rather than being recorded
-as a draw. When a listed player uses `/won`,
+as a draw. When a listed player confirms **Save game** in `/won`,
 the sink creates or reuses players by Discord ID and records one `games` row
 with `source: "discord"`, the SpellBot ID as `external_id`, and seats in the
-order SpellBot listed them. The reporting player is the winner and every other
-seat is a loss.
+order SpellBot listed them. The selected player is the winner and every other
+seat is a loss. Win condition, turns, duration, notes, individual kills, and the
+winner's resolved MVP are persisted with the result.
 
 If a report supplies a commander, the sink creates or reuses a deck named for
 that commander. It leaves `commander_card_id` unset and the color identity empty;
 the ready embed currently supplies no commander, and this path does not query
 the card catalog.
 
-Repeated reports are idempotent by `{source, external_id}`. A completed replay
+Repeated sink reports are idempotent by `{source, external_id}`. A completed replay
 replaces the existing game's timestamp, seats, decks, and results, so corrected
-seat order or winner data does not create a duplicate. Validation failures are
+seat order or winner data does not create a duplicate. The `/won` flow rejects
+already recorded games before reaching this sink. Validation failures are
 logged without raw Discord payloads and returned to the tracker without
 crashing the gateway consumer.
 
@@ -308,8 +342,9 @@ also subject to the render cap. No summary request modifies the game.
 6. Start a SpellBot game and confirm the container logs
    `Discord observed SpellBot game spellbot:SB… with N player(s)`; raw message
    content is never logged. A listed player then runs `/won` in the game's
-   channel (or `/won game:SB…` from anywhere) and should receive an ephemeral
-   confirmation naming the game ID that was recorded.
+   channel (or `/won game:SB…` from another channel in the same server), fills
+   out the result draft, and clicks **Save game**. The private confirmation
+   names the recorded game ID; `/summary` can then share the recap publicly.
 
 What the bot sees during a SpellBot game, per the [SpellBot source](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/actions/lfg_action.py):
 `/lfg` and `/game` are deferred, so the first `MESSAGE_CREATE` is an empty

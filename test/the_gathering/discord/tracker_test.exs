@@ -205,36 +205,37 @@ defmodule TheGathering.Discord.TrackerTest do
     assert_receive {:report, _report}
 
     interaction = %{
+      type: 2,
+      guild_id: 333,
       data: %{name: "won", options: nil},
       channel_id: 444,
       user: %{id: "222"},
       member: nil
     }
 
-    assert %{type: 4, data: %{flags: 64, content: "Recorded you as the winner of SB12345."}} =
-             Command.handle(interaction)
-
-    assert_receive {:report, %GameReport{winner_discord_ids: ["222"]}}
+    assert %{type: 9, data: %{title: "Game details"}} = Command.handle(interaction)
+    refute_receive {:report, _}
+    assert Discord.get_pending_by_external_id("spellbot:SB12345")
 
     assert %{data: %{content: content}} = Command.handle(%{interaction | channel_id: 999})
-    assert content =~ "haven't seen a SpellBot game start in this channel"
+    assert content =~ "haven't seen an unfinished SpellBot game"
   end
 
-  test "slash command gives ephemeral success and errors" do
+  test "slash command opens a modal and gives ephemeral errors" do
     Tracker.observe(report())
     assert_receive {:report, _report}
 
     interaction = %{
+      type: 2,
+      guild_id: 333,
       data: %{name: "won", options: [%{name: "game", value: "SB12345"}]},
       channel_id: 444,
       user: %{id: "111"},
       member: nil
     }
 
-    assert %{type: 4, data: %{flags: 64, content: "Recorded you as the winner of SB12345."}} =
-             Command.handle(interaction)
-
-    assert_receive {:report, %GameReport{winner_discord_ids: ["111"]}}
+    assert %{type: 9} = Command.handle(interaction)
+    refute_receive {:report, _}
 
     unknown = put_in(interaction, [:data, :options, Access.at(0), :value], "SB99999")
 

@@ -5,8 +5,8 @@ defmodule TheGathering.Discord.Consumer do
 
   require Logger
 
-  alias Nostrum.Api.{Interaction, Self}
-  alias TheGathering.Discord.{Command, SpellBotParser, SummaryCommand, Tracker}
+  alias Nostrum.Api.Self
+  alias TheGathering.Discord.{Command, SpellBotParser, SummaryCommand, Tracker, WonCommand}
 
   # Discord activity type 3 renders as "Watching …" under the bot's name.
   @watching 3
@@ -36,12 +36,13 @@ defmodule TheGathering.Discord.Consumer do
   end
 
   def handle_event({:INTERACTION_CREATE, %{data: %{name: "won"}} = interaction, _ws_state}) do
-    Logger.info("Discord /won invoked by user #{interaction_user_id(interaction)}")
+    WonCommand.respond(interaction)
+  end
 
-    case Interaction.create_response(interaction, Command.handle(interaction)) do
-      {:ok} -> :ok
-      error -> Logger.error("Could not respond to the Discord /won command: #{inspect(error)}")
-    end
+  def handle_event(
+        {:INTERACTION_CREATE, %{data: %{custom_id: "won:" <> _}} = interaction, _ws_state}
+      ) do
+    WonCommand.respond(interaction)
   end
 
   # Logs describe the game by SpellBot ID and player count only; message text is never logged.
@@ -76,8 +77,4 @@ defmodule TheGathering.Discord.Consumer do
         )
     end
   end
-
-  defp interaction_user_id(%{user: %{id: id}}) when not is_nil(id), do: id
-  defp interaction_user_id(%{member: %{user: %{id: id}}}), do: id
-  defp interaction_user_id(_interaction), do: "unknown"
 end
