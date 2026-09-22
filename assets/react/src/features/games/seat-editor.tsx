@@ -10,6 +10,7 @@ interface SeatEditorProps {
   onChooseWinner: () => void
   onMove: (direction: -1 | 1) => void
   onRemove: () => void
+  canRemove?: boolean
   children: ReactNode
 }
 
@@ -21,6 +22,7 @@ export function SeatEditor({
   onChooseWinner,
   onMove,
   onRemove,
+  canRemove = true,
   children,
 }: SeatEditorProps) {
   return (
@@ -61,7 +63,7 @@ export function SeatEditor({
         <button
           type="button"
           className="btn btn-square btn-ghost btn-xs text-error"
-          disabled={seatCount <= 2}
+          disabled={!canRemove || seatCount <= 2}
           onClick={onRemove}
           aria-label="Remove seat"
         >

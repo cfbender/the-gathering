@@ -5,6 +5,7 @@ import type { Game } from "@/features/games/games"
 
 export interface DraftSeat {
   draftId: string
+  discordId?: string
   id?: number
   playerId: number | null
   playerName: string
@@ -16,6 +17,19 @@ export interface DraftSeat {
   decklistUrl: string
   kills: string
   mvpCard: SelectedCard | null
+}
+
+export interface DiscordResultDraft {
+  id: string
+  external_id: string
+  played_at: string
+  duration_minutes: number
+  winner_discord_id: string | null
+  seats: Array<{
+    discord_id: string
+    player_id: number | null
+    player_name: string
+  }>
 }
 
 let nextDraftSeatId = 0
@@ -75,19 +89,41 @@ function draftsFromGame(game: Game): DraftSeat[] {
   }))
 }
 
+function draftsFromDiscord(draft: DiscordResultDraft): DraftSeat[] {
+  return draft.seats.map((seat) => ({
+    ...blankSeat(),
+    draftId: `discord-seat-${seat.discord_id}`,
+    discordId: seat.discord_id,
+    playerId: seat.player_id,
+    playerName: seat.player_name,
+  }))
+}
+
 /** Owns the editable state and stable seat identities for one game form. */
-export function useGameDraft(game?: Game) {
-  const [playedAt, setPlayedAt] = useState(() => localDateTime(game?.played_at))
+export function useGameDraft(game?: Game, discordDraft?: DiscordResultDraft) {
+  const [playedAt, setPlayedAt] = useState(() =>
+    localDateTime(game?.played_at ?? discordDraft?.played_at),
+  )
   const [seats, setSeats] = useState<DraftSeat[]>(() =>
-    game ? draftsFromGame(game) : [blankSeat(), blankSeat()],
+    game
+      ? draftsFromGame(game)
+      : discordDraft
+        ? draftsFromDiscord(discordDraft)
+        : [blankSeat(), blankSeat()],
   )
   const [winnerSeatId, setWinnerSeatId] = useState<string | null>(() => {
+    if (discordDraft)
+      return discordDraft.winner_discord_id
+        ? `discord-seat-${discordDraft.winner_discord_id}`
+        : "unselected"
     if (!game) return seats[0]?.draftId ?? null
     const winner = game.seats.find((seat) => seat.result === "win")
     return winner ? `persisted-seat-${winner.id}` : null
   })
   const [turns, setTurns] = useState(game?.turns?.toString() ?? "")
-  const [duration, setDuration] = useState(game?.duration_minutes?.toString() ?? "")
+  const [duration, setDuration] = useState(
+    (game?.duration_minutes ?? discordDraft?.duration_minutes)?.toString() ?? "",
+  )
   const [winCondition, setWinCondition] = useState(game?.win_condition ?? "")
   const [notes, setNotes] = useState(game?.notes ?? "")
 

@@ -47,6 +47,40 @@ defmodule TheGathering.CatalogTest do
     assert [%{id: "lumra", name: "Lumra, Bellow of the Woods"}] = Catalog.search("lumra")
   end
 
+  test "ignores commas and ranks whole leading names ahead of asymmetric decoys" do
+    insert_card("bello", "oracle-bello", "Bello, Bard of the Brambles")
+    insert_card("bellowing", "oracle-bellowing", "Bellowing Crier")
+    insert_card("lumra", "oracle-lumra", "Lumra, Bellow of the Woods")
+
+    insert_card(
+      "sephiroth",
+      "oracle-sephiroth",
+      "Sephiroth, Fabled SOLDIER // Sephiroth, One-Winged Angel"
+    )
+
+    insert_card("terra", "oracle-terra", "Terra, Magical Adept // Esper Terra")
+
+    assert Enum.map(Catalog.search("Bello"), & &1.id) == ["bello", "bellowing", "lumra"]
+    assert Enum.map(Catalog.search("sephiroth fabled soldier"), & &1.id) == ["sephiroth"]
+    assert Enum.map(Catalog.search("Terra magical adept"), & &1.id) == ["terra"]
+  end
+
+  test "comma-insensitive search preserves filters and limits" do
+    insert_card("commander", "oracle-commander", "Bello, Bard of the Brambles", %{
+      "type_line" => "Legendary Creature — Raccoon Bard"
+    })
+
+    for number <- 1..25 do
+      insert_card("decoy-#{number}", "oracle-decoy-#{number}", "Bellowing Decoy #{number}")
+    end
+
+    assert Enum.map(Catalog.search("Bello", commander: true, limit: 1), & &1.id) == [
+             "commander"
+           ]
+
+    assert length(Catalog.search("Bello", limit: 50)) == 26
+  end
+
   test "applies commander and partner filters to apostrophe-insensitive matches" do
     insert_card("spell", "oracle-spell", "Hero's Aid")
 

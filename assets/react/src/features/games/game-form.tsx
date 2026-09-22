@@ -9,6 +9,7 @@ import {
   resultsForSeats,
   useGameDraft,
   type DraftSeat,
+  type DiscordResultDraft,
 } from "@/features/games/use-game-draft"
 import { MvpCardField } from "@/components/mvp-card-field"
 import { api, ApiError } from "@/lib/api"
@@ -33,6 +34,7 @@ import {
 
 interface GameFormProps {
   game?: Game
+  discordDraft?: DiscordResultDraft
 }
 
 async function ensurePlayer(draft: DraftSeat, players: PlayerSummary[]) {
@@ -77,11 +79,17 @@ async function ensureDeck(draft: DraftSeat, playerId: number, decks: DeckSummary
   return created.id
 }
 
-export function GameForm({ game }: GameFormProps) {
-  return <GameFormDraft key={game?.id ?? "new-game"} game={game} />
+export function GameForm({ game, discordDraft }: GameFormProps) {
+  return (
+    <GameFormDraft
+      key={game?.id ?? discordDraft?.id ?? "new-game"}
+      game={game}
+      discordDraft={discordDraft}
+    />
+  )
 }
 
-function GameFormDraft({ game }: GameFormProps) {
+function GameFormDraft({ game, discordDraft }: GameFormProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const playersQuery = useQuery({ queryKey: ["players"], queryFn: getPlayers })
@@ -102,16 +110,40 @@ function GameFormDraft({ game }: GameFormProps) {
     notes,
     setNotes,
     updateSeat,
-  } = useGameDraft(game)
+  } = useGameDraft(game, discordDraft)
+  const hasResult = winnerSeatId === null || seats.some((seat) => seat.draftId === winnerSeatId)
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const knownPlayers = [...(playersQuery.data ?? [])]
-      const knownDecks = [...(decksQuery.data ?? [])]
       const results = resultsForSeats(seats, winnerSeatId)
       const payloadSeats = []
+      const knownPlayers = [...(playersQuery.data ?? [])]
+      const knownDecks = [...(decksQuery.data ?? [])]
 
       for (const [index, draft] of seats.entries()) {
+        if (discordDraft) {
+          payloadSeats.push({
+            discord_id: draft.discordId,
+            deck_id: draft.deckId,
+            deck:
+              draft.deckId === null && draft.deckName.trim()
+                ? {
+                    name: draft.deckName.trim(),
+                    commander_card_id: draft.commander?.catalog_id ?? null,
+                    commander_name: draft.commander?.name ?? null,
+                    partner_card_id: draft.partner?.catalog_id ?? null,
+                    partner_name: draft.partner?.name ?? null,
+                    color_identity: draft.colorIdentity,
+                    decklist_url: draft.decklistUrl.trim() || null,
+                  }
+                : null,
+            result: results[index],
+            kills: draft.kills === "" ? null : Number(draft.kills),
+            mvp_card_id: draft.mvpCard?.catalog_id ?? null,
+            mvp_card_name: draft.mvpCard?.name ?? null,
+          })
+          continue
+        }
         const playerId = await ensurePlayer(draft, knownPlayers)
         const deckId = await ensureDeck(draft, playerId, knownDecks)
         payloadSeats.push({
@@ -136,7 +168,12 @@ function GameFormDraft({ game }: GameFormProps) {
           seats: payloadSeats,
         },
       }
-      return api<{ data: Game }>(game ? `/api/games/${game.id}` : "/api/games", {
+      const path = discordDraft
+        ? `/api/discord/result-drafts/${discordDraft.id}`
+        : game
+          ? `/api/games/${game.id}`
+          : "/api/games"
+      return api<{ data: Game }>(path, {
         method: game ? "PATCH" : "POST",
         body: JSON.stringify(payload),
       }).then((body) => body.data)
@@ -149,7 +186,7 @@ function GameFormDraft({ game }: GameFormProps) {
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    mutation.mutate()
+    if (hasResult) mutation.mutate()
   }
 
   const error = mutation.error instanceof ApiError ? mutation.error : null
@@ -166,7 +203,7 @@ function GameFormDraft({ game }: GameFormProps) {
             <button
               type="button"
               className="btn btn-sm btn-outline"
-              disabled={seats.length >= 6}
+              disabled={Boolean(discordDraft) || seats.length >= 6}
               onClick={() => setSeats((current) => [...current, blankSeat()])}
             >
               <Plus className="size-4" /> Add seat
@@ -201,6 +238,7 @@ function GameFormDraft({ game }: GameFormProps) {
                       setWinnerSeatId(remaining[0]?.draftId ?? null)
                     }
                   }}
+                  canRemove={!discordDraft}
                 >
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="form-control">
@@ -210,6 +248,7 @@ function GameFormDraft({ game }: GameFormProps) {
                         list="player-names"
                         placeholder="Choose or type a new player"
                         value={seat.playerName}
+                        disabled={Boolean(discordDraft)}
                         onChange={(event) => {
                           const player = playersQuery.data?.find(
                             (candidate) =>
@@ -291,7 +330,7 @@ function GameFormDraft({ game }: GameFormProps) {
                       />
                     </label>
                   </div>
-                  {seat.playerName && seat.playerId === null && !player && (
+                  {!discordDraft && seat.playerName && seat.playerId === null && !player && (
                     <p className="text-info mt-2 text-xs">
                       A new player named “{seat.playerName}” will be created.
                     </p>
@@ -318,6 +357,15 @@ function GameFormDraft({ game }: GameFormProps) {
           ))}
         </div>
       </section>
+
+      {discordDraft && (
+        <div role="status" className="alert alert-info">
+          <span>
+            SpellBot game {discordDraft.external_id}. Nothing has been saved yet; review the details
+            and log the game when ready.
+          </span>
+        </div>
+      )}
 
       <section className="card border-base-300 bg-base-200 border">
         <div className="card-body grid gap-4 p-4 sm:grid-cols-3 sm:p-6">
@@ -387,8 +435,12 @@ function GameFormDraft({ game }: GameFormProps) {
           <span>{error?.detail ?? "Could not save the game. Check the highlighted fields."}</span>
         </div>
       )}
+      {!hasResult && <p role="status">Choose a winner or mark the game as a draw before saving.</p>}
       <div className="flex justify-end">
-        <button className="btn btn-primary btn-lg w-full sm:w-auto" disabled={mutation.isPending}>
+        <button
+          className="btn btn-primary btn-lg w-full sm:w-auto"
+          disabled={mutation.isPending || !hasResult}
+        >
           {mutation.isPending ? "Saving…" : game ? "Save changes" : "Log game"}
         </button>
       </div>
