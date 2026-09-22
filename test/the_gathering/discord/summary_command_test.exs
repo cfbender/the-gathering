@@ -94,7 +94,7 @@ defmodule TheGathering.Discord.SummaryCommandTest do
       })
 
     assert interaction.data.options == nil
-    assert {:ok, :sent} = SummaryCommand.respond(interaction, __MODULE__)
+    assert {:ok, :sent} = SummaryCommand.respond(interaction, __MODULE__, __MODULE__)
     assert_receive {:initial_response, %{type: 5}}
     assert_receive {:edited_response, response}
     assert response.allowed_mentions == %{parse: []}
@@ -116,6 +116,7 @@ defmodule TheGathering.Discord.SummaryCommandTest do
       assert :ok =
                SummaryCommand.respond(
                  %{interaction | data: %{name: "summary", options: options}},
+                 __MODULE__,
                  __MODULE__
                )
 
@@ -131,7 +132,8 @@ defmodule TheGathering.Discord.SummaryCommandTest do
 
     log =
       ExUnit.CaptureLog.capture_log(fn ->
-        assert {:error, :network} = SummaryCommand.respond(context.interaction, __MODULE__)
+        assert {:error, :network} =
+                 SummaryCommand.respond(context.interaction, __MODULE__, __MODULE__)
       end)
 
     assert log =~ "Discord /summary acknowledge failed: network"
@@ -157,10 +159,12 @@ defmodule TheGathering.Discord.SummaryCommandTest do
 
     log =
       ExUnit.CaptureLog.capture_log([level: :info], fn ->
-        assert {:error, ^error} = SummaryCommand.respond(interaction, __MODULE__)
+        assert {:error, ^error} = SummaryCommand.respond(interaction, __MODULE__, __MODULE__)
       end)
 
     assert log =~ "Discord /summary acknowledge completed"
+    assert log =~ "Discord /summary rendered game"
+    assert log =~ "Discord /summary upload started"
     assert log =~ "Discord /summary upload failed: HTTP 403, Discord code 50013"
     refute log =~ "private response body"
     refute log =~ interaction.token
