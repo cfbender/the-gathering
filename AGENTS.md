@@ -10,6 +10,7 @@ The Gathering is a self-hosted Commander (Magic: The Gathering) game tracker: an
 - `priv/repo/` — Ecto migrations (SQLite).
 - `assets/react/` — the React app. Product code is organized under `src/features/` (games, decks, imports, and admin); thin TanStack Router adapters live in `src/routes/`, and `routeTree.gen.ts` is generated. Shared presentation and UI primitives remain in `src/components/`. Tailwind 4 + daisyUI themes live in `src/app.css`.
 - `test/` — ExUnit tests and test support.
+- `ml/` — offline Python (uv) tooling for the webcam table's card recognition: Scryfall art dataset, synthetic webcam degradation, embedding training, evaluation, ONNX export. Not part of the Phoenix build; see `ml/README.md`.
 - `Dockerfile`, `docker-entrypoint.sh`, `docker-compose.yml` — production container build and startup flow.
 - `mise.toml` — pinned toolchain (Erlang, Elixir, Node, aube).
 - `.agents/setup` and `.agents/resume` — orb bootstrap scripts; `.amp/services.yaml` — the review portal service.
