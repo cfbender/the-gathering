@@ -18,6 +18,7 @@ import { useState, type ComponentType, type ReactNode } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { CommanderPicker } from "./commander-picker"
+import type { RecognizerState } from "./recognition/use-recognizer"
 import type { TableEvent, TableParticipant } from "./use-webcam-room"
 
 export type PanelTab = "table" | "decks" | "log"
@@ -37,6 +38,7 @@ interface Props {
   status: string
   error: string | null
   connectedPeers: number
+  recognizer: RecognizerState
   onInvite: () => void
   inviteCopied: boolean
   onChooseDeck: (deckId: number) => void
@@ -49,6 +51,41 @@ const TABS: { id: PanelTab; label: string; icon: ComponentType<{ className?: str
   { id: "decks", label: "Decks", icon: Layers },
   { id: "log", label: "Log", icon: ScrollText },
 ]
+
+function describeRecognizer(state: RecognizerState): string {
+  switch (state.status) {
+    case "checking":
+      return "Checking for a recognition bundle…"
+    case "unavailable":
+      return "No recognition bundle is installed on this server; clicks offer the seat's decks instead. Publish one with `python -m cardid.publish`."
+    case "loading":
+      return `Loading bundle ${state.version}…`
+    case "ready":
+      return `Bundle ${state.version}: ${state.arts.toLocaleString()} artworks, loaded in ${(state.loadMs / 1000).toFixed(1)} s.`
+    case "failed":
+      return `Recognizer failed to start: ${state.message}`
+  }
+}
+
+function RecognizerBadge({ state }: { state: RecognizerState }) {
+  const tone =
+    state.status === "ready"
+      ? "badge-success"
+      : state.status === "failed"
+        ? "badge-error"
+        : state.status === "unavailable"
+          ? "badge-ghost"
+          : "badge-warning"
+  const label =
+    state.status === "ready"
+      ? "ready"
+      : state.status === "failed"
+        ? "failed"
+        : state.status === "unavailable"
+          ? "off"
+          : "loading"
+  return <span className={cn("badge badge-xs", tone)}>{label}</span>
+}
 
 function PanelSection({
   title,
@@ -136,6 +173,7 @@ function TableTab(props: Props) {
     status,
     error,
     connectedPeers,
+    recognizer,
     onInvite,
     inviteCopied,
     onChooseDeck,
@@ -210,12 +248,20 @@ function TableTab(props: Props) {
         </div>
       </PanelSection>
 
-      <PanelSection title="Identify cards" icon={ScanSearch} defaultOpen={false}>
+      <PanelSection
+        title="Identify cards"
+        icon={ScanSearch}
+        defaultOpen={false}
+        meta={<RecognizerBadge state={recognizer} />}
+      >
         <p className="text-base-content/70 text-xs leading-relaxed">
-          Click a card on any board. The camera owner returns a native 640 px crop and you get
-          numbered deck suggestions for that seat; press <kbd className="kbd kbd-xs">1</kbd>–
-          <kbd className="kbd kbd-xs">5</kbd> to pick one.
+          Click a card on any board. The camera owner returns a native 640 px crop, the recognizer
+          runs in your browser and lists its top five; press <kbd className="kbd kbd-xs">1</kbd>–
+          <kbd className="kbd kbd-xs">5</kbd> to confirm one or <kbd className="kbd kbd-xs">/</kbd>{" "}
+          to search by name, set code or collector number. Confirmed cards go to the Log at every
+          seat.
         </p>
+        <p className="text-base-content/50 mt-2 text-xs">{describeRecognizer(recognizer)}</p>
       </PanelSection>
 
       <PanelSection title="Connection" icon={Wifi} defaultOpen={false}>

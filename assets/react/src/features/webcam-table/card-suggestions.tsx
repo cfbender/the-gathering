@@ -1,26 +1,95 @@
-import { X } from "lucide-react"
+import { Search, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
+import { cn } from "@/lib/cn"
+import type { Identification } from "./recognition/messages"
+import type { GalleryArt } from "./recognition/pipeline"
 import type { CapturedCard } from "./use-webcam-room"
+
+/** What recognition did with the current capture. */
+export type Recognition =
+  | { status: "identifying" }
+  | { status: "done"; result: Identification }
+  /** Recognition did not run or did not finish; the reason is shown and deck suggestions stand in. */
+  | { status: "skipped"; reason: string }
+
+/** Top-1 leads the runner-up by at least this cosine margin: show it as the answer, not a guess.
+ * From `ml/` evaluation: the margin for ~99% precision on real captures with the detector. */
+export const CLEAR_MARGIN = 0.08
 
 interface Props {
   capture: CapturedCard
   playerName: string
-  suggestions: DeckSummary[]
-  onChoose: (deckId: number) => void
+  recognition: Recognition
+  deckSuggestions: DeckSummary[]
+  /** The worker has the gallery, so the manual search can run even when a click timed out. */
+  gallerySearchable: boolean
+  onChooseCard: (art: GalleryArt) => void
+  onChooseDeck: (deckId: number) => void
+  onSearch: (query: string) => Promise<GalleryArt[]>
   onDismiss: () => void
 }
 
-/** Compact popover over the board after a card click: the native crop plus up to five
- * numbered deck suggestions (keys 1–5) for the clicked player's seat. */
-export function CardSuggestions({ capture, playerName, suggestions, onChoose, onDismiss }: Props) {
+function printing(art: GalleryArt) {
+  return `${art.set.toUpperCase()}${art.collector_number ? ` #${art.collector_number}` : ""}`
+}
+
+/** Floating panel over the board after a card click: the native crop with the detected card
+ * outlined, the recognizer's numbered top five (keys 1–5), and a gallery search for the
+ * "that's not it" case. Without a published bundle the seat's decks stand in. */
+export function CardSuggestions({
+  capture,
+  playerName,
+  recognition,
+  deckSuggestions,
+  gallerySearchable,
+  onChooseCard,
+  onChooseDeck,
+  onSearch,
+  onDismiss,
+}: Props) {
+  const [query, setQuery] = useState("")
+  const [matches, setMatches] = useState<GalleryArt[]>([])
+  const searchRef = useRef<HTMLInputElement | null>(null)
+  const candidates = recognition.status === "done" ? recognition.result.candidates : []
+  const clear =
+    candidates.length > 1 &&
+    (candidates[0]?.score ?? 0) - (candidates[1]?.score ?? 0) >= CLEAR_MARGIN
+
+  useEffect(() => {
+    if (query.trim() === "") {
+      setMatches([])
+      return
+    }
+    let stale = false
+    onSearch(query)
+      .then((arts) => {
+        if (!stale) setMatches(arts)
+      })
+      .catch(() => undefined)
+    return () => {
+      stale = true
+    }
+  }, [onSearch, query])
+
+  useEffect(() => {
+    function focusSearch(event: KeyboardEvent) {
+      if (event.key !== "/" || event.target instanceof HTMLInputElement) return
+      event.preventDefault()
+      searchRef.current?.focus()
+    }
+    window.addEventListener("keydown", focusSearch)
+    return () => window.removeEventListener("keydown", focusSearch)
+  }, [])
+
   return (
     <section
-      className="absolute bottom-4 left-1/2 z-10 w-[min(34rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-white/15 bg-black/85 text-white shadow-2xl backdrop-blur-xl"
+      className="absolute bottom-4 left-1/2 z-10 w-[min(38rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-white/15 bg-black/85 text-white shadow-2xl backdrop-blur-xl"
       aria-label="Card suggestions"
     >
       <header className="flex items-center justify-between px-3 pt-2">
         <span className="text-[0.65rem] font-bold tracking-wider text-white/60 uppercase">
-          Identify card · {playerName}’s commander
+          Identify card · {playerName}’s board
         </span>
         <button
           type="button"
@@ -31,33 +100,112 @@ export function CardSuggestions({ capture, playerName, suggestions, onChoose, on
           <X className="size-3.5" />
         </button>
       </header>
-      <div className="grid gap-3 p-3 sm:grid-cols-[5.5rem_1fr]">
-        <img
-          className="aspect-square w-full rounded-lg object-cover"
-          src={capture.image}
-          alt="Native camera crop around the clicked card"
-        />
+      <div className="grid gap-3 p-3 sm:grid-cols-[7rem_1fr]">
+        <figure className="relative aspect-square w-full overflow-hidden rounded-lg">
+          <img
+            className="size-full object-cover"
+            src={capture.image}
+            alt="Native camera crop around the clicked card"
+          />
+          {recognition.status === "done" && (
+            <svg
+              className="absolute inset-0 size-full"
+              viewBox={`0 0 ${capture.cropSize} ${capture.cropSize}`}
+              aria-label="Detected card outline"
+            >
+              <polygon
+                points={recognition.result.quad.map(([x, y]) => `${x},${y}`).join(" ")}
+                fill="none"
+                stroke="oklch(85% 0.2 150)"
+                strokeWidth={capture.cropSize / 120}
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+          {recognition.status === "identifying" && (
+            <span
+              className="loading loading-spinner loading-sm absolute right-1 bottom-1 text-white"
+              aria-label="Identifying"
+            />
+          )}
+        </figure>
+
         <div className="min-w-0">
           <div className="grid gap-1">
-            {suggestions.map((deck, index) => (
+            {candidates.map((art, index) => (
               <button
-                key={deck.id}
+                key={art.id}
                 type="button"
-                className="flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-left text-xs hover:bg-white/15"
-                onClick={() => onChoose(deck.id)}
+                className={cn(
+                  "flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-left text-xs hover:bg-white/15",
+                  index === 0 && clear && "border-success/60 bg-success/15",
+                )}
+                onClick={() => onChooseCard(art)}
               >
                 <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
-                <span className="truncate font-semibold">{deck.commander_name}</span>
-                <span className="ml-auto truncate text-white/50">{deck.name}</span>
+                <span className="truncate font-semibold">{art.name}</span>
+                <span className="truncate text-white/50">{printing(art)}</span>
+                <span className="ml-auto tabular-nums text-white/40">{art.score.toFixed(2)}</span>
               </button>
             ))}
-            {suggestions.length === 0 && (
+            {recognition.status === "skipped" &&
+              deckSuggestions.map((deck, index) => (
+                <button
+                  key={deck.id}
+                  type="button"
+                  className="flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-left text-xs hover:bg-white/15"
+                  onClick={() => onChooseDeck(deck.id)}
+                >
+                  <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
+                  <span className="truncate font-semibold">{deck.commander_name}</span>
+                  <span className="ml-auto truncate text-white/50">{deck.name}</span>
+                </button>
+              ))}
+            {recognition.status === "skipped" && deckSuggestions.length === 0 && (
               <p className="text-xs text-white/65">No decks are recorded for {playerName} yet.</p>
             )}
           </div>
+
+          {gallerySearchable && (
+            <label className="mt-2 flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-xs focus-within:border-white/40">
+              <Search className="size-3.5 text-white/50" />
+              <input
+                ref={searchRef}
+                className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-white/40"
+                placeholder="Not it? Search name, set code, #number  (/)"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                aria-label="Search the card gallery"
+              />
+            </label>
+          )}
+          {matches.length > 0 && (
+            <ul
+              className="mt-1 max-h-40 overflow-y-auto rounded-md border border-white/10 text-xs"
+              aria-label="Search results"
+            >
+              {matches.map((art) => (
+                <li key={art.id}>
+                  <button
+                    type="button"
+                    className="flex h-7 w-full items-center gap-2 px-2 text-left hover:bg-white/15"
+                    onClick={() => onChooseCard(art)}
+                  >
+                    <span className="truncate font-semibold">{art.name}</span>
+                    <span className="ml-auto shrink-0 text-white/50">{printing(art)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <p className="mt-2 text-[0.65rem] text-white/45">
-            {capture.nativeWidth}×{capture.nativeHeight} native crop · deck-based suggestions until
-            recognition artifacts ship
+            {capture.cropSize} px crop of {capture.nativeWidth}×{capture.nativeHeight}
+            {recognition.status === "done" &&
+              ` · detector ${recognition.result.timings.detector.toFixed(0)} ms · embed ${recognition.result.timings.embed.toFixed(0)} ms · search ${recognition.result.timings.search.toFixed(0)} ms · upright ${Math.round(recognition.result.upVote * 100)}%`}
+            {recognition.status === "identifying" && " · identifying…"}
+            {recognition.status === "skipped" &&
+              ` · recognition ${recognition.reason}; deck-based suggestions`}
           </p>
         </div>
       </div>

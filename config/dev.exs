@@ -30,6 +30,10 @@ config :the_gathering, TheGatheringWeb.Endpoint,
 # Point the SPA shell at the Vite dev server instead of the build manifest.
 config :the_gathering, TheGatheringWeb.ViteAssets, mode: :dev_server
 
+# Runtime data that is not the database, for example the published card-recognition bundle
+# (`data/cardid/current`). Production reads DATA_DIR in runtime.exs instead.
+config :the_gathering, :data_dir, Path.expand("../data", __DIR__)
+
 # ## SSL Support
 #
 # In order to use HTTPS in development, a self-signed

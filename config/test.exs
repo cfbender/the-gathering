@@ -20,6 +20,9 @@ config :the_gathering, TheGatheringWeb.Endpoint,
 # Tests never build the React bundle, so avoid reading the Vite manifest.
 config :the_gathering, TheGatheringWeb.ViteAssets, mode: :dev_server
 
+# Tests that need runtime data files (card-recognition bundles) write them here.
+config :the_gathering, :data_dir, Path.expand("../tmp/test_data", __DIR__)
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

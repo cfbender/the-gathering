@@ -123,12 +123,22 @@ your name for it); otherwise it is added as a new deck. A deck that already link
 elsewhere is never re-pointed. Hosts that fail to list are skipped and reported in the
 response's `errors`.
 
+### Webcam table
+
+**Games → Play** opens a temporary room for up to four signed-in members who share their
+board cameras over a WebRTC mesh and record the result when the game ends. Clicking a card on
+any board identifies it with the recognizer bundle published from `ml/` (see
+`ml/README.md`, "Shipping"): Phoenix serves `DATA_DIR/cardid/current/*` at `/api/cardid/*`
+and the browser runs the models itself. Without a published bundle the table still works and
+offers the player's commanders as suggestions instead. Design notes are in
+[docs/webcam-table.md](docs/webcam-table.md).
+
 ### Environment variables
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `SECRET_KEY_BASE` | required | Signs sessions and cookies. |
-| `DATA_DIR` | `/data` | Where the database and files live. |
+| `DATA_DIR` | `/data` | Where the database, uploaded files, and the `cardid/` recognizer bundles live. |
 | `DATABASE_PATH` | `$DATA_DIR/the_gathering.db` | SQLite database file. |
 | `PHX_HOST` | `localhost` | Public hostname used in generated URLs. |
 | `PHX_SCHEME` | `https` | Public scheme. |
@@ -137,6 +147,8 @@ response's `errors`.
 | `TRUST_PROXY_HEADERS` | unset | Set to `true` behind a reverse proxy so rate limiting identifies clients by `x-real-ip` / `x-forwarded-for` instead of the proxy address. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, or `error`. `debug` explains why the Discord bot ignored a message. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
+| `WEBRTC_STUN_URLS` | unset | Comma-separated STUN URLs for webcam-table NAT discovery; host candidates alone suffice on one LAN. |
+| `WEBRTC_TURN_URLS` | unset | Comma-separated TURN URLs; with `WEBRTC_TURN_USERNAME` and `WEBRTC_TURN_CREDENTIAL`, relays webcam-table media when peers cannot connect directly. |
 | `MANAVAULT_URL` | unset | Origin of a self-hosted ManaVault instance whose shared deck links are recognized and resolved. |
 | `MANAVAULT_ALLOWED_HOSTS` | unset | Comma-separated exact hostnames allowed for personal ManaVault listing on private networks; also permits HTTP for those hosts. |
 | `MANAVAULT_ALLOW_INSECURE_URLS` | unset | Set to `true` to permit HTTP personal ManaVault origins that resolve to public addresses. |
