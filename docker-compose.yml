@@ -17,6 +17,11 @@ services:
       PHX_URL_PORT: ${PHX_URL_PORT:-4000}
       # Set to true behind a reverse proxy so login rate limiting sees real client addresses.
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-}
+      # Optional WebRTC NAT traversal for webcam tables (comma-separated URLs).
+      WEBRTC_STUN_URLS: ${WEBRTC_STUN_URLS:-}
+      WEBRTC_TURN_URLS: ${WEBRTC_TURN_URLS:-}
+      WEBRTC_TURN_USERNAME: ${WEBRTC_TURN_USERNAME:-}
+      WEBRTC_TURN_CREDENTIAL: ${WEBRTC_TURN_CREDENTIAL:-}
       # debug explains why the Discord bot ignored a message.
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Optional self-hosted ManaVault origin whose shared deck links should resolve.

@@ -51,6 +51,14 @@ function RootLayout() {
   const user = session.data
   const items = navItems.filter((item) => !item.adminOnly || user?.role === "admin")
 
+  if (pathname.startsWith("/table/")) {
+    return (
+      <main className="bg-neutral text-neutral-content min-h-dvh">
+        <Outlet />
+      </main>
+    )
+  }
+
   return (
     <div className="app-shell-root bg-base-100 text-base-content flex min-h-dvh flex-col">
       <header className="app-shell-header bg-base-100/95 sticky top-0 z-30 backdrop-blur">

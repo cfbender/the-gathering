@@ -78,6 +78,7 @@ defmodule TheGatheringWeb.Router do
     get "/stats/commanders", StatsController, :commanders
     get "/stats/commanders/:id", StatsController, :commander
     get "/deck-chooser", DeckChooserController, :show
+    get "/webcam-table/config", WebcamTableConfigController, :show
     post "/deck-chooser/:id/outcomes", DeckChooserController, :create_outcome
     get "/discord/result-drafts/:id", DiscordResultDraftController, :show
     post "/discord/result-drafts/:id", DiscordResultDraftController, :create

@@ -31,6 +31,8 @@ import { Route as GamesGameIdRouteImport } from "./routes/games.$gameId"
 import { Route as GamesNewRouteImport } from "./routes/games.new"
 import { Route as PlayersIndexRouteImport } from "./routes/players.index"
 import { Route as PlayersPlayerIdRouteImport } from "./routes/players.$playerId"
+import { Route as TableRoomIdRouteImport } from "./routes/table.$roomId"
+import { Route as TableNewRouteImport } from "./routes/table.new"
 import { Route as GamesGameIdEditRouteImport } from "./routes/games.$gameId_.edit"
 
 const IndexRoute = IndexRouteImport.update({
@@ -143,6 +145,16 @@ const PlayersPlayerIdRoute = PlayersPlayerIdRouteImport.update({
   path: "/players/$playerId",
   getParentRoute: () => rootRouteImport,
 } as any)
+const TableRoomIdRoute = TableRoomIdRouteImport.update({
+  id: "/table/$roomId",
+  path: "/table/$roomId",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TableNewRoute = TableNewRouteImport.update({
+  id: "/table/new",
+  path: "/table/new",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GamesGameIdEditRoute = GamesGameIdEditRouteImport.update({
   id: "/games/$gameId_/edit",
   path: "/games/$gameId/edit",
@@ -168,6 +180,8 @@ export interface FileRoutesByFullPath {
   "/games/$gameId": typeof GamesGameIdRoute
   "/games/new": typeof GamesNewRoute
   "/players/$playerId": typeof PlayersPlayerIdRoute
+  "/table/$roomId": typeof TableRoomIdRoute
+  "/table/new": typeof TableNewRoute
   "/commanders/": typeof CommandersIndexRoute
   "/decks/": typeof DecksIndexRoute
   "/games/": typeof GamesIndexRoute
@@ -193,6 +207,8 @@ export interface FileRoutesByTo {
   "/games/$gameId": typeof GamesGameIdRoute
   "/games/new": typeof GamesNewRoute
   "/players/$playerId": typeof PlayersPlayerIdRoute
+  "/table/$roomId": typeof TableRoomIdRoute
+  "/table/new": typeof TableNewRoute
   "/commanders": typeof CommandersIndexRoute
   "/decks": typeof DecksIndexRoute
   "/games": typeof GamesIndexRoute
@@ -219,6 +235,8 @@ export interface FileRoutesById {
   "/games/$gameId": typeof GamesGameIdRoute
   "/games/new": typeof GamesNewRoute
   "/players/$playerId": typeof PlayersPlayerIdRoute
+  "/table/$roomId": typeof TableRoomIdRoute
+  "/table/new": typeof TableNewRoute
   "/commanders/": typeof CommandersIndexRoute
   "/decks/": typeof DecksIndexRoute
   "/games/": typeof GamesIndexRoute
@@ -246,6 +264,8 @@ export interface FileRouteTypes {
     | "/games/$gameId"
     | "/games/new"
     | "/players/$playerId"
+    | "/table/$roomId"
+    | "/table/new"
     | "/commanders/"
     | "/decks/"
     | "/games/"
@@ -271,6 +291,8 @@ export interface FileRouteTypes {
     | "/games/$gameId"
     | "/games/new"
     | "/players/$playerId"
+    | "/table/$roomId"
+    | "/table/new"
     | "/commanders"
     | "/decks"
     | "/games"
@@ -296,6 +318,8 @@ export interface FileRouteTypes {
     | "/games/$gameId"
     | "/games/new"
     | "/players/$playerId"
+    | "/table/$roomId"
+    | "/table/new"
     | "/commanders/"
     | "/decks/"
     | "/games/"
@@ -318,6 +342,8 @@ export interface RootRouteChildren {
   GamesGameIdRoute: typeof GamesGameIdRoute
   GamesNewRoute: typeof GamesNewRoute
   PlayersPlayerIdRoute: typeof PlayersPlayerIdRoute
+  TableRoomIdRoute: typeof TableRoomIdRoute
+  TableNewRoute: typeof TableNewRoute
   CommandersIndexRoute: typeof CommandersIndexRoute
   DecksIndexRoute: typeof DecksIndexRoute
   GamesIndexRoute: typeof GamesIndexRoute
@@ -481,6 +507,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof PlayersPlayerIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/table/$roomId": {
+      id: "/table/$roomId"
+      path: "/table/$roomId"
+      fullPath: "/table/$roomId"
+      preLoaderRoute: typeof TableRoomIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/table/new": {
+      id: "/table/new"
+      path: "/table/new"
+      fullPath: "/table/new"
+      preLoaderRoute: typeof TableNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/games/$gameId_/edit": {
       id: "/games/$gameId_/edit"
       path: "/games/$gameId/edit"
@@ -522,6 +562,8 @@ const rootRouteChildren: RootRouteChildren = {
   GamesGameIdRoute: GamesGameIdRoute,
   GamesNewRoute: GamesNewRoute,
   PlayersPlayerIdRoute: PlayersPlayerIdRoute,
+  TableRoomIdRoute: TableRoomIdRoute,
+  TableNewRoute: TableNewRoute,
   CommandersIndexRoute: CommandersIndexRoute,
   DecksIndexRoute: DecksIndexRoute,
   GamesIndexRoute: GamesIndexRoute,

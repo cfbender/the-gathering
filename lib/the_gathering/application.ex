@@ -14,6 +14,7 @@ defmodule TheGathering.Application do
        repos: Application.fetch_env!(:the_gathering, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:the_gathering, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: TheGathering.PubSub},
+      TheGatheringWeb.Presence,
       {TheGathering.RateLimiter, clean_period: :timer.minutes(10)},
       TheGathering.Catalog.Supervisor,
       TheGathering.Decklists.Cache,

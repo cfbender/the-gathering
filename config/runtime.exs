@@ -41,6 +41,18 @@ config :the_gathering, TheGatheringWeb.RateLimit,
 catalog_sync_hours = String.to_integer(System.get_env("CATALOG_SYNC_INTERVAL_HOURS", "168"))
 config :the_gathering, :catalog_sync_interval_ms, catalog_sync_hours * 60 * 60 * 1_000
 
+split_urls = fn name ->
+  System.get_env(name, "")
+  |> String.split(",", trim: true)
+  |> Enum.map(&String.trim/1)
+end
+
+config :the_gathering, :webcam_table,
+  stun_urls: split_urls.("WEBRTC_STUN_URLS"),
+  turn_urls: split_urls.("WEBRTC_TURN_URLS"),
+  turn_username: System.get_env("WEBRTC_TURN_USERNAME"),
+  turn_credential: System.get_env("WEBRTC_TURN_CREDENTIAL")
+
 # Optional origin of a self-hosted ManaVault instance whose shared deck links should be
 # recognized and resolved, e.g. https://manavault.example.com. Unset disables ManaVault links.
 if manavault_url = System.get_env("MANAVAULT_URL") do
