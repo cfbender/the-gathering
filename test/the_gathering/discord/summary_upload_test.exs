@@ -6,8 +6,8 @@ defmodule TheGathering.Discord.SummaryUploadTest do
 
   @interaction %{application_id: 123, token: "test-token"}
 
-  test "patches the original response with matching PNG and attachment metadata" do
-    png = <<137, 80, 78, 71, 13, 10, 26, 10, 0, 255>>
+  test "patches the original response through Finch with matching PNG and attachment metadata" do
+    png = <<137, 80, 78, 71, 13, 10, 26, 10>> <> :binary.copy(<<0, 255>>, 192_000)
 
     response = %{
       content: "Game #219",
@@ -16,9 +16,9 @@ defmodule TheGathering.Discord.SummaryUploadTest do
       files: [%{name: "game-219.png", body: png}]
     }
 
-    Req.Test.expect(__MODULE__, fn conn ->
+    plug = fn conn, _opts ->
+      conn = Plug.Parsers.call(conn, Plug.Parsers.init(parsers: [:multipart], pass: ["*/*"]))
       assert conn.method == "PATCH"
-      assert conn.host == "discord.com"
       assert conn.request_path == "/api/v10/webhooks/123/test-token/messages/@original"
       assert Plug.Conn.get_req_header(conn, "authorization") == []
 
@@ -36,11 +36,18 @@ defmodule TheGathering.Discord.SummaryUploadTest do
       assert upload.content_type == "image/png"
       assert upload.filename == "game-219.png"
       assert File.read!(upload.path) == png
-      Req.Test.json(conn, %{id: "456"})
-    end)
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, ~s({"id":"456"}))
+    end
+
+    server = start_supervised!({Bandit, plug: plug, ip: {127, 0, 0, 1}, port: 0})
+    {:ok, {_address, port}} = ThousandIsland.listener_info(server)
+    Process.put(:upload_test_port, port)
 
     assert {:ok, %{"id" => "456"}} =
-             SummaryUpload.edit_response(@interaction, response, plug: {Req.Test, __MODULE__})
+             SummaryUpload.edit_response(@interaction, response, adapter: __MODULE__)
   end
 
   test "rendering errors can still replace the deferred response with plain text" do
@@ -89,7 +96,21 @@ defmodule TheGathering.Discord.SummaryUploadTest do
   end
 
   def run(request) do
-    assert request.options.connect_options[:timeout] == 3_000
+    case Process.get(:upload_test_port) do
+      nil ->
+        timeout_response(request)
+
+      port ->
+        # Change only the destination; exercise the real adapter, connection
+        # options, multipart encoding, socket write, and response decoding.
+        assert request.url.host == "discord.com"
+        url = %{request.url | scheme: "http", host: "127.0.0.1", port: port}
+        Req.Finch.run(%{request | url: url})
+    end
+  end
+
+  defp timeout_response(request) do
+    assert request.options.finch[:conn_opts][:transport_opts][:timeout] == 3_000
     assert request.options.finch[:pool_timeout] == 3_000
     assert request.options.receive_timeout == 15_000
     assert request.options.request_timeout == 15_000
