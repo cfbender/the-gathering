@@ -64,7 +64,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     do: {:reply, {:error, %{reason: "invalid deck"}}, socket}
 
   # Ephemeral table state a player publishes about their own seat: life total and
-  # whether their camera or microphone is off. It rides on presence like the deck.
+  # whether their camera is off. It rides on presence like the deck.
   def handle_in("update_status", payload, socket) when is_map(payload) do
     case status_changes(payload) do
       {:ok, changes} ->
@@ -98,9 +98,6 @@ defmodule TheGatheringWeb.WebcamTableChannel do
       {"life", life}, {:ok, changes} when is_integer(life) and life in @life_range ->
         {:cont, {:ok, Map.put(changes, :life, life)}}
 
-      {"muted", muted}, {:ok, changes} when is_boolean(muted) ->
-        {:cont, {:ok, Map.put(changes, :muted, muted)}}
-
       {"camera_off", camera_off}, {:ok, changes} when is_boolean(camera_off) ->
         {:cont, {:ok, Map.put(changes, :camera_off, camera_off)}}
 
@@ -118,7 +115,6 @@ defmodule TheGatheringWeb.WebcamTableChannel do
           player_id: player.id,
           player_name: player.name,
           life: @starting_life,
-          muted: true,
           camera_off: false,
           # Default seat order is join order, so every browser sees the same seats.
           joined_at: System.system_time(:millisecond)

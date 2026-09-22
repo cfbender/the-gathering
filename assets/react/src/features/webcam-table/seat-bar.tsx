@@ -1,4 +1,4 @@
-import { Heart, MicOff, Minus, Plus, Video, VideoOff } from "lucide-react"
+import { Heart, Minus, Plus, Video, VideoOff } from "lucide-react"
 import type { ButtonHTMLAttributes } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
@@ -15,8 +15,6 @@ interface Props {
   onToggleCamera: () => void
 }
 
-const MIC_TITLE = "Voice chat is not part of the webcam table yet; use your usual voice app"
-
 function IndicatorButton({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
@@ -30,8 +28,8 @@ function IndicatorButton({ className, ...props }: ButtonHTMLAttributes<HTMLButto
   )
 }
 
-/** Name bar under a board or tile: name, life (with ± for your own seat), mic/camera
- * indicators, and the seat's commander action on the right. */
+/** Name bar under a board or tile: name, life (with ± for your own seat), the camera
+ * indicator, and the seat's commander action on the right. */
 export function SeatBar({
   participant,
   local,
@@ -76,9 +74,6 @@ export function SeatBar({
       )}
 
       <span className="ml-auto flex items-center gap-0.5">
-        <IndicatorButton disabled title={MIC_TITLE} aria-label="Microphone unavailable">
-          <MicOff className="size-3.5" />
-        </IndicatorButton>
         {local ? (
           <IndicatorButton
             onClick={onToggleCamera}

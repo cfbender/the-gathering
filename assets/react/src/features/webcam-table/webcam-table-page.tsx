@@ -82,7 +82,6 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     player_id: playerId,
     player_name: playerName,
     life: room.life,
-    muted: true,
     camera_off: room.cameraOff,
     joined_at: Number.MAX_SAFE_INTEGER,
   }

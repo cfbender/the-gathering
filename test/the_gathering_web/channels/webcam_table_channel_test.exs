@@ -74,12 +74,13 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
 
   test "publishes life and camera status through presence", %{socket: socket, room_id: room_id} do
     assert_push "presence_state", %{"peer-a" => %{metas: [meta]}}
-    assert %{life: 40, muted: true, camera_off: false, joined_at: joined_at} = meta
+    assert %{life: 40, camera_off: false, joined_at: joined_at} = meta
     assert is_integer(joined_at)
 
     assert_reply push(socket, "update_status", %{"life" => 37, "camera_off" => true}), :ok
     %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
-    assert %{life: 37, camera_off: true, muted: true} = meta
+    assert %{life: 37, camera_off: true} = meta
+    refute Map.has_key?(meta, :muted)
 
     assert_reply push(socket, "update_status", %{"life" => 1_000}), :error, %{
       reason: "invalid status"
