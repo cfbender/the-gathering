@@ -1,13 +1,33 @@
 import { Channel, Presence, Socket } from "phoenix"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
+import {
+  describeParticipantChange,
+  describeParticipantLeft,
+  orderBySeats,
+  shuffleSeats,
+} from "./table-events"
 
 export interface TableParticipant {
   peer_id: string
   player_id: number
   player_name: string
+  life: number
+  /** Server clock (ms) when the seat was taken; default seat order is join order. */
+  joined_at: number
+  muted: boolean
+  camera_off: boolean
   deck_id?: number
   deck_name?: string
+}
+
+/** Status a player publishes about their own seat; mirrors the channel's `update_status`. */
+export type SeatStatus = Partial<Pick<TableParticipant, "life" | "muted" | "camera_off">>
+
+export interface TableEvent {
+  id: number
+  at: Date
+  text: string
 }
 
 interface TableConfig {
@@ -46,6 +66,7 @@ interface PeerState {
 }
 
 const CROP_SIZE = 640
+export const STARTING_LIFE = 40
 
 function captureCrop(video: HTMLVideoElement, x: number, y: number) {
   const width = video.videoWidth
@@ -68,15 +89,38 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   const peersRef = useRef(new Map<string, PeerState>())
   const participantsRef = useRef<TableParticipant[]>([])
   const pendingCaptures = useRef(new Map<string, string>())
+  const eventIdRef = useRef(0)
   const [participants, setParticipants] = useState<TableParticipant[]>([])
+  const [seatOrder, setSeatOrder] = useState<string[]>([])
+  const [events, setEvents] = useState<TableEvent[]>([])
   const [streams, setStreams] = useState<Record<string, MediaStream>>({})
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const [cameraOff, setCameraOff] = useState(false)
+  // Your own life is tracked locally so rapid ± clicks compound before presence
+  // echoes the new total back; presence stays the source for everyone else.
+  const lifeRef = useRef(STARTING_LIFE)
+  const [life, setLifeState] = useState(STARTING_LIFE)
   const [capture, setCapture] = useState<CapturedCard | null>(null)
   const [status, setStatus] = useState("Opening 1080p camera…")
   const [error, setError] = useState<string | null>(null)
 
+  const log = useCallback((lines: string[]) => {
+    if (lines.length === 0) return
+    const at = new Date()
+    setEvents((current) =>
+      [...lines.map((text) => ({ id: (eventIdRef.current += 1), at, text })), ...current].slice(
+        0,
+        200,
+      ),
+    )
+  }, [])
+
   const chooseDeck = useCallback((chosenDeckId: number) => {
     channelRef.current?.push("choose_deck", { deck_id: chosenDeckId })
+  }, [])
+
+  const updateStatus = useCallback((changes: SeatStatus) => {
+    channelRef.current?.push("update_status", changes)
   }, [])
 
   const handleData = useCallback(
@@ -180,6 +224,19 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         })
         channelRef.current = room
         presence = new Presence(room)
+        presence.onJoin((_id, current, joined) => {
+          const previous = current?.metas[0] as TableParticipant | undefined
+          const next = joined.metas[0] as TableParticipant | undefined
+          if (next) log(describeParticipantChange(previous, next))
+        })
+        presence.onLeave((_id, current, left) => {
+          const participant = left.metas[0] as TableParticipant | undefined
+          if (participant && current.metas.length === 0) log([describeParticipantLeft(participant)])
+        })
+        room.on("seat_order", ({ peer_ids }: { peer_ids: string[] }) => {
+          setSeatOrder(peer_ids)
+          log(["Seat order randomized"])
+        })
         presence.onSync(() => {
           const next = presence?.list((_id, value) => value.metas[0] as TableParticipant) ?? []
           participantsRef.current = next
@@ -229,7 +286,14 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         )
         room
           .join()
-          .receive("ok", () => setStatus("Live — click any board to inspect a card"))
+          .receive("ok", () => {
+            setStatus("Live — click any board to inspect a card")
+            // Presence starts every (re)join at the defaults; republish what this seat knows.
+            room.push("update_status", {
+              life: lifeRef.current,
+              camera_off: !(localStreamRef.current?.getVideoTracks()[0]?.enabled ?? true),
+            })
+          })
           .receive("error", ({ reason }: { reason: string }) => setError(reason))
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "Could not start the webcam table")
@@ -245,7 +309,28 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
       peersRef.current.clear()
       localStreamRef.current?.getTracks().forEach((track) => track.stop())
     }
-  }, [deckId, handleData, playerId, roomId])
+  }, [deckId, handleData, log, playerId, roomId])
+
+  function changeLife(delta: number) {
+    const next = Math.max(-999, Math.min(999, lifeRef.current + delta))
+    lifeRef.current = next
+    setLifeState(next)
+    updateStatus({ life: next })
+  }
+
+  function toggleCamera() {
+    const next = !cameraOff
+    localStreamRef.current?.getVideoTracks().forEach((track) => {
+      track.enabled = !next
+    })
+    setCameraOff(next)
+    updateStatus({ camera_off: next })
+  }
+
+  function randomizeSeats() {
+    const current = orderBySeats(participantsRef.current, seatOrder).map((item) => item.peer_id)
+    channelRef.current?.push("seat_order", { peer_ids: shuffleSeats(current) })
+  }
 
   function requestCapture(targetPeerId: string, x: number, y: number) {
     if (targetPeerId === peerIdRef.current && localVideoRef.current) {
@@ -270,17 +355,32 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     setCapture(null)
   }
 
+  /** Participants in shared seat order; the End game form records seats in this order. */
+  const seatedParticipants = useMemo(
+    () =>
+      orderBySeats(participants, seatOrder).map((participant) =>
+        participant.peer_id === peerIdRef.current ? { ...participant, life } : participant,
+      ),
+    [life, participants, seatOrder],
+  )
+
   return {
     peerId: peerIdRef.current,
-    participants,
+    participants: seatedParticipants,
+    events,
     streams,
     localStream,
+    cameraOff,
     capture,
     status,
     error,
     requestCapture,
     suggestDeck,
     chooseDeck,
+    life,
+    changeLife,
+    toggleCamera,
+    randomizeSeats,
     dismissCapture: () => setCapture(null),
   }
 }

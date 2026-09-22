@@ -106,16 +106,89 @@ refreshing rejoins, and an application restart drops signaling but no recorded g
 member with the unguessable UUID URL can join. Durable invitations/room recovery require a table
 schema and are explicitly deferred.
 
+## Table view layout
+
+The room is laid out like a webcam play surface rather than a video-call grid: one board is
+always large, everyone else is small, and controls live in a collapsible column.
+
+```text
+┌──────────┬─────────────────────────────────────────────┬──┬──────────────┐
+│ rail     │ 40                                     Pin  │  │ Setup   3/4  │
+│ ┌──────┐ │                                             │▪ │ Invite       │
+│ │40    │ │                                             │▪ │ Commander    │
+│ └──────┘ │              active board                   │▪ │ Turn order   │
+│ Mara ♥40 │           (click = identify card)           │  │ Randomize    │
+│ Select…  │                                             │  │ End game     │
+│ ┌──────┐ │                                             │  │ Leave table  │
+│ │37    │ │                                             │  ├──────────────┤
+│ └──────┘ │                                             │  │ Identify  ▸  │
+│ Cody ♥37 │                                             │  │ Connection ▸ │
+│ Open seat├─────────────────────────────────────────────┤  │              │
+│          │ Theo ♥40   −  +            🎤 📷  Select cmd │  │              │
+└──────────┴─────────────────────────────────────────────┴──┴──────────────┘
+```
+
+- **Camera rail** (left, `lg:` 13 rem): every seat as a 16:9 tile with a life badge, a compact
+  name bar (mute/camera indicators, ± for your own seat), and that seat's commander action.
+  Empty seats up to four render as dashed "Open seat" placeholders. Clicking a tile makes it the
+  active board and pins it.
+- **Active board** (center): the stage fills the remaining viewport. The large life badge sits
+  top-left, a Pin/Pinned toggle top-right, and a name bar underneath carries life controls,
+  mic/camera toggles, and the "Select commander" popover. Unpinned, the stage follows the newest
+  remote joiner; when the active player leaves it falls back to your own board. Clicking the
+  video starts the click-to-identify flow, and the suggestion card floats bottom-center over the
+  stage (keys 1–5 still pick).
+- **Side panel** (right): a narrow icon strip (Table, Decks, Log) plus a collapse chevron. The
+  Table tab holds the Setup section (players count, Invite players copies the room URL, Select
+  your commander, a turn-order table with #/Player/Commander/Life, the primary Randomize turn
+  order button, the red End game button, Leave table) followed by collapsed Identify cards and
+  Connection sections. Decks lists your commanders; Log shows the table event log. Collapsing the
+  panel leaves only the icon strip so the board grows.
+- The `/table/*` routes force the dark theme (`TableShell` in `routes/__root.tsx` swaps
+  `data-theme` on mount and restores the user's choice on unmount) so portalled popovers and
+  dialogs match the black stage. They render no application header.
+
+### Shared seat state
+
+Presence metadata carries, per seat, `life` (starts at 40), `muted`, `camera_off`, and a
+server-stamped `joined_at`. Players publish their own changes through the channel's
+`update_status` event (validated: life −999…999, booleans, no other keys) and the channel merges
+them into presence, so every browser shows the same totals without another round trip. Your own
+life is also tracked locally so rapid ± clicks compound before presence echoes back, and it is
+republished after every (re)join because presence restarts at the defaults.
+
+Default turn order is join order (`joined_at`, then peer id) so every browser agrees.
+"Randomize turn order" shuffles the present peers and pushes `seat_order`; the channel verifies
+the list names exactly the present peers, then broadcasts it. The End game form numbers seats in
+that order and records them the same way.
+
+The Log tab is client-side only: it is derived from presence joins/leaves/changes and the
+`seat_order` broadcast, capped at 200 lines, and not persisted.
+
+Audio is not captured. The mic button is a disabled, labelled stub so the layout matches the
+eventual voice control without introducing autoplay-with-sound risk today.
+
 ## File and component structure
 
 - `TheGatheringWeb.UserSocket` verifies a short-lived token wrapping the tracked cookie session.
-- `TheGatheringWeb.WebcamTableChannel` caps rooms at four and relays targeted WebRTC signals.
-- `TheGatheringWeb.Presence` owns ephemeral room membership.
+- `TheGatheringWeb.WebcamTableChannel` caps rooms at four, relays targeted WebRTC signals,
+  merges `update_status` into presence, and validates/broadcasts `seat_order`.
+- `TheGatheringWeb.Presence` owns ephemeral room membership and seat status.
 - `WebcamTableConfigController` exposes authenticated ICE configuration.
-- `features/webcam-table/use-webcam-room.ts` owns camera, mesh, signaling, and native crop RPC.
-- `features/webcam-table/webcam-table-page.tsx` composes the full-screen active board, right-side
-  camera/control rail, click suggestions, and modal result form. Table routes intentionally omit
-  the normal application header and navigation so the video remains the primary surface.
+- `features/webcam-table/use-webcam-room.ts` owns camera, mesh, signaling, native crop RPC,
+  seat status (life, camera), seat order, and the event log.
+- `features/webcam-table/webcam-table-page.tsx` composes the rail, stage, and side panel and owns
+  the active-board selection (`useActiveBoard`).
+- `features/webcam-table/board.tsx` — `ActiveBoard`, `CameraTile`, `OpenSeat`, `LifeBadge`,
+  and `capturePoint` (click → normalized coordinates).
+- `features/webcam-table/seat-bar.tsx` — the name/life/mic/camera bar under a board or tile.
+- `features/webcam-table/commander-picker.tsx` — popover listing a player's decks; any seat can
+  set another player's commander (the server still verifies deck ownership).
+- `features/webcam-table/card-suggestions.tsx` — the click-to-identify overlay.
+- `features/webcam-table/side-panel.tsx` — icon strip and Table/Decks/Log tabs.
+- `features/webcam-table/finish-game.tsx` — the End game result dialog.
+- `features/webcam-table/table-events.ts` — pure helpers for log lines, seat ordering, and
+  shuffling (unit-tested in `table-events.test.ts`).
 - `routes/table.new.tsx` and `routes/table.$roomId.tsx` are thin route adapters.
 
 The finish mutation posts the normal game payload (`played_at`, optional duration/turns/win

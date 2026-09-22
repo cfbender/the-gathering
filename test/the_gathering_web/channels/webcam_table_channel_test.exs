@@ -72,6 +72,40 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     }
   end
 
+  test "publishes life and camera status through presence", %{socket: socket, room_id: room_id} do
+    assert_push "presence_state", %{"peer-a" => %{metas: [meta]}}
+    assert %{life: 40, muted: true, camera_off: false, joined_at: joined_at} = meta
+    assert is_integer(joined_at)
+
+    assert_reply push(socket, "update_status", %{"life" => 37, "camera_off" => true}), :ok
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+    assert %{life: 37, camera_off: true, muted: true} = meta
+
+    assert_reply push(socket, "update_status", %{"life" => 1_000}), :error, %{
+      reason: "invalid status"
+    }
+
+    assert_reply push(socket, "update_status", %{"life" => 20, "role" => "admin"}), :error, %{
+      reason: "invalid status"
+    }
+
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+    assert meta.life == 37
+  end
+
+  test "broadcasts a seat order that names every present peer", %{socket: socket} do
+    assert_reply push(socket, "seat_order", %{"peer_ids" => ["peer-a"]}), :ok
+    assert_broadcast "seat_order", %{peer_ids: ["peer-a"]}
+
+    assert_reply push(socket, "seat_order", %{"peer_ids" => ["peer-a", "peer-ghost"]}),
+                 :error,
+                 %{reason: "seat order must list every seated player"}
+
+    assert_reply push(socket, "seat_order", %{"peer_ids" => "peer-a"}), :error, %{
+      reason: "invalid seat order"
+    }
+  end
+
   test "rejects invalid room IDs", %{player: player} do
     user = AccountsFixtures.user_fixture()
     socket = socket(UserSocket, "peer-b", %{user: user})
