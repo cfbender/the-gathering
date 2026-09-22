@@ -14,8 +14,7 @@ defmodule TheGathering.Discord.SummaryUpload do
         user_agent: "DiscordBot (https://github.com/cfbender/the-gathering, 0.1.0)",
         retry: false,
         redirect: false,
-        connect_options: [timeout: 3_000],
-        finch: [pool_timeout: 3_000],
+        finch: [conn_opts: [transport_opts: [timeout: 3_000]], pool_timeout: 3_000],
         request_timeout: 15_000,
         receive_timeout: 15_000
       )
