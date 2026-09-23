@@ -15,7 +15,7 @@ export function gameJustStarted(
   return previous != null && previous.started_at == null && next.started_at != null
 }
 
-/** The recognition gallery has full names, not oracle IDs. Keep both faces of a card's name. */
+/** Dedupe by the displayed name: separate printed sides stay distinct, shared-art names stay whole. */
 export function sameCard(a: IdentifiedCard, b: IdentifiedCard) {
   return a.name.trim().toLowerCase() === b.name.trim().toLowerCase()
 }

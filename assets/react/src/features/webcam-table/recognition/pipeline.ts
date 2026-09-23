@@ -26,6 +26,9 @@ export interface GalleryArt {
   set: string
   collector_number?: string
   layout?: string
+  /** 0 is the original printing UUID; 1 uses `<uuid>-1`. `name` is already face-specific. */
+  face?: number
+  lang?: string
   frame: string
 }
 

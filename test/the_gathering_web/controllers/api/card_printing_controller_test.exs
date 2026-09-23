@@ -4,6 +4,11 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
   alias TheGathering.{Catalog, Games, Repo, Stats}
   alias TheGathering.Catalog.{Card, CardData, Printing, Sync}
 
+  @saga "00000000-0000-0000-0000-000000000001"
+  @mdfc "00000000-0000-0000-0000-000000000002"
+  @missing "00000000-0000-0000-0000-000000000003"
+  @down "00000000-0000-0000-0000-000000000004"
+
   setup :register_and_log_in_user
 
   setup %{user: user} do
@@ -99,11 +104,11 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
 
   test "fetches full printing details by Scryfall id and caches the printing", %{conn: conn} do
     Req.Test.expect(__MODULE__, fn conn ->
-      assert conn.request_path == "/cards/saga-print"
+      assert conn.request_path == "/cards/#{@saga}"
       assert get_req_header(conn, "user-agent") != []
 
       card =
-        scryfall_card("saga-print", "Kiora Bests the Sea God")
+        scryfall_card(@saga, "Kiora Bests the Sea God")
         |> Map.merge(%{
           "mana_cost" => "{5}{U}{U}",
           "type_line" => "Enchantment — Saga",
@@ -125,7 +130,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
 
     body =
       conn
-      |> get(~p"/api/card-printings/saga-print/details")
+      |> get(~p"/api/card-printings/#{@saga}/details")
       |> json_response(200)
       |> Map.fetch!("data")
 
@@ -144,13 +149,15 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
            }
 
     refute Map.has_key?(body, "games")
-    assert Catalog.get_printing("saga-print").set_name == "New Set"
+    assert Catalog.get_printing(@saga).set_name == "New Set"
   end
 
-  test "joins the faces of a double-faced printing and reports misses and outages", %{conn: conn} do
-    Req.Test.expect(__MODULE__, fn conn ->
+  test "selects each printed face without mixing text, images or cached IDs", %{conn: conn} do
+    Req.Test.expect(__MODULE__, 2, fn conn ->
+      assert conn.request_path == "/cards/#{@mdfc}"
+
       card =
-        scryfall_card("mdfc", "Valki, God of Lies // Tibalt, Cosmic Impostor")
+        scryfall_card(@mdfc, "Valki, God of Lies // Tibalt, Cosmic Impostor")
         |> Map.delete("image_uris")
         |> Map.put("layout", "modal_dfc")
         |> Map.put("card_faces", [
@@ -168,7 +175,8 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
             "mana_cost" => "{5}{B}{R}",
             "type_line" => "Legendary Planeswalker — Tibalt",
             "oracle_text" => "You may play cards exiled with Tibalt.",
-            "loyalty" => "5"
+            "loyalty" => "5",
+            "image_uris" => %{"normal" => "https://img.example/tibalt.jpg"}
           }
         ])
 
@@ -177,26 +185,133 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
 
     body =
       conn
-      |> get(~p"/api/card-printings/mdfc/details")
+      |> get(~p"/api/card-printings/#{@mdfc}/details")
       |> json_response(200)
       |> Map.fetch!("data")
 
     assert body["mana_cost"] == "{1}{B}"
+    assert body["name"] == "Valki, God of Lies"
     assert body["power"] == "2"
     assert body["toughness"] == "1"
 
     assert body["oracle_text"] ==
-             "When Valki enters, each opponent reveals their hand.\n//\nYou may play cards exiled with Tibalt."
+             "When Valki enters, each opponent reveals their hand."
 
     assert body["image_uris"] == %{"normal" => "https://img.example/valki.jpg"}
 
+    back_id = @mdfc <> "-1"
+    back = conn |> get(~p"/api/card-printings/#{back_id}/details") |> json_response(200)
+    assert back["data"]["id"] == back_id
+    assert back["data"]["name"] == "Tibalt, Cosmic Impostor"
+    assert back["data"]["oracle_text"] == "You may play cards exiled with Tibalt."
+    assert back["data"]["mana_cost"] == "{5}{B}{R}"
+    assert back["data"]["type_line"] == "Legendary Planeswalker — Tibalt"
+    assert back["data"]["loyalty"] == "5"
+    assert back["data"]["power"] == nil
+    assert back["data"]["toughness"] == nil
+    assert back["data"]["image_uris"] == %{"normal" => "https://img.example/tibalt.jpg"}
+    assert Catalog.get_printing(@mdfc).name == "Valki, God of Lies"
+    assert Catalog.get_printing(back_id).name == "Tibalt, Cosmic Impostor"
+
+    assert conn |> get(~p"/api/card-printings/#{back_id}") |> json_response(200) == %{
+             "data" =>
+               Map.take(
+                 back["data"],
+                 ~w(id name set_code set_name collector_number lang image_uris)
+               )
+           }
+  end
+
+  test "supports transform, reversible and token faces, including face-level oracle IDs", %{
+    conn: conn
+  } do
+    for layout <- ~w(transform reversible_card double_faced_token) do
+      id = Ecto.UUID.generate()
+      back_id = id <> "-1"
+
+      Req.Test.expect(__MODULE__, fn request ->
+        assert request.request_path == "/cards/#{id}"
+
+        card =
+          scryfall_card(id, "Front // Back")
+          |> Map.drop(["oracle_id", "image_uris"])
+          |> Map.merge(%{
+            "layout" => layout,
+            "set_type" => "token",
+            "card_faces" => [
+              %{"name" => "Front", "oracle_id" => "front-oracle"},
+              %{
+                "name" => "Back",
+                "oracle_id" => "back-oracle",
+                "layout" => "normal",
+                "type_line" => "Token Creature — Spirit",
+                "oracle_text" => "Flying",
+                "image_uris" => %{"normal" => "https://img.example/back.jpg"}
+              }
+            ]
+          })
+
+        Req.Test.json(request, card)
+      end)
+
+      body = conn |> get(~p"/api/card-printings/#{back_id}/details") |> json_response(200)
+      assert body["data"]["name"] == "Back"
+      assert body["data"]["layout"] == layout
+      assert body["data"]["oracle_id"] == "back-oracle"
+      assert body["data"]["oracle_text"] == "Flying"
+      assert Catalog.get_printing(back_id).image_uris["normal"] == "https://img.example/back.jpg"
+    end
+  end
+
+  test "prepare and adventure retain their shared image and combined rules", %{conn: conn} do
+    for layout <- ~w(prepare adventure) do
+      id = Ecto.UUID.generate()
+
+      Req.Test.expect(__MODULE__, fn request ->
+        card =
+          scryfall_card(id, "Studious First-Year // Rampant Growth")
+          |> Map.merge(%{
+            "layout" => layout,
+            "card_faces" => [
+              %{"mana_cost" => "{G}", "oracle_text" => "When this creature enters, prepare."},
+              %{"mana_cost" => "{1}{G}", "oracle_text" => "Search for a basic land."}
+            ]
+          })
+
+        Req.Test.json(request, card)
+      end)
+
+      body = conn |> get(~p"/api/card-printings/#{id}/details") |> json_response(200)
+      assert body["data"]["name"] == "Studious First-Year // Rampant Growth"
+      assert body["data"]["mana_cost"] == "{G}"
+
+      assert body["data"]["oracle_text"] ==
+               "When this creature enters, prepare.\n//\nSearch for a basic land."
+
+      assert body["data"]["image_uris"]["normal"] == "https://img.example/#{id}-default-card.jpg"
+    end
+  end
+
+  test "rejects malformed or unavailable faces and reports misses and outages", %{conn: conn} do
+    for suffix <- ["-0", "-2", "-01", "-1-1", ":back", "-x"] do
+      id = @mdfc <> suffix
+      assert conn |> get(~p"/api/card-printings/#{id}/details") |> json_response(400)
+      assert conn |> get(~p"/api/card-printings/#{id}/rulings") |> json_response(400)
+    end
+
+    Req.Test.expect(__MODULE__, fn request ->
+      Req.Test.json(request, scryfall_card(@saga, "Single-faced card"))
+    end)
+
+    assert conn |> get(~p"/api/card-printings/#{@saga <> "-1"}/details") |> json_response(400)
+
     Req.Test.expect(__MODULE__, fn conn -> Req.Test.json(%{conn | status: 404}, %{}) end)
-    assert conn |> get(~p"/api/card-printings/nope/details") |> json_response(404)
+    assert conn |> get(~p"/api/card-printings/#{@missing}/details") |> json_response(404)
 
     Req.Test.expect(__MODULE__, fn conn -> Req.Test.json(%{conn | status: 503}, %{}) end)
-    assert conn |> get(~p"/api/card-printings/down/details") |> json_response(502)
+    assert conn |> get(~p"/api/card-printings/#{@down}/details") |> json_response(502)
 
-    assert build_conn() |> get(~p"/api/card-printings/mdfc/details") |> json_response(401)
+    assert build_conn() |> get(~p"/api/card-printings/#{@mdfc}/details") |> json_response(401)
   end
 
   test "supports name-only or obsolete catalog references and surfaces upstream failure", %{

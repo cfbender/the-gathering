@@ -127,6 +127,21 @@ describe("searchArts", () => {
   it("caps the result list", () => {
     expect(searchArts(arts, "forest", 2)).toHaveLength(2)
   })
+
+  it("searches and returns face metadata without collapsing sides", () => {
+    const front: GalleryArt = {
+      id: "b0a96416-9ee5-4202-a99f-e09db8794567",
+      name: "Jadzi, Oracle of Arcavios",
+      set: "stx",
+      collector_number: "325",
+      face: 0,
+      lang: "en",
+      frame: "modern",
+    }
+    const back = { ...front, id: `${front.id}-1`, name: "Journey to the Oracle", face: 1 }
+    expect(searchArts([front, back], "Journey stx #325")).toEqual([back])
+    expect(searchArts([front, back], "Jadzi")).toEqual([front])
+  })
 })
 
 describe("clickInCrop", () => {

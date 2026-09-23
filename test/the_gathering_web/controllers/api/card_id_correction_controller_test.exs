@@ -51,10 +51,27 @@ defmodule TheGatheringWeb.API.CardIdCorrectionControllerTest do
     assert next["split"] == row["split"]
   end
 
+  test "preserves face labels and top-1 through storage and export", %{conn: conn, payload: p} do
+    face = p["label"] <> "-1"
+    payload = Map.merge(p, %{"label" => face, "top1" => face})
+    assert conn |> post(~p"/api/cardid/corrections", payload) |> json_response(201)
+    admin = log_in_user(build_conn(), AccountsFixtures.admin_fixture())
+    body = admin |> get(~p"/api/cardid/corrections") |> json_response(200)
+    assert [row] = body["data"]["corrections"]
+    assert row["label"] == face
+    assert row["top1"] == face
+    assert row["capture_id"] == p["capture_id"]
+  end
+
   test "rejects malformed, oversized, and traversing payloads", %{conn: conn, payload: p} do
     for change <- [
           %{"capture_id" => "../escape"},
+          %{"capture_id" => p["capture_id"] <> "-1"},
           %{"label" => "not-a-scryfall-id"},
+          %{"label" => p["label"] <> "-0"},
+          %{"label" => p["label"] <> "-2"},
+          %{"label" => p["label"] <> "-01"},
+          %{"top1" => p["label"] <> "-1/../escape"},
           %{"image" => "data:image/png;base64,AAAA"},
           %{"image" => "data:image/jpeg;base64," <> String.duplicate("A", 190_004)},
           %{"image" => "data:image/jpeg;base64,AAAA"},
