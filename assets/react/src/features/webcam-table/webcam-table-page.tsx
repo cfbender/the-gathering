@@ -30,8 +30,7 @@ import {
   type IdentifiedCard,
   type TableParticipant,
 } from "./use-webcam-room"
-
-const MAX_PLAYERS = 10
+import { MAX_PLAYERS } from "./rooms"
 
 interface Props {
   roomId: string

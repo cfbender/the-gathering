@@ -8,19 +8,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { activeTablesQuery, tablePlayerNames, type ActiveTable } from "./rooms"
-
-function JoinLabel({ table }: { table: ActiveTable }) {
-  return (
-    <>
-      <Video className="size-4" />
-      <span className="grid text-left leading-tight">
-        <span>{table.full ? "Table full" : "Join"}</span>
-        <span className="text-[0.65rem] font-medium opacity-75">{tablePlayerNames(table)}</span>
-      </span>
-    </>
-  )
-}
+import { MAX_PLAYERS, activeTablesQuery, tablePlayerNames, type ActiveTable } from "./rooms"
 
 /** Games-page header actions for the webcam table. With no live table it is one Play button
  * that opens a new room. While a table is live the primary action becomes Join (a menu when
@@ -53,8 +41,9 @@ export function PlayActions() {
           params={{ roomId: table.id }}
           className="btn btn-secondary"
           aria-disabled={table.full || undefined}
+          title={tablePlayerNames(table)}
         >
-          <JoinLabel table={table} />
+          <Video className="size-4" /> {table.full ? "Table full" : "Join"}
         </Link>
       </>
     )
@@ -79,7 +68,7 @@ export function PlayActions() {
                 <Users className="size-4 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{tablePlayerNames(table)}</span>
                 <span className="text-base-content/60 shrink-0 text-xs tabular-nums">
-                  {table.full ? "Full" : `${table.players.length}/4`}
+                  {table.full ? "Full" : `${table.players.length}/${MAX_PLAYERS}`}
                 </span>
               </Link>
             </DropdownMenuItem>
