@@ -68,6 +68,41 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
     assert %{allowed: false, bootstrap: false} = Accounts.registration_status()
   end
 
+  test "an invitation survives restarting OAuth before completing registration", %{conn: conn} do
+    create_admin()
+    {:ok, token} = Accounts.rotate_registration_invite()
+    conn = conn |> accept_invite(token) |> get("/auth/discord")
+
+    conn = conn |> recycle() |> discord_callback("200000000000000010")
+
+    assert redirected_to(conn) == "/"
+    assert Accounts.get_user_by_discord_id("200000000000000010")
+    refute get_session(conn, :registration_invite_hash)
+    refute get_session(conn, :discord_oauth)
+  end
+
+  @tag capture_log: true
+  test "an invitation survives a canceled OAuth attempt and can be retried", %{conn: conn} do
+    create_admin()
+    {:ok, token} = Accounts.rotate_registration_invite()
+    conn = conn |> accept_invite(token) |> get("/auth/discord")
+
+    conn =
+      conn
+      |> recycle()
+      |> get("/auth/discord/callback", %{error: "access_denied", state: oauth_state(conn)})
+
+    assert redirected_to(conn) == "/login?error=discord_failed"
+    refute get_session(conn, :discord_oauth)
+    refute get_session(conn, :user_token)
+
+    conn = conn |> recycle() |> discord_callback("200000000000000011")
+
+    assert redirected_to(conn) == "/"
+    assert Accounts.get_user_by_discord_id("200000000000000011")
+    refute get_session(conn, :registration_invite_hash)
+  end
+
   test "invalid invitations cannot register a new Discord member", %{conn: conn} do
     create_admin()
     {:ok, _token} = Accounts.rotate_registration_invite()
@@ -85,7 +120,10 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
     conn = conn |> accept_invite(token) |> get("/auth/discord")
     state = oauth_state(conn)
     refute redirected_to(conn) =~ token
-    refute get_session(conn, :registration_invite_hash)
+
+    assert get_session(conn, :registration_invite_hash) ==
+             Accounts.registration_invite_hash(token)
+
     assert get_session(conn, :discord_oauth).registration_invite_hash
 
     {:ok, new_token} = Accounts.rotate_registration_invite()
@@ -93,6 +131,11 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
     assert redirected_to(conn) == "/login?error=registration_closed"
     refute Accounts.get_user_by_discord_id("200000000000000003")
     refute get_session(conn, :discord_oauth)
+    refute get_session(conn, :user_token)
+
+    conn = conn |> recycle() |> discord_callback("200000000000000003")
+    assert redirected_to(conn) == "/login?error=registration_closed"
+    refute Accounts.get_user_by_discord_id("200000000000000003")
     refute get_session(conn, :user_token)
 
     conn = build_conn() |> accept_invite(new_token) |> discord_callback("200000000000000003")
