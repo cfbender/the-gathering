@@ -16,6 +16,7 @@ defmodule TheGatheringWeb.API.CardIdBundleController do
   @content_types %{
     "manifest.json" => "application/json",
     "arts.json" => "application/json",
+    "printings.json" => "application/json",
     "detector.onnx" => "application/octet-stream",
     "embed.onnx" => "application/octet-stream",
     "search.onnx" => "application/octet-stream"
@@ -24,7 +25,9 @@ defmodule TheGatheringWeb.API.CardIdBundleController do
   def show(conn, _params) do
     with {:ok, manifest} <- CardId.current_manifest() do
       files =
-        Map.new(CardId.files(), fn name ->
+        CardId.files()
+        |> Enum.filter(&(&1 != "printings.json" or Map.has_key?(manifest["files"] || %{}, &1)))
+        |> Map.new(fn name ->
           {name, ~p"/api/cardid/bundles/#{manifest["version"]}/#{name}"}
         end)
 

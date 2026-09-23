@@ -11,7 +11,7 @@ defmodule TheGathering.CardId do
   The app never runs the models; it serves the files of the version `current` points at.
   """
 
-  @files ~w(manifest.json arts.json detector.onnx embed.onnx search.onnx)
+  @files ~w(manifest.json arts.json detector.onnx embed.onnx search.onnx printings.json)
   @version_pattern ~r/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/
 
   @doc "Bundle file names the app serves, in the order the browser loads them."

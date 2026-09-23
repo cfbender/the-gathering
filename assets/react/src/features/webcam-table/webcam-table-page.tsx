@@ -528,6 +528,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
               onChooseCard={chooseCard}
               onChooseDeck={chooseDeckForCapture}
               onSearch={recognizer.search}
+              onPrintings={recognizer.printings}
+              galleryVersion={"version" in recognizer.state ? recognizer.state.version : undefined}
               onDismiss={dismissPicker}
             />
           )}
