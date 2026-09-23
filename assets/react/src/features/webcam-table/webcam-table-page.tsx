@@ -340,6 +340,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       onChooseDeck={chooseFor(participant)}
       onChangeLife={room.changeLife}
       onToggleCamera={room.toggleCamera}
+      onAdjustCounter={room.adjustCounter}
       counters={countersFor(participant)}
     />
   )
@@ -385,6 +386,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
               participant={participant}
               decks={decksFor(participant)}
               onChooseDeck={chooseFor(participant)}
+              local={participant.peer_id === room.peerId}
+              onAdjustCounter={room.adjustCounter}
               counters={countersFor(participant)}
             />
           </div>
