@@ -1,6 +1,7 @@
 defmodule TheGathering.Games.SummaryCardTest do
   use ExUnit.Case, async: true
 
+  alias TheGathering.Catalog.CardImages
   alias TheGathering.Games.{Deck, Game, GamePlayer, Player, SummaryCard, SummaryImage}
 
   test "draw, six seats, partners, missing data and hostile text stay bounded and escaped" do
@@ -36,6 +37,27 @@ defmodule TheGathering.Games.SummaryCardTest do
     assert svg =~ "…"
     assert byte_size(svg) < 15_000
     assert SummaryCard.description(game) =~ "Draw"
+  end
+
+  test "renderer downloads the Scryfall source behind a catalog image-cache URL" do
+    source =
+      "https://cards.scryfall.io/art_crop/front/0/1/01234567-89ab-cdef-0123-456789abcdef.jpg?1700000000"
+
+    cache_url = CardImages.url(source)
+    assert cache_url =~ "/api/card-images?"
+    assert CardImages.source(cache_url) == source
+    assert CardImages.source(source) == source
+    assert CardImages.source(nil) == nil
+    assert CardImages.source("/api/card-images?other=1") == nil
+
+    # Browser-facing cache URLs are relative and unauthenticated for the renderer; only the
+    # unwrapped source passes the allowlist.
+    assert SummaryImage.fetch_art(cache_url) == nil
+
+    Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 200, <<255, 216, 255, 10>>) end)
+
+    assert SummaryImage.fetch_art(CardImages.source(cache_url), plug: {Req.Test, __MODULE__}) ==
+             "data:image/jpeg;base64," <> Base.encode64(<<255, 216, 255, 10>>)
   end
 
   test "art fetch only allows HTTPS Scryfall, raster formats, no redirects, capped response sizes" do
