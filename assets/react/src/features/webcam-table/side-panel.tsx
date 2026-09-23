@@ -15,24 +15,19 @@ import {
   WalletCards,
   Wifi,
 } from "lucide-react"
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ComponentType,
-  type ReactNode,
-} from "react"
+import type { ComponentType, ReactNode } from "react"
 import { commanderNames, type DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
 import { CardsTab, type CardsTabProps } from "./cards-tab"
 import { CommanderPicker } from "./commander-picker"
 import { CommanderActions } from "./new-commander-dialog"
+import type { TimerSample } from "./game-timer"
 import { PanelSection } from "./panel-section"
 import type { RecognizerState } from "./recognition/use-recognizer"
-import { activeTurnOrder } from "./table-events"
+import { SeatOrderTable } from "./seat-order-table"
 import { TableRolls, type RollRequest } from "./table-rolls"
+import { nextActiveSeat, type TurnState } from "./turns"
 import type { TableEvent, TableParticipant } from "./use-webcam-room"
 
 export type PanelTab = "table" | "decks" | "cards" | "log" | "settings"
@@ -62,6 +57,12 @@ interface Props extends CardsTabProps {
   onChooseDeck: (deckId: number) => void
   onRandomizeSeats: () => void
   shuffleVersion: number
+  turns: TurnState
+  timer: TimerSample | null
+  autoRandomize: boolean
+  onAutoRandomize: (enabled: boolean) => void
+  onPassTurn: () => void
+  onAdjustTurn: (playerId: number, delta: -1 | 1) => void
   onRoll: (request: RollRequest) => void
   onSetEliminated: (peerId: string, eliminated: boolean) => void
   onEndGame: () => void
@@ -126,111 +127,6 @@ function RecognizerBadge({ state }: { state: RecognizerState }) {
 function commanderName(participant: TableParticipant, decks: DeckSummary[]) {
   const deck = decks.find((deck) => deck.id === participant.deck_id)
   return deck ? commanderNames(deck) : participant.deck_name
-}
-
-function SeatOrderTable({
-  participants,
-  localParticipant,
-  decks,
-  shuffleVersion,
-  onSetEliminated,
-}: Pick<
-  Props,
-  "participants" | "localParticipant" | "decks" | "shuffleVersion" | "onSetEliminated"
->) {
-  const [step, setStep] = useState(0)
-  const body = useRef<HTMLTableSectionElement>(null)
-  const positions = useRef(new Map<string, number>())
-  useEffect(() => {
-    if (!shuffleVersion || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
-    let frame = 1
-    setStep(frame)
-    const interval = window.setInterval(() => {
-      frame += 1
-      setStep(frame < 7 ? frame : 0)
-      if (frame >= 7) window.clearInterval(interval)
-    }, 160)
-    return () => window.clearInterval(interval)
-  }, [shuffleVersion])
-  const offset = participants.length ? step % participants.length : 0
-  const displayed = [...participants.slice(offset), ...participants.slice(0, offset)]
-  const turns = new Map(
-    activeTurnOrder(displayed).map((participant, index) => [participant.peer_id, index + 1]),
-  )
-  useLayoutEffect(() => {
-    for (const row of body.current?.rows ?? []) {
-      const key = row.dataset.peer ?? ""
-      const top = row.offsetTop
-      const previous = positions.current.get(key)
-      if (
-        previous !== undefined &&
-        previous !== top &&
-        !window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ) {
-        row.getAnimations().forEach((animation) => animation.cancel())
-        row.animate(
-          [{ transform: `translateY(${previous - top}px)` }, { transform: "translateY(0)" }],
-          { duration: 140, easing: "ease-out" },
-        )
-      }
-      positions.current.set(key, top)
-    }
-  }, [participants, step])
-
-  return (
-    <table className="w-full text-[0.7rem]" aria-label="Turn order" aria-busy={step !== 0}>
-      <thead className="text-base-content/50 text-[0.6rem] tracking-wider uppercase">
-        <tr>
-          <th className="w-5 py-1 text-left font-semibold">#</th>
-          <th className="py-1 text-left font-semibold">Player</th>
-          <th className="py-1 text-left font-semibold">Commander</th>
-          <th className="py-1 text-right font-semibold">Life</th>
-        </tr>
-      </thead>
-      <tbody ref={body}>
-        {displayed.map((participant) => (
-          <tr
-            key={participant.peer_id}
-            data-peer={participant.peer_id}
-            className={cn("border-t border-white/5", participant.eliminated && "text-white/45")}
-          >
-            <td className="py-1.5 tabular-nums">{turns.get(participant.peer_id) ?? "—"}</td>
-            <td className="max-w-24 py-1.5 font-semibold">
-              <span className={cn("block truncate", participant.eliminated && "line-through")}>
-                {participant.player_name}
-              </span>
-              {participant.peer_id === localParticipant.peer_id && (
-                <span className="text-base-content/50 font-normal">(you) </span>
-              )}
-              <button
-                type="button"
-                className="rounded border border-white/15 px-1 py-0.5 text-[0.6rem] font-normal hover:bg-white/10 disabled:opacity-50"
-                aria-pressed={participant.eliminated}
-                aria-label={`Eliminated: ${participant.player_name}`}
-                disabled={participant.departed}
-                title={
-                  participant.departed
-                    ? "Rejoin to restore this player"
-                    : participant.eliminated
-                      ? "Restore player"
-                      : "Mark player eliminated"
-                }
-                onClick={() => onSetEliminated(participant.peer_id, !participant.eliminated)}
-              >
-                {participant.eliminated ? "Out · Undo" : "Eliminate"}
-              </button>
-            </td>
-            <td className="text-base-content/70 max-w-28 py-1.5">
-              <CommanderHover deck={decks.find((deck) => deck.id === participant.deck_id)}>
-                <span tabIndex={0}>{commanderName(participant, decks) ?? "—"}</span>
-              </CommanderHover>
-            </td>
-            <td className="py-1.5 text-right font-bold tabular-nums">{participant.life}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
 }
 
 function TableTab(props: Props) {
@@ -304,6 +200,9 @@ function TableTab(props: Props) {
           decks={decks}
           shuffleVersion={props.shuffleVersion}
           onSetEliminated={props.onSetEliminated}
+          turns={props.turns}
+          timer={props.timer}
+          onAdjustTurn={props.onAdjustTurn}
         />
         <p className="text-base-content/50 mt-1 text-[0.65rem]">
           Out players skip turns but keep their recorded seat. Any player can eliminate or restore a
@@ -311,13 +210,34 @@ function TableTab(props: Props) {
         </p>
 
         <div className="mt-3 grid gap-1.5">
+          <label className="mb-1 flex items-center justify-between gap-2 text-[0.65rem] text-white/60">
+            Auto-randomize order on start
+            <input
+              type="checkbox"
+              className="toggle toggle-xs toggle-primary"
+              checked={props.autoRandomize}
+              onChange={(event) => props.onAutoRandomize(event.target.checked)}
+            />
+          </label>
           <button
             type="button"
             className="btn btn-primary btn-sm w-full text-xs"
             onClick={onRandomizeSeats}
             disabled={participants.filter((participant) => !participant.departed).length < 2}
           >
-            <Shuffle className="size-3.5" /> Randomize and start
+            <Shuffle className="size-3.5" />{" "}
+            {props.timer?.state.started_at == null && !props.autoRandomize
+              ? "Start match"
+              : "Randomize and start"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm w-full text-xs"
+            onClick={props.onPassTurn}
+            disabled={props.turns.active_player_id === null}
+            title={`Next: ${nextActiveSeat(participants, props.turns.active_player_id)?.player_name ?? "No eligible players"}`}
+          >
+            Pass turn <kbd className="kbd kbd-xs">Space</kbd>
           </button>
           <button
             type="button"

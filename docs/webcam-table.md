@@ -189,8 +189,9 @@ always large, everyone else is small, and controls live in a collapsible column.
   stage (keys 1–5 still pick).
 - **Side panel** (right): a narrow icon strip (Table, Decks, Cards, Log, Settings) plus a collapse chevron and shortcut help. The
   Table tab holds the Setup section (players count, Invite players copies the room URL, Select
-  your commander, a turn-order table with #/Player/Commander/Life, the primary Randomize and
-  start button, the red End game button, Leave table), dice/coin controls, and collapsed Identify
+  your commander, a turn-order table with #/Player/Turn/Time (life and commander under the name),
+  an auto-randomize-on-start toggle, the primary Randomize and start button, Pass turn, the red
+  End game button, Leave table), dice/coin controls, and collapsed Identify
   cards and Connection sections. Decks lists your commanders; Log shows the table event log. Collapsing the
   panel leaves only the icon strip so the board grows.
 - **Resize dividers** on desktop drag the camera rail (176–360 px, default 208) and panel content
@@ -261,9 +262,10 @@ Any seated player can mark a present seat eliminated or undo it in the turn-orde
 `set_eliminated` validates a present peer ID and a boolean; the target channel merges it into
 its own presence so later life/camera updates cannot overwrite elimination. Players may also
 publish their own `eliminated` through `update_status`. Out seats stay visible with dimmed video,
-an Eliminated badge, and a struck-through name. They receive no turn number; only active seats
-are numbered, while the recording order still includes everyone. There is no automatic turn
-advancement or per-turn timer.
+an Eliminated badge, and a struck-through name. They receive no order number; only eligible seats
+are numbered, while the recording order still includes everyone. Eliminating or disconnecting
+the current player advances the turn to the next eligible seat. If none remain there is no active
+turn; restoring a player starts their next turn. Counts and accumulated time are kept.
 
 Eliminated seats are retained in `WebcamTableState` and shared through `eliminated_seats`, so
 leaving does not drop them from the result or from a late joiner's view. Rejoining as the same
@@ -274,19 +276,36 @@ others defaulting to losses in recorded seat order. The result remains editable;
 explicitly records the whole table as draws, as required by the existing game schema.
 
 Default turn order is join order (`joined_at`, then peer id) so every browser agrees.
-"Randomize and start" shuffles the present peers and pushes `seat_order`; the channel verifies
+"Randomize and start" sends `start_game`; the server shuffles the present peers unless the shared
+`turn_settings` option `auto_randomize` is false. With that option off the button reads "Start
+match" and preserves join order. Subsequent randomizations push `seat_order`; the channel verifies
 the list names exactly the present peers, then broadcasts it. Rows shuffle visibly for about one
-second before settling into that order (instant with reduced motion). The End game form numbers
-seats in that order and records them the same way. Randomizing again reorders seats but **never
-resets or resumes an existing timer**.
+second before settling into that order (instant with reduced motion, no animation for an ordered
+start). The End game form numbers seats in that order and records them the same way. Randomizing
+again reorders seats but **never resets or resumes the timer or changes the current turn**.
 
-`WebcamTableState` serializes the shared timer and order on the single application server.
+Any seat can use **Pass turn** or **Space**. Turns advance in the shared order, skip eliminated and
+departed seats, and wrap around. TURN counts increment when a turn starts, including the first
+turn; small −/+ controls send `adjust_turn` corrections (0–999) without changing time or active
+player. `pass_turn` requires the last seen turn revision, so simultaneous passes only advance
+once. TIME is the player's accumulated time in m:ss, including their current turn. The server
+banks time against game elapsed time rather than wall time, so pausing freezes both game and
+player clocks; passing while paused changes the turn but adds no paused time. A single remaining
+player can continue taking turns; elimination does not automatically end the game.
+
+An amber dot and highlight mark the current player's row; an amber Current turn badge marks their
+rail tile and board. This is independent of the violet selected/pinned-board border. Space does
+not pass while typing, using a control, holding a modifier, repeating a key, composing text, or
+while a card picker/dialog is open. `PASS_TURN_BINDING` in `turns.ts` exports the key/help label for
+the hotkey registry.
+
+`WebcamTableState` serializes the shared timer, turns and order on the single application server.
 The first valid `seat_order` starts it. Any seat can send `timer` with `pause` or `resume`;
 only the server writes `started_at`, `paused_at`, and accumulated `paused_ms`. The timer bar
 above the active board's name bar derives elapsed time excluding pauses. Browsers interpolate
 from a server sample using `performance.now()`, not their wall clock, and resync every 15 seconds
 with `timer_sync` (half-round-trip latency compensation). New/rejoining seats receive the
-current timer and order via `table_state`. Channel monitors discard state when the last seat
+current timer, order, settings, counts and per-player times via `table_state`. Channel monitors discard state when the last seat
 leaves; an application restart also clears it. Multi-node room state is not supported.
 
 End game pauses the timer for everyone and captures that server response for the result form.
@@ -334,20 +353,23 @@ can still save or share what they saw; this feature cannot revoke frames already
 
 - `TheGatheringWeb.UserSocket` verifies a short-lived token wrapping the tracked cookie session.
 - `TheGatheringWeb.WebcamTableChannel` caps rooms at ten, relays targeted WebRTC signals,
-  merges `update_status`/`set_eliminated` into presence, validates `seat_order`/`timer`/`timer_sync`, and generates
+  merges `update_status`/`set_eliminated` into presence, validates `seat_order`/`timer`/`timer_sync`,
+  `start_game`/`turn_settings`/`pass_turn`/`adjust_turn`, and generates
   and broadcasts validated `roll` results.
-- `TheGatheringWeb.WebcamTableState` owns serialized, server-stamped timer/order state and
+- `TheGatheringWeb.WebcamTableState` owns serialized, server-stamped timer/turn/order state and
   retained eliminated seats and channel-monitor cleanup (covered by `webcam_table_channel_test.exs`).
+- `TheGatheringWeb.WebcamTableTurns` owns pure turn advancement, elimination skipping, counts and
+  accumulated-time accounting (`webcam_table_turns_test.exs`).
 - `TheGatheringWeb.Presence` owns ephemeral room membership and seat status.
 - `WebcamTableConfigController` exposes authenticated ICE configuration.
 - `features/webcam-table/use-webcam-room.ts` owns camera, mesh, signaling, native crop RPC,
-  seat status (life, camera), seat order, timer synchronization, roll overlays, and the event log.
+  seat status (life, camera, elimination), seat order, timer/turn synchronization, roll overlays, and the event log.
 - `features/webcam-table/use-correction-upload.tsx` uploads explicit picker labels and owns
   the crop-sharing preference/save note. Both camera owner and clicker must allow sharing.
 - `features/webcam-table/webcam-table-page.tsx` composes the rail, stage, and side panel and owns
   the active-board selection (`useActiveBoard`).
 - `features/webcam-table/board.tsx` — `ActiveBoard`, `CameraTile`, `OpenSeat`, `LifeBadge`,
-  elimination overlays, and `capturePoint` (click → normalized coordinates).
+  elimination/current-turn overlays, and `capturePoint` (click → normalized coordinates).
 - `features/webcam-table/seat-bar.tsx` — the name/life/camera bar under a board or tile.
 - `features/webcam-table/commander-picker.tsx` — popover listing a player's decks; any seat can
   set another player's commander (the server still verifies deck ownership).
@@ -368,6 +390,11 @@ can still save or share what they saw; this feature cannot revoke frames already
 - `features/webcam-table/game-result.ts` — winner suggestion and normal recorded-game payload,
   including eliminated seats (`game-result.test.ts`).
 - `features/webcam-table/table-timer.tsx` — dark active-board timer and pause/resume controls.
+- `features/webcam-table/use-timer-elapsed.ts` — shared monotonic timer display hook.
+- `features/webcam-table/seat-order-table.tsx` — animated order, current-turn highlight, counts,
+  per-player time and elimination controls.
+- `features/webcam-table/turns.ts` — next-seat suggestion, turn display, Space guard and binding
+  metadata (`turns.test.ts`).
 - `features/webcam-table/game-timer.ts` — elapsed-time interpolation, formatting, and duration
   prefill helpers (`game-timer.test.ts` also covers roll descriptions).
 - `features/webcam-table/table-rolls.tsx` — dice/coin controls, wire types, and result descriptions.

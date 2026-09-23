@@ -57,6 +57,14 @@ function EliminatedOverlay() {
   )
 }
 
+function CurrentTurnBadge() {
+  return (
+    <span className="pointer-events-none absolute bottom-2 left-2 rounded border border-amber-300/50 bg-zinc-950/90 px-2 py-0.5 text-[0.65rem] font-bold text-amber-200">
+      ● Current turn
+    </span>
+  )
+}
+
 /** Life total badge overlaid on the top-left of a board, like a table scoreboard. */
 export function LifeBadge({ life, size }: { life: number; size: "board" | "tile" }) {
   return (
@@ -96,6 +104,7 @@ export function ActiveBoard({
   monarch,
   stream,
   local,
+  currentTurn = false,
   connectionState,
   hiddenLabel,
   revealBadge,
@@ -107,6 +116,7 @@ export function ActiveBoard({
   monarch?: boolean
   stream?: MediaStream
   local: boolean
+  currentTurn?: boolean
   connectionState?: RTCPeerConnectionState
   hiddenLabel?: string
   revealBadge?: string
@@ -149,6 +159,7 @@ export function ActiveBoard({
         </span>
       </button>
       {participant.eliminated && <EliminatedOverlay />}
+      {currentTurn && !participant.eliminated && <CurrentTurnBadge />}
       <LifeBadge life={participant.life} size="board" />
       {monarch && (
         <span
@@ -188,6 +199,7 @@ export function CameraTile({
   hiddenLabel,
   revealBadge,
   active,
+  currentTurn = false,
   onActivate,
 }: {
   participant: TableParticipant
@@ -198,6 +210,7 @@ export function CameraTile({
   hiddenLabel?: string
   revealBadge?: string
   active: boolean
+  currentTurn?: boolean
   onActivate: () => void
 }) {
   return (
@@ -234,6 +247,7 @@ export function CameraTile({
         </span>
       )}
       {participant.eliminated && <EliminatedOverlay />}
+      {currentTurn && !participant.eliminated && <CurrentTurnBadge />}
       <LifeBadge life={participant.life} size="tile" />
       {monarch && (
         <span
