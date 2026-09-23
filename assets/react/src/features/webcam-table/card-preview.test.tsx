@@ -197,4 +197,6 @@ it("formats foil-only and etched prices without inventing a nonfoil price", () =
     "Foil $1.10 · Etched $2.20",
   )
   expect(printingPrices({ usd: "0.00", usd_foil: null, usd_etched: null })).toBe("$0.00")
+  // A details payload cached before prices existed must not crash the preview.
+  expect(printingPrices(undefined)).toBe("—")
 })

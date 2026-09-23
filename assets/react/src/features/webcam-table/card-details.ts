@@ -43,7 +43,9 @@ export function usePrintingDetails(id: string | null) {
   })
 }
 
-export function printingPrices(prices: PrintingDetails["prices"]) {
+/** Details cached by a browser or proxy before prices shipped have no `prices` field. */
+export function printingPrices(prices: PrintingDetails["prices"] | null | undefined) {
+  if (!prices) return "—"
   return (
     [
       prices.usd && `$${prices.usd}`,
