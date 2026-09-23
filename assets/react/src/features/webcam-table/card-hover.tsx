@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react"
 import { CardImage } from "@/components/card-image"
 import { Popover, PopoverContent } from "@/components/ui/popover"
 import type { DeckSummary } from "@/features/decks/decks"
-import { usePrintingDetails } from "./card-details"
+import { printingPrices, usePrintingDetails } from "./card-details"
 
 /** Shared, non-focusing hover preview. Portalled so rail and list overflow cannot clip it. */
 export function CardHover({
@@ -54,6 +54,11 @@ export function CardHover({
           className="w-full"
         />
         <p className="mt-1 text-center text-xs">{name}</p>
+        {details.data && (
+          <p className="mt-1 text-center text-xs text-white/70">
+            {printingPrices(details.data.prices)}
+          </p>
+        )}
         {details.isPending && id && (
           <p className="text-center text-xs text-white/60">Loading card…</p>
         )}

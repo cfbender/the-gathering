@@ -157,7 +157,7 @@ function useRecognition(capture: CapturedCard | null) {
 /** What the card overlay on the active board is showing: an identified board entry (offering
  * "Wrong card?" while its capture is still current), or a printing from the gallery search. */
 type Preview =
-  | { kind: "entry"; entry: BoardCard; correctable: boolean }
+  | { kind: "entry"; entry: BoardCard; shown: IdentifiedCard; correctable: boolean }
   | { kind: "art"; card: IdentifiedCard }
 
 function toCard(art: GalleryArt): IdentifiedCard {
@@ -280,7 +280,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       if (picker?.replacing) room.removeCard(picker.replacing)
       const entry = room.announceCard(captureOwner.peer_id, playerName, toCard(art))
       setPicker(null)
-      setPreview({ kind: "entry", entry, correctable: true })
+      setPreview({ kind: "entry", entry, shown: toCard(art), correctable: true })
     },
     // decksFor closes over `decks`, which is stable for the room's lifetime
     [captureOwner, corrections, decks, picker, playerName, recognition, recognizer.state, room],
@@ -529,7 +529,9 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           <BoardCardTray
             participant={activeParticipant}
             cards={room.identifiedCards}
-            onPreview={(entry) => setPreview({ kind: "entry", entry, correctable: false })}
+            onPreview={(entry) =>
+              setPreview({ kind: "entry", entry, shown: entry.card, correctable: false })
+            }
             onRemove={room.removeCard}
             onClear={
               activeParticipant.peer_id === localParticipant.peer_id
@@ -552,7 +554,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           )}
           {preview?.kind === "entry" && (
             <CardPreview
-              card={preview.entry.card}
+              card={preview.shown}
               ownerName={
                 seated.find((participant) => participant.peer_id === preview.entry.ownerPeerId)
                   ?.player_name
@@ -619,7 +621,9 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         identifiedCards={room.identifiedCards}
         gallerySearchable={recognizer.ready}
         onSearch={recognizer.search}
-        onPreviewCard={(entry) => setPreview({ kind: "entry", entry, correctable: false })}
+        onPreviewCard={(entry) =>
+          setPreview({ kind: "entry", entry, shown: entry.card, correctable: false })
+        }
         onPreviewArt={(art) => setPreview({ kind: "art", card: toCard(art) })}
         onRemoveCard={room.removeCard}
         onClearOwnCards={room.clearOwnCards}

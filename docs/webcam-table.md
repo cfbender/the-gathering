@@ -531,11 +531,28 @@ already started and does not count as a transition, so the `cards_sync` it recei
 Each board keeps **one entry per displayed card name**, trimmed and case-insensitive (the gallery
 does not provide oracle IDs). Different printings of the same card do not create extra entries.
 Separate face names remain distinct; full combined prepare/adventure names stay intact.
-Repeat identification opens the existing entry's preview and preserves its first printing and
-position; another player's board can still hold its own entry. Picker choices use the same
+Repeat identification previews the **printing just clicked** while preserving the tray entry's
+first printing and position. Remove and correction still target that existing entry;
+another player's board can still hold its own entry. Picker choices use the same
 rule. "Wrong card?" removes the mistaken entry, then reuses an existing replacement if present.
 Incoming entries and late-join syncs also deduplicate; simultaneous discoveries choose the oldest
 timestamp, then entry ID, so message arrival order does not decide which printing survives.
+
+The popup's **printing arrows** wrap around all pages of the existing English paper printing
+list, newest first. It starts on the clicked printing; if absent (for example, another language
+or a face-specific gallery entry), that printing is prepended. The counter and set/collector
+caption track the displayed printing; browsing never changes the tray. Neighbouring images are
+prefetched. Left/Right works only while the preview has focus, not while typing, using a keyboard
+widget, or viewing rulings. Table shortcuts remain paused under the preview.
+
+Preview and card hover show Scryfall USD prices: `$0.25 · Foil $1.10 · Etched $1.25`, omitting
+unavailable finishes and showing `—` when none are priced. Printing details (including prices)
+are fresh for one hour in TanStack Query and use `cache-control: private, max-age=3600` on the
+server. The printing list also has a one-hour client cache. Loading/failure does not hide the
+clicked card; failed printing lists can be retried.
+Page requests are spaced by 500 ms to respect the existing Scryfall search limit. The list
+excludes tokens and memorabilia, matching the catalog/details contract (Scryfall includes
+memorabilia basic lands in printing searches).
 
 Backlog:
 

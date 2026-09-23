@@ -16,7 +16,7 @@ export function printingLabel(printing: CardPrinting) {
   return `${printing.set_name} (${printing.set_code.toUpperCase()}) #${printing.collector_number}${language}`
 }
 
-export function getPrintings(card: SelectedCard, page: number) {
+export function getPrintings(card: Pick<SelectedCard, "name" | "catalog_id">, page: number) {
   const params = new URLSearchParams({ name: card.name, page: String(page) })
   if (card.catalog_id) params.set("card_id", card.catalog_id)
   return api<{ data: CardPrinting[]; has_more: boolean }>(`/api/card-printings?${params}`)
