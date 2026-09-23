@@ -5,13 +5,18 @@ import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { getPlayers } from "@/features/games/games"
 import { useCurrentUser } from "@/lib/auth"
 import { ActiveBoard, CameraTile, OpenSeat, capturePoint } from "./board"
-import { CardSuggestions, type Recognition } from "./card-suggestions"
+import { CardSuggestions, isClear, type Recognition } from "./card-suggestions"
 import { FinishGame } from "./finish-game"
 import type { GalleryArt } from "./recognition/pipeline"
 import { decodeImage, useRecognizer, type RecognizerState } from "./recognition/use-recognizer"
 import { SeatBar, TileCommanderRow } from "./seat-bar"
 import { SidePanel, type PanelTab } from "./side-panel"
-import { useWebcamRoom, type CapturedCard, type TableParticipant } from "./use-webcam-room"
+import {
+  useWebcamRoom,
+  type CapturedCard,
+  type IdentifiedCard,
+  type TableParticipant,
+} from "./use-webcam-room"
 
 const MAX_PLAYERS = 4
 
@@ -84,30 +89,36 @@ function skippedReason(state: RecognizerState): string {
 }
 
 /** Runs the recognizer on every new capture: decode the owner's crop, identify at the click,
- * and hold the outcome next to the capture it belongs to. */
+ * and hold the outcome next to the capture it belongs to. The outcome is only reported while
+ * that same capture is current, so a new click never sees the previous click's answer. */
 function useRecognition(capture: CapturedCard | null) {
   const recognizer = useRecognizer()
-  const [recognition, setRecognition] = useState<Recognition>({ status: "identifying" })
+  const [outcome, setOutcome] = useState<{ capture: CapturedCard; recognition: Recognition }>()
 
   useEffect(() => {
     if (!capture) return
     if (!recognizer.ready) {
-      setRecognition({ status: "skipped", reason: skippedReason(recognizer.state) })
+      setOutcome({
+        capture,
+        recognition: { status: "skipped", reason: skippedReason(recognizer.state) },
+      })
       return
     }
     let stale = false
-    setRecognition({ status: "identifying" })
     decodeImage(capture.image)
       .then((image) => recognizer.identify(image, capture.clickX, capture.clickY))
       .then((result) => {
-        if (!stale) setRecognition({ status: "done", result })
+        if (!stale) setOutcome({ capture, recognition: { status: "done", result } })
       })
       .catch((error: unknown) => {
         if (stale) return
         const message = error instanceof Error ? error.message : String(error)
-        setRecognition({
-          status: "skipped",
-          reason: message.startsWith("no result") ? "timed out" : message,
+        setOutcome({
+          capture,
+          recognition: {
+            status: "skipped",
+            reason: message.startsWith("no result") ? "timed out" : message,
+          },
         })
       })
     return () => {
@@ -116,6 +127,8 @@ function useRecognition(capture: CapturedCard | null) {
     // Re-run for a new capture only; the recognizer becoming ready later does not re-identify.
   }, [capture])
 
+  const recognition: Recognition =
+    outcome && outcome.capture === capture ? outcome.recognition : { status: "identifying" }
   return { recognizer, recognition }
 }
 
@@ -153,27 +166,44 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     : undefined
   const suggestions = captureOwner ? decksFor(captureOwner).slice(0, 5) : []
   const candidates = recognition.status === "done" ? recognition.result.candidates : []
+  const [confirmed, setConfirmed] = useState<{ capture: CapturedCard; card: IdentifiedCard }>()
+  const confirmedCard = confirmed && confirmed.capture === room.capture ? confirmed.card : null
 
   /** Logs the card at every seat; a card that is one of the owner's commanders also picks
-   * that deck when they have not chosen one yet. */
+   * that deck when they have not chosen one yet. An `auto` pick (the recognizer's clear top-1)
+   * leaves the panel open so it can be corrected; a later pick for the same click is logged as
+   * a correction, and re-picking the confirmed card just closes the panel. */
   const chooseCard = useCallback(
-    (art: GalleryArt) => {
-      if (!captureOwner) return
-      const commanderDeck = decksFor(captureOwner).find(
-        (deck) => deck.commander_name.toLowerCase() === art.name.toLowerCase(),
-      )
-      if (commanderDeck && !captureOwner.deck_id)
-        room.suggestDeck(captureOwner.peer_id, commanderDeck.id)
-      room.announceCard(captureOwner.peer_id, playerName, {
+    (art: GalleryArt, options: { auto?: boolean } = {}) => {
+      if (!captureOwner || !room.capture) return
+      const card: IdentifiedCard = {
         id: art.id,
         name: art.name,
         set: art.set,
         collector_number: art.collector_number,
+      }
+      if (confirmedCard?.id === card.id) return room.dismissCapture()
+      const commanderDeck = decksFor(captureOwner).find(
+        (deck) => deck.commander_name.toLowerCase() === art.name.toLowerCase(),
+      )
+      if (commanderDeck && !captureOwner.deck_id)
+        room.suggestDeck(captureOwner.peer_id, commanderDeck.id, { keepCapture: options.auto })
+      room.announceCard(captureOwner.peer_id, playerName, card, {
+        replaces: confirmedCard ?? undefined,
+        keepCapture: options.auto,
       })
+      if (options.auto) setConfirmed({ capture: room.capture, card })
     },
     // decksFor closes over `decks`, which is stable for the room's lifetime
-    [captureOwner, decks, playerName, room],
+    [captureOwner, confirmedCard, decks, playerName, room],
   )
+
+  // A clear winner is the answer: log it right away instead of asking for a keypress.
+  useEffect(() => {
+    const top = candidates[0]
+    if (!top || confirmedCard || !isClear(candidates)) return
+    chooseCard(top, { auto: true })
+  }, [candidates, chooseCard, confirmedCard])
 
   useEffect(() => {
     function choose(event: KeyboardEvent) {
@@ -259,6 +289,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
               capture={room.capture}
               playerName={captureOwner.player_name}
               recognition={recognition}
+              confirmed={confirmedCard}
               deckSuggestions={suggestions}
               gallerySearchable={recognizer.ready}
               onChooseCard={chooseCard}
