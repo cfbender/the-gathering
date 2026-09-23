@@ -1,50 +1,40 @@
-import { Heart, Minus, Plus, Video, VideoOff } from "lucide-react"
-import type { ButtonHTMLAttributes, ReactNode } from "react"
+import { Ellipsis, Eye, Pin, PinOff, Video, VideoOff } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { commanderBackground } from "./commander-colors"
-import { CommanderTax } from "./commander-tax"
-import type { Counter } from "./seat-counters"
+import { CommanderControl } from "./commander-control"
 import type { TableParticipant } from "./use-webcam-room"
 
-interface Props {
-  participant: TableParticipant
-  local: boolean
-  decks: DeckSummary[]
-  size: "board" | "tile"
-  onChooseDeck: (deckId: number) => void
-  onChangeLife: (delta: number) => void
-  onToggleCamera: () => void
-  counters: ReactNode
-  onAdjustCounter: (counter: Counter, delta: number) => void
-}
-
-function IndicatorButton({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "grid size-6 place-items-center rounded text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:text-white/35 disabled:hover:bg-transparent",
-        className,
-      )}
-      {...props}
-    />
-  )
-}
-
-/** Name bar under a board or tile: name, life (with ± for your own seat), the camera
- * indicator, and the seat's commander action on the right. */
+/** One line below either video: identity, actions, camera state, commander picker. */
 export function SeatBar({
   participant,
   local,
   decks,
   size,
+  pinned,
   onChooseDeck,
-  onChangeLife,
   onToggleCamera,
-  counters,
-  onAdjustCounter,
-}: Props) {
+  onReveal,
+  onTogglePin,
+  onSetEliminated,
+}: {
+  participant: TableParticipant
+  local: boolean
+  decks: DeckSummary[]
+  size: "board" | "tile"
+  pinned: boolean
+  onChooseDeck: (deckId: number) => void
+  onToggleCamera: () => void
+  onReveal: () => void
+  onTogglePin: () => void
+  onSetEliminated: (eliminated: boolean) => void
+}) {
   const compact = size === "tile"
   const cameraIcon = participant.camera_off ? (
     <VideoOff className="size-3.5" />
@@ -60,98 +50,67 @@ export function SeatBar({
         ),
       }}
       className={cn(
-        "flex items-center gap-1.5 border-t border-white/10 bg-base-100 text-white",
-        compact ? "h-7 px-1.5 text-[0.7rem]" : "min-h-11 flex-wrap px-2 py-1 text-xs",
+        "flex min-w-0 items-center gap-0.5 border-t border-white/10 bg-base-100 text-white",
+        compact ? "h-9 px-1 text-[0.7rem]" : "h-11 px-2 text-xs",
       )}
     >
-      <span className={cn("truncate font-bold", compact ? "max-w-24" : "max-w-48")}>
+      <span
+        className={cn("min-w-0 truncate font-bold", compact ? "max-w-[30%]" : "max-w-48")}
+        title={`${participant.player_name}${local ? " (you)" : ""}`}
+      >
         {participant.player_name}
       </span>
-      {local && <span className="rounded bg-white/15 px-1 text-[0.6rem] font-bold">YOU</span>}
-
-      <span className="ml-1 flex items-center gap-0.5 text-white/85" aria-label="Life total">
-        <Heart className="size-3 fill-current text-error" />
-        <span className="font-bold tabular-nums">{participant.life}</span>
-      </span>
-      {local && (
-        <span className="flex items-center gap-0.5">
-          <IndicatorButton aria-label="Lose 1 life" onClick={() => onChangeLife(-1)}>
-            <Minus className="size-3.5" />
-          </IndicatorButton>
-          <IndicatorButton aria-label="Gain 1 life" onClick={() => onChangeLife(1)}>
-            <Plus className="size-3.5" />
-          </IndicatorButton>
-        </span>
+      {local && !compact && (
+        <span className="rounded bg-white/15 px-1 text-[0.6rem] font-bold">YOU</span>
       )}
-
-      {!compact && counters}
-      <span className="ml-auto flex items-center gap-0.5">
-        {local ? (
-          <IndicatorButton
-            onClick={onToggleCamera}
-            aria-pressed={participant.camera_off}
-            aria-label={participant.camera_off ? "Turn camera on" : "Turn camera off"}
-            title={participant.camera_off ? "Turn camera on" : "Turn camera off"}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm btn-square shrink-0 text-white/85 focus-visible:-outline-offset-2"
+            aria-label={`${participant.player_name}'s seat actions`}
           >
-            {cameraIcon}
-          </IndicatorButton>
-        ) : (
-          <span
-            className={cn(
-              "grid size-6 place-items-center",
-              participant.camera_off ? "text-error" : "text-white/55",
-            )}
-            title={participant.camera_off ? "Camera off" : "Camera on"}
+            <Ellipsis className="size-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem onSelect={onTogglePin}>
+            {pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+            {pinned ? "Unpin board" : "Pin as active board"}
+          </DropdownMenuItem>
+          {local && (
+            <>
+              <DropdownMenuItem onSelect={onToggleCamera}>
+                {cameraIcon}
+                {participant.camera_off ? "Turn camera on" : "Turn camera off"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onReveal}>
+                <Eye className="size-4" /> Reveal hand…
+              </DropdownMenuItem>
+            </>
+          )}
+          <DropdownMenuItem
+            destructive={!participant.eliminated}
+            onSelect={() => onSetEliminated(!participant.eliminated)}
           >
-            {cameraIcon}
-          </span>
-        )}
+            {participant.eliminated ? "Restore player" : "Eliminate player"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <span
+        className={cn("shrink-0", participant.camera_off ? "text-error" : "text-white/55")}
+        role="img"
+        aria-label={participant.camera_off ? "Camera off" : "Camera on"}
+      >
+        {cameraIcon}
       </span>
-
-      {!compact && (
-        <div className="max-w-full min-w-0 sm:max-w-[50%]">
-          <CommanderTax
-            participant={participant}
-            decks={decks}
-            local={local}
-            onChooseDeck={onChooseDeck}
-            onAdjust={onAdjustCounter}
-          />
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** Tile variant of the commander action, rendered under a rail tile's bar. */
-export function TileCommanderRow({
-  participant,
-  decks,
-  onChooseDeck,
-  counters,
-  local,
-  onAdjustCounter,
-}: Pick<
-  Props,
-  "participant" | "decks" | "onChooseDeck" | "counters" | "local" | "onAdjustCounter"
->) {
-  return (
-    <div
-      className="flex min-h-10 items-center gap-1 bg-base-100 px-1.5 py-1"
-      style={{
-        background: commanderBackground(
-          decks.find((deck) => deck.id === participant.deck_id)?.color_identity ?? "",
-        ),
-      }}
-    >
-      {counters}
-      <div className="ml-auto min-w-0">
-        <CommanderTax
+      <div className={cn("ml-auto min-w-0", compact ? "flex-1 pl-1" : "max-w-[50%] pl-2")}>
+        <CommanderControl
           participant={participant}
           decks={decks}
           local={local}
+          compact={compact}
           onChooseDeck={onChooseDeck}
-          onAdjust={onAdjustCounter}
         />
       </div>
     </div>

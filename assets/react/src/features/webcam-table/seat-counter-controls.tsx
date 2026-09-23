@@ -1,4 +1,5 @@
-import { Crown, Minus, Plus, ShieldAlert } from "lucide-react"
+import { ChevronDown, Crown, Minus, Plus, ShieldAlert } from "lucide-react"
+import { CardImage } from "@/components/card-image"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
@@ -13,6 +14,7 @@ interface Props {
   monarch: boolean
   onAdjust: (counter: Counter, delta: number) => void
   onTakeMonarch: () => void
+  onOpenChange?: (open: boolean) => void
 }
 
 function CounterRow({
@@ -21,43 +23,54 @@ function CounterRow({
   local,
   onAdjust,
   threshold,
+  multiplier = 1,
+  art,
 }: {
   label: string
   value: number
   local: boolean
   onAdjust: (delta: number) => void
   threshold?: number
+  multiplier?: number
+  art?: string | null
 }) {
   const warning = threshold !== undefined && value >= threshold
   return (
     <div className={cn("flex items-center gap-2 py-1", warning && "text-error")}>
+      {art !== undefined && (
+        <CardImage
+          imageUris={{ art_crop: art ?? undefined }}
+          name={label}
+          className="size-8 shrink-0"
+        />
+      )}
       <span className="min-w-0 flex-1 text-xs">{label}</span>
       {local && (
         <button
           type="button"
-          className="btn btn-ghost btn-xs btn-square"
+          className="btn btn-ghost btn-sm btn-square shrink-0"
           aria-label={`Decrease ${label}`}
           disabled={value === 0}
           onClick={() => onAdjust(-1)}
         >
-          <Minus className="size-3" />
+          {multiplier === 1 ? <Minus className="size-4" /> : `−${multiplier}`}
         </button>
       )}
       <span
         className="min-w-8 text-center text-sm font-bold tabular-nums"
-        aria-label={`${label}: ${value}`}
+        aria-label={`${label}: ${value * multiplier}`}
       >
-        {value}
+        {value * multiplier}
       </span>
       {local && (
         <button
           type="button"
-          className="btn btn-ghost btn-xs btn-square"
+          className="btn btn-ghost btn-sm btn-square shrink-0"
           aria-label={`Increase ${label}`}
           disabled={value === 999}
           onClick={() => onAdjust(1)}
         >
-          <Plus className="size-3" />
+          {multiplier === 1 ? <Plus className="size-4" /> : `+${multiplier}`}
         </button>
       )}
       {warning && (
@@ -76,7 +89,9 @@ export function SeatCounterControls({
   monarch,
   onAdjust,
   onTakeMonarch,
+  onOpenChange,
 }: Props) {
+  const deck = decks.find((candidate) => candidate.id === participant.deck_id)
   const namesFor = (seat: TableParticipant) =>
     commanderNames(decks.find((deck) => deck.id === seat.deck_id))
   const opponents = participants.filter((seat) => seat.player_id !== participant.player_id)
@@ -96,7 +111,11 @@ export function SeatCounterControls({
       playerName: source?.player_name ?? `Player ${id} (left)`,
     }))
   })
-  const row = (label: string, counter: Counter, options: { threshold?: number } = {}) => (
+  const row = (
+    label: string,
+    counter: Counter,
+    options: { threshold?: number; multiplier?: number; art?: string | null } = {},
+  ) => (
     <CounterRow
       key={label}
       label={label}
@@ -108,24 +127,22 @@ export function SeatCounterControls({
   )
 
   return (
-    <Popover>
+    <Popover onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <button
           type="button"
           className={cn(
-            "flex h-6 shrink-0 items-center gap-1 rounded px-1 text-white/75 hover:bg-white/10",
+            "flex h-6 w-full items-center justify-center rounded border border-white/20 bg-black/80 text-white/85 hover:bg-primary/80 data-[state=open]:bg-primary/80",
             counterWarning(participant) && "text-error",
           )}
           aria-label={`${participant.player_name}'s counters`}
           title="Counters & commander damage"
         >
-          <ShieldAlert className="size-3.5" />
-          {participant.poison > 0 && <span className="text-[0.6rem]">P{participant.poison}</span>}
-          {participant.rad > 0 && <span className="text-[0.6rem]">R{participant.rad}</span>}
+          <ChevronDown className="size-4" />
         </button>
       </PopoverTrigger>
       <PopoverContent
-        side="top"
+        side="bottom"
         align="start"
         className="max-h-[70dvh] w-80 max-w-[calc(100vw-1.5rem)] overflow-y-auto p-3 text-base-content"
         aria-label={`${participant.player_name}'s counters`}
@@ -140,6 +157,22 @@ export function SeatCounterControls({
         </div>
         {!local && (
           <p className="mb-2 text-xs text-base-content/55">This player manages their counters.</p>
+        )}
+        {commanderNames(deck).map((commander) =>
+          row(
+            `${commander} commander tax`,
+            { kind: "casts", commander },
+            {
+              multiplier: 2,
+              art:
+                (commander === deck?.commander_name
+                  ? deck?.commander_art_crop_url
+                  : deck?.partner_art_crop_url) ?? null,
+            },
+          ),
+        )}
+        {!deck && (
+          <p className="mb-2 text-xs text-base-content/55">Select a commander to track tax.</p>
         )}
         {row("Poison", { kind: "poison" }, { threshold: 10 })}
         {row("Rad", { kind: "rad" })}

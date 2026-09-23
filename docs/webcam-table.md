@@ -161,30 +161,36 @@ always large, everyone else is small, and controls live in a collapsible column.
 │ ┌──────┐ │                                             │▪ │ Invite       │
 │ │40    │ │                                             │▪ │ Commander    │
 │ └──────┘ │              active board                   │▪ │ Turn order   │
-│ Mara ♥40 │           (click = identify card)           │  │ Randomize    │
+│ Mara ⋯ 📷│           (click = identify card)           │  │ Randomize    │
 │ Select…  │                                             │  │ End game     │
 │ ┌──────┐ │                                             │  │ Leave table  │
 │ │37    │ │                                             │  ├──────────────┤
 │ └──────┘ │                                             │  │ Identify  ▸  │
-│ Cody ♥37 │                                             │  │ Connection ▸ │
+│ Cody ⋯ 📷│                                             │  │ Connection ▸ │
 │ Open seat├─────────────────────────────────────────────┤  │              │
-│          │ Theo ♥40   −  +               📷  Select cmd │  │              │
+│          │ Theo ⋯                       📷  Select cmd │  │              │
 └──────────┴─────────────────────────────────────────────┴──┴──────────────┘
 ```
 
-- **Camera rail** (left, `lg:` defaults to 13 rem): every seat as a 16:9 tile with a life badge, a compact
-  name bar (camera indicator, ± for your own seat), and that seat's commander action.
+- **Camera rail** (left, `lg:` defaults to 15 rem): every seat as a 16:9 tile with one life control
+  over the video and a single-line name / ⋯ menu / camera indicator / commander bar. Hover or
+  focus your life box (tap on touch screens) to reveal stacked ±1 buttons and the counters chevron.
+  Other seats have read-only life and an always-visible chevron to inspect their counters.
+  The ⋯ menu offers pin/unpin and eliminate/restore for every seat; your own menu also has
+  camera on/off and Reveal hand, opening the existing private-reveal flow in a dialog.
+  Commander names truncate when necessary; the full name remains in the title/hover preview.
   Empty seats up to ten render as dashed "Open seat" placeholders. The rail scrolls vertically
-  on desktop and horizontally at narrow widths rather than shrinking ten cameras until their
+  on desktop and horizontally in 240px tiles at narrow widths rather than shrinking ten cameras until their
   names and controls are unreadable. Clicking a tile makes it the active board and pins it.
 - **Commander identity** colors both the rail and active-board name bars: one muted solid for
   mono-color, a WUBRG-ordered gradient for multiple colors, and neutral for colorless or unknown.
-  Commander names show identity pips using the existing mana symbols. The source is the decks
+  The active-board commander name shows identity pips using the existing mana symbols; compact
+  rail bars omit pips and the YOU tag to preserve name space at minimum width. The source is the decks
   API's stored `color_identity` (including partners), not a browser Scryfall request. An empty
   identity is treated as unknown, not falsely labelled colorless; explicit `C` shows its pip.
-- **Active board** (center): the stage fills the remaining viewport. The large life badge sits
-  top-left, a Pin/Pinned toggle top-right, and a name bar underneath carries life controls,
-  the camera toggle, and the "Select commander" popover. Unpinned, the stage follows the newest
+- **Active board** (center): the stage fills the remaining viewport. The same life control sits
+  top-left, a Pin/Pinned toggle top-right, and the matching name bar underneath carries the seat
+  menu, camera state, and "Select commander" popover without repeating life. Unpinned, the stage follows the newest
   remote joiner; when the active player leaves it falls back to your own board. Clicking the
   video starts the click-to-identify flow, and the suggestion card floats bottom-center over the
   stage (keys 1–5 still pick).
@@ -196,7 +202,7 @@ always large, everyone else is small, and controls live in a collapsible column.
   timer; Reveal hand to…, the red End game button, Leave table), dice/coin controls, and collapsed Identify
   cards and Connection sections. Decks lists your commanders; Log shows the table event log. Collapsing the
   panel leaves only the icon strip so the board grows.
-- **Resize dividers** on desktop drag the camera rail (176–360 px, default 208) and panel content
+- **Resize dividers** on desktop drag the camera rail (176–360 px, default 240) and panel content
   (240–480 px, default 288); widths also cap at 24vw / 32vw to preserve board space. Double-click
   resets one divider. Focus a divider and use Left/Right to resize by 16 px, Home to reset.
   Settings offers a reset for both widths and a hotkeys toggle. Preferences persist per player
@@ -205,7 +211,7 @@ always large, everyone else is small, and controls live in a collapsible column.
   `Space` passes the turn after the match starts; `↑` / `↓` gains/loses one life and
   `Shift+↑` / `Shift+↓` gains/loses ten life (always your own seat). `[` / `]` subtracts/adds
   two commander tax by changing your primary commander's cast count by one; partner commanders
-  retain individual badge controls. `C` toggles your camera, `B` collapses/expands the panel,
+  retain individual counter rows. `C` toggles your camera, `B` collapses/expands the panel,
   `T` / `D` / `A` / `L` / `S` opens Table / Decks / Cards / Log / Settings, and `,` / `.`
   selects and pins the previous/next board. `?` or `H` toggles the grouped shortcut dialog.
   All table actions, including Space, honor the enable preference and pause while typing,
@@ -259,12 +265,12 @@ them into presence, so every browser shows the same totals without another round
 life is also tracked locally so rapid ± clicks compound before presence echoes back, and it is
 republished after every (re)join because presence restarts at the defaults.
 
-The shield button in each seat bar opens **Counters**. Everyone can inspect a seat; only its
+The chevron below each life box opens **Counters**. Everyone can inspect a seat; only its
 owner can change its counters. `poison` and `rad` start at zero. `commander_casts` maps commander
-names to command-zone cast counts. The commander art thumbnails beside the name/deck selector
-on the active board and rail display tax badges at twice the cast count. Click a thumbnail to
-add 2 tax; right-click or use its minus button to subtract 2, down to zero. Partners have separate
-thumbnails and badges. Other players' tax is read-only, and missing art uses a placeholder.
+names to command-zone cast counts. Explicit −2 / tax / +2 rows replace the small art tax buttons,
+with art thumbnails and separate rows for partners/backgrounds. These still publish ±1 cast deltas and display twice
+the cast count, bounded at zero and 999 casts. Poison, rad, commander damage and the monarch action
+share this panel. Other players' tax is read-only. Custom counters are not supported.
 Commander-name text uses the deck's color identity (gold for multicolor). Both commander
 and partner/background names come from the selected deck. `commander_damage` maps opposing
 player IDs to commander-name/count maps, keeping identical commanders at different seats separate.
@@ -392,9 +398,10 @@ can still save or share what they saw; this feature cannot revoke frames already
   the crop-sharing preference/save note. Both camera owner and clicker must allow sharing.
 - `features/webcam-table/webcam-table-page.tsx` composes the rail, stage, and side panel and owns
   the active-board selection (`useActiveBoard`).
-- `features/webcam-table/board.tsx` — `ActiveBoard`, `CameraTile`, `OpenSeat`, `LifeBadge`,
+- `features/webcam-table/board.tsx` — `ActiveBoard`, `CameraTile`, `OpenSeat`,
   elimination/current-turn overlays, and `capturePoint` (click → normalized coordinates).
-- `features/webcam-table/seat-bar.tsx` — the name/life/camera bar under a board or tile.
+- `features/webcam-table/life-control.tsx` — hover/focus life controls and counter entry point.
+- `features/webcam-table/seat-bar.tsx` — the name/actions/camera/commander bar under a board or tile.
 - `features/webcam-table/commander-picker.tsx` — popover listing your own decks; other seats see a
   read-only commander label, and the server rejects `choose_deck` for decks you do not own.
 - `features/webcam-table/card-suggestions.tsx` — the click-to-identify overlay: crop with the

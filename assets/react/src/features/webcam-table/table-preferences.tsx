@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react"
 import { isPublisherQuality, type PublisherQuality } from "./media-policy"
 
 export const RAIL_WIDTHS = {
-  camera: { min: 176, max: 360, initial: 208 },
+  camera: { min: 176, max: 360, initial: 240 },
   panel: { min: 240, max: 480, initial: 288 },
 }
 type Rail = keyof typeof RAIL_WIDTHS
