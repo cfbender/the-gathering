@@ -80,6 +80,7 @@ defmodule TheGatheringWeb.Router do
     get "/stats/commanders/:id", StatsController, :commander
     get "/deck-chooser", DeckChooserController, :show
     get "/webcam-table/config", WebcamTableConfigController, :show
+    get "/webcam-table/rooms", WebcamTableRoomController, :index
     get "/cardid/bundle", CardIdBundleController, :show
     get "/cardid/bundles/:version/:name", CardIdBundleController, :file
     post "/deck-chooser/:id/outcomes", DeckChooserController, :create_outcome

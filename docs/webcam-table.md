@@ -88,7 +88,7 @@ server image round trip.
 ## Lifecycle and ownership
 
 ```text
-Games page Play button ───────────▶ /table/:roomId
+Games page Play / Join button ────▶ /table/:roomId
                                          │
                              auto-seat linked player
                                          │
@@ -109,6 +109,14 @@ Rooms are intentionally ephemeral and URL-addressed in this slice. Presence is t
 refreshing rejoins, and an application restart drops signaling but no recorded game. Any signed-in
 member with the unguessable UUID URL can join. Durable invitations/room recovery require a table
 schema and are explicitly deferred.
+
+The Games page still finds live tables without the URL: every seated channel process also
+tracks itself on one lobby presence topic (`TheGatheringWeb.WebcamTableRooms`), and
+`GET /api/webcam-table/rooms` groups that topic by room (players in join order, `full` at four
+seats). `PlayActions` (`features/webcam-table/play-actions.tsx`) polls it every 15 s: with no
+live table the header shows **Play**; with one it shows **Join** naming the seated players plus
+a smaller **New table**; with several, Join becomes a menu of tables. Nothing is stored, so a
+room vanishes from the list as soon as its last seat leaves.
 
 ## Table view layout
 
