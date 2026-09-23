@@ -4,7 +4,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   use TheGatheringWeb, :channel
 
   alias TheGathering.Games
-  alias TheGatheringWeb.{Presence, WebcamTableMonarch, WebcamTableRooms}
+  alias TheGatheringWeb.{Presence, WebcamTableMonarch, WebcamTableRooms, WebcamTableState}
 
   @max_players 10
   @starting_life 40
@@ -29,6 +29,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   def handle_info(:after_join, socket) do
     participant = socket.assigns.participant
     {:ok, _ref} = WebcamTableRooms.track_seat(socket.assigns.room_id, participant)
+    state = WebcamTableState.join(socket.assigns.room_id, self())
+    push(socket, "table_state", state)
     push(socket, "presence_state", Presence.list(socket))
     :ok = WebcamTableMonarch.sync(socket.topic)
     {:noreply, socket}
@@ -135,7 +137,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     present = socket |> Presence.list() |> Map.keys() |> Enum.sort()
 
     if Enum.all?(peer_ids, &is_binary/1) and Enum.sort(peer_ids) == present do
-      broadcast!(socket, "seat_order", %{peer_ids: peer_ids})
+      WebcamTableState.order(socket.assigns.room_id, peer_ids)
       {:reply, :ok, socket}
     else
       {:reply, {:error, %{reason: "seat order must list every seated player"}}, socket}
@@ -145,10 +147,55 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   def handle_in("seat_order", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid seat order"}}, socket}
 
+  def handle_in("timer", %{"action" => action} = payload, socket)
+      when map_size(payload) == 1 and action in ["pause", "resume"] do
+    timer = WebcamTableState.timer(socket.assigns.room_id, action)
+    {:reply, {:ok, timer}, socket}
+  end
+
+  def handle_in("timer", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid timer action"}}, socket}
+
+  def handle_in("timer_sync", payload, socket) when payload == %{} do
+    {:reply, {:ok, WebcamTableState.snapshot(socket.assigns.room_id).timer}, socket}
+  end
+
+  def handle_in("timer_sync", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid timer sync"}}, socket}
+
+  def handle_in("roll", %{"kind" => "dice", "sides" => sides} = payload, socket)
+      when map_size(payload) == 2 and is_integer(sides) and sides in 2..1000 do
+    broadcast_roll(socket, %{kind: "dice", sides: sides, result: :rand.uniform(sides)})
+    {:reply, :ok, socket}
+  end
+
+  def handle_in("roll", %{"kind" => "coin"} = payload, socket) when map_size(payload) == 1 do
+    broadcast_roll(socket, %{kind: "coin", result: Enum.random(["Heads", "Tails"])})
+    {:reply, :ok, socket}
+  end
+
+  def handle_in("roll", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid roll (dice must have 2–1000 sides)"}}, socket}
+
   defp put_reveal(socket, target) do
     participant = %{socket.assigns.participant | reveal_to: target}
     {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
     assign(socket, :participant, participant)
+  end
+
+  defp broadcast_roll(socket, roll) do
+    participant = socket.assigns.participant
+
+    broadcast!(
+      socket,
+      "roll",
+      Map.merge(roll, %{
+        id: Ecto.UUID.generate(),
+        actor: participant.peer_id,
+        player_name: participant.player_name,
+        at: System.system_time(:millisecond)
+      })
+    )
   end
 
   defp status_changes(payload) do

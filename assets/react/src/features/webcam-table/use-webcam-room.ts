@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import { mergeIdentifiedCards, sameCard } from "./identified-cards"
 import { canViewBoard, videoEncoding } from "./media-policy"
+import type { GameTimerState, TimerSample } from "./game-timer"
 import type { GalleryArt } from "./recognition/pipeline"
 import { sharesCorrections } from "./use-correction-upload"
 import {
@@ -14,11 +15,17 @@ import {
   type SeatCounters,
 } from "./seat-counters"
 import {
+  appendTableEvent,
   describeParticipantChange,
   describeParticipantLeft,
   orderBySeats,
   shuffleSeats,
+  type TableEvent,
+  type TableEventContent,
 } from "./table-events"
+import { describeRoll, type RollRequest, type TableRoll } from "./table-rolls"
+
+export type { TableEvent } from "./table-events"
 
 export interface TableParticipant extends SeatCounters {
   peer_id: string
@@ -44,12 +51,6 @@ interface Monarch {
 interface MonarchEvent {
   holder: Monarch | null
   revision: number
-}
-
-export interface TableEvent {
-  id: number
-  at: Date
-  text: string
 }
 
 interface TableConfig {
@@ -178,6 +179,9 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   const eventIdRef = useRef(0)
   const [participants, setParticipants] = useState<TableParticipant[]>([])
   const [seatOrder, setSeatOrder] = useState<string[]>([])
+  const [shuffleVersion, setShuffleVersion] = useState(0)
+  const [timer, setTimer] = useState<TimerSample | null>(null)
+  const [roll, setRoll] = useState<TableRoll | null>(null)
   const [events, setEvents] = useState<TableEvent[]>([])
   const [streams, setStreams] = useState<Record<string, MediaStream>>({})
   const [connectionStates, setConnectionStates] = useState<Record<string, RTCPeerConnectionState>>(
@@ -202,16 +206,22 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   const [status, setStatus] = useState("Opening 1080p camera…")
   const [error, setError] = useState<string | null>(null)
 
-  const log = useCallback((lines: string[]) => {
+  const log = useCallback((lines: (string | TableEventContent)[]) => {
     if (lines.length === 0) return
     const at = new Date()
-    setEvents((current) =>
-      [...lines.map((text) => ({ id: (eventIdRef.current += 1), at, text })), ...current].slice(
-        0,
-        200,
-      ),
-    )
+    const entries = lines.map((line) => ({
+      ...(typeof line === "string" ? { text: line } : line),
+      id: (eventIdRef.current += 1),
+      at,
+    }))
+    setEvents((current) => entries.reduce(appendTableEvent, current))
   }, [])
+
+  useEffect(() => {
+    if (!roll) return
+    const timeout = window.setTimeout(() => setRoll(null), 5000)
+    return () => window.clearTimeout(timeout)
+  }, [roll])
 
   const chooseDeck = useCallback((chosenDeckId: number) => {
     channelRef.current?.push("choose_deck", { deck_id: chosenDeckId })
@@ -329,6 +339,12 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
       if (revision <= monarchRevision) return
       monarchRevision = revision
       setMonarch(holder)
+    }
+
+    let timerSync: number | undefined
+
+    function receiveTimer(state: GameTimerState) {
+      setTimer({ state, receivedAt: performance.now() })
     }
 
     function attachDataChannel(peerId: string, dataChannel: RTCDataChannel) {
@@ -451,6 +467,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         })
         room.on("seat_order", ({ peer_ids }: { peer_ids: string[] }) => {
           setSeatOrder(peer_ids)
+          setShuffleVersion((version) => version + 1)
           log(["Seat order randomized"])
         })
         room.on("monarch_state", syncMonarch)
@@ -462,6 +479,39 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         room.on("deck_selected", () => {
           void queryClient.invalidateQueries({ queryKey: ["decks"] })
         })
+        room.on(
+          "table_state",
+          ({ timer: state, peer_ids }: { timer: GameTimerState; peer_ids: string[] }) => {
+            receiveTimer(state)
+            setSeatOrder(peer_ids)
+          },
+        )
+        room.on("timer_state", receiveTimer)
+        room.on("roll", (result: TableRoll) => {
+          setRoll(result)
+          const prefix =
+            result.kind === "dice"
+              ? `${result.player_name} rolled a d${result.sides}: `
+              : `${result.player_name} flipped a coin: `
+          log([
+            {
+              text: describeRoll(result),
+              actor: result.actor,
+              kind: result.kind === "dice" ? `dice:${result.sides}` : "coin",
+              roll: { prefix, results: [result.result] },
+            },
+          ])
+        })
+        // Re-anchor to server time so wall-clock changes and browser clock drift cannot accumulate.
+        const syncTimer = () => {
+          if (room.state !== "joined") return
+          const sentAt = performance.now()
+          room.push("timer_sync", {}).receive("ok", (state: GameTimerState) => {
+            if (disposed) return
+            setTimer({ state, receivedAt: (sentAt + performance.now()) / 2 })
+          })
+        }
+        timerSync = window.setInterval(syncTimer, 15_000)
         presence.onSync(() => {
           const next = presence?.list((_id, value) => value.metas[0] as TableParticipant) ?? []
           participantsRef.current = next
@@ -526,6 +576,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
             // A server restart also restarts the monotonic revision clock.
             monarchRevision = 0
             setStatus("Live — click any board to inspect a card")
+            syncTimer()
             // Presence starts every (re)join at the defaults; republish what this seat knows.
             room.push("update_status", {
               life: lifeRef.current,
@@ -543,6 +594,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     void run()
     return () => {
       disposed = true
+      window.clearInterval(timerSync)
       channelRef.current?.leave()
       socket?.disconnect()
       peersRef.current.forEach((peer) => {
@@ -611,7 +663,43 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
 
   function randomizeSeats() {
     const current = orderBySeats(participantsRef.current, seatOrder).map((item) => item.peer_id)
-    channelRef.current?.push("seat_order", { peer_ids: shuffleSeats(current) })
+    channelRef.current
+      ?.push("seat_order", { peer_ids: shuffleSeats(current) })
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+  }
+
+  function changeTimer(action: "pause" | "resume"): Promise<GameTimerState | null> {
+    return new Promise((resolve) => {
+      const channel = channelRef.current
+      if (channel?.state !== "joined") {
+        setError("Reconnect to the table before changing the timer")
+        resolve(null)
+        return
+      }
+      channel
+        .push("timer", { action })
+        .receive("ok", (state: GameTimerState) => {
+          setTimer({ state, receivedAt: performance.now() })
+          resolve(state)
+        })
+        .receive("error", ({ reason }: { reason: string }) => {
+          setError(reason)
+          resolve(null)
+        })
+        .receive("timeout", () => {
+          setError("Timer request timed out; try again")
+          resolve(null)
+        })
+    })
+  }
+
+  function rollDice(request: RollRequest) {
+    channelRef.current
+      ?.push("roll", request)
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+      .receive("timeout", () =>
+        setError("Roll request timed out; check the table log before retrying"),
+      )
   }
 
   function requestCapture(targetPeerId: string, x: number, y: number, inspect = false) {
@@ -698,6 +786,11 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   return {
     peerId: peerIdRef.current,
     participants: seatedParticipants,
+    shuffleVersion,
+    timer,
+    roll,
+    changeTimer,
+    rollDice,
     events,
     streams,
     connectionStates,

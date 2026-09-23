@@ -3,7 +3,14 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
   import Phoenix.ChannelTest
 
   alias TheGathering.{Accounts, AccountsFixtures, Games}
-  alias TheGatheringWeb.{Presence, UserSocket, WebcamTableChannel, WebcamTableRooms}
+
+  alias TheGatheringWeb.{
+    Presence,
+    UserSocket,
+    WebcamTableChannel,
+    WebcamTableRooms,
+    WebcamTableState
+  }
 
   @endpoint TheGatheringWeb.Endpoint
 
@@ -342,6 +349,135 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
 
     _ = :sys.get_state(joined.channel_pid)
     joined
+  end
+
+  test "server timestamps start, pause and resume; reordering preserves timer", %{socket: socket} do
+    assert_push "table_state", %{timer: %{started_at: nil}, peer_ids: []}
+    before_start = System.system_time(:millisecond)
+    assert_reply push(socket, "seat_order", %{"peer_ids" => ["peer-a"]}), :ok
+    assert_broadcast "timer_state", %{started_at: started, paused_at: nil, paused_ms: 0}
+    assert started >= before_start
+    assert started <= System.system_time(:millisecond)
+
+    assert_reply push(socket, "timer", %{"action" => "pause"}), :ok, paused
+    assert paused.started_at == started
+    assert is_integer(paused.paused_at)
+    assert_reply push(socket, "seat_order", %{"peer_ids" => ["peer-a"]}), :ok
+    assert_reply push(socket, "timer_sync", %{}), :ok, still_paused
+    assert still_paused.paused_at == paused.paused_at
+    assert still_paused.started_at == started
+
+    assert_reply push(socket, "timer", %{"action" => "resume"}), :ok, resumed
+    assert resumed.paused_at == nil
+    assert resumed.started_at == started
+    assert resumed.paused_ms >= 0
+    assert_reply push(socket, "timer", %{"action" => "resume"}), :ok, repeated
+    assert repeated.paused_ms == resumed.paused_ms
+  end
+
+  test "late seats receive the timer/order and can control it; other rooms are independent", %{
+    socket: socket,
+    room_id: room_id
+  } do
+    assert_reply push(socket, "seat_order", %{"peer_ids" => ["peer-a"]}), :ok
+    assert_reply push(socket, "timer", %{"action" => "pause"}), :ok, timer
+    # Consume the original seat's initial snapshot before looking for the new seat's.
+    assert_push "table_state", %{timer: %{started_at: nil}}
+    other = join_player(room_id, "peer-b", "Bob")
+    assert_push "table_state", %{timer: joined_timer, peer_ids: ["peer-a"]}
+    assert Map.drop(joined_timer, [:server_now]) == Map.drop(timer, [:server_now])
+    assert_reply push(other, "timer", %{"action" => "resume"}), :ok, resumed
+    assert resumed.started_at == timer.started_at
+    assert resumed.paused_at == nil
+    assert_broadcast "timer_state", %{paused_at: nil, started_at: started}
+    assert started == timer.started_at
+
+    join_player(Ecto.UUID.generate(), "peer-c", "Cara")
+    assert_push "table_state", %{timer: %{started_at: nil, paused_ms: 0}, peer_ids: []}
+  end
+
+  test "rejects forged timestamps, unknown timer actions and invalid sync payloads", %{
+    socket: socket
+  } do
+    for payload <- [
+          %{"action" => "start"},
+          %{"action" => "reset"},
+          %{},
+          %{"action" => "pause", "started_at" => 1}
+        ] do
+      assert_reply push(socket, "timer", payload), :error, %{reason: "invalid timer action"}
+    end
+
+    assert_reply push(socket, "timer_sync", %{"server_now" => 1}), :error
+    assert_reply push(socket, "timer_sync", %{}), :ok, %{started_at: nil}
+  end
+
+  test "server generates attributed dice and coin rolls, rejecting forged or invalid payloads", %{
+    socket: socket
+  } do
+    for sides <- [2, 6, 20, 1000] do
+      assert_reply push(socket, "roll", %{"kind" => "dice", "sides" => sides}), :ok
+
+      assert_broadcast "roll", %{
+        kind: "dice",
+        sides: ^sides,
+        result: result,
+        actor: "peer-a",
+        player_name: "Alice",
+        at: at,
+        id: id
+      }
+
+      assert result in 1..sides
+      assert is_integer(at)
+      assert {:ok, _} = Ecto.UUID.cast(id)
+    end
+
+    assert_reply push(socket, "roll", %{"kind" => "coin"}), :ok
+    assert_broadcast "roll", %{kind: "coin", result: result, player_name: "Alice"}
+    assert result in ["Heads", "Tails"]
+
+    for payload <- [
+          %{"kind" => "dice", "sides" => 1},
+          %{"kind" => "dice", "sides" => 1001},
+          %{"kind" => "dice", "sides" => 6.5},
+          %{"kind" => "dice", "sides" => "20"},
+          %{"kind" => "dice", "sides" => 20, "result" => 20},
+          %{"kind" => "coin", "player_name" => "Bob"},
+          %{"kind" => "coin", "result" => "Heads"},
+          %{"kind" => "other"},
+          %{}
+        ] do
+      assert_reply push(socket, "roll", payload), :error
+    end
+
+    refute_broadcast "roll", _
+  end
+
+  test "timer transitions account for multiple unequal pauses without resetting" do
+    timer = WebcamTableState.new_timer()
+    assert WebcamTableState.update_timer(timer, "resume", 10) == timer
+    timer = WebcamTableState.update_timer(timer, "start", 1000)
+    timer = WebcamTableState.update_timer(timer, "pause", 13_000)
+    assert WebcamTableState.update_timer(timer, "pause", 20_000) == timer
+    timer = WebcamTableState.update_timer(timer, "resume", 22_000)
+    assert timer.paused_ms == 9000
+    timer = WebcamTableState.update_timer(timer, "pause", 41_000)
+    timer = WebcamTableState.update_timer(timer, "resume", 46_000)
+    assert timer == %{started_at: 1000, paused_at: nil, paused_ms: 14_000}
+    assert WebcamTableState.update_timer(timer, "start", 50_000) == timer
+  end
+
+  defp join_player(room_id, peer_id, name) do
+    user = AccountsFixtures.user_fixture()
+    {:ok, player} = Games.create_player(%{name: name}, user.id)
+
+    UserSocket
+    |> socket(peer_id, %{user: user})
+    |> subscribe_and_join!(WebcamTableChannel, "webcam_table:#{room_id}", %{
+      "peer_id" => peer_id,
+      "player_id" => player.id
+    })
   end
 
   test "rejects a player not linked to the authenticated account", %{

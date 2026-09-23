@@ -189,9 +189,9 @@ always large, everyone else is small, and controls live in a collapsible column.
   stage (keys 1–5 still pick).
 - **Side panel** (right): a narrow icon strip (Table, Decks, Cards, Log, Settings) plus a collapse chevron and shortcut help. The
   Table tab holds the Setup section (players count, Invite players copies the room URL, Select
-  your commander, a turn-order table with #/Player/Commander/Life, the primary Randomize turn
-  order button, the red End game button, Leave table) followed by collapsed Identify cards and
-  Connection sections. Decks lists your commanders; Log shows the table event log. Collapsing the
+  your commander, a turn-order table with #/Player/Commander/Life, the primary Randomize and
+  start button, the red End game button, Leave table), dice/coin controls, and collapsed Identify
+  cards and Connection sections. Decks lists your commanders; Log shows the table event log. Collapsing the
   panel leaves only the icon strip so the board grows.
 - **Resize dividers** on desktop drag the camera rail (176–360 px, default 208) and panel content
   (240–480 px, default 288); widths also cap at 24vw / 32vw to preserve board space. Double-click
@@ -258,12 +258,36 @@ Monarch state is in memory only, scoped by room, and resets when the application
 Counter changes and monarch transfers are added to every connected browser's Log.
 
 Default turn order is join order (`joined_at`, then peer id) so every browser agrees.
-"Randomize turn order" shuffles the present peers and pushes `seat_order`; the channel verifies
-the list names exactly the present peers, then broadcasts it. The End game form numbers seats in
-that order and records them the same way.
+"Randomize and start" shuffles the present peers and pushes `seat_order`; the channel verifies
+the list names exactly the present peers, then broadcasts it. Rows shuffle visibly for about one
+second before settling into that order (instant with reduced motion). The End game form numbers
+seats in that order and records them the same way. Randomizing again reorders seats but **never
+resets or resumes an existing timer**.
+
+`WebcamTableState` serializes the shared timer and order on the single application server.
+The first valid `seat_order` starts it. Any seat can send `timer` with `pause` or `resume`;
+only the server writes `started_at`, `paused_at`, and accumulated `paused_ms`. The timer bar
+above the active board's name bar derives elapsed time excluding pauses. Browsers interpolate
+from a server sample using `performance.now()`, not their wall clock, and resync every 15 seconds
+with `timer_sync` (half-round-trip latency compensation). New/rejoining seats receive the
+current timer and order via `table_state`. Channel monitors discard state when the last seat
+leaves; an application restart also clears it. Multi-node room state is not supported.
+
+End game pauses the timer for everyone and captures that server response for the result form.
+Duration is editable, prefilled in whole minutes rounded to nearest (minimum one minute, matching
+the game schema). Without a started timer it stays blank. Going back leaves the timer paused;
+any seat can resume explicitly. `played_at` uses the shared start timestamp when available.
+
+The Table tab offers d6, d20, custom dice with 2–1000 integer sides, and coin flips. The `roll`
+event validates the request, generates the result on the server, stamps it with the authenticated
+seat's name/id and server time, then broadcasts to everyone. Results appear in a five-second
+overlay and in the Log. Clients cannot supply a result or impersonate the roller.
 
 The Log tab is client-side only: it is derived from presence joins/leaves/changes and the
-`seat_order` broadcast, capped at 200 lines, and not persisted.
+`seat_order` and `roll` broadcasts, capped at 200 lines, and not persisted or replayed on join.
+Consecutive events of the same kind and actor within two seconds coalesce: life keeps the first
+and final totals, dice/coins retain every result, and deck/camera changes show the latest state
+with a count. Different actors, event kinds, and intervening entries break the group.
 
 Audio is not part of the webcam table: no microphone is captured and there are no mute
 controls. Players use their usual voice app alongside the table.
@@ -294,11 +318,14 @@ can still save or share what they saw; this feature cannot revoke frames already
 
 - `TheGatheringWeb.UserSocket` verifies a short-lived token wrapping the tracked cookie session.
 - `TheGatheringWeb.WebcamTableChannel` caps rooms at ten, relays targeted WebRTC signals,
-  merges `update_status` into presence, and validates/broadcasts `seat_order`.
+  merges `update_status` into presence, validates `seat_order`/`timer`/`timer_sync`, and generates
+  and broadcasts validated `roll` results.
+- `TheGatheringWeb.WebcamTableState` owns serialized, server-stamped timer/order state and
+  channel-monitor cleanup (covered by `webcam_table_channel_test.exs`).
 - `TheGatheringWeb.Presence` owns ephemeral room membership and seat status.
 - `WebcamTableConfigController` exposes authenticated ICE configuration.
 - `features/webcam-table/use-webcam-room.ts` owns camera, mesh, signaling, native crop RPC,
-  seat status (life, camera), seat order, and the event log.
+  seat status (life, camera), seat order, timer synchronization, roll overlays, and the event log.
 - `features/webcam-table/use-correction-upload.tsx` uploads explicit picker labels and owns
   the crop-sharing preference/save note. Both camera owner and clicker must allow sharing.
 - `features/webcam-table/webcam-table-page.tsx` composes the rail, stage, and side panel and owns
@@ -322,8 +349,12 @@ can still save or share what they saw; this feature cannot revoke frames already
 - `features/webcam-table/side-panel.tsx` — icon strip and Table/Decks/Cards/Log tabs
   (`cards-tab.tsx` holds the Cards tab; `panel-section.tsx` the collapsible section).
 - `features/webcam-table/finish-game.tsx` — the End game result dialog.
+- `features/webcam-table/table-timer.tsx` — dark active-board timer and pause/resume controls.
+- `features/webcam-table/game-timer.ts` — elapsed-time interpolation, formatting, and duration
+  prefill helpers (`game-timer.test.ts` also covers roll descriptions).
+- `features/webcam-table/table-rolls.tsx` — dice/coin controls, wire types, and result descriptions.
 - `features/webcam-table/table-events.ts` — pure helpers for log lines, seat ordering, and
-  shuffling (unit-tested in `table-events.test.ts`).
+  shuffling and event coalescing (unit-tested in `table-events.test.ts`).
 - `features/webcam-table/board-cards.tsx` — the card tray docked to the bottom of the active board
   and the shared `CardThumb`.
 - `features/webcam-table/card-preview.tsx` — the card image + rules text overlay; `card-details.ts`

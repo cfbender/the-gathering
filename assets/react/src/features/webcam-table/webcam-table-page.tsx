@@ -10,6 +10,7 @@ import { CardPreview } from "./card-preview"
 import { CardSuggestions, isClear, type Recognition } from "./card-suggestions"
 import { FinishGame } from "./finish-game"
 import { canViewBoard } from "./media-policy"
+import type { GameTimerState } from "./game-timer"
 import type { GalleryArt } from "./recognition/pipeline"
 import { decodeImage, useRecognizer, type RecognizerState } from "./recognition/use-recognizer"
 import { RevealControl } from "./reveal-control"
@@ -19,6 +20,8 @@ import { SidePanel, type PanelTab } from "./side-panel"
 import { HotkeyHelp, useTableHotkeys } from "./table-hotkeys"
 import { RailResizeHandle, TableSettings, useTablePreferences } from "./table-preferences"
 import { CorrectionPreference, useCorrectionUpload } from "./use-correction-upload"
+import { describeRoll } from "./table-rolls"
+import { TableTimer } from "./table-timer"
 import {
   useWebcamRoom,
   type BoardCard,
@@ -161,6 +164,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   const autoChosen = useRef<CapturedCard | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
   const [finishOpen, setFinishOpen] = useState(false)
+  const [resultTimer, setResultTimer] = useState<GameTimerState | null>(null)
   const [panelOpen, setPanelOpen] = useState(true)
   const [panelTab, setPanelTab] = useState<PanelTab>("table")
   const [helpOpen, setHelpOpen] = useState(false)
@@ -406,6 +410,14 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       />
 
       <section className="relative flex min-h-0 min-w-0 flex-col" aria-label="Active board">
+        {room.roll && (
+          <div
+            role="status"
+            className="pointer-events-none absolute top-20 left-1/2 z-30 w-max max-w-[90%] -translate-x-1/2 rounded-xl border border-violet-400/40 bg-zinc-950/95 px-6 py-4 text-center text-lg font-semibold text-violet-100 shadow-xl"
+          >
+            {describeRoll(room.roll)}
+          </div>
+        )}
         <div className="relative min-h-0 flex-1">
           <ActiveBoard
             participant={activeParticipant}
@@ -465,6 +477,12 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           )}
           {preview?.kind === "art" && <CardPreview card={preview.card} onClose={closePreview} />}
         </div>
+        <TableTimer
+          sample={room.timer}
+          onChange={(action) => {
+            void room.changeTimer(action)
+          }}
+        />
         {seatBarFor(activeParticipant, "board")}
         <CorrectionPreference upload={corrections} />
       </section>
@@ -518,15 +536,26 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         }}
         onChooseDeck={room.chooseDeck}
         onRandomizeSeats={room.randomizeSeats}
-        onEndGame={() => setFinishOpen(true)}
+        shuffleVersion={room.shuffleVersion}
+        onRoll={room.rollDice}
+        onEndGame={() => {
+          void room.changeTimer("pause").then((state) => {
+            if (!state) return
+            setResultTimer(state)
+            setFinishOpen(true)
+          })
+        }}
       />
 
       <HotkeyHelp open={helpOpen} onOpenChange={setHelpOpen} />
 
-      {finishOpen && (
+      {finishOpen && resultTimer && (
         <FinishGame
           participants={room.participants}
-          playedAt={playedAt.current}
+          playedAt={
+            resultTimer.started_at === null ? playedAt.current : new Date(resultTimer.started_at)
+          }
+          timer={resultTimer}
           onOpenChange={setFinishOpen}
         />
       )}

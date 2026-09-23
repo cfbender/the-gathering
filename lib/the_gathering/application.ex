@@ -16,6 +16,7 @@ defmodule TheGathering.Application do
       {Phoenix.PubSub, name: TheGathering.PubSub},
       TheGatheringWeb.Presence,
       TheGatheringWeb.WebcamTableMonarch,
+      TheGatheringWeb.WebcamTableState,
       {TheGathering.RateLimiter, clean_period: :timer.minutes(10)},
       TheGathering.Catalog.Supervisor,
       TheGathering.Decklists.Cache,
