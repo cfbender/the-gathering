@@ -6,9 +6,11 @@ import {
   shuffleSeats,
 } from "./table-events"
 import type { TableParticipant } from "./use-webcam-room"
+import { EMPTY_COUNTERS } from "./seat-counters"
 
 function seat(overrides: Partial<TableParticipant> & { peer_id: string }): TableParticipant {
   return {
+    ...EMPTY_COUNTERS,
     player_id: 1,
     player_name: "Alice",
     life: 40,

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test"
 import { buildGamePayload } from "./game-result"
+import { EMPTY_COUNTERS } from "./seat-counters"
 
-const seat = { life: 40, camera_off: false, joined_at: 1_000 }
+const seat = { ...EMPTY_COUNTERS, life: 40, camera_off: false, joined_at: 1_000 }
 const participants = [
   {
     ...seat,

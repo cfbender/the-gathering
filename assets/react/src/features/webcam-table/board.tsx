@@ -1,4 +1,4 @@
-import { Pin, PinOff, UserPlus, Video, VideoOff } from "lucide-react"
+import { Crown, Pin, PinOff, UserPlus, Video, VideoOff } from "lucide-react"
 import type { MouseEvent } from "react"
 import { cn } from "@/lib/cn"
 import { describeConnection, type TableParticipant } from "./use-webcam-room"
@@ -83,6 +83,7 @@ export function capturePoint(event: MouseEvent<HTMLElement>) {
 
 export function ActiveBoard({
   participant,
+  monarch,
   stream,
   local,
   connectionState,
@@ -91,6 +92,7 @@ export function ActiveBoard({
   onInspect,
 }: {
   participant: TableParticipant
+  monarch?: boolean
   stream?: MediaStream
   local: boolean
   connectionState?: RTCPeerConnectionState
@@ -119,6 +121,14 @@ export function ActiveBoard({
         </span>
       </button>
       <LifeBadge life={participant.life} size="board" />
+      {monarch && (
+        <span
+          className="pointer-events-none absolute top-2 left-20 rounded bg-black/80 p-2 text-warning"
+          aria-label={`${participant.player_name} is the monarch`}
+        >
+          <Crown className="size-6" />
+        </span>
+      )}
       <button
         type="button"
         className={cn(
@@ -142,6 +152,7 @@ export function ActiveBoard({
 
 export function CameraTile({
   participant,
+  monarch,
   stream,
   local,
   connectionState,
@@ -149,6 +160,7 @@ export function CameraTile({
   onActivate,
 }: {
   participant: TableParticipant
+  monarch?: boolean
   stream?: MediaStream
   local: boolean
   connectionState?: RTCPeerConnectionState
@@ -176,6 +188,14 @@ export function CameraTile({
       )}
       {participant.camera_off && <CameraOffOverlay compact />}
       <LifeBadge life={participant.life} size="tile" />
+      {monarch && (
+        <span
+          className="pointer-events-none absolute top-1.5 right-1.5 rounded bg-black/80 p-1 text-warning"
+          aria-label={`${participant.player_name} is the monarch`}
+        >
+          <Crown className="size-4" />
+        </span>
+      )}
     </button>
   )
 }

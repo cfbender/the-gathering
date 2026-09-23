@@ -4,7 +4,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   use TheGatheringWeb, :channel
 
   alias TheGathering.Games
-  alias TheGatheringWeb.{Presence, WebcamTableRooms}
+  alias TheGatheringWeb.{Presence, WebcamTableMonarch, WebcamTableRooms}
 
   @max_players 4
   @starting_life 40
@@ -29,6 +29,12 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     {:ok, _ref} = Presence.track(socket, participant.peer_id, participant)
     {:ok, _ref} = WebcamTableRooms.track_seat(socket.assigns.room_id, participant)
     push(socket, "presence_state", Presence.list(socket))
+    :ok = WebcamTableMonarch.sync(socket.topic)
+    {:noreply, socket}
+  end
+
+  def handle_info({:monarch_state, event}, socket) do
+    push(socket, "monarch_state", event)
     {:noreply, socket}
   end
 
@@ -64,8 +70,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   def handle_in("choose_deck", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid deck"}}, socket}
 
-  # Ephemeral table state a player publishes about their own seat: life total and
-  # whether their camera is off. It rides on presence like the deck.
+  # Ephemeral state a player publishes about their own seat, carried by presence.
   def handle_in("update_status", payload, socket) when is_map(payload) do
     case status_changes(payload) do
       {:ok, changes} ->
@@ -77,6 +82,17 @@ defmodule TheGatheringWeb.WebcamTableChannel do
         {:reply, {:error, %{reason: "invalid status"}}, socket}
     end
   end
+
+  def handle_in("update_status", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid status"}}, socket}
+
+  def handle_in("take_monarch", payload, socket) when payload == %{} do
+    :ok = WebcamTableMonarch.take(socket.topic, socket.assigns.participant)
+    {:reply, :ok, socket}
+  end
+
+  def handle_in("take_monarch", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid monarch claim"}}, socket}
 
   # Seat order is shared so every browser records the same turn order. The
   # proposed order must name exactly the peers present at that moment.
@@ -102,10 +118,43 @@ defmodule TheGatheringWeb.WebcamTableChannel do
       {"camera_off", camera_off}, {:ok, changes} when is_boolean(camera_off) ->
         {:cont, {:ok, Map.put(changes, :camera_off, camera_off)}}
 
+      {key, count}, {:ok, changes}
+      when key in ["poison", "rad"] and is_integer(count) and count in 0..999 ->
+        field = if key == "poison", do: :poison, else: :rad
+        {:cont, {:ok, Map.put(changes, field, count)}}
+
+      {"commander_casts", counts}, {:ok, changes} ->
+        if valid_counts?(counts),
+          do: {:cont, {:ok, Map.put(changes, :commander_casts, counts)}},
+          else: {:halt, :error}
+
+      {"commander_damage", damage}, {:ok, changes} ->
+        if valid_damage?(damage),
+          do: {:cont, {:ok, Map.put(changes, :commander_damage, damage)}},
+          else: {:halt, :error}
+
       _invalid, _changes ->
         {:halt, :error}
     end)
   end
+
+  defp valid_counts?(counts) when is_map(counts) and map_size(counts) <= 100 do
+    Enum.all?(counts, fn {name, count} ->
+      is_binary(name) and byte_size(name) in 1..300 and
+        is_integer(count) and count in 0..999
+    end)
+  end
+
+  defp valid_counts?(_counts), do: false
+
+  defp valid_damage?(damage) when is_map(damage) and map_size(damage) <= 100 do
+    Enum.all?(damage, fn {player_id, counts} ->
+      is_binary(player_id) and Regex.match?(~r/^[1-9][0-9]{0,15}$/, player_id) and
+        valid_counts?(counts)
+    end)
+  end
+
+  defp valid_damage?(_damage), do: false
 
   defp participant(%{"peer_id" => peer_id, "player_id" => player_id} = params, user_id)
        when is_binary(peer_id) and is_integer(player_id) do
@@ -117,6 +166,10 @@ defmodule TheGatheringWeb.WebcamTableChannel do
           player_name: player.name,
           life: @starting_life,
           camera_off: false,
+          poison: 0,
+          rad: 0,
+          commander_casts: %{},
+          commander_damage: %{},
           # Default seat order is join order, so every browser sees the same seats.
           joined_at: System.system_time(:millisecond)
         }

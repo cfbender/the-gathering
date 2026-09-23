@@ -179,10 +179,29 @@ always large, everyone else is small, and controls live in a collapsible column.
 
 Presence metadata carries, per seat, `life` (starts at 40), `camera_off`, and a
 server-stamped `joined_at`. Players publish their own changes through the channel's
-`update_status` event (validated: life −999…999, booleans, no other keys) and the channel merges
+`update_status` event (validated: life −999…999, camera boolean, and counters below; no other keys) and the channel merges
 them into presence, so every browser shows the same totals without another round trip. Your own
 life is also tracked locally so rapid ± clicks compound before presence echoes back, and it is
 republished after every (re)join because presence restarts at the defaults.
+
+The shield button in each seat bar opens **Counters**. Everyone can inspect a seat; only its
+owner can change its counters. `poison` and `rad` start at zero. `commander_casts` maps commander
+names to command-zone cast counts and displays the next tax as twice the count. Both commander
+and partner/background names come from the selected deck. `commander_damage` maps opposing
+player IDs to commander-name/count maps, keeping identical commanders at different seats separate.
+Recorded damage stays visible when a source changes deck or leaves. Damage does not adjust life
+automatically. Poison at 10 and damage of 21 from any one commander are flagged in red; damage
+from separate commanders is never combined for the threshold. The server accepts only integers
+0…999, maps of at most 100 entries, and names of 1…300 bytes. Counter changes use optimistic local
+deltas and are republished on channel rejoin like life; a full page reload resets the seat.
+
+**Take the monarch** claims the crown for your own seat. `take_monarch` has an empty payload;
+`WebcamTableMonarch` serializes claims and broadcasts one `monarch` holder, never per-seat flags.
+Late joiners receive `monarch_state`; server revisions prevent stale snapshots from replacing
+newer claims. When the holder disconnects, the crown is cleared rather
+than reverting to a previous holder. A crown appears on the holder's tile and active board.
+Monarch state is in memory only, scoped by room, and resets when the application restarts.
+Counter changes and monarch transfers are added to every connected browser's Log.
 
 Default turn order is join order (`joined_at`, then peer id) so every browser agrees.
 "Randomize turn order" shuffles the present peers and pushes `seat_order`; the channel verifies
