@@ -3,7 +3,12 @@ import { Channel, Presence, Socket } from "phoenix"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import { openCamera } from "./camera"
-import { mergeIdentifiedCards, sameCard } from "./identified-cards"
+import {
+  clearBoardCards,
+  gameJustStarted,
+  mergeIdentifiedCards,
+  sameCard,
+} from "./identified-cards"
 import { canViewBoard, videoEncoding, type PublisherQuality } from "./media-policy"
 import type { GameTimerState, TimerSample } from "./game-timer"
 import type { GalleryArt } from "./recognition/pipeline"
@@ -121,6 +126,8 @@ type DataMessage =
     }
   | { type: "card_identified"; entry: BoardCard }
   | { type: "card_removed"; id: string }
+  /** The board's owner cleared everything identified on it. */
+  | { type: "cards_cleared"; ownerPeerId: string }
   /** Sent when a data channel opens so a late joiner sees the cards already on the table. */
   | { type: "cards_sync"; entries: BoardCard[] }
 
@@ -360,6 +367,16 @@ export function useWebcamRoom(
     setIdentifiedCards(cardsRef.current)
   }, [])
 
+  const dropBoardCards = useCallback((ownerPeerId: string) => {
+    cardsRef.current = clearBoardCards(cardsRef.current, ownerPeerId)
+    setIdentifiedCards(cardsRef.current)
+  }, [])
+
+  const dropAllCards = useCallback(() => {
+    cardsRef.current = []
+    setIdentifiedCards(cardsRef.current)
+  }, [])
+
   const broadcast = useCallback((message: DataMessage) => {
     const payload = JSON.stringify(message)
     for (const peer of peersRef.current.values()) {
@@ -407,9 +424,11 @@ export function useWebcamRoom(
         mergeCards(message.entries)
       } else if (message.type === "card_removed") {
         dropCard(message.id)
+      } else if (message.type === "cards_cleared") {
+        dropBoardCards(message.ownerPeerId)
       }
     },
-    [dropCard, mergeCards],
+    [dropBoardCards, dropCard, mergeCards],
   )
 
   useEffect(() => {
@@ -426,7 +445,13 @@ export function useWebcamRoom(
 
     let timerSync: number | undefined
 
+    let lastTimer: GameTimerState | null = null
+
+    // Every seat hears the same timer_state, so a fresh game empties every board without a
+    // separate broadcast; cards identified in the lobby do not carry into the game.
     function receiveTimer(state: GameTimerState) {
+      if (gameJustStarted(lastTimer, state)) dropAllCards()
+      lastTimer = state
       setTimer({ state, receivedAt: performance.now() })
     }
 
@@ -719,7 +744,7 @@ export function useWebcamRoom(
       peersRef.current.clear()
       localStreamRef.current?.getTracks().forEach((track) => track.stop())
     }
-  }, [deckId, handleData, log, playerId, queryClient, refreshVideo, roomId])
+  }, [deckId, dropAllCards, handleData, log, playerId, queryClient, refreshVideo, roomId])
 
   async function changeReveal(target: string | null) {
     if (revealBusy || !channelRef.current) return
@@ -907,6 +932,12 @@ export function useWebcamRoom(
     broadcast({ type: "card_removed", id })
   }
 
+  /** Empties the local seat's own board at every seat; other boards are not ours to clear. */
+  function clearOwnCards() {
+    dropBoardCards(peerIdRef.current)
+    broadcast({ type: "cards_cleared", ownerPeerId: peerIdRef.current })
+  }
+
   /** Participants in shared seat order; the End game form records seats in this order. */
   const seatedParticipants = useMemo(
     () =>
@@ -953,6 +984,7 @@ export function useWebcamRoom(
     requestCapture,
     announceCard,
     removeCard,
+    clearOwnCards,
     chooseDeck,
     life,
     changeLife,

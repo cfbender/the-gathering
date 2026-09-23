@@ -1,8 +1,7 @@
-import { BookOpen, ChevronDown, ChevronUp, X } from "lucide-react"
+import { ChevronDown, ChevronUp, Eraser, X } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/cn"
 import { usePrintingDetails } from "./card-details"
-import { CardRulings } from "./card-rulings"
 import type { BoardCard, IdentifiedCard, TableParticipant } from "./use-webcam-room"
 
 /** Small card image for one printing, loaded from Scryfall through the server; a grey card
@@ -54,15 +53,16 @@ interface TrayProps {
   cards: BoardCard[]
   onPreview: (entry: BoardCard) => void
   onRemove: (id: string) => void
+  /** Present only for the local seat: clearing a whole board is the owner's call. */
+  onClear?: () => void
 }
 
 /** Convoke-style tray docked to the bottom of the active board: a chevron tab that unfolds a
  * translucent shelf of the cards identified on this board, newest last. Nothing here is a
  * game event: it is the table's shared, ephemeral notion of what is on that board, and a
- * wrong entry can be removed by any seat. */
-export function BoardCardTray({ participant, cards, onPreview, onRemove }: TrayProps) {
+ * wrong entry can be removed by any seat. Rulings live in the card preview, not here. */
+export function BoardCardTray({ participant, cards, onPreview, onRemove, onClear }: TrayProps) {
   const [expanded, setExpanded] = useState(false)
-  const [rulingsCard, setRulingsCard] = useState<IdentifiedCard | null>(null)
   const mine = cards.filter((entry) => entry.ownerPeerId === participant.peer_id)
   const Chevron = expanded ? ChevronDown : ChevronUp
 
@@ -91,6 +91,17 @@ export function BoardCardTray({ participant, cards, onPreview, onRemove }: TrayP
           id={`tray-${participant.peer_id}`}
           className="w-full border-t border-white/15 bg-black/70 px-3 py-2 backdrop-blur"
         >
+          {onClear && mine.length > 0 && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs gap-1 text-[0.65rem] text-white/75 hover:text-error"
+                onClick={onClear}
+              >
+                <Eraser className="size-3" /> Clear cards
+              </button>
+            </div>
+          )}
           {mine.length === 0 ? (
             <p className="py-2 text-center text-xs text-white/60">
               No cards identified on this board yet. Click a card on the video to identify it.
@@ -98,14 +109,7 @@ export function BoardCardTray({ participant, cards, onPreview, onRemove }: TrayP
           ) : (
             <ul className="flex gap-2 overflow-x-auto pt-1.5" aria-label="Identified cards">
               {mine.map((entry) => (
-                <li
-                  key={entry.id}
-                  className="relative w-16 shrink-0 md:w-20"
-                  onContextMenu={(event) => {
-                    event.preventDefault()
-                    setRulingsCard(entry.card)
-                  }}
-                >
+                <li key={entry.id} className="relative w-16 shrink-0 md:w-20">
                   <CardThumb
                     card={entry.card}
                     onClick={() => onPreview(entry)}
@@ -119,21 +123,12 @@ export function BoardCardTray({ participant, cards, onPreview, onRemove }: TrayP
                   >
                     <X className="size-3" strokeWidth={3} />
                   </button>
-                  <button
-                    type="button"
-                    className="mt-1 flex w-full items-center justify-center gap-1 rounded bg-white/10 py-1 text-[0.6rem] text-white/80 hover:bg-white/20"
-                    onClick={() => setRulingsCard(entry.card)}
-                    aria-label={`Rulings for ${entry.card.name}`}
-                  >
-                    <BookOpen className="size-3" /> Rulings
-                  </button>
                 </li>
               ))}
             </ul>
           )}
         </div>
       )}
-      {rulingsCard && <CardRulings card={rulingsCard} onClose={() => setRulingsCard(null)} />}
     </section>
   )
 }

@@ -1,4 +1,4 @@
-import { Search, Sparkles, WalletCards, X } from "lucide-react"
+import { Eraser, Search, Sparkles, WalletCards, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { ManaCost } from "@/components/mana-symbols"
 import { cn } from "@/lib/cn"
@@ -18,6 +18,8 @@ export interface CardsTabProps {
   onPreviewCard: (entry: BoardCard) => void
   onPreviewArt: (art: GalleryArt) => void
   onRemoveCard: (id: string) => void
+  /** Clears everything identified on the local seat's own board, at every seat. */
+  onClearOwnCards: () => void
 }
 
 function CardMeta({ card }: { card: IdentifiedCard }) {
@@ -201,6 +203,7 @@ export function CardsTab({
   onPreviewCard,
   onPreviewArt,
   onRemoveCard,
+  onClearOwnCards,
 }: CardsTabProps) {
   const [clearedLatestId, setClearedLatestId] = useState<string | null>(null)
   const [scope, setScope] = useState<"shared" | "mine">("shared")
@@ -276,9 +279,20 @@ export function CardsTab({
           <div className="grid gap-3">
             {[...groups.entries()].map(([peerId, entries]) => (
               <section key={peerId} aria-label={`Cards on ${nameFor(peerId)}'s board`}>
-                <h3 className="text-base-content/50 mb-1 text-[0.6rem] font-bold tracking-wider uppercase">
-                  {nameFor(peerId)} ({entries.length})
-                </h3>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <h3 className="text-base-content/50 text-[0.6rem] font-bold tracking-wider uppercase">
+                    {nameFor(peerId)} ({entries.length})
+                  </h3>
+                  {peerId === localParticipant.peer_id && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs -my-1 gap-1 text-[0.6rem] hover:text-error"
+                      onClick={onClearOwnCards}
+                    >
+                      <Eraser className="size-3" /> Clear cards
+                    </button>
+                  )}
+                </div>
                 <ul className="grid gap-1.5">
                   {entries.map((entry) => (
                     <CardRow
