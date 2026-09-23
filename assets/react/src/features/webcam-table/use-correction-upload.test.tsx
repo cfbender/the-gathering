@@ -46,6 +46,11 @@ beforeEach(() => {
 })
 
 describe("correction labels", () => {
+  it("preserves a back-face gallery ID as the correction label", () => {
+    const face = "b0a96416-9ee5-4202-a99f-e09db8794567-1"
+    expect(correctionPayload("id", capture, result, face, "v3", true)?.label).toBe(face)
+  })
+
   it("never uploads an automatic answer, but accepts explicit top-1 confirmations and search labels", () => {
     expect(correctionPayload("id", capture, result, "wrong", "v3", false)).toBeNull()
     expect(correctionPayload("id", capture, result, "wrong", "v3", true)?.label).toBe("wrong")

@@ -5,6 +5,7 @@ defmodule TheGathering.CardId.Corrections do
   log as the commit point. Repeated capture/label submissions are idempotent.
   """
   alias TheGathering.CardId
+  alias TheGathering.Catalog.PrintingId
 
   @uuid ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
   @fields ~w(capture_id label click quad up_vote bundle_version top1 similarity margin)
@@ -32,13 +33,14 @@ defmodule TheGathering.CardId.Corrections do
 
   defp validate(%{"image" => "data:image/jpeg;base64," <> encoded} = p)
        when byte_size(encoded) <= 190_000 do
-    with true <- uuid?(p["capture_id"]) and uuid?(p["label"]),
+    with true <- uuid?(p["capture_id"]),
+         {:ok, _, _} <- PrintingId.parse(p["label"]),
          true <- point?(p["click"], 0, 640),
          true <- quad?(p["quad"]),
          true <- optional_number?(p["up_vote"], 0, 2),
          true <- optional_number?(p["similarity"], -2, 2),
          true <- optional_number?(p["margin"], 0, 4),
-         true <- is_nil(p["top1"]) or uuid?(p["top1"]),
+         true <- is_nil(p["top1"]) or match?({:ok, _, _}, PrintingId.parse(p["top1"])),
          true <- is_binary(p["bundle_version"]) and byte_size(p["bundle_version"]) <= 120,
          {:ok, <<255, 216, rest::binary>> = jpeg} <- Base.decode64(encoded),
          true <- :binary.part(jpeg, byte_size(jpeg) - 2, 2) == <<255, 217>>,

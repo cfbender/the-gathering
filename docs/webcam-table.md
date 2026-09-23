@@ -458,6 +458,14 @@ baked into the container image, so a new bundle (new model, or the same model wi
 gallery after a set release) is a `publish` away and browsers pick it up on their next table
 because they cache bundle files by version.
 
+Gallery coverage includes paper artwork in any language (including Japanese-only alternate
+art), prepare cards, meld cards, and both scanned sides of transform/MDFC/reversible cards
+and double-faced tokens. Separate sides use face names and IDs `<scryfall UUID>` (front)
+and `<scryfall UUID>-1` (back); prepare/adventure share one art and keep their combined name.
+Split, flip and art-series layouts remain excluded. See `ml/README.md`, **Gallery coverage
+and face IDs**, for crop geometry and the refresh/export/publish commands. Deploying this
+code alone does not rebuild the gallery bundle.
+
 In the browser, `useRecognizer` fetches `GET /api/cardid/bundle` once per table, starts a Web
 Worker, loads the three graphs plus `arts.json`, and runs one warm-up identify so the first real
 click is not slow. The "Identify cards" section of the side panel shows `checking`, `loading`,
@@ -473,6 +481,12 @@ per card), so `card-details.ts` asks `GET /api/card-printings/:id/details`, whic
 `Catalog.Printings.details/1` answers by fetching the exact printing from Scryfall once and
 caching it in `card_printings`. "Wrong card?" on the preview reopens the picker for the same
 crop and the chosen card replaces the entry.
+
+For separate-side gallery entries, details select that face's name, image, mana cost, type
+and rules text. The suffix is stripped only for the Scryfall request, not the details/query
+cache key or correction label. The cached-printing `show` endpoint can also return either
+face after details has populated it. Rulings use the base card's shared ruling list and
+face-keyed cache rows. Malformed gallery IDs return HTTP 400 from details/rulings.
 
 The **picker** (`card-suggestions.tsx`) is user-initiated only: it opens for a near-tie, when
 no bundle is published (deck suggestions stand in), on "Wrong card?", or when the clicker
@@ -514,8 +528,9 @@ each seat watches the shared timer and drops all cards on the lobby-to-started t
 cards identified while waiting never carry into the game. A late joiner's first timer sample is
 already started and does not count as a transition, so the `cards_sync` it receives survives.
 
-Each board keeps **one entry per full card name**, trimmed and case-insensitive (the gallery
+Each board keeps **one entry per displayed card name**, trimmed and case-insensitive (the gallery
 does not provide oracle IDs). Different printings of the same card do not create extra entries.
+Separate face names remain distinct; full combined prepare/adventure names stay intact.
 Repeat identification opens the existing entry's preview and preserves its first printing and
 position; another player's board can still hold its own entry. Picker choices use the same
 rule. "Wrong card?" removes the mistaken entry, then reuses an existing replacement if present.

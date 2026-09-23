@@ -40,6 +40,20 @@ describe("identified cards", () => {
     expect(mergeIdentifiedCards([a], [older])).toEqual([older])
   })
 
+  it("keeps two printed faces distinct but dedupes another printing of the same face", () => {
+    const front = entry("front", "Jadzi, Oracle of Arcavios")
+    const back = entry("back", "Journey to the Oracle")
+    front.card.id = "b0a96416-9ee5-4202-a99f-e09db8794567"
+    back.card.id = `${front.card.id}-1`
+    expect(mergeIdentifiedCards([front], [back])).toEqual([back, front])
+    expect(
+      mergeIdentifiedCards(
+        [front, back],
+        [entry("repeat", " JOURNEY TO THE ORACLE ", "alice", 20)],
+      ),
+    ).toEqual([back, front])
+  })
+
   it("reuses the replacement already on the board after removing a wrong entry", () => {
     const correct = entry("correct", "Counterspell")
     const wrong = entry("wrong")

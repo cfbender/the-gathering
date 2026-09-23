@@ -1,11 +1,37 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vite-plus/test"
-import { CommanderHover } from "./card-hover"
+import { CardHover, CommanderHover } from "./card-hover"
 
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+})
+
+it("fetches the suffixed face ID and displays the face image and name", async () => {
+  const id = "b0a96416-9ee5-4202-a99f-e09db8794567-1"
+  const name = "Journey to the Oracle"
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        data: { id, name, image_uris: { normal: "https://img.example/back.jpg" } },
+      }),
+    ),
+  )
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <CardHover id={id} name={name}>
+        <button type="button">Back face</button>
+      </CardHover>
+    </QueryClientProvider>,
+  )
+  fireEvent.mouseEnter(screen.getByRole("button", { name: "Back face" }))
+  const image = await screen.findByRole("img", { name })
+  expect(image.getAttribute("src")).toBe("https://img.example/back.jpg")
+  expect(fetch).toHaveBeenCalledWith(`/api/card-printings/${id}/details`, expect.anything())
+  expect(screen.getByText(name)).toBeTruthy()
 })
 
 it.each(["https://img.example/selected-printing.jpg", null, undefined])(
