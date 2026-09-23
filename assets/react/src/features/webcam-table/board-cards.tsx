@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Eraser, X } from "lucide-react"
 import { useState } from "react"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { cn } from "@/lib/cn"
 import { usePrintingDetails } from "./card-details"
 import type { BoardCard, IdentifiedCard, TableParticipant } from "./use-webcam-room"
@@ -35,15 +36,26 @@ export function CardThumb({
       {card.name}
     </span>
   )
-  if (!onClick) return <span className={cn("block", className)}>{image}</span>
+  const content = (
+    <>
+      {image}
+      <span className="absolute bottom-0.5 left-0.5">
+        <GameChangerBadge gameChanger={details.data?.game_changer} compact />
+      </span>
+    </>
+  )
+  if (!onClick) return <span className={cn("relative block", className)}>{content}</span>
   return (
     <button
       type="button"
-      className={cn("block rounded-[4.5%] outline-offset-2 transition hover:scale-105", className)}
+      className={cn(
+        "relative block rounded-[4.5%] outline-offset-2 transition hover:scale-105",
+        className,
+      )}
       onClick={onClick}
       aria-label={`Show ${card.name}`}
     >
-      {image}
+      {content}
     </button>
   )
 }

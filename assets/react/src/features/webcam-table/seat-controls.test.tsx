@@ -397,5 +397,7 @@ it("shows remote commander names without a picker", () => {
     <CommanderControl participant={seat} decks={[deck]} local={false} onChooseDeck={vi.fn()} />,
   )
   expect(screen.queryByRole("button", { name: /commander/ })).toBeNull()
-  expect(screen.getByText("Tymna / Thrasios")).toBeTruthy()
+  expect(screen.getByText("Tymna")).toBeTruthy()
+  expect(screen.getByText("Thrasios")).toBeTruthy()
+  expect(screen.getByTitle("Tymna / Thrasios")).toBeTruthy()
 })

@@ -8,6 +8,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useCurrentUser } from "@/lib/auth"
 import { cn } from "@/lib/cn"
 import { getDecks } from "@/features/decks/decks"
+import { DeckCommanders } from "@/features/decks/deck-commanders"
 import {
   type DeckScope,
   ownDecks,
@@ -106,8 +107,7 @@ function DecksPage() {
               <span className="text-primary text-xs font-bold uppercase">{deck.player?.name}</span>
               <h2 className="text-xl font-bold">{deck.name}</h2>
               <p className="text-base-content/85">
-                {deck.commander_name}
-                {deck.partner_name && ` + ${deck.partner_name}`}
+                <DeckCommanders deck={deck} />
               </p>
               <ColorIdentity colors={deck.color_identity} />
             </div>

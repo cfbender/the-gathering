@@ -14,7 +14,7 @@ defmodule TheGathering.Stats.Player do
       cutoff = Accounts.get_settings().detailed_stats_from
       detailed = detailed_games(games, cutoff)
       detailed_seats = Enum.map(detailed, mine)
-      card_art = card_art(detailed_seats)
+      card_art = card_art(seats)
 
       %{
         detailed_stats_from: cutoff,
@@ -40,7 +40,21 @@ defmodule TheGathering.Stats.Player do
         decks:
           seats
           |> Enum.reject(&is_nil(&1.deck))
-          |> Records.grouped_records(&Summaries.entity(&1.deck), & &1.deck_id),
+          |> Records.grouped_records(
+            fn seat ->
+              seat.deck
+              |> Summaries.entity()
+              |> Map.put(
+                :game_changer,
+                Catalog.game_changer?(
+                  card_art,
+                  seat.deck.commander_card_id,
+                  seat.deck.commander_name
+                )
+              )
+            end,
+            & &1.deck_id
+          ),
         color_win_rates: Records.color_records(seats),
         head_to_head: head_to_head(games, player.id),
         seat_win_rates:
@@ -100,7 +114,7 @@ defmodule TheGathering.Stats.Player do
     faced
     |> Enum.map(fn row ->
       row
-      |> Map.take([:id, :name, :art_crop_url, :color_identity])
+      |> Map.take([:id, :name, :art_crop_url, :color_identity, :game_changer])
       |> Map.merge(%{faced: row.games, beat_me: row.wins, beaten: Map.get(beaten, row.id, 0)})
     end)
     |> Enum.sort_by(&{-&1.faced, -&1.beat_me, String.downcase(&1.name)})
@@ -162,6 +176,7 @@ defmodule TheGathering.Stats.Player do
         id: id,
         name: name,
         mentions: length(rows),
+        game_changer: Catalog.game_changer?(card_art, id, name),
         art_crop_url: Catalog.art_crop_url(card_art, id, name)
       }
     end)

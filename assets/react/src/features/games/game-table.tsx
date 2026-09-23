@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router"
 import { Trophy, UsersRound } from "lucide-react"
 import { ColorIdentity } from "@/components/mana-symbols"
+import { GameChangerBadge } from "@/components/game-changer-badge"
+import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/cn"
 import { formatDate, type Game, type Seat } from "./games"
@@ -37,6 +39,9 @@ function PlayerPortrait({ seat }: { seat: Seat }) {
                   />
                 )}
               </span>
+              <span className="absolute -bottom-1 -left-1">
+                <GameChangerBadge gameChanger={seat.deck?.commander_game_changer} compact />
+              </span>
               {winner && (
                 <span className="bg-accent text-accent-content absolute -top-1 -right-1 rounded-full p-0.5">
                   <Trophy aria-hidden="true" className="size-3" />
@@ -52,11 +57,8 @@ function PlayerPortrait({ seat }: { seat: Seat }) {
             {result} · Seat {seat.seat}
           </p>
           <p className="text-sm font-semibold break-words">
-            {seat.deck?.commander_name ?? "Unknown commander"}
+            {seat.deck ? <DeckCommanders deck={seat.deck} /> : "Unknown commander"}
           </p>
-          {seat.deck?.partner_name && (
-            <p className="text-sm break-words">{seat.deck.partner_name}</p>
-          )}
           <p className="text-base-content/70 mt-1 text-xs break-words">
             {seat.deck?.name ?? "Unknown deck"}
           </p>

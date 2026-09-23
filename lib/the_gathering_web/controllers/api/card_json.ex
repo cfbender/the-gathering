@@ -12,6 +12,7 @@ defmodule TheGatheringWeb.API.CardJSON do
       mana_cost: card.mana_cost,
       type_line: card.type_line,
       color_identity: card.color_identity,
+      game_changer: card.game_changer,
       image_uris:
         CardImages.urls(Map.take(card.image_uris || %{}, ["small", "normal", "art_crop"])),
       can_be_commander: card.can_be_commander,

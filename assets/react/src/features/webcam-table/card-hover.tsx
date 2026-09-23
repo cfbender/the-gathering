@@ -1,6 +1,7 @@
 import { Anchor } from "@radix-ui/react-popover"
 import { useState, type ReactNode } from "react"
 import { CardImage } from "@/components/card-image"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { Popover, PopoverContent } from "@/components/ui/popover"
 import type { DeckSummary } from "@/features/decks/decks"
 import { printingPrices, usePrintingDetails } from "./card-details"
@@ -11,12 +12,14 @@ export function CardHover({
   name,
   imageUrl,
   artCropUrl,
+  gameChanger,
   children,
 }: {
   id: string | null
   name: string
   imageUrl?: string | null
   artCropUrl?: string | null
+  gameChanger?: boolean
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
@@ -54,6 +57,7 @@ export function CardHover({
           className="w-full"
         />
         <p className="mt-1 text-center text-xs">{name}</p>
+        <GameChangerBadge gameChanger={details.data?.game_changer ?? gameChanger} />
         {details.data && (
           <p className="mt-1 text-center text-xs text-white/70">
             {printingPrices(details.data.prices)}
@@ -72,7 +76,13 @@ export function CommanderHover({
   children,
 }: {
   deck:
-    | Pick<DeckSummary, "commander_name" | "commander_image_url" | "commander_art_crop_url">
+    | Pick<
+        DeckSummary,
+        | "commander_name"
+        | "commander_image_url"
+        | "commander_art_crop_url"
+        | "commander_game_changer"
+      >
     | undefined
   children: ReactNode
 }) {
@@ -81,6 +91,7 @@ export function CommanderHover({
     <CardHover
       id={null}
       name={deck.commander_name}
+      gameChanger={deck.commander_game_changer}
       imageUrl={deck.commander_image_url}
       artCropUrl={deck.commander_art_crop_url}
     >

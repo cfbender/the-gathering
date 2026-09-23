@@ -1,6 +1,7 @@
 import { BookOpen, ChevronLeft, ChevronRight, Trash2, Undo2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { CardImage } from "@/components/card-image"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { ManaCost, ManaSymbol, parseManaCost } from "@/components/mana-symbols"
 import { cn } from "@/lib/cn"
 import {
@@ -207,6 +208,8 @@ function PrintingPreview({ card: initial, ownerName, onWrongCard, onRemove, onCl
                 />
               </div>
               <figcaption className="mt-2 text-center text-xs text-white/70">
+                <GameChangerBadge gameChanger={data?.game_changer} />
+                {data?.game_changer && <br />}
                 {caption}
                 {ownerName && <span className="text-white/45"> · {ownerName}’s board</span>}
               </figcaption>

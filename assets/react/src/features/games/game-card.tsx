@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import { Trophy, UsersRound } from "lucide-react"
 import { ColorIdentity } from "@/components/mana-symbols"
+import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { formatDate, winConditionLabel, type Game, type Seat } from "./games"
 
 function TablePlayer({ seat }: { seat: Seat }) {
@@ -27,10 +28,10 @@ function TablePlayer({ seat }: { seat: Seat }) {
           {seat.deck && <ColorIdentity colors={seat.deck.color_identity} className="text-xs" />}
         </div>
         <p
-          className="text-base-content/80 mt-0.5 line-clamp-2 text-xs break-words"
+          className="text-base-content/80 mt-0.5 text-xs break-words"
           title={seat.deck?.commander_name}
         >
-          {seat.deck?.commander_name ?? "Unknown commander"}
+          {seat.deck ? <DeckCommanders deck={seat.deck} /> : "Unknown commander"}
         </p>
       </div>
     </li>
@@ -98,7 +99,7 @@ export function GameCard({ game }: { game: Game }) {
             )}
           </div>
           <p className="mt-1 text-sm break-words">
-            {winner.deck?.commander_name ?? "Unknown commander"}
+            {winner.deck ? <DeckCommanders deck={winner.deck} /> : "Unknown commander"}
           </p>
           <p className="mt-1 text-xs break-words text-white/75">
             {winner.deck?.name ?? "Unknown deck"}

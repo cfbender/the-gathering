@@ -14,6 +14,7 @@ import { formatDate, invalidateGameRelated } from "@/features/games/games"
 import { canManageDeck, getDeck, isRetired, type DeckDetail } from "@/features/decks/decks"
 import { DeleteDeckCard } from "@/features/decks/delete-deck"
 import { RetireDeckCard } from "@/features/decks/retire-deck"
+import { DeckCommanders } from "@/features/decks/deck-commanders"
 
 export const Route = createFileRoute("/decks/$deckId")({ component: DeckDetailPage })
 
@@ -35,7 +36,7 @@ function DeckDetailPage() {
           ) : undefined
         }
         title={deck.name}
-        description={`${deck.commander_name ?? ""}${deck.partner_name ? ` + ${deck.partner_name}` : ""}`}
+        description={<DeckCommanders deck={deck} />}
         backgroundImageUrl={deck.commander_art_crop_url}
         actions={
           isRetired(deck) || deck.decklist_url ? (

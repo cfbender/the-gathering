@@ -4,6 +4,7 @@ import { Crown } from "lucide-react"
 import { useState } from "react"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { CardArtBackground } from "@/components/card-art-background"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -104,6 +105,7 @@ function CommandersPage() {
                 <h2 className="truncate text-xl font-bold" title={commander.name}>
                   {commander.name}
                 </h2>
+                <GameChangerBadge gameChanger={commander.game_changer} />
                 <dl className="border-base-300/70 bg-base-100/75 rounded-box grid grid-cols-3 gap-2 border px-3 py-2 text-sm shadow-sm backdrop-blur">
                   <div>
                     <dt className="text-base-content/70 text-xs uppercase">Games</dt>

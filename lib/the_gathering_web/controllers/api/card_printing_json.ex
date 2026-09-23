@@ -15,6 +15,7 @@ defmodule TheGatheringWeb.API.CardPrintingJSON do
           :id,
           :oracle_id,
           :name,
+          :game_changer,
           :set_code,
           :set_name,
           :collector_number,
@@ -38,7 +39,16 @@ defmodule TheGatheringWeb.API.CardPrintingJSON do
   end
 
   defp summary(printing) do
-    Map.take(printing, [:id, :name, :set_code, :set_name, :collector_number, :lang, :image_uris])
+    Map.take(printing, [
+      :id,
+      :name,
+      :game_changer,
+      :set_code,
+      :set_name,
+      :collector_number,
+      :lang,
+      :image_uris
+    ])
     |> Map.update!(:image_uris, &CardImages.urls/1)
   end
 end

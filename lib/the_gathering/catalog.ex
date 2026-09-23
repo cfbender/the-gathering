@@ -127,13 +127,16 @@ defmodule TheGathering.Catalog do
     |> where([card], card.id in ^ids or card.normalized_name in ^names)
     |> select(
       [card],
-      {card.id, card.name, card.normalized_name, card.image_uris, card.color_identity}
+      {card.id, card.name, card.normalized_name, card.image_uris, card.color_identity,
+       card.game_changer}
     )
     |> Repo.all()
-    |> Enum.reduce(%{}, fn {id, name, normalized_name, image_uris, color_identity}, summaries ->
+    |> Enum.reduce(%{}, fn {id, name, normalized_name, image_uris, color_identity, game_changer},
+                           summaries ->
       summary = %{
         id: id,
         name: name,
+        game_changer: game_changer,
         art_crop_url: CardImages.url(Map.get(image_uris || %{}, "art_crop")),
         image_url: CardImages.url(Map.get(image_uris || %{}, "normal")),
         color_identity: ColorIdentity.canonical(Enum.join(color_identity || []))
@@ -163,6 +166,7 @@ defmodule TheGathering.Catalog do
         urls
         |> Map.put(key, summary.art_crop_url)
         |> Map.put({:image, key}, summary.image_url)
+        |> Map.put({:game_changer, key}, summary.game_changer)
       end)
 
     Printing
@@ -181,6 +185,17 @@ defmodule TheGathering.Catalog do
   def art_crop_url(urls, id, name, printing_id \\ nil) do
     Map.get(urls, {:printing, printing_id}) || Map.get(urls, {:id, id}) ||
       (is_binary(name) && Map.get(urls, {:name, CardData.normalize_name(name)})) || nil
+  end
+
+  def game_changer?(summaries, id, name) do
+    case Map.fetch(summaries, {:game_changer, {:id, id}}) do
+      {:ok, value} ->
+        value
+
+      :error ->
+        is_binary(name) and
+          Map.get(summaries, {:game_changer, {:name, CardData.normalize_name(name)}}, false)
+    end
   end
 
   def card_image_url(urls, id, name, printing_id \\ nil) do

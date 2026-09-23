@@ -42,6 +42,7 @@ defmodule TheGathering.Stats.Summaries do
       %{
         player_name: seat.player.name,
         name: name,
+        game_changer: Catalog.game_changer?(card_art, id, name),
         art_crop_url: Catalog.art_crop_url(card_art, id, name, printing),
         winner: seat.result == "win"
       }
@@ -105,6 +106,7 @@ defmodule TheGathering.Stats.Summaries do
       id: public_commander_id(key, card),
       name: card.name,
       art_crop_url: card.art_crop_url,
+      game_changer: Map.get(card, :game_changer, false),
       color_identity: card.color_identity
     }
   end
@@ -117,6 +119,7 @@ defmodule TheGathering.Stats.Summaries do
       name: deck.name,
       commander_name: deck.commander_name,
       color_identity: deck.color_identity,
+      game_changer: not is_nil(art) and art.game_changer,
       art_crop_url: art && art.art_crop_url
     }
   end

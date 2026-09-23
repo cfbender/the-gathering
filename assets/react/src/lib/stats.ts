@@ -11,6 +11,7 @@ export interface RecordCounts {
 }
 
 export interface NamedRecordRow extends RecordCounts {
+  game_changer?: boolean
   id: number | string
   name: string
   commander_name?: string
@@ -34,6 +35,7 @@ export interface ColorExposure extends RecordCounts {
 }
 
 export interface RivalCommander {
+  game_changer?: boolean
   id: string
   name: string
   art_crop_url: string | null
@@ -118,6 +120,7 @@ export interface OverviewStats {
   commanders: CommanderSummary[]
   recent_games: (RecentStatGame & {
     commanders: {
+      game_changer?: boolean
       player_name: string
       name: string | null
       art_crop_url: string | null
@@ -158,7 +161,13 @@ export interface PlayerStats {
   seat_win_rates: NamedRecordRow[]
   favorite_seat: number | null
   best_seat: number | null
-  mvp_cards: { id: string | null; name: string; mentions: number; art_crop_url: string | null }[]
+  mvp_cards: {
+    id: string | null
+    name: string
+    mentions: number
+    art_crop_url: string | null
+    game_changer?: boolean
+  }[]
 }
 
 export interface DeckStats {
@@ -172,6 +181,7 @@ export interface DeckStats {
 }
 
 export interface CommanderSummary extends RecordCounts {
+  game_changer?: boolean
   /** Scryfall card ID, or the card name when the card is missing from the catalog. */
   id: string
   name: string
@@ -184,6 +194,7 @@ export interface CommanderSummary extends RecordCounts {
 
 export interface CommanderStats {
   commander: {
+    game_changer?: boolean
     id: string
     name: string
     art_crop_url: string | null

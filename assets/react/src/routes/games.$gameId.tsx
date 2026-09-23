@@ -6,6 +6,8 @@ import { Clock, Pencil, Trophy } from "lucide-react"
 import { canManageGame, formatDate, getGame, winConditionLabel } from "@/features/games/games"
 import { DeleteGame } from "@/features/games/delete-game"
 import { CardArtBackground } from "@/components/card-art-background"
+import { GameChangerBadge } from "@/components/game-changer-badge"
+import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { useCurrentUser } from "@/lib/auth"
 
 export const Route = createFileRoute("/games/$gameId")({ component: GameDetailPage })
@@ -92,8 +94,7 @@ function GameDetailPage() {
                     <ColorIdentity colors={seat.deck.color_identity} />
                   </span>
                   <span className="text-base-content/85 block text-sm">
-                    {seat.deck.commander_name}
-                    {seat.deck.partner_name && ` + ${seat.deck.partner_name}`}
+                    <DeckCommanders deck={seat.deck} />
                   </span>
                 </Link>
               ) : (
@@ -103,7 +104,8 @@ function GameDetailPage() {
                 <div className="border-accent/40 relative mt-2 overflow-hidden rounded-lg border px-3 py-2 text-sm">
                   <CardArtBackground imageUrl={seat.mvp_art_crop_url} />
                   <p className="text-accent relative z-10">
-                    <strong>MVP:</strong> {seat.mvp_card_name}
+                    <strong>MVP:</strong> {seat.mvp_card_name}{" "}
+                    <GameChangerBadge gameChanger={seat.mvp_game_changer} />
                   </p>
                 </div>
               )}

@@ -15,6 +15,7 @@ import {
   useSyncRemoteDecks,
 } from "@/features/decks/sync-remote-decks"
 import { isRetired, type DeckSummary } from "@/features/decks/decks"
+import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { remoteDeckSourceLabels, type RemoteDeckSource } from "@/lib/remote-decks"
 import { errorMessage, isSudoRequired, useCurrentUser } from "@/lib/auth"
 import { formatDate, getPlayer, getPlayers, mergePlayers } from "@/features/games/games"
@@ -150,7 +151,9 @@ function DeckGrid({ decks }: { decks: DeckSummary[] }) {
               <strong>{deck.name}</strong>
               <ColorIdentity colors={deck.color_identity} />
             </span>
-            <span className="text-base-content/85 text-sm">{deck.commander_name}</span>
+            <span className="text-base-content/85 text-sm">
+              <DeckCommanders deck={deck} />
+            </span>
             {deck.decklist_url && (
               <span className="text-base-content/70 inline-flex items-center gap-1 text-xs">
                 <ExternalLink className="size-3" />

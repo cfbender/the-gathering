@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useId, useState } from "react"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import {
   Dialog,
   DialogClose,
@@ -137,6 +138,7 @@ export function PrintingPicker({
                     />
                   )}
                   <span className="text-sm font-medium">{printingLabel(printing)}</span>
+                  <GameChangerBadge gameChanger={printing.game_changer} />
                   {card.printing_id === printing.id && (
                     <span className="text-primary text-xs font-bold">Selected</span>
                   )}

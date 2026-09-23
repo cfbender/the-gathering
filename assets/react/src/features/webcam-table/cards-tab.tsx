@@ -1,5 +1,6 @@
 import { Eraser, Search, Sparkles, WalletCards, X } from "lucide-react"
 import { useEffect, useState } from "react"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { ManaCost } from "@/components/mana-symbols"
 import { cn } from "@/lib/cn"
 import { CardThumb } from "./board-cards"
@@ -31,6 +32,7 @@ function CardMeta({ card }: { card: IdentifiedCard }) {
         <span className="truncate font-semibold">{card.name}</span>
         {data?.mana_cost && <ManaCost cost={data.mana_cost} className="shrink-0 text-[0.65rem]" />}
       </span>
+      <GameChangerBadge gameChanger={data?.game_changer} />
       <span className="text-base-content/55 block truncate text-[0.65rem]">
         {data
           ? printingCaption({ ...data, set: data.set_code })
@@ -94,6 +96,7 @@ function LatestCard({
         <button type="button" className="block text-left hover:underline" onClick={onPreview}>
           <span className="block font-bold">{entry.card.name}</span>
         </button>
+        <GameChangerBadge gameChanger={data?.game_changer} />
         <p className="text-base-content/70 truncate">{data?.type_line ?? "Loading…"}</p>
         <p className="text-base-content/55 truncate text-[0.65rem]">
           {data

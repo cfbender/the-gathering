@@ -1,6 +1,7 @@
 import { ChevronDown, Crown, Minus, Plus, ShieldAlert } from "lucide-react"
 import { useEffect, useState } from "react"
 import { CardImage } from "@/components/card-image"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
@@ -29,6 +30,7 @@ function CounterRow({
   art,
   visibleLabel = label,
   onChangeLife,
+  gameChanger,
 }: {
   label: string
   value: number
@@ -39,6 +41,7 @@ function CounterRow({
   art?: string | null
   visibleLabel?: string
   onChangeLife?: (delta: number) => void
+  gameChanger?: boolean
 }) {
   const [pending, setPending] = useState(0)
   useEffect(() => {
@@ -64,6 +67,7 @@ function CounterRow({
         />
       )}
       <span className="min-w-0 flex-1 text-xs">{visibleLabel}</span>
+      <GameChangerBadge gameChanger={gameChanger} compact />
       {local && (
         <button
           type="button"
@@ -155,7 +159,12 @@ export function SeatCounterControls({
   const row = (
     label: string,
     counter: Counter,
-    options: { threshold?: number; multiplier?: number; art?: string | null } = {},
+    options: {
+      threshold?: number
+      multiplier?: number
+      art?: string | null
+      gameChanger?: boolean
+    } = {},
   ) => (
     <CounterRow
       key={label}
@@ -205,6 +214,10 @@ export function SeatCounterControls({
             { kind: "casts", commander },
             {
               multiplier: 2,
+              gameChanger:
+                commander === deck?.commander_name
+                  ? deck?.commander_game_changer
+                  : deck?.partner_game_changer,
               art:
                 (commander === deck?.commander_name
                   ? deck?.commander_art_crop_url

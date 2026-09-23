@@ -4,6 +4,7 @@ import { Gamepad2, Layers, Target, Users } from "lucide-react"
 import type { ReactNode } from "react"
 import { PageHeader } from "@/components/app-shell"
 import { CardArtBackground } from "@/components/card-art-background"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart, LineChart } from "@/components/stats/charts"
 import { CommanderRivalries } from "@/components/stats/rivalries"
@@ -32,6 +33,7 @@ function CommanderPage() {
       <PageHeader
         eyebrow={<Link to="/commanders">Commanders</Link>}
         title={commander.name}
+        description={commander.game_changer && <GameChangerBadge gameChanger />}
         backgroundImageUrl={commander.art_crop_url}
         actions={<StatsRangeToggle />}
       >
@@ -153,6 +155,7 @@ function RecordLinks({
             <CardArtBackground imageUrl={row.art_crop_url} interactive />
             <span className="relative z-10 min-w-0">
               <span className="block truncate font-medium">{row.name}</span>
+              <GameChangerBadge gameChanger={row.game_changer} />
               {row.commander_name && row.commander_name !== row.name && (
                 <span className="text-base-content/70 block truncate text-xs">
                   {row.commander_name}

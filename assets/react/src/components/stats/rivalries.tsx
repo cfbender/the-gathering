@@ -1,3 +1,4 @@
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { Link } from "@tanstack/react-router"
 import { CardArtBackground } from "@/components/card-art-background"
 import { ColorIdentity } from "@/components/mana-symbols"
@@ -168,6 +169,7 @@ export function Rivalries({
                   className="hidden sm:inline-flex"
                 />
                 <span className="truncate">{commander.name}</span>
+                <GameChangerBadge gameChanger={commander.game_changer} compact />
               </span>
               <span>{commander.faced}</span>
               <span>{commander.beat_me}</span>

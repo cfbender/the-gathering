@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { Link, type LinkProps } from "@tanstack/react-router"
 import { linePoints, type NamedRecordRow, type TrendPoint } from "@/lib/stats"
 import { CardArtBackground } from "@/components/card-art-background"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { cn } from "@/lib/cn"
 
 export function BarChart({
@@ -51,6 +52,7 @@ export function BarChart({
               >
                 {renderLabel?.(row) ?? row.name}
               </span>
+              <GameChangerBadge gameChanger={row.game_changer} compact />
               <span className="text-base-content/80 tabular-nums">
                 {value === "win_rate" ? `${row.win_rate}%` : row.games}
               </span>
