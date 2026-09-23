@@ -70,7 +70,14 @@ type DataMessage =
       clickY: number
     }
   | { type: "deck_suggestion"; deckId: number }
-  | { type: "card_identified"; ownerPeerId: string; byPlayerName: string; card: IdentifiedCard }
+  | {
+      type: "card_identified"
+      ownerPeerId: string
+      byPlayerName: string
+      card: IdentifiedCard
+      /** Set when this overrides an earlier answer for the same click. */
+      replaces?: IdentifiedCard
+    }
 
 interface PeerState {
   connection: RTCPeerConnection
@@ -162,7 +169,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         chooseDeck(message.deckId)
       } else if (message.type === "card_identified") {
         const owner = participantsRef.current.find((item) => item.peer_id === message.ownerPeerId)
-        log([describeCardIdentified(message.byPlayerName, owner, message.card)])
+        log([describeCardIdentified(message.byPlayerName, owner, message.card, message.replaces)])
       }
     },
     [chooseDeck, log],
@@ -370,24 +377,42 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     setStatus("Requesting native camera crop…")
   }
 
-  /** Names a card on `ownerPeerId`'s board: logged here and at every other seat. */
-  function announceCard(ownerPeerId: string, byPlayerName: string, card: IdentifiedCard) {
+  /** Names a card on `ownerPeerId`'s board: logged here and at every other seat. An
+   * auto-confirmed answer keeps the capture open so it can still be corrected; a correction
+   * names the answer it `replaces`. */
+  function announceCard(
+    ownerPeerId: string,
+    byPlayerName: string,
+    card: IdentifiedCard,
+    options: { replaces?: IdentifiedCard; keepCapture?: boolean } = {},
+  ) {
     const owner = participantsRef.current.find((item) => item.peer_id === ownerPeerId)
-    log([describeCardIdentified(byPlayerName, owner, card)])
-    const message = JSON.stringify({ type: "card_identified", ownerPeerId, byPlayerName, card })
+    const { replaces, keepCapture } = options
+    log([describeCardIdentified(byPlayerName, owner, card, replaces)])
+    const message = JSON.stringify({
+      type: "card_identified",
+      ownerPeerId,
+      byPlayerName,
+      card,
+      replaces,
+    })
     for (const peer of peersRef.current.values()) {
       if (peer.channel?.readyState === "open") peer.channel.send(message)
     }
-    setCapture(null)
+    if (!keepCapture) setCapture(null)
   }
 
-  function suggestDeck(targetPeerId: string, suggestedDeckId: number) {
+  function suggestDeck(
+    targetPeerId: string,
+    suggestedDeckId: number,
+    options: { keepCapture?: boolean } = {},
+  ) {
     if (targetPeerId === peerIdRef.current) chooseDeck(suggestedDeckId)
     else
       peersRef.current
         .get(targetPeerId)
         ?.channel?.send(JSON.stringify({ type: "deck_suggestion", deckId: suggestedDeckId }))
-    setCapture(null)
+    if (!options.keepCapture) setCapture(null)
   }
 
   /** Participants in shared seat order; the End game form records seats in this order. */

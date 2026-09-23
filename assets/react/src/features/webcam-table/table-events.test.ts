@@ -39,6 +39,13 @@ describe("describeCardIdentified", () => {
       "Alice identified Command Tower [FIC #301]",
     )
   })
+
+  it("words an override of the auto-confirmed answer as a correction", () => {
+    const wrong = { id: "y", name: "Plains", set: "hob", collector_number: "3" }
+    expect(
+      describeCardIdentified("Cody", seat({ peer_id: "m", player_name: "Mara" }), card, wrong),
+    ).toBe("Cody corrected Plains to Command Tower [FIC #301] on Mara's board")
+  })
 })
 
 describe("describeParticipantChange", () => {

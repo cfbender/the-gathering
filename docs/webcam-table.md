@@ -225,14 +225,18 @@ click is not slow. The "Identify cards" section of the side panel shows `checkin
 
 Each capture runs identify with a two second timeout: detector pass over the 640 px crop, a
 refine pass on the detected card, upright vote, embed all six art cuts, gallery search. The
-panel always shows five numbered candidates (top-1 highlighted only when it leads by at least
-`CLEAR_MARGIN` = 0.08), the crop with the detected quad, and per-stage timings; low similarity
-never suppresses results. `/` focuses a gallery search that understands names, set codes
-(`forest fin`, `set:fin`) and collector numbers (`#280`) so basics and staples with hundreds of
-printings can be narrowed. Confirming a candidate (`1`–`5`, click, or a search result)
-broadcasts `card_identified` on the data channels and every seat's Log gets "Theo identified X
-[SET #n] on Cody's board". If the card name matches one of the owner's commanders and they have
-no deck selected yet, it also selects that deck.
+panel always shows five numbered candidates, the crop with the detected quad, and per-stage
+timings; low similarity never suppresses results. A top-1 that leads the runner-up by at least
+`CLEAR_MARGIN` (0.08 cosine) is treated as the answer: it is logged immediately with no
+keypress, the panel says "Logged X · not it? pick another" and closes itself after
+`AUTO_DISMISS_MS` (6 s) unless a correction is being typed. A near-tie waits for a choice.
+`/` focuses a gallery search that understands names, set codes (`forest fin`, `set:fin`) and
+collector numbers (`#280`) so basics and staples with hundreds of printings can be narrowed.
+Confirming a candidate (`1`–`5`, click, or a search result) broadcasts `card_identified` on the
+data channels and every seat's Log gets "Theo identified X [SET #n] on Cody's board"; picking a
+different card after an auto-confirmation logs "Theo corrected X to Y [SET #n] …" instead, and
+re-picking the confirmed card just closes the panel. If the card name matches one of the
+owner's commanders and they have no deck selected yet, it also selects that deck.
 
 Backlog:
 
