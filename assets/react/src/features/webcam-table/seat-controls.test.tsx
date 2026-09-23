@@ -273,6 +273,14 @@ describe.each([true, false])("seat actions (local=%s)", (local) => {
     }
     render(<Seat />)
     expect(screen.queryByText("37")).toBeNull()
+    if (local) {
+      fireEvent.click(screen.getByRole("button", { name: "Turn camera off" }))
+      expect(onToggleCamera).toHaveBeenCalledOnce()
+      onToggleCamera.mockClear()
+    } else {
+      expect(screen.queryByRole("button", { name: /camera/ })).toBeNull()
+      expect(screen.getByRole("img", { name: "Camera on" })).toBeTruthy()
+    }
     const open = async () => {
       const trigger = screen.getByRole("button", { name: "Alice's seat actions" })
       act(() => trigger.focus())

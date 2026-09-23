@@ -55,7 +55,11 @@ export function SeatBar({
       )}
     >
       <span
-        className={cn("min-w-0 truncate font-bold", compact ? "max-w-[30%]" : "max-w-48")}
+        className={cn(
+          "min-w-0 truncate font-bold",
+          // The name keeps its full text (up to a cap); the commander yields and truncates first.
+          compact ? "max-w-[45%] shrink-0" : "max-w-48",
+        )}
         title={`${participant.player_name}${local ? " (you)" : ""}`}
       >
         {participant.player_name}
@@ -97,14 +101,35 @@ export function SeatBar({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <span
-        className={cn("shrink-0", participant.camera_off ? "text-error" : "text-white/55")}
-        role="img"
-        aria-label={participant.camera_off ? "Camera off" : "Camera on"}
+      {local ? (
+        <button
+          type="button"
+          className={cn(
+            "btn btn-ghost btn-sm btn-square shrink-0 focus-visible:-outline-offset-2",
+            participant.camera_off ? "text-error" : "text-white/85",
+          )}
+          onClick={onToggleCamera}
+          aria-pressed={participant.camera_off}
+          aria-label={participant.camera_off ? "Turn camera on" : "Turn camera off"}
+          title={participant.camera_off ? "Turn camera on" : "Turn camera off"}
+        >
+          {cameraIcon}
+        </button>
+      ) : (
+        <span
+          className={cn(
+            "grid size-8 shrink-0 place-items-center",
+            participant.camera_off ? "text-error" : "text-white/55",
+          )}
+          role="img"
+          aria-label={participant.camera_off ? "Camera off" : "Camera on"}
+        >
+          {cameraIcon}
+        </span>
+      )}
+      <div
+        className={cn("ml-auto flex min-w-0 justify-end", compact ? "pl-1" : "max-w-[50%] pl-2")}
       >
-        {cameraIcon}
-      </span>
-      <div className={cn("ml-auto min-w-0", compact ? "flex-1 pl-1" : "max-w-[50%] pl-2")}>
         <CommanderControl
           participant={participant}
           decks={decks}
