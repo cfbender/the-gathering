@@ -370,6 +370,10 @@ describe.each([true, false])("seat actions (local=%s)", (local) => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Pin as active board" }))
     expect(onTogglePin).toHaveBeenCalledOnce()
     await open()
+    if (!local) {
+      expect(screen.queryByRole("menuitem", { name: "Eliminate player" })).toBeNull()
+      return
+    }
     fireEvent.click(screen.getByRole("menuitem", { name: "Eliminate player" }))
     await open()
     fireEvent.click(screen.getByRole("menuitem", { name: "Restore player" }))

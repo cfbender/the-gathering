@@ -3,15 +3,7 @@ import type { MouseEvent, ReactNode } from "react"
 import { cn } from "@/lib/cn"
 import { describeConnection, type TableParticipant } from "./use-webcam-room"
 
-export function StreamVideo({
-  stream,
-  muted = false,
-  className,
-}: {
-  stream: MediaStream
-  muted?: boolean
-  className?: string
-}) {
+export function StreamVideo({ stream, className }: { stream: MediaStream; className?: string }) {
   return (
     <video
       ref={(video) => {
@@ -20,7 +12,9 @@ export function StreamVideo({
       className={cn("h-full w-full", className)}
       autoPlay
       playsInline
-      muted={muted}
+      // The table is video-only. Muting also permits spectator autoplay without
+      // a prior camera grant or interaction with the page.
+      muted
     />
   )
 }
@@ -135,7 +129,7 @@ export function ActiveBoard({
         {hiddenLabel ? (
           <VideoPlaceholder label={hiddenLabel} />
         ) : stream ? (
-          <StreamVideo stream={stream} muted={local} className="object-contain" />
+          <StreamVideo stream={stream} className="object-contain" />
         ) : (
           <VideoPlaceholder
             label={
@@ -231,7 +225,7 @@ export function CameraTile({
         {hiddenLabel ? (
           <VideoPlaceholder compact label={hiddenLabel} />
         ) : stream ? (
-          <StreamVideo stream={stream} muted={local} className="object-cover" />
+          <StreamVideo stream={stream} className="object-cover" />
         ) : (
           <VideoPlaceholder
             compact

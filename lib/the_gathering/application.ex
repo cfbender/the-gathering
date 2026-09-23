@@ -15,7 +15,6 @@ defmodule TheGathering.Application do
       {DNSCluster, query: Application.get_env(:the_gathering, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: TheGathering.PubSub},
       TheGatheringWeb.Presence,
-      TheGatheringWeb.WebcamTableMonarch,
       TheGatheringWeb.WebcamTableState,
       {TheGathering.RateLimiter, clean_period: :timer.minutes(10)},
       TheGathering.Catalog.Supervisor,

@@ -2,10 +2,9 @@ defmodule TheGatheringWeb.WebcamTableRooms do
   @moduledoc """
   Which webcam tables are live right now.
 
-  Rooms are unguessable ids minted in the browser, so nothing is stored about them. Every
-  seated channel process also tracks itself on one lobby presence topic; listing that topic
-  and grouping by room is the whole registry, and a seat disappears the moment its channel
-  process does.
+  Presence supplies the live lobby listing, not admission or durable game state.
+  Empty rooms disappear from this listing but remain recoverable by UUID for the
+  session retention period. Spectators do not appear as seats in the lobby.
   """
 
   alias TheGatheringWeb.Presence

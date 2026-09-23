@@ -36,6 +36,8 @@ import type { TableEvent, TableParticipant } from "./use-webcam-room"
 export type PanelTab = "table" | "decks" | "cards" | "log" | "settings"
 
 interface Props extends CardsTabProps {
+  spectating?: boolean
+  isOwner?: boolean
   left?: boolean
   settings: ReactNode
   onHelp: () => void
@@ -166,6 +168,17 @@ function TableTab(props: Props) {
   const started = props.timer?.state.started_at != null
   const selectedDeck = playerDecks.find((deck) => deck.id === local.deck_id)
 
+  if (props.spectating)
+    return (
+      <PanelSection title="Spectating" icon={Users}>
+        <p className="mb-3 text-xs text-base-content/70">
+          The game is in progress. Seats are reserved for returning players.
+        </p>
+        <TimerBadge sample={props.timer} />
+        <SeatOrderTable {...props} readOnly />
+      </PanelSection>
+    )
+
   return (
     <>
       <PanelSection
@@ -227,14 +240,15 @@ function TableTab(props: Props) {
           turns={props.turns}
           timer={props.timer}
           onAdjustTurn={props.onAdjustTurn}
+          readOnly={props.isOwner === false}
         />
         <p className="text-base-content/50 mt-1 text-[0.65rem]">
-          Out players skip turns but keep their recorded seat. Any player can eliminate or restore a
-          seat.
+          Out players skip turns but keep their recorded seat. The room owner controls turn order;
+          players can also eliminate or restore their own seat.
         </p>
 
         <div className="mt-3 grid gap-1.5">
-          {!started && (
+          {!started && props.isOwner !== false && (
             <>
               <label className="text-base-content/60 mb-1 flex items-center justify-between gap-2 text-[0.65rem]">
                 Auto-randomize order on start
@@ -267,7 +281,9 @@ function TableTab(props: Props) {
               Pass turn <kbd className="kbd kbd-xs">Space</kbd>
             </button>
           )}
-          <TimerToggle sample={props.timer} onChange={props.onChangeTimer} />
+          {props.isOwner !== false && (
+            <TimerToggle sample={props.timer} onChange={props.onChangeTimer} />
+          )}
           <RevealControl
             participants={participants}
             peerId={local.peer_id}
@@ -275,14 +291,16 @@ function TableTab(props: Props) {
             busy={props.reveal.busy}
             onChange={props.reveal.onChange}
           />
-          <button
-            type="button"
-            className="btn btn-error btn-sm w-full text-xs"
-            onClick={onEndGame}
-            disabled={participants.length < 2}
-          >
-            <DoorOpen className="size-3.5" /> End game
-          </button>
+          {props.isOwner !== false && (
+            <button
+              type="button"
+              className="btn btn-error btn-sm w-full text-xs"
+              onClick={onEndGame}
+              disabled={participants.length < 2}
+            >
+              <DoorOpen className="size-3.5" /> End game
+            </button>
+          )}
           <Link to="/games" className="btn btn-ghost btn-sm w-full text-xs">
             Leave table
           </Link>
@@ -439,29 +457,31 @@ export function SidePanel(props: Props) {
             <ChevronLeft className="size-4 -rotate-90 lg:rotate-0" />
           )}
         </button>
-        {TABS.map(({ id, label, icon: Icon }) => {
-          const active = open && tab === id
-          return (
-            <button
-              key={id}
-              type="button"
-              className={cn(
-                "flex flex-col items-center gap-0.5 rounded px-2 py-1.5 text-[0.55rem] font-semibold",
-                active
-                  ? "bg-primary/20 text-primary"
-                  : "text-base-content/60 hover:bg-white/10 hover:text-base-content",
-              )}
-              onClick={() => {
-                onTabChange(id)
-                onOpenChange(true)
-              }}
-              aria-pressed={active}
-            >
-              <Icon className="size-4" />
-              {label}
-            </button>
-          )
-        })}
+        {TABS.filter(({ id }) => !props.spectating || (id !== "decks" && id !== "settings")).map(
+          ({ id, label, icon: Icon }) => {
+            const active = open && tab === id
+            return (
+              <button
+                key={id}
+                type="button"
+                className={cn(
+                  "flex flex-col items-center gap-0.5 rounded px-2 py-1.5 text-[0.55rem] font-semibold",
+                  active
+                    ? "bg-primary/20 text-primary"
+                    : "text-base-content/60 hover:bg-white/10 hover:text-base-content",
+                )}
+                onClick={() => {
+                  onTabChange(id)
+                  onOpenChange(true)
+                }}
+                aria-pressed={active}
+              >
+                <Icon className="size-4" />
+                {label}
+              </button>
+            )
+          },
+        )}
         <button
           type="button"
           className="btn btn-ghost btn-sm"
