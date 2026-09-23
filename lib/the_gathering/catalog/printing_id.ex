@@ -1,5 +1,5 @@
 defmodule TheGathering.Catalog.PrintingId do
-  @moduledoc "Scryfall UUIDs, with `-1` for the reverse face of a gallery printing."
+  @moduledoc "Scryfall UUIDs, with `-1` for the second face (side or half) of a gallery printing."
 
   @id ~r/\A([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(-1)?\z/
 

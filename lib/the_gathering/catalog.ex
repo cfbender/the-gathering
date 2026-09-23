@@ -89,7 +89,7 @@ defmodule TheGathering.Catalog do
   def list_printings(id, name, page) when is_integer(page) and page > 0 do
     case resolve_card(id, name) do
       nil -> {:error, :not_found}
-      card -> Printings.list(card, page)
+      card -> Printings.list(card, page, name)
     end
   end
 
@@ -103,7 +103,7 @@ defmodule TheGathering.Catalog do
         order_by: [desc: card.can_be_commander, desc: card.released_at],
         limit: 1
 
-    Repo.one(exact) || Repo.one(front_face_query(normalized))
+    Repo.one(exact) || Repo.one(face_query(normalized))
   end
 
   @doc """
@@ -207,12 +207,20 @@ defmodule TheGathering.Catalog do
 
   defp partner_filter(query, _value), do: query
 
-  defp front_face_query(normalized) do
+  defp face_query(normalized) do
     prefix = normalized <> " // "
+    suffix = " // " <> normalized
 
     from card in Card,
       where:
-        fragment("substr(?, 1, ?) = ?", card.normalized_name, ^String.length(prefix), ^prefix) and
+        (fragment("substr(?, 1, ?) = ?", card.normalized_name, ^String.length(prefix), ^prefix) or
+           (card.layout in ["split", "flip"] and
+              fragment(
+                "substr(?, ?) = ?",
+                card.normalized_name,
+                ^(-String.length(suffix)),
+                ^suffix
+              ))) and
           not like(card.name, "A-%"),
       order_by: [desc: card.can_be_commander, desc: card.released_at],
       limit: 1

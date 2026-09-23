@@ -462,7 +462,13 @@ Gallery coverage includes paper artwork in any language (including Japanese-only
 art), prepare cards, meld cards, and both scanned sides of transform/MDFC/reversible cards
 and double-faced tokens. Separate sides use face names and IDs `<scryfall UUID>` (front)
 and `<scryfall UUID>-1` (back); prepare/adventure share one art and keep their combined name.
-Split, flip and art-series layouts remain excluded. See `ml/README.md`, **Gallery coverage,
+Rooms, classic split, aftermath and flip cards also expose two named halves with those IDs.
+Their gallery crops come from regions of the whole front scan, rotated upright before
+embedding. Both visible halves can appear as candidates; this does not infer unlocked Room
+doors or a flip card's active rules. Details show the chosen half's rules with the shared
+whole-card image, not a fictitious reverse image. Cycling alternate printings keeps the same
+split/flip half selected; full-card deck-picker requests retain combined names. Art series, battles and novelty splits
+with more than two parts remain excluded. See `ml/README.md`, **Gallery coverage,
 printings and face IDs**, for crop geometry and the refresh/export/publish commands. Deploying this
 code alone does not rebuild the gallery bundle.
 
@@ -494,7 +500,8 @@ Old bundles (embedded siblings or representative-only) still work. Re-export/pub
 version on the training box to get the split; see `ml/README.md`. No room protocol changes.
 
 Each capture runs identify with a two second timeout: detector pass over the 640 px crop, a
-refine pass on the detected card, upright vote, embed all six art cuts, gallery search. A top-1
+refine pass on the detected card, upright vote, embed all bundled art cuts (14 in new bundles;
+older six-frame bundles still work), gallery search. A top-1
 that leads the runner-up by at least `CLEAR_MARGIN` (0.08 cosine) is treated as the answer to a
 plain click: it is recorded immediately and the **card preview** opens over the board — the
 card image with its set and collector number, and (on wider screens) a box with mana cost, type

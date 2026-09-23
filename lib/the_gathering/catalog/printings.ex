@@ -1,13 +1,13 @@
 defmodule TheGathering.Catalog.Printings do
   @moduledoc false
 
-  alias TheGathering.Catalog.{Printing, PrintingId, Scryfall}
+  alias TheGathering.Catalog.{CardData, Printing, PrintingId, Scryfall}
   alias TheGathering.Repo
 
-  @face_layouts ~w(transform modal_dfc reversible_card double_faced_token)
+  @face_layouts ~w(transform modal_dfc reversible_card double_faced_token split flip)
   @face_fields ~w(name image_uris mana_cost type_line oracle_text flavor_text power toughness loyalty)
 
-  def list(card, page) do
+  def list(card, page, name \\ nil) do
     with {:ok, cards, has_more} <- Scryfall.printings(card.oracle_id, page) do
       rows =
         cards
@@ -16,6 +16,7 @@ defmodule TheGathering.Catalog.Printings do
         )
         # Scryfall includes memorabilia basics; CardData intentionally does not describe them.
         |> Enum.reject(&(&1["set_type"] in ["token", "memorabilia"]))
+        |> Enum.map(&select_named_half(&1, name))
         |> Enum.map(&printing_data/1)
 
       Repo.insert_all(Printing, rows, on_conflict: :replace_all, conflict_target: :id)
@@ -40,14 +41,41 @@ defmodule TheGathering.Catalog.Printings do
     end
   end
 
+  # A webcam preview requests a half by name; the deck picker requests the combined name.
+  # Keep the same half selected while cycling alternate printings of a split/flip card.
+  defp select_named_half(%{"layout" => layout, "card_faces" => faces} = card, name)
+       when layout in ~w(split flip) and is_binary(name) do
+    index =
+      Enum.find_index(faces, fn face ->
+        CardData.normalize_name(face["name"]) == CardData.normalize_name(name)
+      end)
+
+    if index in [0, 1] do
+      id = card["id"] <> if(index == 1, do: "-1", else: "")
+      {:ok, selected} = select_face(card, index, id)
+      selected
+    else
+      card
+    end
+  end
+
+  defp select_named_half(card, _name), do: card
+
   defp select_face(%{"layout" => layout, "card_faces" => faces} = card, index, id)
        when layout in @face_layouts do
     case Enum.at(faces, index) do
       %{"name" => _name} = face ->
+        # Split/flip halves share the front scan; do not invent a /back image URL or
+        # fall back to front-side images for a genuinely double-faced card.
+        images =
+          face["image_uris"] ||
+            if(layout in ~w(split flip), do: card["image_uris"])
+
         {:ok,
          card
          |> Map.drop(["card_faces" | @face_fields])
          |> Map.merge(Map.take(face, ["oracle_id" | @face_fields]))
+         |> Map.put("image_uris", images)
          |> Map.put("id", id)}
 
       _ ->
