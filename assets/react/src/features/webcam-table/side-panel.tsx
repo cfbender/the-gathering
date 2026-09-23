@@ -16,11 +16,12 @@ import {
   Wifi,
 } from "lucide-react"
 import type { ComponentType, ReactNode } from "react"
-import type { DeckSummary } from "@/features/decks/decks"
+import { commanderNames, type DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
 import { CardsTab, type CardsTabProps } from "./cards-tab"
 import { CommanderPicker } from "./commander-picker"
+import { CommanderActions } from "./new-commander-dialog"
 import { PanelSection } from "./panel-section"
 import type { RecognizerState } from "./recognition/use-recognizer"
 import type { TableEvent, TableParticipant } from "./use-webcam-room"
@@ -111,9 +112,8 @@ function RecognizerBadge({ state }: { state: RecognizerState }) {
 }
 
 function commanderName(participant: TableParticipant, decks: DeckSummary[]) {
-  return (
-    decks.find((deck) => deck.id === participant.deck_id)?.commander_name ?? participant.deck_name
-  )
+  const deck = decks.find((deck) => deck.id === participant.deck_id)
+  return deck ? commanderNames(deck) : participant.deck_name
 }
 
 function SeatOrderTable({
@@ -141,11 +141,9 @@ function SeatOrderTable({
                 <span className="text-base-content/50 ml-1 font-normal">(you)</span>
               )}
             </td>
-            <td className="text-base-content/70 max-w-28 truncate py-1.5">
+            <td className="text-base-content/70 max-w-28 py-1.5">
               <CommanderHover deck={decks.find((deck) => deck.id === participant.deck_id)}>
-                <span tabIndex={0} className="truncate">
-                  {commanderName(participant, decks) ?? "—"}
-                </span>
+                <span tabIndex={0}>{commanderName(participant, decks) ?? "—"}</span>
               </CommanderHover>
             </td>
             <td className="py-1.5 text-right font-bold tabular-nums">{participant.life}</td>
@@ -197,16 +195,20 @@ function TableTab(props: Props) {
             {inviteCopied ? "Invite link copied" : "Invite players"}
           </button>
           <CommanderPicker
+            playerId={local.player_id}
             playerName={local.player_name}
             decks={playerDecks}
             selectedDeckId={local.deck_id}
             onChoose={onChooseDeck}
             align="start"
           >
-            <button type="button" className="btn btn-outline btn-sm w-full text-xs">
+            <button
+              type="button"
+              className="btn btn-outline btn-sm h-auto min-h-8 w-full py-1.5 text-xs"
+            >
               <Layers className="size-3.5" />
               <CommanderHover deck={playerDecks.find((deck) => deck.id === local.deck_id)}>
-                <span className="truncate">
+                <span className="min-w-0 flex-1 whitespace-normal">
                   {commanderName(local, playerDecks) ?? "Select your commander"}
                 </span>
               </CommanderHover>
@@ -293,13 +295,7 @@ function DecksTab({ playerDecks, localParticipant: local, onChooseDeck }: Props)
   return (
     <PanelSection title="Your commanders" icon={Layers}>
       {playerDecks.length === 0 ? (
-        <p className="text-base-content/65 text-xs">
-          No decks are recorded for you yet.{" "}
-          <Link to="/decks" search={{ scope: "mine" }} className="link">
-            Add one
-          </Link>
-          .
-        </p>
+        <p className="text-base-content/65 text-xs">No decks are recorded for you yet.</p>
       ) : (
         <ul className="grid gap-1">
           {playerDecks.map((deck) => {
@@ -319,7 +315,7 @@ function DecksTab({ playerDecks, localParticipant: local, onChooseDeck }: Props)
                     aria-pressed={selected}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold">{deck.commander_name}</span>
+                      <span className="block font-semibold">{commanderNames(deck)}</span>
                       <span className="text-base-content/55 block truncate">{deck.name}</span>
                     </span>
                     {selected && <Check className="text-primary size-3.5" />}
@@ -330,6 +326,11 @@ function DecksTab({ playerDecks, localParticipant: local, onChooseDeck }: Props)
           })}
         </ul>
       )}
+      <CommanderActions
+        playerId={local.player_id}
+        deck={playerDecks.find((deck) => deck.id === local.deck_id)}
+        onChoose={onChooseDeck}
+      />
     </PanelSection>
   )
 }

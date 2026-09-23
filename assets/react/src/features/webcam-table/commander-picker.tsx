@@ -2,11 +2,13 @@ import { Check, ChevronDown } from "lucide-react"
 import { useState, type ReactNode } from "react"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import type { DeckSummary } from "@/features/decks/decks"
+import { commanderNames, type DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
+import { CommanderActions } from "./new-commander-dialog"
 
 interface Props {
+  playerId: number
   playerName: string
   decks: DeckSummary[]
   selectedDeckId?: number
@@ -19,6 +21,7 @@ interface Props {
 /** Lists one player's recorded decks so any seat at the table can set that player's commander.
  * The channel rejects decks that do not belong to the seated player. */
 export function CommanderPicker({
+  playerId,
   playerName,
   decks,
   selectedDeckId,
@@ -36,13 +39,25 @@ export function CommanderPicker({
           <button
             type="button"
             className={cn(
-              "btn btn-xs h-6 min-h-0 min-w-0 max-w-full shrink gap-1 border-0 px-2 font-semibold",
+              "btn btn-xs h-auto min-h-6 min-w-0 max-w-full shrink gap-1 border-0 px-2 py-0.5 font-semibold",
               selected ? "btn-ghost text-white/85" : "btn-primary",
             )}
           >
             <CommanderHover deck={open ? undefined : selected}>
-              <span className="min-w-0 max-w-40 truncate">
-                {selected ? selected.commander_name : "Select commander"}
+              <span
+                className="min-w-0 max-w-40 text-left leading-tight"
+                title={selected && commanderNames(selected)}
+              >
+                {selected ? (
+                  <>
+                    <span className="block truncate">{selected.commander_name}</span>
+                    {selected.partner_name && (
+                      <span className="block truncate">/ {selected.partner_name}</span>
+                    )}
+                  </>
+                ) : (
+                  "Select commander"
+                )}
               </span>
             </CommanderHover>
             {selected && <ColorIdentity colors={selected.color_identity} />}
@@ -76,7 +91,7 @@ export function CommanderPicker({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1 font-semibold">
-                        <span className="truncate">{deck.commander_name}</span>
+                        <span className="min-w-0">{commanderNames(deck)}</span>
                         <ColorIdentity colors={deck.color_identity} />
                       </span>
                       <span className="text-base-content/55 block truncate text-xs">
@@ -89,6 +104,14 @@ export function CommanderPicker({
             ))}
           </ul>
         )}
+        <CommanderActions
+          playerId={playerId}
+          deck={selected}
+          onChoose={(id) => {
+            onChoose(id)
+            setOpen(false)
+          }}
+        />
       </PopoverContent>
     </Popover>
   )

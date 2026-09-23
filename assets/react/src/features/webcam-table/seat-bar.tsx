@@ -107,6 +107,7 @@ export function SeatBar({
 
       {!compact && (
         <CommanderPicker
+          playerId={participant.player_id}
           playerName={participant.player_name}
           decks={decks}
           selectedDeckId={participant.deck_id}
@@ -126,7 +127,7 @@ export function TileCommanderRow({
 }: Pick<Props, "participant" | "decks" | "onChooseDeck" | "counters">) {
   return (
     <div
-      className="flex h-7 items-center gap-1 bg-base-100 px-1.5"
+      className="flex min-h-7 items-center gap-1 bg-base-100 px-1.5"
       style={{
         background: commanderBackground(
           decks.find((deck) => deck.id === participant.deck_id)?.color_identity ?? "",
@@ -136,6 +137,7 @@ export function TileCommanderRow({
       {counters}
       <div className="ml-auto min-w-0 [&>button]:max-w-full">
         <CommanderPicker
+          playerId={participant.player_id}
           playerName={participant.player_name}
           decks={decks}
           selectedDeckId={participant.deck_id}

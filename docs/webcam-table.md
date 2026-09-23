@@ -209,6 +209,22 @@ always large, everyone else is small, and controls live in a collapsible column.
   `data-theme` on mount and restores the user's choice on unmount) so portalled popovers and
   dialogs match the black stage. They render no application header.
 
+### Creating and editing commanders in the room
+
+The commander popover and Decks tab offer **New commander…** and, for the selected deck,
+**Edit commander…** to its owner or an administrator. The dialog reuses the Decks feature's card
+search and printing picker. The optional second card can be a partner, Background, companion, or
+casual pairing; the table does not enforce deck-building legality. The deck name follows the
+commander names until edited. Saving creates or updates the player's ordinary deck through the
+decks API, then selects it in the room without navigation. Editing changes the saved deck, not
+just this session's appearance.
+
+Both names appear in the rail, board bar, and turn order. `DeckSummary.commander_image_url` and
+`partner_image_url` expose full-card images, preferring the selected printing and falling back to
+the catalog; the existing `*_art_crop_url` fields use the same printing preference for crops.
+After a validated `choose_deck`, the channel broadcasts `deck_selected` so every browser refreshes
+its deck query, including when the same deck ID is selected after an art or partner edit.
+
 ### Shared seat state
 
 Presence metadata carries, per seat, `life` (starts at 40), `camera_off`, and a

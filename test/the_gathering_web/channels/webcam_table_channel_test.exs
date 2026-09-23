@@ -59,8 +59,14 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     room_id: room_id
   } do
     assert_reply push(socket, "choose_deck", %{"deck_id" => deck.id}), :ok
+    deck_id = deck.id
+    assert_broadcast "deck_selected", %{deck_id: ^deck_id}
     %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
     assert meta.deck_id == deck.id
+
+    # Reselecting after an art/partner edit must refresh peer caches even with the same ID.
+    assert_reply push(socket, "choose_deck", %{"deck_id" => deck.id}), :ok
+    assert_broadcast "deck_selected", %{deck_id: ^deck_id}
 
     {:ok, other} = Games.create_player(%{name: "Bob"})
 
@@ -70,6 +76,8 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert_reply push(socket, "choose_deck", %{"deck_id" => other_deck.id}), :error, %{
       reason: "deck does not belong to player"
     }
+
+    refute_broadcast "deck_selected", _
   end
 
   test "publishes life and camera status through presence", %{socket: socket, room_id: room_id} do

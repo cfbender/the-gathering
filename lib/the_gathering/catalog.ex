@@ -109,7 +109,7 @@ defmodule TheGathering.Catalog do
   Resolves `{card_id, card_name}` references to catalog summaries in one query.
 
   Returns a map keyed by `{:id, card_id}` and `{:name, normalized_name}` whose values are
-  `%{id, name, art_crop_url, color_identity}`; look entries up with `card_summary/3`.
+  `%{id, name, art_crop_url, image_url, color_identity}`; look entries up with `card_summary/3`.
   Stored IDs win, and names cover legacy imported decks that only recorded a snapshot.
   """
   def card_summaries(card_refs) do
@@ -134,6 +134,7 @@ defmodule TheGathering.Catalog do
         id: id,
         name: name,
         art_crop_url: Map.get(image_uris || %{}, "art_crop"),
+        image_url: Map.get(image_uris || %{}, "normal"),
         color_identity: ColorIdentity.canonical(Enum.join(color_identity || []))
       }
 
@@ -148,6 +149,8 @@ defmodule TheGathering.Catalog do
       (is_binary(name) && Map.get(summaries, {:name, CardData.normalize_name(name)})) || nil
   end
 
+  # Full-card images share this batched lookup with crops; image keys are namespaced
+  # so existing crop consumers retain the same shape and no extra queries are needed.
   def art_crop_urls(card_refs) do
     {printing_refs, identity_refs} = Enum.split_with(card_refs, &match?({:printing, _id}, &1))
     ids = Enum.map(printing_refs, &elem(&1, 1)) |> Enum.reject(&is_nil/1) |> Enum.uniq()
@@ -155,19 +158,31 @@ defmodule TheGathering.Catalog do
     urls =
       identity_refs
       |> card_summaries()
-      |> Map.new(fn {key, summary} -> {key, summary.art_crop_url} end)
+      |> Enum.reduce(%{}, fn {key, summary}, urls ->
+        urls
+        |> Map.put(key, summary.art_crop_url)
+        |> Map.put({:image, key}, summary.image_url)
+      end)
 
     Printing
     |> where([printing], printing.id in ^ids)
     |> Repo.all()
     |> Enum.reduce(urls, fn printing, acc ->
-      Map.put(acc, {:printing, printing.id}, printing.image_uris["art_crop"])
+      acc
+      |> Map.put({:printing, printing.id}, printing.image_uris["art_crop"])
+      |> Map.put({:image, {:printing, printing.id}}, printing.image_uris["normal"])
     end)
   end
 
   def art_crop_url(urls, id, name, printing_id \\ nil) do
     Map.get(urls, {:printing, printing_id}) || Map.get(urls, {:id, id}) ||
       (is_binary(name) && Map.get(urls, {:name, CardData.normalize_name(name)})) || nil
+  end
+
+  def card_image_url(urls, id, name, printing_id \\ nil) do
+    Map.get(urls, {:image, {:printing, printing_id}}) ||
+      Map.get(urls, {:image, {:id, id}}) ||
+      (is_binary(name) && Map.get(urls, {:image, {:name, CardData.normalize_name(name)}})) || nil
   end
 
   def sync_status do
