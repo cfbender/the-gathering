@@ -64,6 +64,13 @@ config :the_gathering, :webcam_table,
   turn_username: System.get_env("WEBRTC_TURN_USERNAME"),
   turn_credential: System.get_env("WEBRTC_TURN_CREDENTIAL")
 
+# Cloudflare Realtime TURN: the long-lived key stays here and each room join receives credentials
+# that expire after CLOUDFLARE_TURN_TTL_SECONDS (default six hours, longer than a Commander game).
+config :the_gathering, TheGathering.CloudflareTurn,
+  key_id: System.get_env("CLOUDFLARE_TURN_KEY_ID"),
+  api_token: System.get_env("CLOUDFLARE_TURN_API_TOKEN"),
+  ttl: String.to_integer(System.get_env("CLOUDFLARE_TURN_TTL_SECONDS", "21600"))
+
 # Optional origin of a self-hosted ManaVault instance whose shared deck links should be
 # recognized and resolved, e.g. https://manavault.example.com. Unset disables ManaVault links.
 if manavault_url = System.get_env("MANAVAULT_URL") do

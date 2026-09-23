@@ -268,8 +268,9 @@ function TableTab(props: Props) {
         {Object.values(connectionStates).some((state) => state === "failed") && (
           <p className="text-warning mt-2 text-xs leading-relaxed">
             A peer couldn't be reached directly. Players on different networks usually need a TURN
-            relay: set <code>WEBRTC_TURN_URLS</code>, <code>WEBRTC_TURN_USERNAME</code> and{" "}
-            <code>WEBRTC_TURN_CREDENTIAL</code> on the server (see docs/webcam-table.md).
+            relay: set <code>CLOUDFLARE_TURN_KEY_ID</code> and{" "}
+            <code>CLOUDFLARE_TURN_API_TOKEN</code> or the <code>WEBRTC_TURN_*</code> variables on
+            the server (see docs/webcam-table.md).
           </p>
         )}
       </PanelSection>

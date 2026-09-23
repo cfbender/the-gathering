@@ -53,9 +53,20 @@ symmetric NAT or carrier-grade NAT also need a separately reachable TURN server 
 fails the offering side restarts ICE once; a peer that stays failed is labelled "Couldn't
 connect" on its tile and the Connection section points at TURN. TURN cannot be hidden behind an ordinary HTTP reverse proxy: expose its
 UDP/TCP listener (commonly 3478) and preferably TURN-over-TLS (commonly 5349/443) from coturn or
-another relay. Credentials are returned only from the authenticated config endpoint. A static
-credential is acceptable for a self-hosted first release; time-limited TURN credentials are the
-follow-up for internet-exposed installations.
+another relay. Credentials are returned only from the authenticated config endpoint.
+
+The hosted alternative is Cloudflare Realtime TURN: set `CLOUDFLARE_TURN_KEY_ID` and
+`CLOUDFLARE_TURN_API_TOKEN` (create the key under Realtime → TURN in the Cloudflare dashboard) and
+`TheGathering.CloudflareTurn` exchanges that long-lived key for per-join credentials via
+`POST https://rtc.live.cloudflare.com/v1/turn/keys/:id/credentials/generate-ice-servers`. The
+credentials expire after `CLOUDFLARE_TURN_TTL_SECONDS` (default six hours, longer than a game;
+refreshing mid-session would need `RTCPeerConnection.setConfiguration`). The config endpoint
+appends Cloudflare's servers after the static ones, dropping URLs the static list already covers,
+and falls back to the static list with a logged warning if Cloudflare is unreachable, so a
+Cloudflare outage degrades to STUN-only rather than blocking the room. Only pairs that cannot
+connect directly use the relay; Cloudflare bills relayed egress at $0.05/GB after the first
+1,000 GB each month (STUN at `stun.cloudflare.com` is free and unlimited). One relayed 1080p
+player in a four-seat, three-hour game is roughly 20 GB.
 
 ### Browser inference in the clicking browser
 
