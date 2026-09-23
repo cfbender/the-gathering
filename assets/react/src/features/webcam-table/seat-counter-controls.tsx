@@ -1,4 +1,5 @@
 import { ChevronDown, Crown, Minus, Plus, ShieldAlert } from "lucide-react"
+import { useEffect, useState } from "react"
 import { CardImage } from "@/components/card-image"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { DeckSummary } from "@/features/decks/decks"
@@ -13,6 +14,7 @@ interface Props {
   local: boolean
   monarch: boolean
   onAdjust: (counter: Counter, delta: number) => void
+  onChangeLife: (delta: number) => void
   onTakeMonarch: () => void
   onOpenChange?: (open: boolean) => void
 }
@@ -25,6 +27,8 @@ function CounterRow({
   threshold,
   multiplier = 1,
   art,
+  visibleLabel = label,
+  onChangeLife,
 }: {
   label: string
   value: number
@@ -33,10 +37,25 @@ function CounterRow({
   threshold?: number
   multiplier?: number
   art?: string | null
+  visibleLabel?: string
+  onChangeLife?: (delta: number) => void
 }) {
+  const [pending, setPending] = useState(0)
+  useEffect(() => {
+    if (!pending) return
+    const timeout = window.setTimeout(() => setPending(0), 5000)
+    return () => window.clearTimeout(timeout)
+  }, [pending])
+  const adjust = (delta: number) => {
+    onAdjust(delta)
+    if (onChangeLife) setPending((previous) => previous + delta)
+  }
   const warning = threshold !== undefined && value >= threshold
   return (
-    <div className={cn("flex items-center gap-2 py-1", warning && "text-error")}>
+    <div
+      className={cn("flex flex-wrap items-center gap-2 py-1", warning && "text-error")}
+      title={label}
+    >
       {art !== undefined && (
         <CardImage
           imageUris={{ art_crop: art ?? undefined }}
@@ -44,14 +63,14 @@ function CounterRow({
           className="size-8 shrink-0"
         />
       )}
-      <span className="min-w-0 flex-1 text-xs">{label}</span>
+      <span className="min-w-0 flex-1 text-xs">{visibleLabel}</span>
       {local && (
         <button
           type="button"
           className="btn btn-ghost btn-sm btn-square shrink-0"
           aria-label={`Decrease ${label}`}
           disabled={value === 0}
-          onClick={() => onAdjust(-1)}
+          onClick={() => adjust(-1)}
         >
           {multiplier === 1 ? <Minus className="size-4" /> : `−${multiplier}`}
         </button>
@@ -68,13 +87,29 @@ function CounterRow({
           className="btn btn-ghost btn-sm btn-square shrink-0"
           aria-label={`Increase ${label}`}
           disabled={value === 999}
-          onClick={() => onAdjust(1)}
+          onClick={() => adjust(1)}
         >
           {multiplier === 1 ? <Plus className="size-4" /> : `+${multiplier}`}
         </button>
       )}
       {warning && (
         <ShieldAlert className="size-4 shrink-0" aria-label={`${label} lethal threshold reached`} />
+      )}
+      {local && pending !== 0 && onChangeLife && (
+        <div className="flex w-full justify-end">
+          <button
+            type="button"
+            className="btn btn-xs btn-soft"
+            aria-label={`Apply ${-pending > 0 ? "+" : ""}${-pending} life for ${label}`}
+            onClick={() => {
+              onChangeLife(-pending)
+              setPending(0)
+            }}
+          >
+            Also {pending > 0 ? "−" : "+"}
+            {Math.abs(pending)} life
+          </button>
+        </div>
       )}
     </div>
   )
@@ -88,12 +123,11 @@ export function SeatCounterControls({
   local,
   monarch,
   onAdjust,
+  onChangeLife,
   onTakeMonarch,
   onOpenChange,
 }: Props) {
   const deck = decks.find((candidate) => candidate.id === participant.deck_id)
-  const namesFor = (seat: TableParticipant) =>
-    commanderNames(decks.find((deck) => deck.id === seat.deck_id))
   const opponents = participants.filter((seat) => seat.player_id !== participant.player_id)
   const sourceIds = new Set([
     ...opponents.map((seat) => String(seat.player_id)),
@@ -101,14 +135,21 @@ export function SeatCounterControls({
   ])
   const damageRows = [...sourceIds].flatMap((id) => {
     const source = opponents.find((seat) => String(seat.player_id) === id)
+    const sourceDeck = decks.find((deck) => deck.id === source?.deck_id)
     const names = new Set([
-      ...(source ? namesFor(source) : []),
+      ...commanderNames(sourceDeck),
       ...Object.keys(participant.commander_damage[id] ?? {}),
     ])
     return [...names].map((commander) => ({
       playerId: Number(id),
       commander,
       playerName: source?.player_name ?? `Player ${id} (left)`,
+      art:
+        commander === sourceDeck?.commander_name
+          ? sourceDeck.commander_art_crop_url
+          : commander === sourceDeck?.partner_name
+            ? sourceDeck.partner_art_crop_url
+            : null,
     }))
   })
   const row = (
@@ -190,16 +231,33 @@ export function SeatCounterControls({
         <div className="mt-2 border-t border-base-content/10 pt-2">
           <h3 className="text-xs font-bold">Commander damage received</h3>
           <p className="my-1 text-[0.65rem] text-base-content/55">
-            21 from one commander is lethal. Adjust life separately.
+            21 from one commander is lethal. After adjusting, optionally apply the change to life.
           </p>
-          {damageRows.map(({ playerId, commander, playerName }) =>
-            row(
-              `${playerName} · ${commander}`,
-              { kind: "damage", playerId, commander },
-              { threshold: 21 },
-            ),
-          )}
-          {damageRows.length === 0 && (
+          {damageRows.map(({ playerId, commander, playerName, art }) => (
+            <CounterRow
+              key={`${playerId}:${commander}`}
+              label={`${playerName} · ${commander}`}
+              visibleLabel={art ? commander : `${playerName} · ${commander}`}
+              art={art}
+              value={counterValue(participant, { kind: "damage", playerId, commander })}
+              local={local}
+              threshold={21}
+              onAdjust={(delta) => onAdjust({ kind: "damage", playerId, commander }, delta)}
+              onChangeLife={onChangeLife}
+            />
+          ))}
+          {opponents
+            .filter((seat) => !damageRows.some((row) => row.playerId === seat.player_id))
+            .map((seat) => (
+              <div
+                key={seat.player_id}
+                className="flex items-center gap-2 py-2 text-xs text-base-content/55"
+              >
+                <CardImage imageUris={{}} name={seat.player_name} className="size-8 shrink-0" />
+                <span>{seat.player_name} · Commander not revealed</span>
+              </div>
+            ))}
+          {damageRows.length === 0 && opponents.length === 0 && (
             <p className="py-2 text-xs text-base-content/55">
               Opponents must select decks to track damage.
             </p>

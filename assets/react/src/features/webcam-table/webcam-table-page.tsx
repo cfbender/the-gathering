@@ -372,6 +372,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       local={participant.peer_id === room.peerId}
       monarch={room.monarch?.peer_id === participant.peer_id}
       onAdjust={room.adjustCounter}
+      onChangeLife={room.changeLife}
       onTakeMonarch={room.takeMonarch}
       onOpenChange={onOpenChange}
     />
