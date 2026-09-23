@@ -2,6 +2,7 @@ defmodule TheGathering.Games.SummaryImage do
   @moduledoc false
 
   alias TheGathering.Catalog
+  alias TheGathering.Catalog.CardImages
   alias TheGathering.Games.SummaryCard
 
   @max_art_bytes 2_000_000
@@ -31,9 +32,11 @@ defmodule TheGathering.Games.SummaryImage do
         Enum.flat_map(refs, fn {id, name, printing} -> [{id, name}, {:printing, printing}] end)
       )
 
+    # Catalog URLs point at the app's image cache for browsers; the renderer downloads the
+    # Scryfall source itself so the allowlist below stays the only trust boundary.
     refs
     |> Enum.map(fn {id, name, printing} = ref ->
-      {ref, Catalog.art_crop_url(urls, id, name, printing)}
+      {ref, CardImages.source(Catalog.art_crop_url(urls, id, name, printing))}
     end)
     |> Task.async_stream(fn {ref, url} -> {ref, fetch_art(url)} end,
       max_concurrency: 6,

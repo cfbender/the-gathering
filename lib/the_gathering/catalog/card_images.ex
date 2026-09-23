@@ -20,6 +20,16 @@ defmodule TheGathering.Catalog.CardImages do
   def url(nil), do: nil
   def urls(images), do: Map.new(images || %{}, fn {variant, source} -> {variant, url(source)} end)
 
+  @doc "Inverse of `url/1`: the Scryfall source behind a `/api/card-images` URL, or the input unchanged."
+  def source("/api/card-images?" <> query) do
+    case URI.decode_query(query) do
+      %{"url" => source} when is_binary(source) -> source
+      _ -> nil
+    end
+  end
+
+  def source(url), do: url
+
   def fetch(source) do
     if valid_source?(source),
       do: GenServer.call(__MODULE__, {:fetch, source}, :infinity),
