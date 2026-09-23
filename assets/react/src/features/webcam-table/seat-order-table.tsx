@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { commanderNames, type DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
@@ -30,8 +30,12 @@ export function SeatOrderTable({
   onAdjustTurn,
 }: SeatOrderTableProps) {
   const [step, setStep] = useState(0)
+  // A remounted tab has already missed this event; only animate new events while visible.
+  const previousShuffle = useRef(shuffleVersion)
   const elapsed = useTimerElapsed(timer)
   useEffect(() => {
+    if (previousShuffle.current === shuffleVersion) return
+    previousShuffle.current = shuffleVersion
     if (!shuffleVersion || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
     let frame = 1
     setStep(frame)
