@@ -346,7 +346,12 @@ export function useWebcamRoom(
       track.enabled = previous?.getVideoTracks()[0]?.enabled ?? false
       localStreamRef.current = media
       setLocalStream(media)
-      if (localVideoRef.current) localVideoRef.current.srcObject = media
+      if (localVideoRef.current) {
+        // Assigning srcObject pauses the element; left paused, the hidden capture video
+        // would freeze on the camera's first frame and every crop would repeat it.
+        localVideoRef.current.srcObject = media
+        void localVideoRef.current.play().catch(() => {})
+      }
       // Stop old clones before replacing, including clones detached by a private reveal.
       // syncVideo rechecks current consent inside each sender's serialized update.
       for (const [id, peer] of peersRef.current) {
