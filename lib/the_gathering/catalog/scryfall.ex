@@ -41,6 +41,30 @@ defmodule TheGathering.Catalog.Scryfall do
     end
   end
 
+  def rulings(id) when is_binary(id) do
+    limit = Application.get_env(:the_gathering, :scryfall_search_limit, 1)
+
+    with {:allow, _count} <- TheGathering.RateLimiter.hit(:scryfall_rulings, 100, limit),
+         {:ok, response} <-
+           Req.get(
+             "https://api.scryfall.com/cards/#{URI.encode_www_form(id)}/rulings",
+             request_options()
+           ) do
+      case response do
+        %{status: 200, body: %{"data" => rulings}} when is_list(rulings) ->
+          {:ok, Enum.map(rulings, &Map.take(&1, ["source", "published_at", "comment"]))}
+
+        %{status: 404} ->
+          {:error, :not_found}
+
+        _other ->
+          {:error, :bad_gateway}
+      end
+    else
+      _error -> {:error, :bad_gateway}
+    end
+  end
+
   defp search_printings(oracle_id, page) do
     options =
       request_options(

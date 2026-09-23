@@ -1,6 +1,7 @@
 import { Channel, Presence, Socket } from "phoenix"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
+import { mergeIdentifiedCards, sameCard } from "./identified-cards"
 import type { GalleryArt } from "./recognition/pipeline"
 import {
   EMPTY_COUNTERS,
@@ -202,11 +203,9 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     channelRef.current?.push("update_status", changes)
   }, [])
 
-  /** Merges entries into the shared card list (deduplicated by id, oldest first). */
+  /** Every ingress uses the same per-board card identity rule, including late-join syncs. */
   const mergeCards = useCallback((entries: BoardCard[]) => {
-    const byId = new Map(cardsRef.current.map((entry) => [entry.id, entry]))
-    for (const entry of entries) byId.set(entry.id, entry)
-    cardsRef.current = [...byId.values()].sort((a, b) => a.at - b.at)
+    cardsRef.current = mergeIdentifiedCards(cardsRef.current, entries)
     setIdentifiedCards(cardsRef.current)
   }, [])
 
@@ -517,6 +516,10 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
    * every other seat. The capture stays current so the clicker can still say "wrong card" and
    * pick again from the same crop; the page dismisses it when it is done with the result. */
   function announceCard(ownerPeerId: string, byPlayerName: string, card: IdentifiedCard) {
+    const existing = cardsRef.current.find(
+      (entry) => entry.ownerPeerId === ownerPeerId && sameCard(entry.card, card),
+    )
+    if (existing) return existing
     const entry: BoardCard = {
       id: crypto.randomUUID(),
       ownerPeerId,

@@ -4,6 +4,8 @@ defmodule TheGatheringWeb.API.CardPrintingJSON do
 
   def show(%{printing: printing}), do: %{data: summary(printing)}
 
+  def rulings(%{rulings: rulings}), do: %{data: rulings}
+
   def details(%{details: details}) do
     %{
       data:

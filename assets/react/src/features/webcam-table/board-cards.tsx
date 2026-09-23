@@ -1,7 +1,8 @@
-import { ChevronDown, ChevronUp, X } from "lucide-react"
+import { BookOpen, ChevronDown, ChevronUp, X } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/cn"
 import { usePrintingDetails } from "./card-details"
+import { CardRulings } from "./card-rulings"
 import type { BoardCard, IdentifiedCard, TableParticipant } from "./use-webcam-room"
 
 /** Small card image for one printing, loaded from Scryfall through the server; a grey card
@@ -61,6 +62,7 @@ interface TrayProps {
  * wrong entry can be removed by any seat. */
 export function BoardCardTray({ participant, cards, onPreview, onRemove }: TrayProps) {
   const [expanded, setExpanded] = useState(false)
+  const [rulingsCard, setRulingsCard] = useState<IdentifiedCard | null>(null)
   const mine = cards.filter((entry) => entry.ownerPeerId === participant.peer_id)
   const Chevron = expanded ? ChevronDown : ChevronUp
 
@@ -96,7 +98,14 @@ export function BoardCardTray({ participant, cards, onPreview, onRemove }: TrayP
           ) : (
             <ul className="flex gap-2 overflow-x-auto pt-1.5" aria-label="Identified cards">
               {mine.map((entry) => (
-                <li key={entry.id} className="relative w-16 shrink-0 md:w-20">
+                <li
+                  key={entry.id}
+                  className="relative w-16 shrink-0 md:w-20"
+                  onContextMenu={(event) => {
+                    event.preventDefault()
+                    setRulingsCard(entry.card)
+                  }}
+                >
                   <CardThumb
                     card={entry.card}
                     onClick={() => onPreview(entry)}
@@ -110,12 +119,21 @@ export function BoardCardTray({ participant, cards, onPreview, onRemove }: TrayP
                   >
                     <X className="size-3" strokeWidth={3} />
                   </button>
+                  <button
+                    type="button"
+                    className="mt-1 flex w-full items-center justify-center gap-1 rounded bg-white/10 py-1 text-[0.6rem] text-white/80 hover:bg-white/20"
+                    onClick={() => setRulingsCard(entry.card)}
+                    aria-label={`Rulings for ${entry.card.name}`}
+                  >
+                    <BookOpen className="size-3" /> Rulings
+                  </button>
                 </li>
               ))}
             </ul>
           )}
         </div>
       )}
+      {rulingsCard && <CardRulings card={rulingsCard} onClose={() => setRulingsCard(null)} />}
     </section>
   )
 }

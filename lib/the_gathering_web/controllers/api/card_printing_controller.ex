@@ -30,4 +30,10 @@ defmodule TheGatheringWeb.API.CardPrintingController do
       |> render(:details, details: details)
     end
   end
+
+  def rulings(conn, %{"id" => id}) do
+    with {:ok, rulings} <- Catalog.printing_rulings(id) do
+      render(conn, :rulings, rulings: rulings)
+    end
+  end
 end

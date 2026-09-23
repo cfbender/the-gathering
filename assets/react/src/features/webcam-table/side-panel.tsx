@@ -17,6 +17,7 @@ import {
 import type { ComponentType } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
+import { CommanderHover } from "./card-hover"
 import { CardsTab, type CardsTabProps } from "./cards-tab"
 import { CommanderPicker } from "./commander-picker"
 import { PanelSection } from "./panel-section"
@@ -137,7 +138,11 @@ function SeatOrderTable({
               )}
             </td>
             <td className="text-base-content/70 max-w-28 truncate py-1.5">
-              {commanderName(participant, decks) ?? "—"}
+              <CommanderHover deck={decks.find((deck) => deck.id === participant.deck_id)}>
+                <span tabIndex={0} className="truncate">
+                  {commanderName(participant, decks) ?? "—"}
+                </span>
+              </CommanderHover>
             </td>
             <td className="py-1.5 text-right font-bold tabular-nums">{participant.life}</td>
           </tr>
@@ -196,9 +201,11 @@ function TableTab(props: Props) {
           >
             <button type="button" className="btn btn-outline btn-sm w-full text-xs">
               <Layers className="size-3.5" />
-              <span className="truncate">
-                {commanderName(local, playerDecks) ?? "Select your commander"}
-              </span>
+              <CommanderHover deck={playerDecks.find((deck) => deck.id === local.deck_id)}>
+                <span className="truncate">
+                  {commanderName(local, playerDecks) ?? "Select your commander"}
+                </span>
+              </CommanderHover>
             </button>
           </CommanderPicker>
         </div>
@@ -295,23 +302,25 @@ function DecksTab({ playerDecks, localParticipant: local, onChooseDeck }: Props)
             const selected = deck.id === local.deck_id
             return (
               <li key={deck.id}>
-                <button
-                  type="button"
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-field border px-2 py-1.5 text-left text-xs",
-                    selected
-                      ? "border-primary bg-primary/15"
-                      : "border-white/10 hover:border-white/30",
-                  )}
-                  onClick={() => onChooseDeck(deck.id)}
-                  aria-pressed={selected}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold">{deck.commander_name}</span>
-                    <span className="text-base-content/55 block truncate">{deck.name}</span>
-                  </span>
-                  {selected && <Check className="text-primary size-3.5" />}
-                </button>
+                <CommanderHover deck={deck}>
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-field border px-2 py-1.5 text-left text-xs",
+                      selected
+                        ? "border-primary bg-primary/15"
+                        : "border-white/10 hover:border-white/30",
+                    )}
+                    onClick={() => onChooseDeck(deck.id)}
+                    aria-pressed={selected}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">{deck.commander_name}</span>
+                      <span className="text-base-content/55 block truncate">{deck.name}</span>
+                    </span>
+                    {selected && <Check className="text-primary size-3.5" />}
+                  </button>
+                </CommanderHover>
               </li>
             )
           })}
