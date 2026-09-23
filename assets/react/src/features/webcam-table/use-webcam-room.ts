@@ -45,6 +45,7 @@ export interface TableParticipant extends SeatCounters {
   camera_off: boolean
   reveal_to?: string | null
   eliminated: boolean
+  spectator?: boolean
   /** Retained result seat after an eliminated player disconnects. */
   departed?: boolean
   deck_id?: number
@@ -211,6 +212,9 @@ export function useWebcamRoom(
   const [timer, setTimer] = useState<TimerSample | null>(null)
   const [turns, setTurns] = useState<TurnState>(EMPTY_TURNS)
   const [autoRandomize, setAutoRandomizeState] = useState(true)
+  const [spectating, setSpectating] = useState(false)
+  const spectatorRef = useRef(false)
+  const [ownerId, setOwnerId] = useState<number | null>(null)
   const [roll, setRoll] = useState<TableRoll | null>(null)
   const [events, setEvents] = useState<TableEvent[]>([])
   const [streams, setStreams] = useState<Record<string, MediaStream>>({})
@@ -266,13 +270,15 @@ export function useWebcamRoom(
   // native track to hide just one peer: the target and native crop RPC still need it.
   const syncVideo = useCallback(() => {
     const updates = [...peersRef.current].map(([id, peer]) => {
-      const visible = canViewBoard(peerIdRef.current, id, revealToRef.current)
+      const visible =
+        !spectatorRef.current && canViewBoard(peerIdRef.current, id, revealToRef.current)
       peer.videoTrack.enabled = visible && !!localStreamRef.current?.getVideoTracks()[0]?.enabled
       peer.mediaUpdate = peer.mediaUpdate
         .catch(() => {})
         .then(async () => {
           if (peer.connection.connectionState === "closed") return
-          const allowed = canViewBoard(peerIdRef.current, id, revealToRef.current)
+          const allowed =
+            !spectatorRef.current && canViewBoard(peerIdRef.current, id, revealToRef.current)
           await peer.videoSender.replaceTrack(allowed ? peer.videoTrack : null)
           const parameters = peer.videoSender.getParameters()
           if (parameters.encodings?.length) {
@@ -314,13 +320,23 @@ export function useWebcamRoom(
   }, [])
 
   async function changeCamera(nextDeviceId: string): Promise<boolean> {
-    if (cameraChangingRef.current || !localStreamRef.current) return false
+    if (spectatorRef.current || cameraChangingRef.current || !localStreamRef.current) return false
     cameraChangingRef.current = true
     setCameraChanging(true)
     setCameraError(null)
     const request = ++cameraRequest.current
     try {
-      const media = await openCamera(nextDeviceId)
+      const media = await openCamera(nextDeviceId).catch((reason: unknown) => {
+        if (
+          nextDeviceId &&
+          reason instanceof DOMException &&
+          ["NotFoundError", "OverconstrainedError"].includes(reason.name)
+        ) {
+          setCameraError("Saved camera is unavailable; using the system default.")
+          return openCamera("")
+        }
+        throw reason
+      })
       if (request !== cameraRequest.current) {
         media.getTracks().forEach((track) => track.stop())
         return false
@@ -378,6 +394,8 @@ export function useWebcamRoom(
   }, [])
 
   const broadcast = useCallback((message: DataMessage) => {
+    if (spectatorRef.current) return
+    channelRef.current?.push("cards", message)
     const payload = JSON.stringify(message)
     for (const peer of peersRef.current.values()) {
       if (peer.channel?.readyState === "open") peer.channel.send(payload)
@@ -435,10 +453,11 @@ export function useWebcamRoom(
     let disposed = false
     let socket: Socket | null = null
     let presence: Presence | null = null
-    let monarchRevision = 0
+    let monarchRevision = -1
+    let cameraStarted = false
 
     function syncMonarch({ holder, revision }: MonarchEvent) {
-      if (revision <= monarchRevision) return
+      if (revision < monarchRevision) return
       monarchRevision = revision
       setMonarch(holder)
     }
@@ -479,7 +498,8 @@ export function useWebcamRoom(
       const connection = new RTCPeerConnection({ iceServers: config.ice_servers })
       const media = localStreamRef.current as MediaStream
       const videoTrack = media.getVideoTracks()[0]!.clone()
-      const visible = canViewBoard(peerIdRef.current, remotePeerId, revealToRef.current)
+      const visible =
+        !spectatorRef.current && canViewBoard(peerIdRef.current, remotePeerId, revealToRef.current)
       videoTrack.enabled = visible && media.getVideoTracks()[0]!.enabled
       // addTrack lets an incoming offer reuse this transceiver on the answering side.
       const videoSender = connection.addTrack(videoTrack, media)
@@ -535,19 +555,13 @@ export function useWebcamRoom(
           (body) => body.data,
         )
         setIceServers(config.ice_servers)
-        const media = await openCamera(deviceIdRef.current).catch((reason: unknown) => {
-          if (
-            deviceIdRef.current &&
-            reason instanceof DOMException &&
-            ["NotFoundError", "OverconstrainedError"].includes(reason.name)
-          ) {
-            setCameraError(
-              "Saved camera is unavailable; using the system default. Choose another camera in Settings.",
-            )
-            return openCamera("")
-          }
-          throw reason
-        })
+        // Negotiate a video sender before admission, without asking spectators for
+        // camera permission. A seated client's real camera replaces this track.
+        const placeholder = document.createElement("canvas")
+        placeholder.width = 1920
+        placeholder.height = 1080
+        placeholder.getContext("2d")?.fillRect(0, 0, 1920, 1080)
+        const media = placeholder.captureStream(1)
         if (disposed) return media.getTracks().forEach((track) => track.stop())
         media.getVideoTracks().forEach((track) => {
           track.enabled = !cameraOffRef.current
@@ -558,16 +572,27 @@ export function useWebcamRoom(
         captureVideo.muted = true
         captureVideo.playsInline = true
         captureVideo.srcObject = media
-        await captureVideo.play()
+        void captureVideo.play().catch(() => {})
         localVideoRef.current = captureVideo
 
-        socket = new Socket("/socket", { params: { token: config.socket_token } })
+        socket = new Socket("/socket", { params: () => ({ token: config.socket_token }) })
+        socket.onError(() => {
+          setStatus("Reconnecting… Your game is saved.")
+          // Socket tokens expire after a day; refresh from the still-authenticated
+          // cookie session so the next automatic retry does not reuse an expired token.
+          void api<{ data: TableConfig }>("/api/webcam-table/config")
+            .then(({ data }) => {
+              config.socket_token = data.socket_token
+            })
+            .catch(() => {})
+        })
         socket.connect()
-        const room = socket.channel(`webcam_table:${roomId}`, {
+        const room = socket.channel(`webcam_table:${roomId}`, () => ({
+          protocol: 2,
           peer_id: peerIdRef.current,
           player_id: playerId,
           deck_id: deckId,
-        })
+        }))
         channelRef.current = room
         presence = new Presence(room)
         presence.onJoin((_id, current, joined) => {
@@ -598,6 +623,29 @@ export function useWebcamRoom(
         room.on("deck_selected", () => {
           void queryClient.invalidateQueries({ queryKey: ["decks"] })
         })
+        room.on("seat_replaced", () => {
+          setError("This seat is now open in another tab. Close this tab to keep playing there.")
+          room.leave()
+          socket?.disconnect()
+        })
+        room.onError(() => {
+          // A channel retry is a new media generation. Reusing its peer ID can
+          // leave one browser offering to an old connection after Presence resets.
+          peerIdRef.current = crypto.randomUUID()
+          for (const peer of peersRef.current.values()) {
+            peer.connection.onconnectionstatechange = null
+            peer.videoTrack.stop()
+            peer.connection.close()
+          }
+          peersRef.current.clear()
+          setStreams({})
+          setConnectionStates({})
+          setStatus("Reconnecting… Your game is saved.")
+        })
+        room.on("identified_cards", ({ entries }: { entries: BoardCard[] }) => {
+          cardsRef.current = entries
+          setIdentifiedCards(entries)
+        })
         room.on(
           "table_state",
           ({
@@ -606,18 +654,32 @@ export function useWebcamRoom(
             eliminated_seats,
             turns: turnState,
             auto_randomize,
+            seats,
+            owner_id,
+            monarch: savedMonarch,
+            cards,
           }: {
             timer: GameTimerState
             peer_ids: string[]
             eliminated_seats: TableParticipant[]
             turns: TurnState
             auto_randomize: boolean
+            seats?: TableParticipant[]
+            owner_id?: number
+            monarch?: MonarchEvent
+            cards?: BoardCard[]
           }) => {
             receiveTimer(state)
             setSeatOrder(peer_ids)
-            setEliminatedSeats(eliminated_seats)
+            setEliminatedSeats(seats ?? eliminated_seats)
             setTurns(turnState)
             setAutoRandomizeState(auto_randomize)
+            if (owner_id !== undefined) setOwnerId(owner_id)
+            if (savedMonarch) syncMonarch(savedMonarch)
+            if (cards) {
+              cardsRef.current = cards
+              setIdentifiedCards(cards)
+            }
           },
         )
         room.on(
@@ -653,8 +715,9 @@ export function useWebcamRoom(
         timerSync = window.setInterval(syncTimer, 15_000)
         presence.onSync(() => {
           const next = presence?.list((_id, value) => value.metas[0] as TableParticipant) ?? []
-          participantsRef.current = next
-          setParticipants(next)
+          const seats = next.filter((participant) => !participant.spectator)
+          participantsRef.current = seats
+          setParticipants(seats)
           const activeIds = new Set(next.map((item) => item.peer_id))
           if (revealToRef.current && !activeIds.has(revealToRef.current)) {
             revealToRef.current = null
@@ -674,6 +737,7 @@ export function useWebcamRoom(
           })
           for (const participant of next) {
             const remoteId = participant.peer_id
+            if (spectatorRef.current && participant.spectator) continue
             if (remoteId === peerIdRef.current || peersRef.current.has(remoteId)) continue
             const peer = createPeer(remoteId, config)
             if (peerIdRef.current < remoteId) {
@@ -711,18 +775,39 @@ export function useWebcamRoom(
         )
         room
           .join()
-          .receive("ok", () => {
-            // A server restart also restarts the monotonic revision clock.
-            monarchRevision = 0
-            setStatus("Live — click any board to inspect a card")
+          .receive("ok", ({ participant }: { participant?: TableParticipant }) => {
+            monarchRevision = -1
+            setError(null)
+            spectatorRef.current = participant?.spectator ?? false
+            setSpectating(spectatorRef.current)
+            if (participant) {
+              lifeRef.current = participant.life
+              setLifeState(participant.life)
+              const restored = {
+                poison: participant.poison,
+                rad: participant.rad,
+                commander_casts: participant.commander_casts,
+                commander_damage: participant.commander_damage,
+              }
+              countersRef.current = restored
+              setCounters(restored)
+              revealToRef.current = participant.reveal_to ?? null
+              setRevealTo(revealToRef.current)
+            }
+            setStatus(
+              spectatorRef.current
+                ? "Spectating — this game has already started"
+                : "Live — click any board to inspect a card",
+            )
             syncTimer()
-            // Presence starts every (re)join at the defaults; republish what this seat knows.
-            room.push("update_status", {
-              life: lifeRef.current,
-              ...countersRef.current,
-              camera_off: !(localStreamRef.current?.getVideoTracks()[0]?.enabled ?? true),
-            })
-            if (revealToRef.current) room.push("reveal", { target: revealToRef.current })
+            if (!spectatorRef.current) {
+              room.push("update_status", { camera_off: cameraOffRef.current })
+              if (!cameraStarted) {
+                cameraStarted = true
+                void changeCamera(deviceIdRef.current)
+              }
+            }
+            refreshVideo()
           })
           .receive("error", ({ reason }: { reason: string }) => setError(reason))
       } catch (reason) {
@@ -774,6 +859,7 @@ export function useWebcamRoom(
   }
 
   function changeLife(delta: number) {
+    if (spectatorRef.current || channelRef.current?.state !== "joined") return
     const next = Math.max(-999, Math.min(999, lifeRef.current + delta))
     lifeRef.current = next
     setLifeState(next)
@@ -781,6 +867,7 @@ export function useWebcamRoom(
   }
 
   function adjustCounter(counter: Counter, delta: number) {
+    if (spectatorRef.current || channelRef.current?.state !== "joined") return
     const next = changeCounter(countersRef.current, counter, delta)
     countersRef.current = next
     setCounters(next)
@@ -951,6 +1038,8 @@ export function useWebcamRoom(
   )
 
   return {
+    spectating,
+    isOwner: ownerId === playerId,
     peerId: peerIdRef.current,
     participants: seatedParticipants,
     setEliminated,

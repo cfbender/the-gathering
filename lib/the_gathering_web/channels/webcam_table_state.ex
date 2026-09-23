@@ -1,10 +1,12 @@
 defmodule TheGatheringWeb.WebcamTableState do
   @moduledoc """
-  Serialized, ephemeral turn order and timer state. Channel monitors discard a
-  room when its last seat leaves. Broadcasts happen here to preserve update order.
+  Serialized admission and durable game state. Presence describes connections,
+  not seats: disconnects never change turns or erase a game. Broadcasts preserve
+  update order and snapshots are committed before acknowledging mutations.
   """
   use GenServer
 
+  alias TheGathering.WebcamTables.{Cards, Session}
   alias TheGatheringWeb.{Endpoint, WebcamTableTurns}
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -28,6 +30,14 @@ defmodule TheGatheringWeb.WebcamTableState do
   def remember_seat(room, participant),
     do: GenServer.call(__MODULE__, {:remember_seat, room, participant})
 
+  def current?(room, player_id, pid),
+    do: GenServer.call(__MODULE__, {:current, room, player_id, pid})
+
+  def take_monarch(room, participant),
+    do: GenServer.call(__MODULE__, {:monarch, room, participant})
+
+  def cards(room, payload), do: GenServer.call(__MODULE__, {:cards, room, payload})
+
   def new_timer, do: %{started_at: nil, paused_at: nil, paused_ms: 0}
 
   def elapsed(%{started_at: nil}, _now), do: 0
@@ -50,102 +60,110 @@ defmodule TheGatheringWeb.WebcamTableState do
   def update_timer(timer, _action, _now), do: timer
 
   @impl true
-  def init(_opts), do: {:ok, %{rooms: %{}, monitors: %{}}}
+  def init(_opts) do
+    Process.send_after(self(), :prune, :timer.hours(1))
+    {:ok, %{rooms: %{}, monitors: %{}}}
+  end
 
   @impl true
   def handle_call({:join, room, pid, participant}, _from, state) do
-    ref = Process.monitor(pid)
+    entry = state.rooms[room] || load_entry(room, participant.player_id)
 
-    entry =
-      Map.get(state.rooms, room, %{
-        timer: new_timer(),
-        peer_ids: [],
-        members: MapSet.new(),
-        eliminated_seats: %{},
-        all_seats: %{},
-        turns: WebcamTableTurns.new(),
-        auto_randomize: true
+    previous = entry.all_seats[participant.player_id]
+
+    cond do
+      duplicate_peer?(entry, participant) ->
+        {:reply, {:error, "peer id is already in use"}, state}
+
+      lobby_full?(entry, previous) ->
+        {:reply, {:error, "room is full"}, state}
+
+      true ->
+        spectator? = is_nil(previous) and not is_nil(entry.timer.started_at)
+
+        participant =
+          if previous, do: %{previous | peer_id: participant.peer_id}, else: participant
+
+        participant = Map.put(participant, :spectator, spectator?)
+        {entry, state} = replace_connection(entry, state, room, pid, participant)
+        entry = if spectator?, do: entry, else: restore_seat(entry, previous, participant)
+        Session.save(room, entry)
+        broadcast_state(room, entry)
+        {:reply, {:ok, snapshot_entry(entry), participant}, put_in(state, [:rooms, room], entry)}
+    end
+  end
+
+  def handle_call({:current, room, player_id, pid}, _from, state) do
+    current = get_in(state, [:rooms, room, :connections, player_id])
+    {:reply, match?({^pid, _ref}, current), state}
+  end
+
+  def handle_call({:monarch, room, participant}, _from, state) do
+    entry = Map.fetch!(state.rooms, room)
+    holder = Map.take(participant, [:peer_id, :player_name])
+
+    if holder == entry.monarch do
+      {:reply, :ok, state}
+    else
+      entry = %{entry | monarch: holder, monarch_revision: entry.monarch_revision + 1}
+      Session.save(room, entry)
+
+      Endpoint.broadcast!("webcam_table:#{room}", "monarch", %{
+        holder: holder,
+        revision: entry.monarch_revision
       })
 
-    entry = %{entry | members: MapSet.put(entry.members, ref)}
-    previous = Map.get(entry.eliminated_seats, participant.player_id)
-
-    # An eliminated player can leave without disappearing from the result. A
-    # rejoin takes back that same seat, retaining its position and elimination.
-    {entry, participant} =
-      if previous do
-        participant = %{previous | peer_id: participant.peer_id}
-        previous_peer = previous.peer_id
-
-        peers =
-          Enum.map(entry.peer_ids, fn
-            ^previous_peer -> participant.peer_id
-            id -> id
-          end)
-
-        entry = %{
-          entry
-          | peer_ids: peers,
-            eliminated_seats: Map.put(entry.eliminated_seats, participant.player_id, participant)
-        }
-
-        {entry, participant}
-      else
-        {entry, participant}
-      end
-
-    old_seat = Map.get(entry.all_seats, participant.player_id)
-
-    peers =
-      Enum.map(entry.peer_ids, fn id ->
-        if old_seat && id == old_seat.peer_id, do: participant.peer_id, else: id
-      end)
-
-    entry = %{
-      entry
-      | peer_ids: peers,
-        all_seats: Map.put(entry.all_seats, participant.player_id, participant)
-    }
-
-    entry = reconcile_turn(entry)
-
-    state = %{
-      state
-      | rooms: Map.put(state.rooms, room, entry),
-        monitors: Map.put(state.monitors, ref, {room, participant.player_id})
-    }
-
-    broadcast_state(room, entry)
-    {:reply, {snapshot_entry(entry), participant}, state}
+      {:reply, :ok, put_in(state, [:rooms, room], entry)}
+    end
   end
 
   def handle_call({:snapshot, room}, _from, state) do
     {:reply, snapshot_entry(Map.fetch!(state.rooms, room)), state}
   end
 
-  def handle_call({:remember_seat, room, participant}, _from, state) do
+  def handle_call({:cards, room, payload}, _from, state) do
     entry = Map.fetch!(state.rooms, room)
 
-    seats =
-      if participant.eliminated,
-        do: Map.put(entry.eliminated_seats, participant.player_id, participant),
-        else: Map.delete(entry.eliminated_seats, participant.player_id)
+    case Cards.update(entry.cards, payload, Map.values(entry.all_seats)) do
+      {:ok, cards} ->
+        entry = %{entry | cards: cards}
+        Session.save(room, entry)
+        Endpoint.broadcast!("webcam_table:#{room}", "identified_cards", %{entries: cards})
+        {:reply, :ok, put_in(state, [:rooms, room], entry)}
 
-    if seats != entry.eliminated_seats do
-      Endpoint.broadcast!("webcam_table:#{room}", "eliminated_seats", %{
-        participants: Map.values(seats)
-      })
+      :error ->
+        {:reply, {:error, %{reason: "invalid cards"}}, state}
     end
+  end
 
-    entry = %{
-      entry
-      | eliminated_seats: seats,
-        all_seats: Map.put(entry.all_seats, participant.player_id, participant)
-    }
+  def handle_call({:remember_seat, room, participant}, {pid, _tag}, state) do
+    entry = Map.fetch!(state.rooms, room)
 
-    updated = reconcile_turn(entry)
-    if updated.turns != entry.turns, do: broadcast_state(room, updated)
-    {:reply, :ok, put_in(state, [:rooms, room], updated)}
+    if match?({^pid, _ref}, entry.connections[participant.player_id]) do
+      seats =
+        if participant.eliminated,
+          do: Map.put(entry.eliminated_seats, participant.player_id, participant),
+          else: Map.delete(entry.eliminated_seats, participant.player_id)
+
+      if seats != entry.eliminated_seats do
+        Endpoint.broadcast!("webcam_table:#{room}", "eliminated_seats", %{
+          participants: Map.values(seats)
+        })
+      end
+
+      entry = %{
+        entry
+        | eliminated_seats: seats,
+          all_seats: Map.put(entry.all_seats, participant.player_id, participant)
+      }
+
+      updated = reconcile_turn(entry)
+      Session.save(room, updated)
+      broadcast_state(room, updated)
+      {:reply, :ok, put_in(state, [:rooms, room], updated)}
+    else
+      {:reply, :ok, state}
+    end
   end
 
   def handle_call({:order, room, peers, shuffled}, _from, state) do
@@ -166,7 +184,9 @@ defmodule TheGatheringWeb.WebcamTableState do
     peers =
       Enum.reject(peers, &is_nil/1) ++ remaining ++ Enum.reject(departed, &(&1 in entry.peer_ids))
 
-    entry = reconcile_turn(%{entry | timer: timer, peer_ids: peers})
+    cards = if is_nil(entry.timer.started_at), do: [], else: entry.cards
+    entry = reconcile_turn(%{entry | timer: timer, peer_ids: peers, cards: cards})
+    Session.save(room, entry)
 
     Endpoint.broadcast!("webcam_table:#{room}", "seat_order", %{
       peer_ids: peers,
@@ -181,6 +201,7 @@ defmodule TheGatheringWeb.WebcamTableState do
   def handle_call({:timer, room, action}, _from, state) do
     entry = Map.fetch!(state.rooms, room)
     entry = %{entry | timer: update_timer(entry.timer, action, System.system_time(:millisecond))}
+    Session.save(room, entry)
     snapshot = broadcast_timer(room, entry)
     {:reply, snapshot, put_in(state, [:rooms, room], entry)}
   end
@@ -200,6 +221,7 @@ defmodule TheGatheringWeb.WebcamTableState do
 
   def handle_call({:turn_settings, room, enabled}, _from, state) do
     entry = %{Map.fetch!(state.rooms, room) | auto_randomize: enabled}
+    Session.save(room, entry)
     broadcast_state(room, entry)
     {:reply, :ok, put_in(state, [:rooms, room], entry)}
   end
@@ -216,6 +238,7 @@ defmodule TheGatheringWeb.WebcamTableState do
         )
 
       entry = %{entry | turns: turns}
+      Session.save(room, entry)
       broadcast_state(room, entry)
       {:reply, :ok, put_in(state, [:rooms, room], entry)}
     else
@@ -228,6 +251,7 @@ defmodule TheGatheringWeb.WebcamTableState do
 
     if Map.has_key?(entry.all_seats, player_id) do
       entry = %{entry | turns: WebcamTableTurns.adjust(entry.turns, player_id, delta)}
+      Session.save(room, entry)
       broadcast_state(room, entry)
       {:reply, :ok, put_in(state, [:rooms, room], entry)}
     else
@@ -236,26 +260,40 @@ defmodule TheGatheringWeb.WebcamTableState do
   end
 
   @impl true
+  def handle_info(:prune, state) do
+    # Refresh connected rooms, even when the game is paused and nobody clicks.
+    Enum.each(state.rooms, fn {room, entry} -> Session.save(room, entry) end)
+    Session.prune()
+    Process.send_after(self(), :prune, :timer.hours(1))
+    {:noreply, state}
+  end
+
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
-    {{room, player_id}, monitors} = Map.pop(state.monitors, ref)
-    entry = Map.fetch!(state.rooms, room)
-    members = MapSet.delete(entry.members, ref)
-    entry = update_in(entry, [:all_seats, player_id], &Map.put(&1, :departed, true))
-    entry = reconcile_turn(entry)
-    broadcast_state(room, entry)
+    case Map.pop(state.monitors, ref) do
+      {nil, _} ->
+        {:noreply, state}
 
-    rooms =
-      if MapSet.size(members) == 0,
-        do: Map.delete(state.rooms, room),
-        else: Map.put(state.rooms, room, %{entry | members: members})
+      {{room, player_id}, monitors} ->
+        entry = state.rooms[room]
+        entry = %{entry | connections: Map.delete(entry.connections, player_id)}
 
-    {:noreply, %{state | rooms: rooms, monitors: monitors}}
+        rooms =
+          if map_size(entry.connections) == 0,
+            do: Map.delete(state.rooms, room),
+            else: Map.put(state.rooms, room, entry)
+
+        {:noreply, %{state | rooms: rooms, monitors: monitors}}
+    end
   end
 
   defp snapshot_entry(entry) do
     %{
       timer: Map.put(entry.timer, :server_now, System.system_time(:millisecond)),
       peer_ids: entry.peer_ids,
+      seats: Map.values(entry.all_seats),
+      owner_id: entry.owner_id,
+      monarch: %{holder: entry.monarch, revision: entry.monarch_revision},
+      cards: entry.cards,
       eliminated_seats: Map.values(entry.eliminated_seats),
       turns: entry.turns,
       auto_randomize: entry.auto_randomize
@@ -270,6 +308,87 @@ defmodule TheGatheringWeb.WebcamTableState do
 
   defp broadcast_state(room, entry),
     do: Endpoint.broadcast!("webcam_table:#{room}", "table_state", snapshot_entry(entry))
+
+  defp load_entry(room, owner_id) do
+    entry =
+      Session.load(room) ||
+        %{
+          timer: new_timer(),
+          peer_ids: [],
+          eliminated_seats: %{},
+          all_seats: %{},
+          turns: WebcamTableTurns.new(),
+          auto_randomize: true,
+          monarch: nil,
+          monarch_revision: 0,
+          cards: [],
+          owner_id: owner_id
+        }
+
+    Map.put(entry, :connections, %{})
+  end
+
+  defp duplicate_peer?(entry, participant) do
+    Enum.any?(entry.all_seats, fn {id, seat} ->
+      id != participant.player_id and seat.peer_id == participant.peer_id
+    end)
+  end
+
+  defp lobby_full?(%{timer: %{started_at: nil}, all_seats: seats}, nil),
+    do: map_size(seats) >= 10
+
+  defp lobby_full?(_entry, _previous), do: false
+
+  defp replace_connection(entry, state, room, pid, participant) do
+    state =
+      case entry.connections[participant.player_id] do
+        nil ->
+          state
+
+        {old_pid, ref} ->
+          Process.demonitor(ref, [:flush])
+          send(old_pid, :seat_replaced)
+          %{state | monitors: Map.delete(state.monitors, ref)}
+      end
+
+    ref = Process.monitor(pid)
+    entry = put_in(entry, [:connections, participant.player_id], {pid, ref})
+    state = put_in(state, [:monitors, ref], {room, participant.player_id})
+    {entry, state}
+  end
+
+  defp restore_seat(entry, previous, participant) do
+    peers =
+      Enum.map(entry.peer_ids, fn id ->
+        if previous && id == previous.peer_id, do: participant.peer_id, else: id
+      end)
+
+    monarch =
+      if previous && entry.monarch && entry.monarch.peer_id == previous.peer_id,
+        do: %{entry.monarch | peer_id: participant.peer_id},
+        else: entry.monarch
+
+    eliminated =
+      if participant.eliminated,
+        do: Map.put(entry.eliminated_seats, participant.player_id, participant),
+        else: Map.delete(entry.eliminated_seats, participant.player_id)
+
+    cards =
+      Enum.map(entry.cards, fn card ->
+        if previous && card["ownerPeerId"] == previous.peer_id,
+          do: Map.put(card, "ownerPeerId", participant.peer_id),
+          else: card
+      end)
+
+    %{
+      entry
+      | peer_ids: peers,
+        monarch: monarch,
+        eliminated_seats: eliminated,
+        cards: cards,
+        all_seats: Map.put(entry.all_seats, participant.player_id, participant)
+    }
+  end
 
   defp ordered_seats(entry) do
     positions = entry.peer_ids |> Enum.with_index() |> Map.new()

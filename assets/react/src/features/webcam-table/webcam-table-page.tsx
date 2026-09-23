@@ -187,13 +187,15 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     eliminated: false,
     joined_at: Number.MAX_SAFE_INTEGER,
   }
-  const seated = room.participants.some((participant) => participant.peer_id === room.peerId)
-    ? room.participants
-    : [localParticipant, ...room.participants]
+  const seated =
+    room.spectating || room.participants.some((participant) => participant.peer_id === room.peerId)
+      ? room.participants
+      : [localParticipant, ...room.participants]
   const activeParticipant =
     (preferences.followTurn &&
       seated.find((participant) => participant.player_id === room.turns.active_player_id)) ||
     seated.find((participant) => participant.peer_id === board.selectedPeerId) ||
+    (room.spectating && seated[0]) ||
     localParticipant
   const selectBoard = (peerId: string) => {
     preferences.update({ followTurn: false })
@@ -289,7 +291,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     room.dismissCapture()
   }
 
-  useTableHotkeys(preferences.hotkeys, pickerOpen, (action) => {
+  useTableHotkeys(preferences.hotkeys && !room.spectating, pickerOpen, (action) => {
     switch (action) {
       case "gainLife":
         return room.changeLife(1)
@@ -406,6 +408,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       pinned={isPinned(participant)}
       onTogglePin={() => togglePinFor(participant)}
       onSetEliminated={(eliminated) => room.setEliminated(participant.peer_id, eliminated)}
+      canEliminate={!room.spectating && (room.isOwner || participant.peer_id === room.peerId)}
     />
   )
 
@@ -459,11 +462,17 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             {seatBarFor(participant, "tile")}
           </div>
         ))}
-        {Array.from({ length: Math.max(0, MAX_PLAYERS - seated.length) }, (_, index) => (
-          <div key={`open-${index}`} className="hidden w-44 shrink-0 lg:block lg:w-auto">
-            <OpenSeat />
-          </div>
-        ))}
+        {Array.from(
+          {
+            length:
+              room.timer?.state.started_at != null ? 0 : Math.max(0, MAX_PLAYERS - seated.length),
+          },
+          (_, index) => (
+            <div key={`open-${index}`} className="hidden w-44 shrink-0 lg:block lg:w-auto">
+              <OpenSeat />
+            </div>
+          ),
+        )}
       </aside>
 
       <RailResizeHandle
@@ -480,6 +489,17 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         )}
         aria-label="Active board"
       >
+        {room.spectating && (
+          <p
+            role="status"
+            className="bg-base-200 px-4 py-2 text-sm font-semibold text-base-content"
+          >
+            Spectating — this game has already started. Your camera is not shared.
+            <Link to="/games" className="link ml-3">
+              Leave table
+            </Link>
+          </p>
+        )}
         {room.roll && (
           <div
             role="status"
@@ -581,6 +601,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       )}
 
       <SidePanel
+        spectating={room.spectating}
+        isOwner={room.isOwner}
         left={preferences.panelLeft}
         onHelp={() => setHelpOpen(true)}
         settings={

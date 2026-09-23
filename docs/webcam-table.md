@@ -137,18 +137,45 @@ Games page Play / Join button ────▶ /table/:roomId
                               existing history + stats
 ```
 
-Rooms are intentionally ephemeral and URL-addressed in this slice. Presence is the room roster;
-refreshing rejoins, and an application restart drops signaling but no recorded game. Any signed-in
-member with the unguessable UUID URL can join. Durable invitations/room recovery require a table
-schema and are explicitly deferred.
+Rooms are UUID-addressed and durable in SQLite's `webcam_table_sessions`. The serialized state
+server loads a room lazily on join and commits a versioned server-owned snapshot before acknowledging
+each mutation. Seats, life/counters/damage, selected commanders, elimination, monarch, order,
+turn counts/times, timer and identified card lists survive reloads and server restarts. Media and
+the client-side event log are not stored. Immediate writes avoid a debounce data-loss window;
+this remains a single-server design, not a distributed room coordinator.
+
+Snapshots expire seven days after their last write. An hourly sweep refreshes connected rooms and
+deletes expired snapshots; joins also reject expired snapshots. Empty rooms leave memory but keep
+their snapshot. Finished games use the same idle expiration policy; recording a result does not
+delete the room. An expired UUID opens a fresh lobby.
+
+The authenticated player ID owns the seat, not the transient peer ID or Presence entry. A newer
+connection takes over the same seat, stops the old channel, and remaps order, monarch and cards.
+Each channel retry uses a fresh media peer ID so browsers rebuild the WebRTC mesh rather than
+keeping mismatched connections after a signaling restart. Video elements are muted (there is no
+table audio), allowing spectators to autoplay without a camera grant or a prior click.
+Disconnecting does not advance the turn. The first timer start (through `start_game` or legacy
+`seat_order`) locks the roster: returning players reclaim their seats, everyone else spectates.
+Spectators receive boards/cameras without requesting camera permission and cannot mutate the game.
+The first seated player owns table setup, timer and turn-count corrections; players retain their
+own life/counter/commander controls. Any seated player can pass the turn.
+
+Protocol 2 adds the authoritative seat to the join reply and adds `seats`, `owner_id`, `monarch`
+and `cards` to `table_state`; existing events remain. Legacy clients' initial full status echo is
+ignored to protect restored seats. New clients refresh the one-day socket token on connection
+failure. **First deployment migration:** existing ephemeral games cannot be reconstructed after
+the old server stops. Finish them before deploying, migrate the database, and reload existing
+clients once. Old clients cannot display spectator mode or hydrate local controls from join replies;
+the server still enforces read-only spectator access. Subsequent restarts with updated clients
+recover automatically without a page refresh.
 
 The Games page still finds live tables without the URL: every seated channel process also
 tracks itself on one lobby presence topic (`TheGatheringWeb.WebcamTableRooms`), and
 `GET /api/webcam-table/rooms` groups that topic by room (players in join order, `full` at ten
 seats). `PlayActions` (`features/webcam-table/play-actions.tsx`) polls it every 15 s: with no
 live table the header shows **Play**; with one it shows **Join** naming the seated players plus
-a smaller **New table**; with several, Join becomes a menu of tables. Nothing is stored, so a
-room vanishes from the list as soon as its last seat leaves.
+a smaller **New table**; with several, Join becomes a menu of tables. A room vanishes from this
+live list when its last seat leaves, but remains recoverable through its saved URL.
 
 ## Table view layout
 
@@ -262,8 +289,8 @@ Presence metadata carries, per seat, `life` (starts at 40), `camera_off`, `elimi
 server-stamped `joined_at`. Players publish their own changes through the channel's
 `update_status` event (validated: life −999…999, camera boolean, and counters below; no other keys) and the channel merges
 them into presence, so every browser shows the same totals without another round trip. Your own
-life is also tracked locally so rapid ± clicks compound before presence echoes back, and it is
-republished after every (re)join because presence restarts at the defaults.
+life is also tracked locally so rapid ± clicks compound before presence echoes back. On every
+rejoin, authoritative life and counters hydrate those local controls before editing resumes.
 
 The chevron below each life box opens **Counters**. Everyone can inspect a seat; only its
 owner can change its counters. `poison` and `rad` start at zero. `commander_casts` maps commander
@@ -278,29 +305,28 @@ Recorded damage stays visible when a source changes deck or leaves. Damage does 
 automatically. Poison at 10 and damage of 21 from any one commander are flagged in red; damage
 from separate commanders is never combined for the threshold. The server accepts only integers
 0…999, maps of at most 100 entries, and names of 1…300 bytes. Counter changes use optimistic local
-deltas and are republished on channel rejoin like life; a full page reload resets the seat.
+deltas and restore from the server on rejoin and full page reload.
 
 **Take the monarch** claims the crown for your own seat. `take_monarch` has an empty payload;
-`WebcamTableMonarch` serializes claims and broadcasts one `monarch` holder, never per-seat flags.
+`WebcamTableState` serializes claims and broadcasts one `monarch` holder, never per-seat flags.
 Late joiners receive `monarch_state`; server revisions prevent stale snapshots from replacing
-newer claims. When the holder disconnects, the crown is cleared rather
-than reverting to a previous holder. A crown appears on the holder's tile and active board.
-Monarch state is in memory only, scoped by room, and resets when the application restarts.
+newer claims. A crown appears on the holder's tile and active board and survives disconnects
+and server restarts along with the rest of the room snapshot.
 Counter changes and monarch transfers are added to every connected browser's Log.
 
-Any seated player can mark a present seat eliminated or undo it in the turn-order table.
+The room owner can mark a present seat eliminated or undo it in the turn-order table.
 `set_eliminated` validates a present peer ID and a boolean; the target channel merges it into
 its own presence so later life/camera updates cannot overwrite elimination. Players may also
 publish their own `eliminated` through `update_status`. Out seats stay visible with dimmed video,
 an Eliminated badge, and a struck-through name. They receive no order number; only eligible seats
-are numbered, while the recording order still includes everyone. Eliminating or disconnecting
-the current player advances the turn to the next eligible seat. If none remain there is no active
+are numbered, while the recording order still includes everyone. Eliminating
+the current player advances the turn to the next eligible seat; disconnecting does not. If none remain there is no active
 turn; restoring a player starts their next turn. Counts and accumulated time are kept.
 
 Eliminated seats are retained in `WebcamTableState` and shared through `eliminated_seats`, so
 leaving does not drop them from the result or from a late joiner's view. Rejoining as the same
 player takes back the retained position and elimination flag. A departed seat must rejoin before
-it can be restored. State still clears when the last connected seat leaves. The End game form
+it can be restored. All seats survive the last disconnect in the durable snapshot. The End game form
 suggests the only non-eliminated player as winner (when at least two players took part), with all
 others defaulting to losses in recorded seat order. The result remains editable; choosing Draw
 explicitly records the whole table as draws, as required by the existing game schema.
@@ -309,13 +335,13 @@ Default turn order is join order (`joined_at`, then peer id) so every browser ag
 "Randomize and start" sends `start_game`; the server shuffles the present peers unless the shared
 `turn_settings` option `auto_randomize` is false. With that option off the button reads "Start
 match" and preserves join order. Subsequent randomizations push `seat_order`; the channel verifies
-the list names exactly the present peers, then broadcasts it. Rows shuffle visibly for about one
+the list names exactly the retained seated peers (never spectators), then broadcasts it. Rows shuffle visibly for about one
 second before settling into that order (instant with reduced motion, no animation for an ordered
 start). The End game form numbers seats in that order and records them the same way. Randomizing
 again reorders seats but **never resets or resumes the timer or changes the current turn**.
 
-Any seat can use **Pass turn** or **Space**. Turns advance in the shared order, skip eliminated and
-departed seats, and wrap around. TURN counts increment when a turn starts, including the first
+Any seat can use **Pass turn** or **Space**. Turns advance in the shared order, skip eliminated seats and
+wrap around. Temporarily disconnected seats keep their turns. TURN counts increment when a turn starts, including the first
 turn; small −/+ controls send `adjust_turn` corrections (0–999) without changing time or active
 player. `pass_turn` requires the last seen turn revision, so simultaneous passes only advance
 once. TIME is the player's accumulated time in m:ss, including their current turn. The server
@@ -330,18 +356,18 @@ while a card picker/dialog is open. It shares the guarded registry and enable pr
 `table-hotkeys.tsx` with the other table shortcuts.
 
 `WebcamTableState` serializes the shared timer, turns and order on the single application server.
-The first valid `seat_order` starts it. Any seat can send `timer` with `pause` or `resume`;
+The first valid `seat_order` starts it. Only the room owner can send `timer` with `pause` or `resume`;
 only the server writes `started_at`, `paused_at`, and accumulated `paused_ms`. The timer bar
 above the active board's name bar derives elapsed time excluding pauses. Browsers interpolate
 from a server sample using `performance.now()`, not their wall clock, and resync every 15 seconds
 with `timer_sync` (half-round-trip latency compensation). New/rejoining seats receive the
-current timer, order, settings, counts and per-player times via `table_state`. Channel monitors discard state when the last seat
-leaves; an application restart also clears it. Multi-node room state is not supported.
+current timer, order, settings, counts and per-player times via `table_state`. A running timer
+includes server downtime; a paused timer remains paused. Multi-node room state is not supported.
 
 End game pauses the timer for everyone and captures that server response for the result form.
 Duration is editable, prefilled in whole minutes rounded to nearest (minimum one minute, matching
 the game schema). Without a started timer it stays blank. Going back leaves the timer paused;
-any seat can resume explicitly. `played_at` uses the shared start timestamp when available.
+the owner can resume explicitly. `played_at` uses the shared start timestamp when available.
 
 The Table tab offers d6, d20, custom dice with 2–1000 integer sides, and coin flips. The `roll`
 event validates the request, generates the result on the server, stamps it with the authenticated
@@ -370,8 +396,8 @@ own camera. Camera off overrides reveal and stays off when reveal ends.
 **End reveal** restores eligible senders in one click. A target departure automatically ends
 the reveal in both channel presence and the owner's media policy, restoring public video;
 put the hand down before ending or leaving. Signaling reconnects preserve the local restriction.
-The cap check and presence reservation are serialized so simultaneous final-seat joins cannot
-overfill the room; duplicate peer IDs and duplicate players are refused.
+Admission is serialized so simultaneous final-seat joins cannot overfill the room. Another player
+cannot reuse a seat's peer ID; the same authenticated player replaces their old connection.
 
 Hidden viewers cannot identify the board: both the requesting UI and the owner's native-crop
 handler enforce visibility. Authorized viewers still receive the owner's native 640 px JPEG
@@ -386,8 +412,8 @@ can still save or share what they saw; this feature cannot revoke frames already
   merges `update_status`/`set_eliminated` into presence, validates `seat_order`/`timer`/`timer_sync`,
   `start_game`/`turn_settings`/`pass_turn`/`adjust_turn`, and generates
   and broadcasts validated `roll` results.
-- `TheGatheringWeb.WebcamTableState` owns serialized, server-stamped timer/turn/order state and
-  retained eliminated seats and channel-monitor cleanup (covered by `webcam_table_channel_test.exs`).
+- `TheGatheringWeb.WebcamTableState` owns serialized admission and game state, backed by
+  `TheGathering.WebcamTables.Session` snapshots (covered by `webcam_table_channel_test.exs`).
 - `TheGatheringWeb.WebcamTableTurns` owns pure turn advancement, elimination skipping, counts and
   accumulated-time accounting (`webcam_table_turns_test.exs`).
 - `TheGatheringWeb.Presence` owns ephemeral room membership and seat status.
@@ -553,8 +579,9 @@ thumbnails, each with a red × to remove it (`card_removed`, honoured at every s
 the preview when clicked. The **Cards** tab of the side panel (`cards-tab.tsx`) shows the
 newest identified card with its details (Clear hides it locally), a gallery search that
 previews any printing, and the detected cards grouped per player with a Shared / My board
-toggle. The list is ephemeral like the Log, but a seat that connects later receives the current
-entries (`cards_sync`) when its data channel opens. If the card name matches one of the owner's
+toggle. The list is persisted through the channel's `cards` event (up to 500 entries per room)
+and synchronized through `identified_cards` and `table_state`. Data-channel messages remain for
+older clients; private reveal identifications are never persisted. If the card name matches one of the owner's
 commanders and they have no deck selected yet, it also selects that deck.
 
 Only a board's owner can wipe it: the tray on your own board and your own group in the Cards
@@ -600,7 +627,7 @@ transformations. `x-card-image-cache: hit|miss` distinguishes server disk reuse 
 
 Backlog:
 
-- record identified cards against the game (currently only in the ephemeral per-board list);
+- record identified cards against the historical game (currently retained only with the room session);
 - WebGPU execution provider with WASM fallback;
 - shift-click manual four-corner capture when the detector misses.
 

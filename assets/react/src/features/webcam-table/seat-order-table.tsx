@@ -10,6 +10,7 @@ import { useTimerElapsed } from "./use-timer-elapsed"
 import type { TableParticipant } from "./use-webcam-room"
 
 export interface SeatOrderTableProps {
+  readOnly?: boolean
   participants: TableParticipant[]
   localParticipant: TableParticipant
   decks: DeckSummary[]
@@ -21,6 +22,7 @@ export interface SeatOrderTableProps {
 }
 
 export function SeatOrderTable({
+  readOnly = false,
   participants,
   localParticipant,
   decks,
@@ -111,39 +113,45 @@ export function SeatOrderTable({
                     </>
                   )}
                 </span>
-                <button
-                  type="button"
-                  className="mt-1 rounded border border-white/15 px-1 py-0.5 text-[0.6rem] hover:bg-white/10 disabled:opacity-50"
-                  aria-pressed={seat.eliminated}
-                  aria-label={`Eliminated: ${seat.player_name}`}
-                  disabled={seat.departed}
-                  title={seat.departed ? "Rejoin to restore this player" : "Toggle elimination"}
-                  onClick={() => onSetEliminated(seat.peer_id, !seat.eliminated)}
-                >
-                  {seat.eliminated ? "Out · Undo" : "Eliminate"}
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    className="mt-1 rounded border border-white/15 px-1 py-0.5 text-[0.6rem] hover:bg-white/10 disabled:opacity-50"
+                    aria-pressed={seat.eliminated}
+                    aria-label={`Eliminated: ${seat.player_name}`}
+                    disabled={seat.departed}
+                    title={seat.departed ? "Rejoin to restore this player" : "Toggle elimination"}
+                    onClick={() => onSetEliminated(seat.peer_id, !seat.eliminated)}
+                  >
+                    {seat.eliminated ? "Out · Undo" : "Eliminate"}
+                  </button>
+                )}
               </td>
               <td className="py-2 text-center tabular-nums">
                 <div className="flex items-center justify-center">
-                  <button
-                    type="button"
-                    className="size-5 rounded hover:bg-white/10 disabled:opacity-30"
-                    aria-label={`Remove a turn from ${seat.player_name}`}
-                    disabled={display.count === 0}
-                    onClick={() => onAdjustTurn(seat.player_id, -1)}
-                  >
-                    −
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      className="size-5 rounded hover:bg-white/10 disabled:opacity-30"
+                      aria-label={`Remove a turn from ${seat.player_name}`}
+                      disabled={display.count === 0}
+                      onClick={() => onAdjustTurn(seat.player_id, -1)}
+                    >
+                      −
+                    </button>
+                  )}
                   <span aria-label={`${seat.player_name} turn count`}>{display.count}</span>
-                  <button
-                    type="button"
-                    className="size-5 rounded hover:bg-white/10 disabled:opacity-30"
-                    aria-label={`Add a turn to ${seat.player_name}`}
-                    disabled={display.count >= 999}
-                    onClick={() => onAdjustTurn(seat.player_id, 1)}
-                  >
-                    +
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      className="size-5 rounded hover:bg-white/10 disabled:opacity-30"
+                      aria-label={`Add a turn to ${seat.player_name}`}
+                      disabled={display.count >= 999}
+                      onClick={() => onAdjustTurn(seat.player_id, 1)}
+                    >
+                      +
+                    </button>
+                  )}
                 </div>
               </td>
               <td

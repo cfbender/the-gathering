@@ -23,6 +23,7 @@ export function SeatBar({
   onReveal,
   onTogglePin,
   onSetEliminated,
+  canEliminate = local,
 }: {
   participant: TableParticipant
   local: boolean
@@ -34,6 +35,7 @@ export function SeatBar({
   onReveal: () => void
   onTogglePin: () => void
   onSetEliminated: (eliminated: boolean) => void
+  canEliminate?: boolean
 }) {
   const compact = size === "tile"
   const cameraIcon = participant.camera_off ? (
@@ -93,12 +95,14 @@ export function SeatBar({
               </DropdownMenuItem>
             </>
           )}
-          <DropdownMenuItem
-            destructive={!participant.eliminated}
-            onSelect={() => onSetEliminated(!participant.eliminated)}
-          >
-            {participant.eliminated ? "Restore player" : "Eliminate player"}
-          </DropdownMenuItem>
+          {canEliminate && (
+            <DropdownMenuItem
+              destructive={!participant.eliminated}
+              onSelect={() => onSetEliminated(!participant.eliminated)}
+            >
+              {participant.eliminated ? "Restore player" : "Eliminate player"}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       {local ? (
