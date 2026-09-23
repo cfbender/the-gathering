@@ -1,6 +1,13 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog"
 import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { getPlayers } from "@/features/games/games"
 import { useCurrentUser } from "@/lib/auth"
@@ -10,11 +17,13 @@ import { BoardCardTray } from "./board-cards"
 import { CardPreview } from "./card-preview"
 import { CardSuggestions, isClear, type Recognition } from "./card-suggestions"
 import { FinishGame } from "./finish-game"
+import { LifeControl } from "./life-control"
 import { canViewBoard } from "./media-policy"
 import type { GameTimerState } from "./game-timer"
 import type { GalleryArt } from "./recognition/pipeline"
 import { decodeImage, useRecognizer, type RecognizerState } from "./recognition/use-recognizer"
-import { SeatBar, TileCommanderRow } from "./seat-bar"
+import { RevealControl } from "./reveal-control"
+import { SeatBar } from "./seat-bar"
 import { SeatCounterControls } from "./seat-counter-controls"
 import { SidePanel, type PanelTab } from "./side-panel"
 import { HotkeyHelp, useTableHotkeys } from "./table-hotkeys"
@@ -179,6 +188,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   const autoChosen = useRef<CapturedCard | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
   const [finishOpen, setFinishOpen] = useState(false)
+  const [revealOpen, setRevealOpen] = useState(false)
   const [resultTimer, setResultTimer] = useState<GameTimerState | null>(null)
   const [panelOpen, setPanelOpen] = useState(true)
   const [panelTab, setPanelTab] = useState<PanelTab>("table")
@@ -375,7 +385,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     return () => window.clearTimeout(timer)
   }, [inviteCopied])
 
-  const countersFor = (participant: TableParticipant) => (
+  const countersFor = (participant: TableParticipant, onOpenChange: (open: boolean) => void) => (
     <SeatCounterControls
       participant={participant}
       participants={seated}
@@ -384,8 +394,25 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       monarch={room.monarch?.peer_id === participant.peer_id}
       onAdjust={room.adjustCounter}
       onTakeMonarch={room.takeMonarch}
+      onOpenChange={onOpenChange}
     />
   )
+
+  const lifeControlFor = (participant: TableParticipant, size: "board" | "tile") => (
+    <LifeControl
+      life={participant.life}
+      local={participant.peer_id === room.peerId}
+      size={size}
+      counters={(onOpenChange) => countersFor(participant, onOpenChange)}
+      onChangeLife={room.changeLife}
+    />
+  )
+  const isPinned = (participant: TableParticipant) =>
+    !preferences.followTurn && board.pinned && participant.peer_id === activeParticipant.peer_id
+  const togglePinFor = (participant: TableParticipant) => {
+    if (isPinned(participant)) board.togglePin()
+    else selectBoard(participant.peer_id)
+  }
 
   const seatBarFor = (participant: TableParticipant, size: "board" | "tile") => (
     <SeatBar
@@ -394,10 +421,11 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       decks={decksFor(participant)}
       size={size}
       onChooseDeck={room.chooseDeck}
-      onChangeLife={room.changeLife}
       onToggleCamera={toggleCamera}
-      onAdjustCounter={room.adjustCounter}
-      counters={countersFor(participant)}
+      onReveal={() => setRevealOpen(true)}
+      pinned={isPinned(participant)}
+      onTogglePin={() => togglePinFor(participant)}
+      onSetEliminated={(eliminated) => room.setEliminated(participant.peer_id, eliminated)}
     />
   )
 
@@ -426,7 +454,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         {seated.map((participant) => (
           <div
             key={participant.peer_id}
-            className="w-44 shrink-0 overflow-hidden rounded-sm lg:w-auto"
+            className="w-60 shrink-0 overflow-hidden rounded-sm lg:w-auto"
           >
             <div className="relative">
               <CameraTile
@@ -439,6 +467,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
                 connectionState={room.connectionStates[participant.peer_id]}
                 stream={streamFor(participant, room.peerId, room.localStream, room.streams)}
                 onActivate={() => selectBoard(participant.peer_id)}
+                lifeControl={lifeControlFor(participant, "tile")}
               />
               {preferences.stats && (
                 <VideoStatsOverlay
@@ -448,14 +477,6 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
               )}
             </div>
             {seatBarFor(participant, "tile")}
-            <TileCommanderRow
-              participant={participant}
-              decks={decksFor(participant)}
-              onChooseDeck={room.chooseDeck}
-              local={participant.peer_id === room.peerId}
-              onAdjustCounter={room.adjustCounter}
-              counters={countersFor(participant)}
-            />
           </div>
         ))}
         {Array.from({ length: Math.max(0, MAX_PLAYERS - seated.length) }, (_, index) => (
@@ -496,11 +517,9 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             currentTurn={activeParticipant.player_id === room.turns.active_player_id}
             connectionState={room.connectionStates[activeParticipant.peer_id]}
             stream={streamFor(activeParticipant, room.peerId, room.localStream, room.streams)}
-            pinned={!preferences.followTurn && board.pinned}
-            onTogglePin={() => {
-              if (preferences.followTurn) selectBoard(activeParticipant.peer_id)
-              else board.togglePin()
-            }}
+            lifeControl={lifeControlFor(activeParticipant, "board")}
+            pinned={isPinned(activeParticipant)}
+            onTogglePin={() => togglePinFor(activeParticipant)}
             onInspect={(event) => {
               const point = capturePoint(event)
               if (point)
@@ -627,6 +646,25 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         }}
       />
 
+      <Dialog open={revealOpen} onOpenChange={setRevealOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Reveal hand</DialogTitle>
+            <DialogClose onClose={() => setRevealOpen(false)} />
+          </DialogHeader>
+          <p className="mb-3 text-sm text-base-content/65">
+            Wait for confirmation before showing your hand. Only the chosen player receives your
+            video.
+          </p>
+          <RevealControl
+            participants={seated}
+            peerId={room.peerId}
+            target={room.revealTo}
+            busy={room.revealBusy}
+            onChange={room.changeReveal}
+          />
+        </DialogContent>
+      </Dialog>
       <HotkeyHelp open={helpOpen} onOpenChange={setHelpOpen} />
 
       {finishOpen && resultTimer && (

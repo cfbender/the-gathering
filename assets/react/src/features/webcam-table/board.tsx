@@ -1,5 +1,5 @@
 import { Crown, Pin, PinOff, UserPlus, Video, VideoOff } from "lucide-react"
-import type { MouseEvent } from "react"
+import type { MouseEvent, ReactNode } from "react"
 import { cn } from "@/lib/cn"
 import { describeConnection, type TableParticipant } from "./use-webcam-room"
 
@@ -47,36 +47,33 @@ function CameraOffOverlay({ compact }: { compact?: boolean }) {
   )
 }
 
-function EliminatedOverlay() {
+function EliminatedOverlay({ compact = false }: { compact?: boolean }) {
   return (
     <div className="pointer-events-none absolute inset-0 bg-black/50">
-      <span className="absolute top-2 left-1/2 -translate-x-1/2 rounded border border-white/25 bg-zinc-950/90 px-2 py-1 text-xs font-bold tracking-wide text-white">
-        Eliminated
+      <span
+        className={cn(
+          "absolute rounded border border-white/25 bg-zinc-950/90 px-2 py-1 text-xs font-bold tracking-wide text-white",
+          compact ? "right-1 bottom-1" : "top-2 left-1/2 -translate-x-1/2",
+        )}
+        aria-label="Eliminated"
+      >
+        {compact ? "Out" : "Eliminated"}
       </span>
     </div>
   )
 }
 
-function CurrentTurnBadge() {
+function CurrentTurnBadge({ compact = false }: { compact?: boolean }) {
   return (
-    <span className="pointer-events-none absolute bottom-2 left-2 rounded border border-amber-300/50 bg-zinc-950/90 px-2 py-0.5 text-[0.65rem] font-bold text-amber-200">
-      ● Current turn
-    </span>
-  )
-}
-
-/** Life total badge overlaid on the top-left of a board, like a table scoreboard. */
-export function LifeBadge({ life, size }: { life: number; size: "board" | "tile" }) {
-  return (
-    <div
+    <span
       className={cn(
-        "pointer-events-none absolute top-1.5 left-1.5 grid place-items-center rounded bg-black/80 font-black text-white tabular-nums shadow",
-        size === "board" ? "min-w-14 px-2 py-1 text-3xl md:text-4xl" : "min-w-7 px-1.5 text-sm",
+        "pointer-events-none absolute rounded border border-amber-300/50 bg-zinc-950/90 px-2 py-0.5 text-[0.65rem] font-bold text-amber-200",
+        compact ? "right-1 bottom-1" : "bottom-2 left-2",
       )}
-      aria-label={`${life} life`}
+      aria-label="Current turn"
     >
-      {life}
-    </div>
+      {compact ? "● Turn" : "● Current turn"}
+    </span>
   )
 }
 
@@ -111,6 +108,7 @@ export function ActiveBoard({
   pinned,
   onTogglePin,
   onInspect,
+  lifeControl,
 }: {
   participant: TableParticipant
   monarch?: boolean
@@ -123,6 +121,7 @@ export function ActiveBoard({
   pinned: boolean
   onTogglePin: () => void
   onInspect: (event: MouseEvent<HTMLButtonElement>) => void
+  lifeControl: ReactNode
 }) {
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
@@ -150,7 +149,7 @@ export function ActiveBoard({
         )}
         {participant.camera_off && <CameraOffOverlay />}
         {revealBadge && (
-          <span className="absolute top-16 left-2 rounded bg-primary px-2 py-1 text-xs text-primary-content">
+          <span className="absolute top-28 left-2 rounded bg-primary px-2 py-1 text-xs text-primary-content">
             {revealBadge}
           </span>
         )}
@@ -160,10 +159,10 @@ export function ActiveBoard({
       </button>
       {participant.eliminated && <EliminatedOverlay />}
       {currentTurn && !participant.eliminated && <CurrentTurnBadge />}
-      <LifeBadge life={participant.life} size="board" />
+      {lifeControl}
       {monarch && (
         <span
-          className="pointer-events-none absolute top-2 left-20 rounded bg-black/80 p-2 text-warning"
+          className="pointer-events-none absolute top-2 left-28 rounded bg-black/80 p-2 text-warning"
           aria-label={`${participant.player_name} is the monarch`}
         >
           <Crown className="size-6" />
@@ -201,6 +200,7 @@ export function CameraTile({
   active,
   currentTurn = false,
   onActivate,
+  lifeControl,
 }: {
   participant: TableParticipant
   monarch?: boolean
@@ -212,43 +212,48 @@ export function CameraTile({
   active: boolean
   currentTurn?: boolean
   onActivate: () => void
+  lifeControl: ReactNode
 }) {
   return (
-    <button
-      type="button"
+    <div
       className={cn(
         "relative block aspect-video w-full overflow-hidden rounded-sm border-2 bg-black text-left transition",
         active ? "border-primary" : "border-white/10 hover:border-white/40",
       )}
-      onClick={onActivate}
-      aria-pressed={active}
-      aria-label={`Show ${participant.player_name}'s board`}
     >
-      {hiddenLabel ? (
-        <VideoPlaceholder compact label={hiddenLabel} />
-      ) : stream ? (
-        <StreamVideo stream={stream} muted={local} className="object-cover" />
-      ) : (
-        <VideoPlaceholder
-          compact
-          label={
-            participant.departed
-              ? "Left table"
-              : local
-                ? "Starting camera…"
-                : describeConnection(connectionState)
-          }
-        />
-      )}
-      {participant.camera_off && <CameraOffOverlay compact />}
-      {revealBadge && (
-        <span className="absolute right-0 bottom-0 left-0 bg-primary px-1 py-0.5 text-center text-[0.6rem] text-primary-content">
-          {revealBadge}
-        </span>
-      )}
-      {participant.eliminated && <EliminatedOverlay />}
-      {currentTurn && !participant.eliminated && <CurrentTurnBadge />}
-      <LifeBadge life={participant.life} size="tile" />
+      <button
+        type="button"
+        className="absolute inset-0 h-full w-full"
+        onClick={onActivate}
+        aria-pressed={active}
+        aria-label={`Show ${participant.player_name}'s board`}
+      >
+        {hiddenLabel ? (
+          <VideoPlaceholder compact label={hiddenLabel} />
+        ) : stream ? (
+          <StreamVideo stream={stream} muted={local} className="object-cover" />
+        ) : (
+          <VideoPlaceholder
+            compact
+            label={
+              participant.departed
+                ? "Left table"
+                : local
+                  ? "Starting camera…"
+                  : describeConnection(connectionState)
+            }
+          />
+        )}
+        {participant.camera_off && <CameraOffOverlay compact />}
+        {revealBadge && (
+          <span className="absolute right-0 bottom-0 left-0 bg-primary px-1 py-0.5 text-center text-[0.6rem] text-primary-content">
+            {revealBadge}
+          </span>
+        )}
+      </button>
+      {participant.eliminated && <EliminatedOverlay compact />}
+      {currentTurn && !participant.eliminated && <CurrentTurnBadge compact />}
+      {lifeControl}
       {monarch && (
         <span
           className="pointer-events-none absolute top-1.5 right-1.5 rounded bg-black/80 p-1 text-warning"
@@ -257,7 +262,7 @@ export function CameraTile({
           <Crown className="size-4" />
         </span>
       )}
-    </button>
+    </div>
   )
 }
 
