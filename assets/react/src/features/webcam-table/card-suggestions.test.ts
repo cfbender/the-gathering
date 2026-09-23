@@ -1,30 +1,34 @@
 import { describe, expect, it } from "vite-plus/test"
 import { CLEAR_MARGIN, isClear } from "./card-suggestions"
-import type { Candidate } from "./recognition/pipeline"
+import type { Identification } from "./recognition/messages"
 
-function art(id: string, score: number): Candidate {
+type Candidate = Identification["candidates"][number]
+
+function candidate(score: number, index: number): Candidate {
   return {
-    id,
-    name: id,
+    id: `art-${index}`,
+    name: `Card ${index}`,
     set: "fic",
-    collector_number: "1",
-    layout: "normal",
-    frame: "modern",
-    index: 0,
+    collector_number: String(index),
+    frame: "2015",
     score,
+    index,
   }
 }
 
 describe("isClear", () => {
-  it("is clear only when the leader beats the runner-up by the margin", () => {
-    // exactly representable binary fractions, so the boundary is not a rounding accident
-    expect(CLEAR_MARGIN).toBeLessThan(0.125)
-    expect(isClear([art("a", 0.75), art("b", 0.625)])).toBe(true)
-    expect(isClear([art("a", 0.75), art("b", 0.75 - CLEAR_MARGIN / 2)])).toBe(false)
+  it("is clear when top-1 leads the runner-up by more than the margin", () => {
+    expect(isClear([candidate(0.75, 0), candidate(0.625, 1)])).toBe(true)
+    expect(isClear([candidate(0.75, 0), candidate(0.75 - CLEAR_MARGIN * 1.5, 1)])).toBe(true)
   })
 
-  it("never auto-confirms a lone or absent candidate", () => {
+  it("is a near-tie just inside the margin", () => {
+    expect(isClear([candidate(0.75, 0), candidate(0.75 - CLEAR_MARGIN / 2, 1)])).toBe(false)
+    expect(isClear([candidate(0.75, 0), candidate(0.75, 1)])).toBe(false)
+  })
+
+  it("never treats a lone or empty result as clear", () => {
     expect(isClear([])).toBe(false)
-    expect(isClear([art("a", 0.95)])).toBe(false)
+    expect(isClear([candidate(0.9, 0)])).toBe(false)
   })
 })

@@ -1,4 +1,4 @@
-import type { IdentifiedCard, TableParticipant } from "./use-webcam-room"
+import type { TableParticipant } from "./use-webcam-room"
 
 /** Human-readable log lines for presence changes, in the order they matter to players. */
 export function describeParticipantChange(
@@ -22,30 +22,6 @@ export function describeParticipantChange(
 
 export function describeParticipantLeft(participant: TableParticipant) {
   return `${participant.player_name} left the table`
-}
-
-function printing(card: IdentifiedCard) {
-  const number = card.collector_number ? ` #${card.collector_number}` : ""
-  return `${card.name} [${card.set.toUpperCase()}${number}]`
-}
-
-/** "Cody identified Command Tower [FIC #301] on Mara's board", or when the recognizer's
- * auto-confirmed answer is overridden, "Cody corrected Plains to Command Tower [FIC #301] on
- * Mara's board". */
-export function describeCardIdentified(
-  byPlayerName: string,
-  owner: TableParticipant | undefined,
-  card: IdentifiedCard,
-  replaces?: IdentifiedCard,
-): string {
-  const where = owner
-    ? owner.player_name === byPlayerName
-      ? " on their board"
-      : ` on ${owner.player_name}'s board`
-    : ""
-  return replaces
-    ? `${byPlayerName} corrected ${replaces.name} to ${printing(card)}${where}`
-    : `${byPlayerName} identified ${printing(card)}${where}`
 }
 
 /** Random seat order that, for two or more seats, differs from the current one so a

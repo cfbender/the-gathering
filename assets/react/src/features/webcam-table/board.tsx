@@ -110,8 +110,8 @@ export function ActiveBoard({
           <VideoPlaceholder label={local ? "Starting camera…" : "Connecting…"} />
         )}
         {participant.camera_off && <CameraOffOverlay />}
-        <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-3 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-          Click a card to identify it
+        <span className="pointer-events-none absolute bottom-9 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-3 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+          Click a card to identify it · Shift+click to choose
         </span>
       </button>
       <LifeBadge life={participant.life} size="board" />

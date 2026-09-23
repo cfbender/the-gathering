@@ -129,8 +129,10 @@ response's `errors`.
 board cameras over a WebRTC mesh and record the result when the game ends. Clicking a card on
 any board identifies it with the recognizer bundle published from `ml/` (see
 `ml/README.md`, "Shipping"): Phoenix serves `DATA_DIR/cardid/current/*` at `/api/cardid/*`
-and the browser runs the models itself. Without a published bundle the table still works and
-offers the player's commanders as suggestions instead. Design notes are in
+and the browser runs the models itself. A recognized card opens with its rules text (fetched
+from Scryfall per printing and cached) and lands in that board's card tray for every seat.
+Without a published bundle the table still works and offers the player's commanders as
+suggestions instead. Design notes are in
 [docs/webcam-table.md](docs/webcam-table.md).
 
 ### Environment variables

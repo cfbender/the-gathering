@@ -5,6 +5,8 @@ import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { getPlayers } from "@/features/games/games"
 import { useCurrentUser } from "@/lib/auth"
 import { ActiveBoard, CameraTile, OpenSeat, capturePoint } from "./board"
+import { BoardCardTray } from "./board-cards"
+import { CardPreview } from "./card-preview"
 import { CardSuggestions, isClear, type Recognition } from "./card-suggestions"
 import { FinishGame } from "./finish-game"
 import type { GalleryArt } from "./recognition/pipeline"
@@ -13,6 +15,7 @@ import { SeatBar, TileCommanderRow } from "./seat-bar"
 import { SidePanel, type PanelTab } from "./side-panel"
 import {
   useWebcamRoom,
+  type BoardCard,
   type CapturedCard,
   type IdentifiedCard,
   type TableParticipant,
@@ -132,9 +135,23 @@ function useRecognition(capture: CapturedCard | null) {
   return { recognizer, recognition }
 }
 
+/** What the card overlay on the active board is showing: an identified board entry (offering
+ * "Wrong card?" while its capture is still current), or a printing from the gallery search. */
+type Preview =
+  | { kind: "entry"; entry: BoardCard; correctable: boolean }
+  | { kind: "art"; card: IdentifiedCard }
+
+function toCard(art: GalleryArt): IdentifiedCard {
+  return { id: art.id, name: art.name, set: art.set, collector_number: art.collector_number }
+}
+
 function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   const room = useWebcamRoom(roomId, playerId, null)
   const { recognizer, recognition } = useRecognition(room.capture)
+  const [preview, setPreview] = useState<Preview | null>(null)
+  /** The picker is open by request ("Wrong card?"), replacing this entry if one is named. */
+  const [picker, setPicker] = useState<{ replacing: string | null } | null>(null)
+  const autoChosen = useRef<CapturedCard | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
   const [finishOpen, setFinishOpen] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
@@ -166,48 +183,64 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     : undefined
   const suggestions = captureOwner ? decksFor(captureOwner).slice(0, 5) : []
   const candidates = recognition.status === "done" ? recognition.result.candidates : []
-  const [confirmed, setConfirmed] = useState<{ capture: CapturedCard; card: IdentifiedCard }>()
-  const confirmedCard = confirmed && confirmed.capture === room.capture ? confirmed.card : null
+  // The picker is for the cases a human has to settle: no recognizer, a near-tie, a
+  // Shift+click asking to choose, or "Wrong card?" on a result. A clear answer to a plain
+  // click is recorded without it and shown as the card itself.
+  const needsChoice =
+    room.capture !== null &&
+    (room.capture.inspect ||
+      recognition.status === "skipped" ||
+      (recognition.status === "done" && !isClear(candidates)))
+  const pickerOpen =
+    room.capture !== null && captureOwner !== undefined && !preview && (needsChoice || !!picker)
 
-  /** Logs the card at every seat; a card that is one of the owner's commanders also picks
-   * that deck when they have not chosen one yet. An `auto` pick (the recognizer's clear top-1)
-   * leaves the panel open so it can be corrected; a later pick for the same click is logged as
-   * a correction, and re-picking the confirmed card just closes the panel. */
+  /** Adds the card to the owner's board list at every seat and shows it; a card that is one of
+   * the owner's commanders also picks that deck when they have not chosen one yet. Replaces the
+   * entry being corrected when the picker came from "Wrong card?". */
   const chooseCard = useCallback(
-    (art: GalleryArt, options: { auto?: boolean } = {}) => {
-      if (!captureOwner || !room.capture) return
-      const card: IdentifiedCard = {
-        id: art.id,
-        name: art.name,
-        set: art.set,
-        collector_number: art.collector_number,
-      }
-      if (confirmedCard?.id === card.id) return room.dismissCapture()
+    (art: GalleryArt) => {
+      if (!captureOwner) return
       const commanderDeck = decksFor(captureOwner).find(
         (deck) => deck.commander_name.toLowerCase() === art.name.toLowerCase(),
       )
       if (commanderDeck && !captureOwner.deck_id)
-        room.suggestDeck(captureOwner.peer_id, commanderDeck.id, { keepCapture: options.auto })
-      room.announceCard(captureOwner.peer_id, playerName, card, {
-        replaces: confirmedCard ?? undefined,
-        keepCapture: options.auto,
-      })
-      if (options.auto) setConfirmed({ capture: room.capture, card })
+        room.suggestDeck(captureOwner.peer_id, commanderDeck.id)
+      if (picker?.replacing) room.removeCard(picker.replacing)
+      const entry = room.announceCard(captureOwner.peer_id, playerName, toCard(art))
+      setPicker(null)
+      setPreview({ kind: "entry", entry, correctable: true })
     },
     // decksFor closes over `decks`, which is stable for the room's lifetime
-    [captureOwner, confirmedCard, decks, playerName, room],
+    [captureOwner, decks, picker, playerName, room],
   )
 
-  // A clear winner is the answer: log it right away instead of asking for a keypress.
+  // A new click replaces whatever the last one left on screen.
+  useEffect(() => {
+    setPreview(null)
+    setPicker(null)
+  }, [room.capture])
+
   useEffect(() => {
     const top = candidates[0]
-    if (!top || confirmedCard || !isClear(candidates)) return
-    chooseCard(top, { auto: true })
-  }, [candidates, chooseCard, confirmedCard])
+    if (!top || !room.capture || room.capture.inspect || !isClear(candidates)) return
+    if (autoChosen.current === room.capture) return
+    autoChosen.current = room.capture
+    chooseCard(top)
+  }, [candidates, chooseCard, room.capture])
+
+  const closePreview = useCallback(() => {
+    setPreview(null)
+    room.dismissCapture()
+  }, [room])
+
+  const dismissPicker = () => {
+    setPicker(null)
+    room.dismissCapture()
+  }
 
   useEffect(() => {
     function choose(event: KeyboardEvent) {
-      if (!room.capture || event.key < "1" || event.key > "5") return
+      if (!pickerOpen || !room.capture || event.key < "1" || event.key > "5") return
       if (event.target instanceof HTMLElement && event.target.matches("input, textarea, select"))
         return
       const index = Number(event.key) - 1
@@ -218,7 +251,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     }
     window.addEventListener("keydown", choose)
     return () => window.removeEventListener("keydown", choose)
-  }, [candidates, chooseCard, recognition.status, room, suggestions])
+  }, [candidates, chooseCard, pickerOpen, recognition.status, room, suggestions])
 
   useEffect(() => {
     if (!inviteCopied) return
@@ -281,23 +314,52 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             onTogglePin={board.togglePin}
             onInspect={(event) => {
               const point = capturePoint(event)
-              if (point) room.requestCapture(activeParticipant.peer_id, point.x, point.y)
+              if (point)
+                room.requestCapture(activeParticipant.peer_id, point.x, point.y, event.shiftKey)
             }}
           />
-          {room.capture && captureOwner && (
+          <BoardCardTray
+            participant={activeParticipant}
+            cards={room.identifiedCards}
+            onPreview={(entry) => setPreview({ kind: "entry", entry, correctable: false })}
+            onRemove={room.removeCard}
+          />
+          {room.capture && captureOwner && pickerOpen && (
             <CardSuggestions
               capture={room.capture}
               playerName={captureOwner.player_name}
               recognition={recognition}
-              confirmed={confirmedCard}
               deckSuggestions={suggestions}
               gallerySearchable={recognizer.ready}
               onChooseCard={chooseCard}
               onChooseDeck={(deckId) => room.suggestDeck(captureOwner.peer_id, deckId)}
               onSearch={recognizer.search}
-              onDismiss={room.dismissCapture}
+              onDismiss={dismissPicker}
             />
           )}
+          {preview?.kind === "entry" && (
+            <CardPreview
+              card={preview.entry.card}
+              ownerName={
+                seated.find((participant) => participant.peer_id === preview.entry.ownerPeerId)
+                  ?.player_name
+              }
+              onWrongCard={
+                preview.correctable && room.capture
+                  ? () => {
+                      setPicker({ replacing: preview.entry.id })
+                      setPreview(null)
+                    }
+                  : undefined
+              }
+              onRemove={() => {
+                room.removeCard(preview.entry.id)
+                closePreview()
+              }}
+              onClose={closePreview}
+            />
+          )}
+          {preview?.kind === "art" && <CardPreview card={preview.card} onClose={closePreview} />}
         </div>
         {seatBarFor(activeParticipant, "board")}
       </section>
@@ -317,6 +379,12 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         error={room.error}
         connectedPeers={Object.keys(room.streams).length}
         recognizer={recognizer.state}
+        identifiedCards={room.identifiedCards}
+        gallerySearchable={recognizer.ready}
+        onSearch={recognizer.search}
+        onPreviewCard={(entry) => setPreview({ kind: "entry", entry, correctable: false })}
+        onPreviewArt={(art) => setPreview({ kind: "art", card: toCard(art) })}
+        onRemoveCard={room.removeCard}
         inviteCopied={inviteCopied}
         onInvite={() => {
           void navigator.clipboard.writeText(window.location.href)

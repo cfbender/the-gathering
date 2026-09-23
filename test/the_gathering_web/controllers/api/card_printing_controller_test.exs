@@ -94,6 +94,108 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
            |> get_in(["data", "set_code"]) == "new"
   end
 
+  test "fetches full printing details by Scryfall id and caches the printing", %{conn: conn} do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.request_path == "/cards/saga-print"
+      assert get_req_header(conn, "user-agent") != []
+
+      card =
+        scryfall_card("saga-print", "Kiora Bests the Sea God")
+        |> Map.merge(%{
+          "mana_cost" => "{5}{U}{U}",
+          "type_line" => "Enchantment — Saga",
+          "oracle_text" => "I — Create an 8/8 blue Kraken.",
+          "power" => nil,
+          "layout" => "saga",
+          "rarity" => "mythic",
+          "released_at" => "2020-01-24",
+          "scryfall_uri" => "https://scryfall.com/card/thb/52",
+          "image_uris" => %{
+            "small" => "https://img.example/saga-small.jpg",
+            "normal" => "https://img.example/saga-normal.jpg",
+            "png" => "https://img.example/saga.png"
+          }
+        })
+
+      Req.Test.json(conn, card)
+    end)
+
+    body =
+      conn
+      |> get(~p"/api/card-printings/saga-print/details")
+      |> json_response(200)
+      |> Map.fetch!("data")
+
+    assert body["name"] == "Kiora Bests the Sea God"
+    assert body["mana_cost"] == "{5}{U}{U}"
+    assert body["type_line"] == "Enchantment — Saga"
+    assert body["oracle_text"] == "I — Create an 8/8 blue Kraken."
+    assert body["set_code"] == "new"
+    assert body["set_name"] == "New Set"
+    assert body["collector_number"] == "9"
+    assert body["layout"] == "saga"
+
+    assert body["image_uris"] == %{
+             "small" => "https://img.example/saga-small.jpg",
+             "normal" => "https://img.example/saga-normal.jpg"
+           }
+
+    refute Map.has_key?(body, "games")
+    assert Catalog.get_printing("saga-print").set_name == "New Set"
+  end
+
+  test "joins the faces of a double-faced printing and reports misses and outages", %{conn: conn} do
+    Req.Test.expect(__MODULE__, fn conn ->
+      card =
+        scryfall_card("mdfc", "Valki, God of Lies // Tibalt, Cosmic Impostor")
+        |> Map.delete("image_uris")
+        |> Map.put("layout", "modal_dfc")
+        |> Map.put("card_faces", [
+          %{
+            "name" => "Valki, God of Lies",
+            "mana_cost" => "{1}{B}",
+            "type_line" => "Legendary Creature — God",
+            "oracle_text" => "When Valki enters, each opponent reveals their hand.",
+            "power" => "2",
+            "toughness" => "1",
+            "image_uris" => %{"normal" => "https://img.example/valki.jpg"}
+          },
+          %{
+            "name" => "Tibalt, Cosmic Impostor",
+            "mana_cost" => "{5}{B}{R}",
+            "type_line" => "Legendary Planeswalker — Tibalt",
+            "oracle_text" => "You may play cards exiled with Tibalt.",
+            "loyalty" => "5"
+          }
+        ])
+
+      Req.Test.json(conn, card)
+    end)
+
+    body =
+      conn
+      |> get(~p"/api/card-printings/mdfc/details")
+      |> json_response(200)
+      |> Map.fetch!("data")
+
+    assert body["mana_cost"] == "{1}{B}"
+    assert body["power"] == "2"
+    assert body["toughness"] == "1"
+
+    assert body["oracle_text"] ==
+             "When Valki enters, each opponent reveals their hand.\n//\nYou may play cards exiled with Tibalt."
+
+    assert body["image_uris"] == %{"normal" => "https://img.example/valki.jpg"}
+
+    Req.Test.expect(__MODULE__, fn conn -> Req.Test.json(%{conn | status: 404}, %{}) end)
+    assert conn |> get(~p"/api/card-printings/nope/details") |> json_response(404)
+
+    Req.Test.expect(__MODULE__, fn conn -> Req.Test.json(%{conn | status: 503}, %{}) end)
+    assert conn |> get(~p"/api/card-printings/down/details") |> json_response(502)
+
+    assert build_conn() |> get(~p"/api/card-printings/mdfc/details") |> json_response(401)
+  end
+
   test "supports name-only or obsolete catalog references and surfaces upstream failure", %{
     conn: conn
   } do

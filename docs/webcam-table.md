@@ -199,10 +199,15 @@ controls. Players use their usual voice app alongside the table.
   `DATA_DIR/cardid/current` (`GET /api/cardid/bundle` for the manifest and file URLs,
   `GET /api/cardid/bundles/:version/:name` for the immutable files). `404` means no bundle is
   published and the UI falls back to deck suggestions.
-- `features/webcam-table/side-panel.tsx` — icon strip and Table/Decks/Log tabs.
+- `features/webcam-table/side-panel.tsx` — icon strip and Table/Decks/Cards/Log tabs
+  (`cards-tab.tsx` holds the Cards tab; `panel-section.tsx` the collapsible section).
 - `features/webcam-table/finish-game.tsx` — the End game result dialog.
 - `features/webcam-table/table-events.ts` — pure helpers for log lines, seat ordering, and
   shuffling (unit-tested in `table-events.test.ts`).
+- `features/webcam-table/board-cards.tsx` — the card tray docked to the bottom of the active board
+  and the shared `CardThumb`.
+- `features/webcam-table/card-preview.tsx` — the card image + rules text overlay; `card-details.ts`
+  fetches one printing's details from `GET /api/card-printings/:id/details`.
 - `routes/table.new.tsx` and `routes/table.$roomId.tsx` are thin route adapters.
 
 The finish mutation posts the normal game payload (`played_at`, optional duration/turns/win
@@ -224,23 +229,38 @@ click is not slow. The "Identify cards" section of the side panel shows `checkin
 `ready` (with gallery size and load time), `unavailable` (no bundle published) or `failed`.
 
 Each capture runs identify with a two second timeout: detector pass over the 640 px crop, a
-refine pass on the detected card, upright vote, embed all six art cuts, gallery search. The
-panel always shows five numbered candidates, the crop with the detected quad, and per-stage
-timings; low similarity never suppresses results. A top-1 that leads the runner-up by at least
-`CLEAR_MARGIN` (0.08 cosine) is treated as the answer: it is logged immediately with no
-keypress, the panel says "Logged X · not it? pick another" and closes itself after
-`AUTO_DISMISS_MS` (6 s) unless a correction is being typed. A near-tie waits for a choice.
-`/` focuses a gallery search that understands names, set codes (`forest fin`, `set:fin`) and
+refine pass on the detected card, upright vote, embed all six art cuts, gallery search. A top-1
+that leads the runner-up by at least `CLEAR_MARGIN` (0.08 cosine) is treated as the answer to a
+plain click: it is recorded immediately and the **card preview** opens over the board — the
+card image with its set and collector number, and (on wider screens) a box with mana cost, type
+line, P/T or loyalty, and oracle text. That text is not in the catalog (which keeps one printing
+per card), so `card-details.ts` asks `GET /api/card-printings/:id/details`, which
+`Catalog.Printings.details/1` answers by fetching the exact printing from Scryfall once and
+caching it in `card_printings`. "Wrong card?" on the preview reopens the picker for the same
+crop and the chosen card replaces the entry.
+
+The **picker** (`card-suggestions.tsx`) is user-initiated only: it opens for a near-tie, when
+no bundle is published (deck suggestions stand in), on "Wrong card?", or when the clicker
+Shift+clicks to choose for themselves. It shows five numbered candidates (`1`–`5`), the crop
+with the detected quad and per-stage timings; low similarity never suppresses results. `/`
+focuses a gallery search that understands names, set codes (`forest fin`, `set:fin`) and
 collector numbers (`#280`) so basics and staples with hundreds of printings can be narrowed.
-Confirming a candidate (`1`–`5`, click, or a search result) broadcasts `card_identified` on the
-data channels and every seat's Log gets "Theo identified X [SET #n] on Cody's board"; picking a
-different card after an auto-confirmation logs "Theo corrected X to Y [SET #n] …" instead, and
-re-picking the confirmed card just closes the panel. If the card name matches one of the
-owner's commanders and they have no deck selected yet, it also selects that deck.
+
+Identified cards are not game events and never appear in the Log. Confirming a card (the silent
+clear match, `1`–`5`, a click, or a search result) broadcasts `card_identified` on the data
+channels and every seat adds the entry to that board's **card tray** (`board-cards.tsx`): a
+chevron tab at the bottom of the active board's video that unfolds a translucent shelf of card
+thumbnails, each with a red × to remove it (`card_removed`, honoured at every seat) and opening
+the preview when clicked. The **Cards** tab of the side panel (`cards-tab.tsx`) shows the
+newest identified card with its details (Clear hides it locally), a gallery search that
+previews any printing, and the detected cards grouped per player with a Shared / My board
+toggle. The list is ephemeral like the Log, but a seat that connects later receives the current
+entries (`cards_sync`) when its data channel opens. If the card name matches one of the owner's
+commanders and they have no deck selected yet, it also selects that deck.
 
 Backlog:
 
-- record confirmed cards against the game (currently only in the ephemeral Log);
+- record identified cards against the game (currently only in the ephemeral per-board list);
 - record corrections (a confirmed candidate that was not top-1) as labelled captures for the
   real-capture training set in `ml/data/real/`;
 - WebGPU execution provider with WASM fallback;
