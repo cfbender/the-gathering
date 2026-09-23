@@ -3,6 +3,7 @@ aube = "1.21.0"
 elixir = "1.20.4-otp-29"
 erlang = { version = "29.1", install_env = { KERL_CONFIGURE_OPTIONS = "--without-javac --without-odbc --without-wx" } }
 node = "26.9.0"
+uv = "0.12.9"
 
 [tasks.setup]
 description = "Install project tools, Elixir dependencies, database, and assets."
@@ -19,3 +20,33 @@ run = "mix test"
 [tasks.precommit]
 description = "Run tests and linting before committing code."
 run = "mix precommit"
+
+[tasks."ml:retrain"]
+description = "Pull, fine-tune, evaluate, and publish card recognition."
+dir = "{{config_root}}/ml"
+run = "uv run --no-sync python -m cardid.retrain"
+
+[tasks."ml:evaluate"]
+description = "Evaluate card recognition checkpoints."
+dir = "{{config_root}}/ml"
+run = "uv run --no-sync python -m cardid.evaluate"
+
+[tasks."ml:export"]
+description = "Export and verify an ONNX bundle."
+dir = "{{config_root}}/ml"
+run = "uv run --no-sync python -m cardid.export"
+
+[tasks."ml:publish"]
+description = "Publish an exported card recognition bundle."
+dir = "{{config_root}}/ml"
+run = "uv run --no-sync python -m cardid.publish"
+
+[tasks."ml:update-gallery"]
+description = "Refresh Scryfall metadata and missing artwork."
+dir = "{{config_root}}/ml"
+run = "uv run --no-sync python -m cardid.scryfall --update"
+
+[tasks."ml:test"]
+description = "Run CPU-only ML unit tests."
+dir = "{{config_root}}/ml"
+run = "uv run --no-sync python -m unittest discover -s cardid -t ."
