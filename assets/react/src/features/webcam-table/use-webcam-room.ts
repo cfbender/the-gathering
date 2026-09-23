@@ -2,6 +2,7 @@ import { Channel, Presence, Socket } from "phoenix"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import { mergeIdentifiedCards, sameCard } from "./identified-cards"
+import { canViewBoard, videoEncoding } from "./media-policy"
 import type { GalleryArt } from "./recognition/pipeline"
 import {
   EMPTY_COUNTERS,
@@ -25,6 +26,7 @@ export interface TableParticipant extends SeatCounters {
   /** Server clock (ms) when the seat was taken; default seat order is join order. */
   joined_at: number
   camera_off: boolean
+  reveal_to?: string | null
   deck_id?: number
   deck_name?: string
 }
@@ -70,6 +72,8 @@ export interface CapturedCard {
   /** Shift+click: the clicker wants to see and choose among the candidates even when the
    * recognizer is sure. A plain click logs a clear answer silently. */
   inspect: boolean
+  /** Keep reveal captures private even if identification finishes after the reveal ends. */
+  private: boolean
 }
 
 /** A card a seat named on someone's board, recognized or picked by hand. */
@@ -99,6 +103,7 @@ type DataMessage =
       cropSize: number
       clickX: number
       clickY: number
+      private: boolean
     }
   | { type: "deck_suggestion"; deckId: number }
   | { type: "card_identified"; entry: BoardCard }
@@ -108,6 +113,9 @@ type DataMessage =
 
 interface PeerState {
   connection: RTCPeerConnection
+  videoSender: RTCRtpSender
+  videoTrack: MediaStreamTrack
+  mediaUpdate: Promise<void>
   channel?: RTCDataChannel
   stream?: MediaStream
   candidates: RTCIceCandidateInit[]
@@ -171,6 +179,9 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   const [iceServers, setIceServers] = useState<RTCIceServer[]>([])
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [cameraOff, setCameraOff] = useState(false)
+  const revealToRef = useRef<string | null>(null)
+  const [revealTo, setRevealTo] = useState<string | null>(null)
+  const [revealBusy, setRevealBusy] = useState(false)
   // Your own life is tracked locally so rapid ± clicks compound before presence
   // echoes the new total back; presence stays the source for everyone else.
   const lifeRef = useRef(STARTING_LIFE)
@@ -203,6 +214,39 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     channelRef.current?.push("update_status", changes)
   }, [])
 
+  // Disable private clones synchronously, then detach senders. Never disable the shared
+  // native track to hide just one peer: the target and native crop RPC still need it.
+  const syncVideo = useCallback(() => {
+    const updates = [...peersRef.current].map(([id, peer]) => {
+      const visible = canViewBoard(peerIdRef.current, id, revealToRef.current)
+      peer.videoTrack.enabled = visible && !!localStreamRef.current?.getVideoTracks()[0]?.enabled
+      peer.mediaUpdate = peer.mediaUpdate
+        .catch(() => {})
+        .then(async () => {
+          if (peer.connection.connectionState === "closed") return
+          const allowed = canViewBoard(peerIdRef.current, id, revealToRef.current)
+          await peer.videoSender.replaceTrack(allowed ? peer.videoTrack : null)
+          const parameters = peer.videoSender.getParameters()
+          if (parameters.encodings?.length) {
+            const encoding = videoEncoding(participantsRef.current.length)
+            parameters.encodings = parameters.encodings.map((current) => ({
+              ...current,
+              ...encoding,
+            }))
+            await peer.videoSender.setParameters(parameters)
+          }
+        })
+      return peer.mediaUpdate
+    })
+    return Promise.all(updates)
+  }, [])
+
+  const refreshVideo = useCallback(() => {
+    void syncVideo().catch(() =>
+      setError("Could not update video senders. Hidden cameras remain blocked."),
+    )
+  }, [syncVideo])
+
   /** Every ingress uses the same per-board card identity rule, including late-join syncs. */
   const mergeCards = useCallback((entries: BoardCard[]) => {
     cardsRef.current = mergeIdentifiedCards(cardsRef.current, entries)
@@ -225,17 +269,30 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     (fromPeerId: string, event: MessageEvent<string>) => {
       const message = JSON.parse(event.data) as DataMessage
       if (message.type === "capture_request" && localVideoRef.current) {
+        if (
+          !canViewBoard(peerIdRef.current, fromPeerId, revealToRef.current) ||
+          !localStreamRef.current?.getVideoTracks()[0]?.enabled
+        )
+          return
         const result = captureCrop(localVideoRef.current, message.x, message.y)
-        peersRef.current
-          .get(fromPeerId)
-          ?.channel?.send(
-            JSON.stringify({ type: "capture_response", requestId: message.requestId, ...result }),
-          )
+        peersRef.current.get(fromPeerId)?.channel?.send(
+          JSON.stringify({
+            type: "capture_response",
+            requestId: message.requestId,
+            private: !!revealToRef.current,
+            ...result,
+          }),
+        )
       } else if (message.type === "capture_response") {
         const pending = pendingCaptures.current.get(message.requestId)
         pendingCaptures.current.delete(message.requestId)
         const owner = participantsRef.current.find((item) => item.peer_id === fromPeerId)
-        if (owner && pending)
+        if (
+          owner &&
+          pending?.targetPeerId === fromPeerId &&
+          canViewBoard(fromPeerId, peerIdRef.current, owner.reveal_to) &&
+          !owner.camera_off
+        )
           setCapture({
             peerId: fromPeerId,
             playerId: owner.player_id,
@@ -289,11 +346,21 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
       const existing = peersRef.current.get(remotePeerId)
       if (existing) return existing
       const connection = new RTCPeerConnection({ iceServers: config.ice_servers })
-      const peer: PeerState = { connection, candidates: [], restarted: false }
+      const media = localStreamRef.current as MediaStream
+      const videoTrack = media.getVideoTracks()[0]!.clone()
+      const visible = canViewBoard(peerIdRef.current, remotePeerId, revealToRef.current)
+      videoTrack.enabled = visible && media.getVideoTracks()[0]!.enabled
+      // addTrack lets an incoming offer reuse this transceiver on the answering side.
+      const videoSender = connection.addTrack(videoTrack, media)
+      const peer: PeerState = {
+        connection,
+        videoSender,
+        videoTrack,
+        mediaUpdate: visible ? Promise.resolve() : videoSender.replaceTrack(null),
+        candidates: [],
+        restarted: false,
+      }
       peersRef.current.set(remotePeerId, peer)
-      localStreamRef.current
-        ?.getTracks()
-        .forEach((track) => connection.addTrack(track, localStreamRef.current as MediaStream))
       connection.onicecandidate = ({ candidate }) => {
         if (candidate) sendSignal(remotePeerId, { candidate: candidate.toJSON() })
       }
@@ -307,6 +374,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         attachDataChannel(remotePeerId, incoming)
       connection.onconnectionstatechange = () => {
         const state = connection.connectionState
+        if (state === "connected") refreshVideo()
         setConnectionStates((current) => ({ ...current, [remotePeerId]: state }))
         if (state === "failed" || state === "closed") {
           setStreams((current) => {
@@ -389,8 +457,13 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
           participantsRef.current = next
           setParticipants(next)
           const activeIds = new Set(next.map((item) => item.peer_id))
+          if (revealToRef.current && !activeIds.has(revealToRef.current)) {
+            revealToRef.current = null
+            setRevealTo(null)
+          }
           peersRef.current.forEach((peer, id) => {
             if (!activeIds.has(id)) {
+              peer.videoTrack.stop()
               peer.connection.close()
               peersRef.current.delete(id)
               setConnectionStates((current) => {
@@ -413,6 +486,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
               })
             }
           }
+          refreshVideo()
         })
         room.on(
           "signal",
@@ -448,6 +522,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
               ...countersRef.current,
               camera_off: !(localStreamRef.current?.getVideoTracks()[0]?.enabled ?? true),
             })
+            if (revealToRef.current) room.push("reveal", { target: revealToRef.current })
           })
           .receive("error", ({ reason }: { reason: string }) => setError(reason))
       } catch (reason) {
@@ -460,11 +535,41 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
       disposed = true
       channelRef.current?.leave()
       socket?.disconnect()
-      peersRef.current.forEach((peer) => peer.connection.close())
+      peersRef.current.forEach((peer) => {
+        peer.videoTrack.stop()
+        peer.connection.close()
+      })
       peersRef.current.clear()
       localStreamRef.current?.getTracks().forEach((track) => track.stop())
     }
-  }, [deckId, handleData, log, playerId, roomId])
+  }, [deckId, handleData, log, playerId, refreshVideo, roomId])
+
+  async function changeReveal(target: string | null) {
+    if (revealBusy || !channelRef.current) return
+    setRevealBusy(true)
+    revealToRef.current = target
+    setRevealTo(target)
+    try {
+      await syncVideo()
+      await new Promise<void>((resolve, reject) => {
+        channelRef
+          .current!.push("reveal", { target })
+          .receive("ok", () => resolve())
+          .receive("error", () =>
+            reject(
+              new Error("Reveal target is no longer seated. End reveal to restore your camera."),
+            ),
+          )
+          .receive("timeout", () =>
+            reject(new Error("Reveal could not be confirmed. End reveal before trying again.")),
+          )
+      })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not update reveal")
+    } finally {
+      setRevealBusy(false)
+    }
+  }
 
   function changeLife(delta: number) {
     const next = Math.max(-999, Math.min(999, lifeRef.current + delta))
@@ -489,6 +594,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     localStreamRef.current?.getVideoTracks().forEach((track) => {
       track.enabled = !next
     })
+    refreshVideo()
     setCameraOff(next)
     updateStatus({ camera_off: next })
   }
@@ -499,9 +605,22 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   }
 
   function requestCapture(targetPeerId: string, x: number, y: number, inspect = false) {
+    const owner = participantsRef.current.find((item) => item.peer_id === targetPeerId)
+    if (
+      !owner ||
+      owner.camera_off ||
+      !canViewBoard(targetPeerId, peerIdRef.current, owner.reveal_to)
+    )
+      return
     if (targetPeerId === peerIdRef.current && localVideoRef.current) {
       const result = captureCrop(localVideoRef.current, x, y)
-      setCapture({ peerId: targetPeerId, playerId, inspect, ...result })
+      setCapture({
+        peerId: targetPeerId,
+        playerId,
+        inspect,
+        private: !!revealToRef.current,
+        ...result,
+      })
       return
     }
     const requestId = crypto.randomUUID()
@@ -527,6 +646,14 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
       card,
       at: Date.now(),
     }
+    // Identifying a private hand must not publish its card names to the table's shared tray.
+    const owner = participantsRef.current.find((item) => item.peer_id === ownerPeerId)
+    if (
+      owner?.reveal_to ||
+      (ownerPeerId === peerIdRef.current && revealToRef.current) ||
+      (capture?.peerId === ownerPeerId && capture.private)
+    )
+      return entry
     mergeCards([entry])
     broadcast({ type: "card_identified", entry })
     return entry
@@ -567,6 +694,9 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     iceServers,
     localStream,
     cameraOff,
+    revealTo,
+    revealBusy,
+    changeReveal,
     capture,
     identifiedCards,
     status,

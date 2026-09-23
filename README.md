@@ -125,8 +125,10 @@ response's `errors`.
 
 ### Webcam table
 
-**Games → Play** opens a temporary room for up to four signed-in members who share their
-board cameras over a WebRTC mesh and record the result when the game ends. Clicking a card on
+**Games → Play** opens a temporary room for up to ten signed-in members who share their
+board cameras over an adaptive-resolution WebRTC mesh and record the result when the game ends.
+**Reveal hand to** privately sends your camera to one chosen player; everyone else receives no
+video until you end the reveal or the target leaves. Clicking a card on
 any board identifies it with the recognizer bundle published from `ml/` (see
 `ml/README.md`, "Shipping"): Phoenix serves `DATA_DIR/cardid/current/*` at `/api/cardid/*`
 and the browser runs the models itself. A recognized card opens with its rules text (fetched

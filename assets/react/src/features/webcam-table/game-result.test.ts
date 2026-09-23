@@ -16,6 +16,38 @@ const participants = [
 ]
 
 describe("buildGamePayload", () => {
+  it("records all ten seats in supplied turn order with the last player winning", () => {
+    const seats = Array.from({ length: 10 }, (_, index) => ({
+      ...participants[0]!,
+      player_id: 100 - index,
+      peer_id: `peer-${index}`,
+    }))
+    const payload = buildGamePayload(seats, {
+      playedAt: new Date("2026-09-22T19:30:00Z"),
+      winner: "peer-9",
+      duration: "73",
+      turns: "11",
+      winCondition: "",
+      notes: "",
+    })
+    expect(payload.game.seats.map((seat) => seat.player_id)).toEqual([
+      100, 99, 98, 97, 96, 95, 94, 93, 92, 91,
+    ])
+    expect(payload.game.seats.map((seat) => seat.seat)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    expect(payload.game.seats.map((seat) => seat.result)).toEqual([
+      "loss",
+      "loss",
+      "loss",
+      "loss",
+      "loss",
+      "loss",
+      "loss",
+      "loss",
+      "loss",
+      "win",
+    ])
+  })
+
   it("records the selected winner, consecutive seats, and nullable deck through the normal shape", () => {
     const payload = buildGamePayload(participants, {
       playedAt: new Date("2026-09-22T19:30:00Z"),

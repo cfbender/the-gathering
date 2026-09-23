@@ -14,7 +14,7 @@ defmodule TheGatheringWeb.API.WebcamTableConfigController do
     |> json(%{
       data: %{
         ice_servers: ice_servers(config),
-        max_players: 4,
+        max_players: 10,
         minimum_height: 1080,
         socket_token: socket_token
       }

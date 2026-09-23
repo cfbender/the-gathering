@@ -87,6 +87,8 @@ export function ActiveBoard({
   stream,
   local,
   connectionState,
+  hiddenLabel,
+  revealBadge,
   pinned,
   onTogglePin,
   onInspect,
@@ -96,6 +98,8 @@ export function ActiveBoard({
   stream?: MediaStream
   local: boolean
   connectionState?: RTCPeerConnectionState
+  hiddenLabel?: string
+  revealBadge?: string
   pinned: boolean
   onTogglePin: () => void
   onInspect: (event: MouseEvent<HTMLButtonElement>) => void
@@ -106,9 +110,12 @@ export function ActiveBoard({
         type="button"
         className="group relative block h-full w-full cursor-crosshair text-left"
         onClick={onInspect}
+        disabled={!!hiddenLabel || participant.camera_off}
         aria-label={`Inspect ${participant.player_name}'s board`}
       >
-        {stream ? (
+        {hiddenLabel ? (
+          <VideoPlaceholder label={hiddenLabel} />
+        ) : stream ? (
           <StreamVideo stream={stream} muted={local} className="object-contain" />
         ) : (
           <VideoPlaceholder
@@ -116,6 +123,11 @@ export function ActiveBoard({
           />
         )}
         {participant.camera_off && <CameraOffOverlay />}
+        {revealBadge && (
+          <span className="absolute top-16 left-2 rounded bg-primary px-2 py-1 text-xs text-primary-content">
+            {revealBadge}
+          </span>
+        )}
         <span className="pointer-events-none absolute bottom-9 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-3 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
           Click a card to identify it · Shift+click to choose
         </span>
@@ -156,6 +168,8 @@ export function CameraTile({
   stream,
   local,
   connectionState,
+  hiddenLabel,
+  revealBadge,
   active,
   onActivate,
 }: {
@@ -164,6 +178,8 @@ export function CameraTile({
   stream?: MediaStream
   local: boolean
   connectionState?: RTCPeerConnectionState
+  hiddenLabel?: string
+  revealBadge?: string
   active: boolean
   onActivate: () => void
 }) {
@@ -178,7 +194,9 @@ export function CameraTile({
       aria-pressed={active}
       aria-label={`Show ${participant.player_name}'s board`}
     >
-      {stream ? (
+      {hiddenLabel ? (
+        <VideoPlaceholder compact label={hiddenLabel} />
+      ) : stream ? (
         <StreamVideo stream={stream} muted={local} className="object-cover" />
       ) : (
         <VideoPlaceholder
@@ -187,6 +205,11 @@ export function CameraTile({
         />
       )}
       {participant.camera_off && <CameraOffOverlay compact />}
+      {revealBadge && (
+        <span className="absolute right-0 bottom-0 left-0 bg-primary px-1 py-0.5 text-center text-[0.6rem] text-primary-content">
+          {revealBadge}
+        </span>
+      )}
       <LifeBadge life={participant.life} size="tile" />
       {monarch && (
         <span

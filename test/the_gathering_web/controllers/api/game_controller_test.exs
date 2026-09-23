@@ -154,6 +154,22 @@ defmodule TheGatheringWeb.API.GameControllerTest do
     assert Games.get_game(game.id)
   end
 
+  test "records ten participants through RecordGame and rejects eleven", %{conn: conn} do
+    seats =
+      for index <- 1..11 do
+        {:ok, player} = Games.create_player(%{name: "Seat #{index}"})
+        %{player_id: player.id, seat: index, result: if(index == 10, do: "win", else: "loss")}
+      end
+
+    game = %{played_at: "2026-09-23T18:30:00Z", seats: Enum.take(seats, 10)}
+    response = conn |> post(~p"/api/games", %{game: game}) |> json_response(201)
+    assert Enum.map(response["data"]["seats"], & &1["seat"]) == Enum.to_list(1..10)
+    assert List.last(response["data"]["seats"])["result"] == "win"
+
+    response = conn |> post(~p"/api/games", %{game: %{game | seats: seats}}) |> json_response(422)
+    assert response["errors"]["seats"]
+  end
+
   test "the creator can update and delete a game without changing its provenance", %{
     conn: conn,
     user: user,

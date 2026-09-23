@@ -62,9 +62,9 @@ defmodule TheGathering.Games.Game do
 
     changeset
     |> then(fn changeset ->
-      if length(seats) in 2..6,
+      if length(seats) in 2..10,
         do: changeset,
-        else: add_error(changeset, :seats, "must contain between 2 and 6 players")
+        else: add_error(changeset, :seats, "must contain between 2 and 10 players")
     end)
     |> then(fn changeset ->
       if Enum.uniq(player_ids) == player_ids,

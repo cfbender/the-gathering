@@ -9,8 +9,10 @@ import { BoardCardTray } from "./board-cards"
 import { CardPreview } from "./card-preview"
 import { CardSuggestions, isClear, type Recognition } from "./card-suggestions"
 import { FinishGame } from "./finish-game"
+import { canViewBoard } from "./media-policy"
 import type { GalleryArt } from "./recognition/pipeline"
 import { decodeImage, useRecognizer, type RecognizerState } from "./recognition/use-recognizer"
+import { RevealControl } from "./reveal-control"
 import { SeatBar, TileCommanderRow } from "./seat-bar"
 import { SeatCounterControls } from "./seat-counter-controls"
 import { SidePanel, type PanelTab } from "./side-panel"
@@ -24,7 +26,7 @@ import {
   type TableParticipant,
 } from "./use-webcam-room"
 
-const MAX_PLAYERS = 4
+const MAX_PLAYERS = 10
 
 interface Props {
   roomId: string
@@ -180,6 +182,15 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     : [localParticipant, ...room.participants]
   const activeParticipant =
     seated.find((participant) => participant.peer_id === board.selectedPeerId) ?? localParticipant
+  const revealFor = (participant: TableParticipant) => ({
+    hiddenLabel: canViewBoard(participant.peer_id, room.peerId, participant.reveal_to)
+      ? undefined
+      : `Revealing to ${seated.find((seat) => seat.peer_id === participant.reveal_to)?.player_name ?? "another player"}`,
+    revealBadge:
+      participant.reveal_to === room.peerId
+        ? `${participant.player_name} is revealing to you`
+        : undefined,
+  })
   const decksFor = (participant: TableParticipant) =>
     decks.filter((deck) => deck.player_id === participant.player_id)
   const chooseFor = (participant: TableParticipant) => (deckId: number) =>
@@ -335,9 +346,16 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       }
     >
       <aside
-        className="flex gap-1.5 overflow-x-auto p-1.5 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto"
+        className="flex min-h-0 gap-1.5 overflow-x-auto p-1.5 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto"
         aria-label="Player cameras"
       >
+        <RevealControl
+          participants={seated}
+          peerId={room.peerId}
+          target={room.revealTo}
+          busy={room.revealBusy}
+          onChange={room.changeReveal}
+        />
         {seated.map((participant) => (
           <div
             key={participant.peer_id}
@@ -346,6 +364,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             <CameraTile
               participant={participant}
               monarch={room.monarch?.peer_id === participant.peer_id}
+              {...revealFor(participant)}
               local={participant.peer_id === room.peerId}
               active={participant.peer_id === activeParticipant.peer_id}
               connectionState={room.connectionStates[participant.peer_id]}
@@ -379,6 +398,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           <ActiveBoard
             participant={activeParticipant}
             monarch={room.monarch?.peer_id === activeParticipant.peer_id}
+            {...revealFor(activeParticipant)}
             local={activeParticipant.peer_id === room.peerId}
             connectionState={room.connectionStates[activeParticipant.peer_id]}
             stream={streamFor(activeParticipant, room.peerId, room.localStream, room.streams)}

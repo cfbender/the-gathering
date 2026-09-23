@@ -28,18 +28,18 @@ defmodule TheGathering.GamesTest do
     )
   end
 
-  test "enforces the two-to-six seat bounds at both edges" do
-    players = Enum.map(1..7, &player("Player #{&1}"))
+  test "enforces the two-to-ten seat bounds at both edges" do
+    players = Enum.map(1..11, &player("Player #{&1}"))
 
     assert {:error, one} = Games.create_game(game_attrs(Enum.take(players, 1)))
-    assert "must contain between 2 and 6 players" in errors_on(one).seats
+    assert "must contain between 2 and 10 players" in errors_on(one).seats
 
-    assert {:ok, game} = Games.create_game(game_attrs(Enum.take(players, 6)))
-    assert length(game.seats) == 6
+    assert {:ok, game} = Games.create_game(game_attrs(Enum.take(players, 10)))
+    assert length(game.seats) == 10
 
-    assert {:error, seven} = Games.create_game(game_attrs(players))
-    assert %{seats: seat_errors} = errors_on(seven)
-    assert Enum.at(seat_errors, 6).seat == ["must be less than or equal to 6"]
+    assert {:error, eleven} = Games.create_game(game_attrs(players))
+    assert %{seats: seat_errors} = errors_on(eleven)
+    assert Enum.at(seat_errors, 10).seat == ["must be less than or equal to 10"]
   end
 
   test "keeps unknown kills distinct from zero and validates kill counts" do
@@ -51,7 +51,7 @@ defmodule TheGathering.GamesTest do
 
     assert Enum.map(game.seats, & &1.kills) == [0, nil]
 
-    for invalid <- [-1, 1.5, 6] do
+    for invalid <- [-1, 1.5, 10] do
       assert {:error, changeset} =
                Games.create_game(
                  game_attrs(players, %{seats: [Map.put(alice, :kills, invalid), bob]})

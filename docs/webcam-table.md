@@ -2,7 +2,7 @@
 
 ## Product slice
 
-A webcam table is a temporary room for two to four signed-in members. Each member is seated as
+A webcam table is a temporary room for two to ten signed-in members. Each member is seated as
 the player linked to their account, chooses a deck while in the room, shares their board camera,
 and ends the game with a result form that records through `Games.create_game/2`. The resulting
 `Game` and `GamePlayer` rows are deliberately
@@ -18,19 +18,35 @@ to that player's known commanders as deck-based suggestions.
 
 ## Decisions
 
-### Four-peer mesh now, SFU seam later
+### Ten-seat adaptive mesh now, SFU seam later
 
 Use one `RTCPeerConnection` per pair and Phoenix Channels only for authenticated presence,
-SDP, and ICE signaling. At the fixed maximum of four, a room has six connections and each
-browser sends at most three streams. This is the smallest one-container architecture and keeps
+SDP, and ICE signaling. At the maximum of ten, a room has 45 connections and each
+browser sends at most nine streams. This retains the one-container architecture and keeps
 media end-to-end between browsers. `ex_webrtc` implements a peer connection, not an SFU by
 itself; a Membrane RTC engine would add server-side media routing, UDP port exposure, process
 supervision, and materially more deployment work.
 
-The cost is three 1080p encodes/uploads per player at room capacity. Measure sender CPU,
-available outgoing bitrate, frame dimensions, packet loss, and TURN use. Move the implementation
-behind the existing room hook to an SFU when real tables cannot sustain three 1080p sends. Room
-and result APIs do not depend on the topology.
+`media-policy.ts` budgets each outgoing sender by **total seated players, including self**:
+
+| Seats | `scaleResolutionDownBy` | From a 1080p camera | `maxBitrate` per receiver |
+| --- | --- | --- | --- |
+| 1–4 | 1 | 1920 × 1080 | 2,500,000 bps |
+| 5–7 | 1.5 | 1280 × 720 | 1,200,000 bps |
+| 8–10 | 2 | 960 × 540 | 600,000 bps |
+
+The hook applies these caps through `RTCRtpSender.setParameters` when a connection becomes live
+and when membership changes (including restoring the higher tier after departures). Congestion
+control may reduce quality further. At ten seats the video budget is at most 5.4 Mbps per
+sender before transport overhead, still nine encodes and potentially nine TURN relays. Measure
+sender CPU, available outgoing bitrate, frame dimensions, packet loss, and TURN use; these
+tiers are budgets, not a guarantee of ten-seat performance on every device.
+
+The SFU migration seam is `useWebcamRoom`: replace peer creation/signaling and stream delivery
+behind that hook, preserving participant, stream, capture, reveal, and result APIs. The SFU
+must enforce reveal subscriptions server-side and preserve the native crop RPC (a targeted data
+channel or equivalent), rather than forwarding hidden video and relying on UI overlays. Move
+there when measured CPU, uplink, or relay costs make the mesh impractical.
 
 Phoenix's own Channels documentation confirms that signaling is application-defined and that
 signed-token authentication belongs in `connect`; the authenticated config endpoint signs the
@@ -109,7 +125,7 @@ Games page Play / Join button ────▶ /table/:roomId
                                          │
                               choose deck in the room
                                          │
-                            browser WebRTC mesh (≤ 4)
+                            browser WebRTC mesh (≤ 10)
                                          │
                                  click End game
                                          │
@@ -127,7 +143,7 @@ schema and are explicitly deferred.
 
 The Games page still finds live tables without the URL: every seated channel process also
 tracks itself on one lobby presence topic (`TheGatheringWeb.WebcamTableRooms`), and
-`GET /api/webcam-table/rooms` groups that topic by room (players in join order, `full` at four
+`GET /api/webcam-table/rooms` groups that topic by room (players in join order, `full` at ten
 seats). `PlayActions` (`features/webcam-table/play-actions.tsx`) polls it every 15 s: with no
 live table the header shows **Play**; with one it shows **Join** naming the seated players plus
 a smaller **New table**; with several, Join becomes a menu of tables. Nothing is stored, so a
@@ -140,7 +156,7 @@ always large, everyone else is small, and controls live in a collapsible column.
 
 ```text
 ┌──────────┬─────────────────────────────────────────────┬──┬──────────────┐
-│ rail     │ 40                                     Pin  │  │ Setup   3/4  │
+│ rail     │ 40                                     Pin  │  │ Setup  3/10  │
 │ ┌──────┐ │                                             │▪ │ Invite       │
 │ │40    │ │                                             │▪ │ Commander    │
 │ └──────┘ │              active board                   │▪ │ Turn order   │
@@ -157,9 +173,9 @@ always large, everyone else is small, and controls live in a collapsible column.
 
 - **Camera rail** (left, `lg:` defaults to 13 rem): every seat as a 16:9 tile with a life badge, a compact
   name bar (camera indicator, ± for your own seat), and that seat's commander action.
-  Empty seats up to four render as dashed "Open seat" placeholders. Clicking a tile makes it the
-  active board and pins it. The rail scrolls vertically without shrinking tiles, including larger
-  rosters; on smaller screens it remains a horizontal strip.
+  Empty seats up to ten render as dashed "Open seat" placeholders. The rail scrolls vertically
+  on desktop and horizontally at narrow widths rather than shrinking ten cameras until their
+  names and controls are unreadable. Clicking a tile makes it the active board and pins it.
 - **Commander identity** colors both the rail and active-board name bars: one muted solid for
   mono-color, a WUBRG-ordered gradient for multiple colors, and neutral for colorless or unknown.
   Commander names show identity pips using the existing mana symbols. The source is the decks
@@ -232,10 +248,32 @@ The Log tab is client-side only: it is derived from presence joins/leaves/change
 Audio is not part of the webcam table: no microphone is captured and there are no mute
 controls. Players use their usual voice app alongside the table.
 
+### Private hand reveal
+
+Choose another seated player in **Reveal hand to**, and wait for the confirmation before
+showing your hand. Per-peer cloned video tracks are immediately disabled for non-targets, then
+their senders use `replaceTrack(null)`; the native camera and target's sender stay live.
+Late joiners also start with no outgoing video track. Presence carries `reveal_to`, validated
+by the channel as another current peer, so hidden seats render **Revealing to name** instead of
+a video element and the target sees **name is revealing to you**. The owner still sees their
+own camera. Camera off overrides reveal and stays off when reveal ends.
+
+**End reveal** restores eligible senders in one click. A target departure automatically ends
+the reveal in both channel presence and the owner's media policy, restoring public video;
+put the hand down before ending or leaving. Signaling reconnects preserve the local restriction.
+The cap check and presence reservation are serialized so simultaneous final-seat joins cannot
+overfill the room; duplicate peer IDs and duplicate players are refused.
+
+Hidden viewers cannot identify the board: both the requesting UI and the owner's native-crop
+handler enforce visibility. Authorized viewers still receive the owner's native 640 px JPEG
+crop from the untouched 1080p source, unaffected by the sender tiers. Identifications during
+a reveal stay local to the clicker rather than entering the shared card tray. A chosen viewer
+can still save or share what they saw; this feature cannot revoke frames already delivered.
+
 ## File and component structure
 
 - `TheGatheringWeb.UserSocket` verifies a short-lived token wrapping the tracked cookie session.
-- `TheGatheringWeb.WebcamTableChannel` caps rooms at four, relays targeted WebRTC signals,
+- `TheGatheringWeb.WebcamTableChannel` caps rooms at ten, relays targeted WebRTC signals,
   merges `update_status` into presence, and validates/broadcasts `seat_order`.
 - `TheGatheringWeb.Presence` owns ephemeral room membership and seat status.
 - `WebcamTableConfigController` exposes authenticated ICE configuration.
@@ -273,6 +311,9 @@ controls. Players use their usual voice app alongside the table.
 The finish mutation posts the normal game payload (`played_at`, optional duration/turns/win
 condition/notes, and consecutive seats with player/deck/result) to `/api/games`. The controller
 already strips provenance fields and delegates to `Games.RecordGame`.
+`Game` accepts 2–10 distinct participants with consecutive seats; `GamePlayer` accepts seat
+numbers 1–10 (and up to nine kills). The scrollable End game dialog and turn-order table both
+render every participant in the shared order.
 
 ## Recognition
 
