@@ -30,6 +30,10 @@ export interface DeckDetail extends DeckSummary {
   recent_games: RecentGame[]
 }
 
+export function commanderNames(deck: Pick<DeckSummary, "commander_name" | "partner_name">) {
+  return [deck.commander_name, deck.partner_name].filter(Boolean).join(" / ")
+}
+
 /** Mirrors `Games.can_manage_deck?`: guest decks have no member owner. */
 export function canManageDeck(viewer: { id: number; role: string } | undefined, deck: DeckSummary) {
   if (!viewer) return false

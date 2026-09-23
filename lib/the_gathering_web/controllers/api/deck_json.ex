@@ -16,6 +16,13 @@ defmodule TheGatheringWeb.API.DeckJSON do
       commander_card_id: deck.commander_card_id,
       commander_name: deck.commander_name,
       commander_printing_id: deck.commander_printing_id,
+      commander_image_url:
+        Catalog.card_image_url(
+          card_art,
+          deck.commander_card_id,
+          deck.commander_name,
+          deck.commander_printing_id
+        ),
       commander_art_crop_url:
         Catalog.art_crop_url(
           card_art,
@@ -26,6 +33,13 @@ defmodule TheGatheringWeb.API.DeckJSON do
       partner_card_id: deck.partner_card_id,
       partner_name: deck.partner_name,
       partner_printing_id: deck.partner_printing_id,
+      partner_image_url:
+        Catalog.card_image_url(
+          card_art,
+          deck.partner_card_id,
+          deck.partner_name,
+          deck.partner_printing_id
+        ),
       partner_art_crop_url:
         Catalog.art_crop_url(
           card_art,

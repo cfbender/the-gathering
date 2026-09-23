@@ -9,8 +9,8 @@ interface CommanderFieldProps {
   required?: boolean
   label?: string
   allowPrintings?: boolean
-  /** `"partner"` also offers Backgrounds and other partner-only cards. */
-  mode?: Extract<CardSearchMode, "commander" | "partner">
+  /** `"partner"` filters paired cards; `"all"` also permits companions and casual pairings. */
+  mode?: CardSearchMode
 }
 
 export function CommanderField({
@@ -37,7 +37,7 @@ export function CommanderField({
         <PrintingPicker
           key={value.id}
           card={value}
-          label={mode === "partner" ? "Partner" : "Commander"}
+          label={mode === "commander" ? "Commander" : "Partner"}
           onChange={(printing_id) => onChange({ ...value, printing_id })}
         />
       )}

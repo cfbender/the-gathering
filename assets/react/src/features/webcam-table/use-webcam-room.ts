@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query"
 import { Channel, Presence, Socket } from "phoenix"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
@@ -166,6 +167,7 @@ function captureCrop(video: HTMLVideoElement, x: number, y: number) {
 }
 
 export function useWebcamRoom(roomId: string, playerId: number, deckId: number | null) {
+  const queryClient = useQueryClient()
   const peerIdRef = useRef(crypto.randomUUID())
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
@@ -457,6 +459,9 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
           const { holder } = event
           log([holder ? `${holder.player_name} took the monarch` : "The monarch left the table"])
         })
+        room.on("deck_selected", () => {
+          void queryClient.invalidateQueries({ queryKey: ["decks"] })
+        })
         presence.onSync(() => {
           const next = presence?.list((_id, value) => value.metas[0] as TableParticipant) ?? []
           participantsRef.current = next
@@ -547,7 +552,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
       peersRef.current.clear()
       localStreamRef.current?.getTracks().forEach((track) => track.stop())
     }
-  }, [deckId, handleData, log, playerId, refreshVideo, roomId])
+  }, [deckId, handleData, log, playerId, queryClient, refreshVideo, roomId])
 
   async function changeReveal(target: string | null) {
     if (revealBusy || !channelRef.current) return

@@ -31,7 +31,10 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
         set_code: "old",
         set_name: "Original Set",
         collector_number: "42",
-        image_uris: %{"art_crop" => "https://img.example/#{id}-alternate.jpg"}
+        image_uris: %{
+          "art_crop" => "https://img.example/#{id}-alternate.jpg",
+          "normal" => "https://img.example/#{id}-alternate-card.jpg"
+        }
       })
     end
 
@@ -298,6 +301,40 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
     assert imported.commander_printing_id == "commander-alternate"
   end
 
+  test "deck create, list and edit expose independent full-card printing images", ctx do
+    created =
+      ctx.conn
+      |> post(~p"/api/decks", %{
+        deck: %{
+          player_id: ctx.player.id,
+          name: "Table partners",
+          commander_card_id: "commander",
+          commander_name: "Tymna the Weaver",
+          commander_printing_id: "commander-alternate",
+          partner_card_id: "partner",
+          partner_name: "Thrasios, Triton Hero",
+          partner_printing_id: "partner-alternate"
+        }
+      })
+      |> json_response(201)
+      |> Map.fetch!("data")
+
+    assert created["commander_image_url"] == "https://img.example/commander-alternate-card.jpg"
+    assert created["partner_image_url"] == "https://img.example/partner-alternate-card.jpg"
+    assert created["partner_name"] == "Thrasios, Triton Hero"
+    assert_art(created)
+
+    listed = ctx.conn |> get(~p"/api/decks") |> json_response(200) |> Map.fetch!("data")
+
+    assert Enum.find(listed, &(&1["id"] == created["id"]))["partner_image_url"] ==
+             created["partner_image_url"]
+
+    default = save(ctx, %{commander_card_id: nil, partner_name: nil, partner_card_id: nil})
+    # Legacy name-only decks fall back to the catalog; no partner means no partner image.
+    assert default["commander_image_url"] == "https://img.example/commander-default-card.jpg"
+    assert default["partner_image_url"] == nil
+  end
+
   test "rejects unknown and mismatched printings atomically, including on create", ctx do
     for attrs <- [
           %{commander_printing_id: "partner-alternate"},
@@ -395,7 +432,10 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
       "set_name" => "New Set",
       "collector_number" => "9",
       "lang" => "en",
-      "image_uris" => %{"art_crop" => "https://img.example/#{id}-default.jpg"}
+      "image_uris" => %{
+        "art_crop" => "https://img.example/#{id}-default.jpg",
+        "normal" => "https://img.example/#{id}-default-card.jpg"
+      }
     }
   end
 end

@@ -77,6 +77,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
       %{player_id: player_id} = deck when player_id == participant.player_id ->
         participant = Map.merge(participant, %{deck_id: deck.id, deck_name: deck.name})
         {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
+        # Peers may have cached the deck list before this deck was created or edited.
+        broadcast!(socket, "deck_selected", %{deck_id: deck.id})
         {:reply, :ok, assign(socket, :participant, participant)}
 
       _other ->
