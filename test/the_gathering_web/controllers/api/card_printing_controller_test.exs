@@ -340,6 +340,99 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
     end
   end
 
+  test "split and flip halves select their own rules but retain the shared front image", %{
+    conn: conn
+  } do
+    for {layout, names, type} <- [
+          {"split", ["Mirror Room", "Fractured Realm"], "Enchantment — Room"},
+          {"split", ["Fire", "Ice"], "Instant"},
+          {"split", ["Cut", "Ribbons"], "Sorcery"},
+          {"flip", ["Budoka Gardener", "Dokai, Weaver of Life"], "Creature — Human Monk"}
+        ] do
+      id = Ecto.UUID.generate()
+
+      Req.Test.expect(__MODULE__, 2, fn request ->
+        assert request.request_path == "/cards/#{id}"
+
+        faces =
+          Enum.with_index(names, fn name, i ->
+            %{
+              "name" => name,
+              "oracle_text" => "Rules #{i}",
+              "type_line" => type,
+              "mana_cost" => if(i == 0, do: "{2}{G}", else: "")
+            }
+          end)
+
+        Req.Test.json(
+          request,
+          Map.merge(
+            scryfall_card(id, Enum.join(names, " // ")),
+            %{"layout" => layout, "card_faces" => faces, "power" => "99"}
+          )
+        )
+      end)
+
+      for {name, i} <- Enum.with_index(names) do
+        face_id = if i == 0, do: id, else: id <> "-1"
+
+        data =
+          conn
+          |> get(~p"/api/card-printings/#{face_id}/details")
+          |> json_response(200)
+          |> Map.fetch!("data")
+
+        assert data["id"] == face_id
+        assert data["name"] == name
+        assert data["oracle_text"] == "Rules #{i}"
+        assert data["type_line"] == type
+        assert data["power"] == nil
+        assert data["mana_cost"] == if(i == 0, do: "{2}{G}", else: "")
+        assert data["image_uris"]["normal"] == "https://img.example/#{id}-default-card.jpg"
+        assert Catalog.get_printing(face_id).name == name
+        assert Catalog.get_printing(face_id).image_uris == data["image_uris"]
+      end
+    end
+  end
+
+  test "alternate printings preserve either split or flip half without changing full-card requests",
+       %{
+         conn: conn
+       } do
+    for {layout, names} <- [
+          {"split", ["Mirror Room", "Fractured Realm"]},
+          {"split", ["Fire", "Ice"]},
+          {"split", ["Cut", "Ribbons"]},
+          {"flip", ["Budoka Gardener", "Dokai, Weaver of Life"]}
+        ] do
+      id = Ecto.UUID.generate()
+      full_name = Enum.join(names, " // ")
+
+      card =
+        scryfall_card(id, full_name)
+        |> Map.merge(%{
+          "layout" => layout,
+          "card_faces" => Enum.map(names, &%{"name" => &1})
+        })
+
+      attrs = card |> CardData.from_scryfall() |> Map.delete(:selection_key)
+      Repo.insert!(struct!(Card, attrs))
+
+      for {name, suffix} <- [{hd(names), ""}, {List.last(names), "-1"}, {full_name, ""}] do
+        Req.Test.expect(__MODULE__, fn request ->
+          params = Plug.Conn.fetch_query_params(request).query_params
+          assert params["q"] == "oracleid:oracle-#{id} game:paper lang:en"
+          Req.Test.json(request, %{data: [card], has_more: false})
+        end)
+
+        body = conn |> get(~p"/api/card-printings?name=#{name}") |> json_response(200)
+        assert [%{"id" => face_id, "name" => ^name, "image_uris" => images}] = body["data"]
+        assert face_id == id <> suffix
+        assert images["normal"] == "https://img.example/#{id}-default-card.jpg"
+      end
+    end
+  end
+
   test "prepare and adventure retain their shared image and combined rules", %{conn: conn} do
     for layout <- ~w(prepare adventure) do
       id = Ecto.UUID.generate()
