@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { getPlayers } from "@/features/games/games"
 import { useCurrentUser } from "@/lib/auth"
+import { cn } from "@/lib/cn"
 import { ActiveBoard, CameraTile, OpenSeat, capturePoint } from "./board"
 import { BoardCardTray } from "./board-cards"
 import { CardPreview } from "./card-preview"
@@ -18,11 +19,13 @@ import { SeatBar, TileCommanderRow } from "./seat-bar"
 import { SeatCounterControls } from "./seat-counter-controls"
 import { SidePanel, type PanelTab } from "./side-panel"
 import { HotkeyHelp, useTableHotkeys } from "./table-hotkeys"
-import { RailResizeHandle, TableSettings, useTablePreferences } from "./table-preferences"
-import { CorrectionPreference, useCorrectionUpload } from "./use-correction-upload"
+import { RailResizeHandle, useTablePreferences } from "./table-preferences"
+import { TableSettings } from "./table-settings"
+import { useCorrectionUpload } from "./use-correction-upload"
+import { useTurnSound } from "./use-turn-sound"
+import { useVideoStats, VideoStatsOverlay } from "./video-stats"
 import { describeRoll } from "./table-rolls"
 import { TableTimer } from "./table-timer"
-import { canPassWithSpace } from "./turns"
 import {
   useWebcamRoom,
   type BoardCard,
@@ -155,7 +158,21 @@ function toCard(art: GalleryArt): IdentifiedCard {
 }
 
 function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
-  const room = useWebcamRoom(roomId, playerId, null)
+  const preferences = useTablePreferences(playerId)
+  const room = useWebcamRoom(
+    roomId,
+    playerId,
+    null,
+    preferences.deviceId,
+    preferences.quality,
+    preferences.cameraEnabled,
+  )
+  const toggleCamera = () => {
+    preferences.update({ cameraEnabled: room.cameraOff })
+    room.toggleCamera()
+  }
+  const videoStats = useVideoStats(preferences.stats, room.getPeerStats)
+  useTurnSound(preferences.turnSound, room.turns.active_player_id, playerId)
   const { recognizer, recognition } = useRecognition(room.capture)
   const corrections = useCorrectionUpload()
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -168,7 +185,6 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   const [panelOpen, setPanelOpen] = useState(true)
   const [panelTab, setPanelTab] = useState<PanelTab>("table")
   const [helpOpen, setHelpOpen] = useState(false)
-  const preferences = useTablePreferences(playerId)
   const playedAt = useRef(new Date())
   const board = useActiveBoard(room.participants, room.peerId)
 
@@ -188,7 +204,14 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     ? room.participants
     : [localParticipant, ...room.participants]
   const activeParticipant =
-    seated.find((participant) => participant.peer_id === board.selectedPeerId) ?? localParticipant
+    (preferences.followTurn &&
+      seated.find((participant) => participant.player_id === room.turns.active_player_id)) ||
+    seated.find((participant) => participant.peer_id === board.selectedPeerId) ||
+    localParticipant
+  const selectBoard = (peerId: string) => {
+    preferences.update({ followTurn: false })
+    board.select(peerId)
+  }
   const revealFor = (participant: TableParticipant) => ({
     hiddenLabel: canViewBoard(participant.peer_id, room.peerId, participant.reveal_to)
       ? undefined
@@ -227,20 +250,6 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     !helpOpen &&
     !finishOpen &&
     (needsChoice || !!picker)
-
-  useEffect(() => {
-    function pass(event: KeyboardEvent) {
-      const dialogOpen = !!document.querySelector(
-        '[role="dialog"], [role="alertdialog"], dialog[open]',
-      )
-      if (room.turns.active_player_id === null || !canPassWithSpace(event, pickerOpen, dialogOpen))
-        return
-      event.preventDefault()
-      room.passTurn()
-    }
-    window.addEventListener("keydown", pass)
-    return () => window.removeEventListener("keydown", pass)
-  }, [pickerOpen, room.passTurn, room.turns.active_player_id])
 
   /** Adds the card to the owner's board list at every seat and shows it; a card that is one of
    * the owner's commanders also picks that deck when they have not chosen one yet. Replaces the
@@ -299,8 +308,25 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         return room.changeLife(1)
       case "loseLife":
         return room.changeLife(-1)
+      case "gainTenLife":
+        return room.changeLife(10)
+      case "loseTenLife":
+        return room.changeLife(-10)
+      case "passTurn":
+        if (room.turns.active_player_id !== null) room.passTurn()
+        return
+      case "gainTax":
+      case "loseTax": {
+        const deck = decks.find((deck) => deck.id === localParticipant.deck_id)
+        if (deck)
+          room.adjustCounter(
+            { kind: "casts", commander: deck.commander_name },
+            action === "gainTax" ? 1 : -1,
+          )
+        return
+      }
       case "camera":
-        return room.toggleCamera()
+        return toggleCamera()
       case "panel":
         return setPanelOpen((open) => !open)
       case "help":
@@ -313,7 +339,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           (participant) => participant.peer_id === activeParticipant.peer_id,
         )
         const next = seated[(index + (action === "next" ? 1 : -1) + seated.length) % seated.length]
-        if (next) board.select(next.peer_id)
+        if (next) selectBoard(next.peer_id)
         return
       }
       default:
@@ -371,7 +397,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       size={size}
       onChooseDeck={room.chooseDeck}
       onChangeLife={room.changeLife}
-      onToggleCamera={room.toggleCamera}
+      onToggleCamera={toggleCamera}
       onAdjustCounter={room.adjustCounter}
       counters={countersFor(participant)}
     />
@@ -379,7 +405,12 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
 
   return (
     <div
-      className="grid h-dvh grid-rows-[auto_minmax(0,1fr)_auto] bg-black text-white lg:grid-cols-[var(--table-camera-width)_0.375rem_minmax(0,1fr)_auto_auto] lg:grid-rows-1"
+      className={cn(
+        "grid h-dvh grid-rows-[auto_minmax(0,1fr)_auto] bg-black text-white lg:grid-rows-1",
+        preferences.panelLeft
+          ? "lg:grid-cols-[auto_auto_minmax(0,1fr)_0.375rem_var(--table-camera-width)]"
+          : "lg:grid-cols-[var(--table-camera-width)_0.375rem_minmax(0,1fr)_auto_auto]",
+      )}
       style={
         {
           "--table-camera-width": `min(${preferences.camera}px, 24vw)`,
@@ -388,7 +419,10 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       }
     >
       <aside
-        className="flex min-h-0 gap-1.5 overflow-x-auto p-1.5 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto"
+        className={cn(
+          "flex min-h-0 gap-1.5 overflow-x-auto p-1.5 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto",
+          preferences.panelLeft && "lg:order-5",
+        )}
         aria-label="Player cameras"
       >
         <RevealControl
@@ -403,17 +437,25 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             key={participant.peer_id}
             className="w-44 shrink-0 overflow-hidden rounded-sm lg:w-auto"
           >
-            <CameraTile
-              participant={participant}
-              monarch={room.monarch?.peer_id === participant.peer_id}
-              {...revealFor(participant)}
-              local={participant.peer_id === room.peerId}
-              active={participant.peer_id === activeParticipant.peer_id}
-              currentTurn={participant.player_id === room.turns.active_player_id}
-              connectionState={room.connectionStates[participant.peer_id]}
-              stream={streamFor(participant, room.peerId, room.localStream, room.streams)}
-              onActivate={() => board.select(participant.peer_id)}
-            />
+            <div className="relative">
+              <CameraTile
+                participant={participant}
+                monarch={room.monarch?.peer_id === participant.peer_id}
+                {...revealFor(participant)}
+                local={participant.peer_id === room.peerId}
+                active={participant.peer_id === activeParticipant.peer_id}
+                currentTurn={participant.player_id === room.turns.active_player_id}
+                connectionState={room.connectionStates[participant.peer_id]}
+                stream={streamFor(participant, room.peerId, room.localStream, room.streams)}
+                onActivate={() => selectBoard(participant.peer_id)}
+              />
+              {preferences.stats && (
+                <VideoStatsOverlay
+                  stats={videoStats[participant.peer_id]}
+                  localStream={participant.peer_id === room.peerId ? room.localStream : undefined}
+                />
+              )}
+            </div>
             {seatBarFor(participant, "tile")}
             <TileCommanderRow
               participant={participant}
@@ -434,11 +476,18 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
 
       <RailResizeHandle
         rail="camera"
+        reversed={preferences.panelLeft}
         width={preferences.camera}
         onChange={(width) => preferences.setWidth("camera", width)}
       />
 
-      <section className="relative flex min-h-0 min-w-0 flex-col" aria-label="Active board">
+      <section
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-col",
+          preferences.panelLeft && "lg:order-3",
+        )}
+        aria-label="Active board"
+      >
         {room.roll && (
           <div
             role="status"
@@ -456,8 +505,11 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             currentTurn={activeParticipant.player_id === room.turns.active_player_id}
             connectionState={room.connectionStates[activeParticipant.peer_id]}
             stream={streamFor(activeParticipant, room.peerId, room.localStream, room.streams)}
-            pinned={board.pinned}
-            onTogglePin={board.togglePin}
+            pinned={!preferences.followTurn && board.pinned}
+            onTogglePin={() => {
+              if (preferences.followTurn) selectBoard(activeParticipant.peer_id)
+              else board.togglePin()
+            }}
             onInspect={(event) => {
               const point = capturePoint(event)
               if (point)
@@ -514,26 +566,28 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           }}
         />
         {seatBarFor(activeParticipant, "board")}
-        <CorrectionPreference upload={corrections} />
       </section>
 
       {panelOpen ? (
         <RailResizeHandle
           rail="panel"
+          reversed={preferences.panelLeft}
           width={preferences.panel}
           onChange={(width) => preferences.setWidth("panel", width)}
         />
       ) : (
-        <div className="hidden lg:block" />
+        <div className={cn("hidden lg:block", preferences.panelLeft && "lg:order-2")} />
       )}
 
       <SidePanel
+        left={preferences.panelLeft}
         onHelp={() => setHelpOpen(true)}
         settings={
           <TableSettings
-            hotkeys={preferences.hotkeys}
-            onHotkeysChange={preferences.setHotkeys}
-            onResetWidths={preferences.resetWidths}
+            preferences={preferences}
+            room={{ ...room, toggleCamera }}
+            corrections={corrections}
+            recognizer={recognizer.state}
             onHelp={() => setHelpOpen(true)}
           />
         }

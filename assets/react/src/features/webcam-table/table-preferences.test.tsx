@@ -48,3 +48,51 @@ it("recovers from malformed or out-of-bounds saved values", () => {
     hotkeys: true,
   })
 })
+
+it("persists view, camera, stats and sound choices without accepting malformed values", () => {
+  localStorage.setItem(
+    "the-gathering:table-preferences:4",
+    JSON.stringify({ quality: "4k", deviceId: 7, followTurn: "true", stats: 1 }),
+  )
+  const first = renderHook(() => useTablePreferences(4))
+  expect(first.result.current).toMatchObject({
+    quality: "auto",
+    deviceId: "",
+    cameraEnabled: true,
+    followTurn: false,
+    stats: false,
+    turnSound: false,
+  })
+  act(() =>
+    first.result.current.update({
+      quality: "720p",
+      deviceId: "camera-2",
+      cameraEnabled: false,
+      followTurn: true,
+      panelLeft: true,
+      stats: true,
+      turnSound: true,
+    }),
+  )
+  first.unmount()
+  const next = renderHook(() => useTablePreferences(4))
+  expect(next.result.current).toMatchObject({
+    quality: "720p",
+    deviceId: "camera-2",
+    cameraEnabled: false,
+    followTurn: true,
+    panelLeft: true,
+    stats: true,
+    turnSound: true,
+  })
+  act(() => next.result.current.resetWidths())
+  expect(next.result.current).toMatchObject({
+    quality: "720p",
+    deviceId: "camera-2",
+    cameraEnabled: false,
+    followTurn: true,
+    panelLeft: true,
+    stats: true,
+    turnSound: true,
+  })
+})

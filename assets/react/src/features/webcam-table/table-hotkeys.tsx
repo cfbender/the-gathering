@@ -6,21 +6,144 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { PASS_TURN_BINDING } from "./turns"
 
 export const TABLE_HOTKEYS = [
-  { keys: ["+", "="], action: "gainLife", label: "Gain 1 life (your seat)" },
-  { keys: ["-"], action: "loseLife", label: "Lose 1 life (your seat)" },
-  { keys: ["c"], action: "camera", label: "Toggle your camera" },
-  { keys: ["b"], action: "panel", label: "Collapse / expand side panel" },
-  { keys: ["t"], action: "table", label: "Table panel" },
-  { keys: ["d"], action: "decks", label: "Decks panel" },
-  { keys: ["a"], action: "cards", label: "Cards panel" },
-  { keys: ["l"], action: "log", label: "Log panel" },
-  { keys: ["s"], action: "settings", label: "Settings panel" },
-  { keys: ["["], action: "previous", label: "Previous board (pins selection)" },
-  { keys: ["]"], action: "next", label: "Next board (pins selection)" },
-  { keys: ["?"], action: "help", label: "Keyboard shortcuts" },
+  {
+    keys: [" "],
+    chips: ["Space"],
+    action: "passTurn",
+    section: "Turn & counters",
+    title: "Next player turn",
+    description: "Advance the turn once the match has started.",
+  },
+  {
+    keys: ["arrowup"],
+    chips: ["↑"],
+    action: "gainLife",
+    section: "Turn & counters",
+    title: "Gain life",
+    description: "Increase your life total by 1.",
+  },
+  {
+    keys: ["arrowdown"],
+    chips: ["↓"],
+    action: "loseLife",
+    section: "Turn & counters",
+    title: "Lose life",
+    description: "Decrease your life total by 1.",
+  },
+  {
+    keys: ["shift+arrowup"],
+    chips: ["Shift + ↑"],
+    action: "gainTenLife",
+    section: "Turn & counters",
+    title: "Gain 10 life",
+    description: "Increase your life total by 10.",
+  },
+  {
+    keys: ["shift+arrowdown"],
+    chips: ["Shift + ↓"],
+    action: "loseTenLife",
+    section: "Turn & counters",
+    title: "Lose 10 life",
+    description: "Decrease your life total by 10.",
+  },
+  {
+    keys: ["["],
+    chips: ["["],
+    action: "loseTax",
+    section: "Turn & counters",
+    title: "Decrease commander tax",
+    description: "Subtract 2 tax from your primary commander.",
+  },
+  {
+    keys: ["]"],
+    chips: ["]"],
+    action: "gainTax",
+    section: "Turn & counters",
+    title: "Increase commander tax",
+    description: "Add 2 tax to your primary commander.",
+  },
+  {
+    keys: ["c"],
+    chips: ["C"],
+    action: "camera",
+    section: "Video",
+    title: "Toggle camera",
+    description: "Enable or disable your camera.",
+  },
+  {
+    keys: ["b"],
+    chips: ["B"],
+    action: "panel",
+    section: "View & panels",
+    title: "Side panel",
+    description: "Collapse or expand the side panel.",
+  },
+  {
+    keys: ["t"],
+    chips: ["T"],
+    action: "table",
+    section: "View & panels",
+    title: "Table",
+    description: "Open table controls.",
+  },
+  {
+    keys: ["d"],
+    chips: ["D"],
+    action: "decks",
+    section: "View & panels",
+    title: "Decks",
+    description: "Open your decks.",
+  },
+  {
+    keys: ["a"],
+    chips: ["A"],
+    action: "cards",
+    section: "View & panels",
+    title: "Cards",
+    description: "Open identified cards and gallery search.",
+  },
+  {
+    keys: ["l"],
+    chips: ["L"],
+    action: "log",
+    section: "View & panels",
+    title: "Log",
+    description: "Open the table log.",
+  },
+  {
+    keys: ["s"],
+    chips: ["S"],
+    action: "settings",
+    section: "View & panels",
+    title: "Settings",
+    description: "Open table settings.",
+  },
+  {
+    keys: [","],
+    chips: [","],
+    action: "previous",
+    section: "View & panels",
+    title: "Previous board",
+    description: "Select and pin the previous board.",
+  },
+  {
+    keys: ["."],
+    chips: ["."],
+    action: "next",
+    section: "View & panels",
+    title: "Next board",
+    description: "Select and pin the next board.",
+  },
+  {
+    keys: ["?", "h"],
+    chips: ["?", "H"],
+    action: "help",
+    section: "View & panels",
+    title: "Keyboard shortcuts",
+    description: "Toggle this menu.",
+  },
 ] as const
 
 export type TableAction = (typeof TABLE_HOTKEYS)[number]["action"] | "dismiss"
@@ -44,6 +167,7 @@ export function tableHotkeyAction(
     | "altKey"
     | "ctrlKey"
     | "metaKey"
+    | "shiftKey"
     | "repeat"
     | "isComposing"
     | "defaultPrevented"
@@ -66,10 +190,19 @@ export function tableHotkeyAction(
     return null
   if (event.key === "Escape" && pickerOpen) return "dismiss"
   if (!enabled || pickerOpen || isTypingTarget(event.target)) return null
-  return (
-    TABLE_HOTKEYS.find(({ keys }) => (keys as readonly string[]).includes(event.key.toLowerCase()))
-      ?.action ?? null
+  // Space on a focused button/link must retain its native activation behavior.
+  if (
+    event.key === " " &&
+    event.target instanceof Element &&
+    event.target.closest('button, a, [role="button"], summary')
   )
+    return null
+  const key =
+    event.shiftKey && event.key.startsWith("Arrow")
+      ? `shift+${event.key.toLowerCase()}`
+      : event.key.toLowerCase()
+  if (event.shiftKey && event.key === " ") return null
+  return TABLE_HOTKEYS.find(({ keys }) => (keys as readonly string[]).includes(key))?.action ?? null
 }
 
 export function useTableHotkeys(
@@ -80,7 +213,7 @@ export function useTableHotkeys(
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
       const overlayOpen = !!document.querySelector(
-        '[role="dialog"], [role="menu"], [role="listbox"]',
+        '[role="dialog"], [role="alertdialog"], dialog[open], [role="menu"], [role="listbox"]',
       )
       const action = tableHotkeyAction(event, { enabled, pickerOpen, overlayOpen })
       if (!action) return
@@ -99,35 +232,92 @@ export function HotkeyHelp({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const shortcuts = [
+    ...TABLE_HOTKEYS,
+    {
+      chips: ["/"],
+      section: "Cards",
+      title: "Quick gallery search",
+      description: "Search by name, set or collector number when the card picker is open.",
+    },
+    {
+      chips: ["1–5"],
+      section: "Cards",
+      title: "Choose a suggestion",
+      description: "Select one of the card picker's five suggestions.",
+    },
+    {
+      chips: ["Esc"],
+      section: "Cards",
+      title: "Close overlay",
+      description: "Dismiss the card picker or dialog, even with shortcuts disabled.",
+    },
+  ]
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent
+        className="border-slate-700 bg-slate-900 text-slate-200 sm:max-w-lg"
+        onKeyDown={(event) => {
+          if (
+            !event.repeat &&
+            !event.nativeEvent.isComposing &&
+            !event.defaultPrevented &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey &&
+            !isTypingTarget(event.target) &&
+            ["?", "h"].includes(event.key.toLowerCase())
+          ) {
+            event.preventDefault()
+            onOpenChange(false)
+          }
+        }}
+      >
+        <DialogHeader className="shrink-0 border-slate-700">
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogClose onClose={() => onOpenChange(false)} />
         </DialogHeader>
-        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 p-5 text-sm">
-          {TABLE_HOTKEYS.map(({ keys, action, label }) => (
-            <div key={action} className="contents">
-              <dt>{label}</dt>
-              <dd>
-                <kbd className="kbd kbd-sm">{keys.join(" / ")}</kbd>
-              </dd>
-            </div>
+        <div className="min-h-0 overflow-y-auto p-5">
+          {["Turn & counters", "Video", "Cards", "View & panels"].map((section) => (
+            <section key={section} className="mb-5">
+              <h3 className="mb-2 text-[0.65rem] font-bold tracking-wider text-slate-400 uppercase">
+                {section}
+              </h3>
+              <div className="grid gap-2">
+                {shortcuts
+                  .filter((binding) => binding.section === section)
+                  .map(({ chips, title, description }) => (
+                    <div
+                      key={title}
+                      className="flex items-start gap-4 rounded-xl border border-slate-700/70 p-3"
+                    >
+                      <div className="flex shrink-0 gap-1">
+                        {chips.map((chip) => (
+                          <kbd
+                            key={chip}
+                            className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-2 text-xs font-bold"
+                          >
+                            {chip}
+                          </kbd>
+                        ))}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-bold">{title}</h4>
+                        <p className="mt-1 text-xs text-slate-400">{description}</p>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </section>
           ))}
-          <dt>{PASS_TURN_BINDING.label} (once the game has started)</dt>
-          <dd>
-            <kbd className="kbd kbd-sm">{PASS_TURN_BINDING.key}</kbd>
-          </dd>
-          <dt>Close overlay</dt>
-          <dd>
-            <kbd className="kbd kbd-sm">Escape</kbd>
-          </dd>
-        </dl>
-        <p className="px-5 pb-5 text-xs text-base-content/60">
-          Shortcuts pause while typing or using an overlay. The card picker keeps 1–5 and / for
-          selection and search. Toggle table shortcuts in Settings.
-        </p>
+          <p className="mt-3 text-xs text-slate-400">
+            Table shortcuts pause while typing or using an overlay. Enable them in Settings.
+          </p>
+        </div>
+        <footer className="shrink-0 border-t border-slate-700 px-5 py-4 text-xs text-slate-400">
+          Press <kbd className="kbd kbd-xs">?</kbd> or <kbd className="kbd kbd-xs">H</kbd> to toggle
+          this menu
+        </footer>
       </DialogContent>
     </Dialog>
   )

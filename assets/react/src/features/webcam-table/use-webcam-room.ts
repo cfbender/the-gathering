@@ -2,8 +2,9 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Channel, Presence, Socket } from "phoenix"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
+import { openCamera } from "./camera"
 import { mergeIdentifiedCards, sameCard } from "./identified-cards"
-import { canViewBoard, videoEncoding } from "./media-policy"
+import { canViewBoard, videoEncoding, type PublisherQuality } from "./media-policy"
 import type { GameTimerState, TimerSample } from "./game-timer"
 import type { GalleryArt } from "./recognition/pipeline"
 import { sharesCorrections } from "./use-correction-upload"
@@ -173,8 +174,21 @@ function captureCrop(video: HTMLVideoElement, x: number, y: number) {
   }
 }
 
-export function useWebcamRoom(roomId: string, playerId: number, deckId: number | null) {
+export function useWebcamRoom(
+  roomId: string,
+  playerId: number,
+  deckId: number | null,
+  deviceId = "",
+  quality: PublisherQuality = "auto",
+  cameraEnabled = true,
+) {
   const queryClient = useQueryClient()
+  const deviceIdRef = useRef(deviceId)
+  const qualityRef = useRef(quality)
+  const cameraRequest = useRef(0)
+  const cameraChangingRef = useRef(false)
+  const [cameraChanging, setCameraChanging] = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
   const peerIdRef = useRef(crypto.randomUUID())
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
@@ -198,7 +212,8 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   )
   const [iceServers, setIceServers] = useState<RTCIceServer[]>([])
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
-  const [cameraOff, setCameraOff] = useState(false)
+  const cameraOffRef = useRef(!cameraEnabled)
+  const [cameraOff, setCameraOff] = useState(!cameraEnabled)
   const revealToRef = useRef<string | null>(null)
   const [revealTo, setRevealTo] = useState<string | null>(null)
   const [revealBusy, setRevealBusy] = useState(false)
@@ -254,7 +269,11 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
           await peer.videoSender.replaceTrack(allowed ? peer.videoTrack : null)
           const parameters = peer.videoSender.getParameters()
           if (parameters.encodings?.length) {
-            const encoding = videoEncoding(participantsRef.current.length)
+            const encoding = videoEncoding(
+              participantsRef.current.length,
+              qualityRef.current,
+              localStreamRef.current?.getVideoTracks()[0]?.getSettings().height,
+            )
             parameters.encodings = parameters.encodings.map((current) => ({
               ...current,
               ...encoding,
@@ -272,6 +291,63 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
       setError("Could not update video senders. Hidden cameras remain blocked."),
     )
   }, [syncVideo])
+
+  useEffect(() => {
+    qualityRef.current = quality
+    refreshVideo()
+  }, [quality, refreshVideo])
+
+  const getPeerStats = useCallback(async () => {
+    return Promise.all(
+      [...peersRef.current].map(async ([id, peer]) => ({
+        id,
+        report: await peer.connection.getStats(),
+      })),
+    )
+  }, [])
+
+  async function changeCamera(nextDeviceId: string): Promise<boolean> {
+    if (cameraChangingRef.current || !localStreamRef.current) return false
+    cameraChangingRef.current = true
+    setCameraChanging(true)
+    setCameraError(null)
+    const request = ++cameraRequest.current
+    try {
+      const media = await openCamera(nextDeviceId)
+      if (request !== cameraRequest.current) {
+        media.getTracks().forEach((track) => track.stop())
+        return false
+      }
+      const previous = localStreamRef.current
+      const track = media.getVideoTracks()[0]!
+      track.enabled = previous?.getVideoTracks()[0]?.enabled ?? false
+      localStreamRef.current = media
+      setLocalStream(media)
+      if (localVideoRef.current) localVideoRef.current.srcObject = media
+      // Stop old clones before replacing, including clones detached by a private reveal.
+      // syncVideo rechecks current consent inside each sender's serialized update.
+      for (const [id, peer] of peersRef.current) {
+        peer.videoTrack.stop()
+        peer.videoTrack = track.clone()
+        peer.videoTrack.enabled =
+          track.enabled && canViewBoard(peerIdRef.current, id, revealToRef.current)
+      }
+      previous?.getTracks().forEach((oldTrack) => oldTrack.stop())
+      deviceIdRef.current = nextDeviceId
+      await syncVideo().catch(() => {
+        setCameraError(
+          "Camera changed, but a peer's video could not be updated. Try switching again.",
+        )
+      })
+      return true
+    } catch (reason) {
+      setCameraError(reason instanceof Error ? reason.message : "Could not switch camera")
+      return false
+    } finally {
+      cameraChangingRef.current = false
+      setCameraChanging(false)
+    }
+  }
 
   /** Every ingress uses the same per-board card identity rule, including late-join syncs. */
   const mergeCards = useCallback((entries: BoardCard[]) => {
@@ -434,15 +510,23 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
           (body) => body.data,
         )
         setIceServers(config.ice_servers)
-        const media = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { min: 1920, ideal: 1920 },
-            height: { min: 1080, ideal: 1080 },
-            frameRate: { ideal: 30 },
-          },
-          audio: false,
+        const media = await openCamera(deviceIdRef.current).catch((reason: unknown) => {
+          if (
+            deviceIdRef.current &&
+            reason instanceof DOMException &&
+            ["NotFoundError", "OverconstrainedError"].includes(reason.name)
+          ) {
+            setCameraError(
+              "Saved camera is unavailable; using the system default. Choose another camera in Settings.",
+            )
+            return openCamera("")
+          }
+          throw reason
         })
         if (disposed) return media.getTracks().forEach((track) => track.stop())
+        media.getVideoTracks().forEach((track) => {
+          track.enabled = !cameraOffRef.current
+        })
         localStreamRef.current = media
         setLocalStream(media)
         const captureVideo = document.createElement("video")
@@ -624,6 +708,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     void run()
     return () => {
       disposed = true
+      cameraRequest.current += 1
       window.clearInterval(timerSync)
       channelRef.current?.leave()
       socket?.disconnect()
@@ -682,7 +767,8 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   }
 
   function toggleCamera() {
-    const next = !cameraOff
+    const next = !cameraOffRef.current
+    cameraOffRef.current = next
     localStreamRef.current?.getVideoTracks().forEach((track) => {
       track.enabled = !next
     })
@@ -852,6 +938,10 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     connectionStates,
     iceServers,
     localStream,
+    changeCamera,
+    cameraChanging,
+    cameraError,
+    getPeerStats,
     cameraOff,
     revealTo,
     revealBusy,
