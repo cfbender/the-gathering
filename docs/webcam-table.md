@@ -44,10 +44,14 @@ through such a signaling service. References:
 ### ICE, STUN, TURN, and proxies
 
 The normal HTTPS reverse proxy must pass WebSocket upgrades for `/socket`; it never carries RTP
-in the mesh case. Host candidates work on one LAN. `WEBRTC_STUN_URLS` supplies comma-separated
-STUN URLs for NAT discovery. Reliable internet use also requires a separately reachable TURN
-server configured with `WEBRTC_TURN_URLS`, `WEBRTC_TURN_USERNAME`, and
-`WEBRTC_TURN_CREDENTIAL`. TURN cannot be hidden behind an ordinary HTTP reverse proxy: expose its
+in the mesh case. Host candidates alone only work on one LAN: two browsers on different networks
+each sit at "Connecting…" forever because neither learns a reachable address. `WEBRTC_STUN_URLS`
+therefore defaults to public STUN servers (Google and Cloudflare); override it with your own or
+set it to `none` for a LAN-only install. STUN gets through ordinary home routers; players behind
+symmetric NAT or carrier-grade NAT also need a separately reachable TURN server configured with
+`WEBRTC_TURN_URLS`, `WEBRTC_TURN_USERNAME`, and `WEBRTC_TURN_CREDENTIAL`. When a peer connection
+fails the offering side restarts ICE once; a peer that stays failed is labelled "Couldn't
+connect" on its tile and the Connection section points at TURN. TURN cannot be hidden behind an ordinary HTTP reverse proxy: expose its
 UDP/TCP listener (commonly 3478) and preferably TURN-over-TLS (commonly 5349/443) from coturn or
 another relay. Credentials are returned only from the authenticated config endpoint. A static
 credential is acceptable for a self-hosted first release; time-limited TURN credentials are the

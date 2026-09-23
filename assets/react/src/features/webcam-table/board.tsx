@@ -1,7 +1,7 @@
 import { Pin, PinOff, UserPlus, Video, VideoOff } from "lucide-react"
 import type { MouseEvent } from "react"
 import { cn } from "@/lib/cn"
-import type { TableParticipant } from "./use-webcam-room"
+import { describeConnection, type TableParticipant } from "./use-webcam-room"
 
 export function StreamVideo({
   stream,
@@ -85,6 +85,7 @@ export function ActiveBoard({
   participant,
   stream,
   local,
+  connectionState,
   pinned,
   onTogglePin,
   onInspect,
@@ -92,6 +93,7 @@ export function ActiveBoard({
   participant: TableParticipant
   stream?: MediaStream
   local: boolean
+  connectionState?: RTCPeerConnectionState
   pinned: boolean
   onTogglePin: () => void
   onInspect: (event: MouseEvent<HTMLButtonElement>) => void
@@ -107,7 +109,9 @@ export function ActiveBoard({
         {stream ? (
           <StreamVideo stream={stream} muted={local} className="object-contain" />
         ) : (
-          <VideoPlaceholder label={local ? "Starting camera…" : "Connecting…"} />
+          <VideoPlaceholder
+            label={local ? "Starting camera…" : describeConnection(connectionState)}
+          />
         )}
         {participant.camera_off && <CameraOffOverlay />}
         <span className="pointer-events-none absolute bottom-9 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-3 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
@@ -140,12 +144,14 @@ export function CameraTile({
   participant,
   stream,
   local,
+  connectionState,
   active,
   onActivate,
 }: {
   participant: TableParticipant
   stream?: MediaStream
   local: boolean
+  connectionState?: RTCPeerConnectionState
   active: boolean
   onActivate: () => void
 }) {
@@ -163,7 +169,10 @@ export function CameraTile({
       {stream ? (
         <StreamVideo stream={stream} muted={local} className="object-cover" />
       ) : (
-        <VideoPlaceholder compact label={local ? "Starting camera…" : "Connecting…"} />
+        <VideoPlaceholder
+          compact
+          label={local ? "Starting camera…" : describeConnection(connectionState)}
+        />
       )}
       {participant.camera_off && <CameraOffOverlay compact />}
       <LifeBadge life={participant.life} size="tile" />

@@ -149,7 +149,7 @@ suggestions instead. Design notes are in
 | `TRUST_PROXY_HEADERS` | unset | Set to `true` behind a reverse proxy so rate limiting identifies clients by `x-real-ip` / `x-forwarded-for` instead of the proxy address. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, or `error`. `debug` explains why the Discord bot ignored a message. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
-| `WEBRTC_STUN_URLS` | unset | Comma-separated STUN URLs for webcam-table NAT discovery; host candidates alone suffice on one LAN. |
+| `WEBRTC_STUN_URLS` | Google + Cloudflare public STUN | Comma-separated STUN URLs for webcam-table NAT discovery. Needed for any room that is not on one LAN; `none` disables STUN for LAN-only installs. |
 | `WEBRTC_TURN_URLS` | unset | Comma-separated TURN URLs; with `WEBRTC_TURN_USERNAME` and `WEBRTC_TURN_CREDENTIAL`, relays webcam-table media when peers cannot connect directly. |
 | `MANAVAULT_URL` | unset | Origin of a self-hosted ManaVault instance whose shared deck links are recognized and resolved. |
 | `MANAVAULT_ALLOWED_HOSTS` | unset | Comma-separated exact hostnames allowed for personal ManaVault listing on private networks; also permits HTTP for those hosts. |
