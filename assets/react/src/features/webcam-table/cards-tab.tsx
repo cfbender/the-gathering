@@ -126,18 +126,26 @@ function GallerySearch({
 }) {
   const [query, setQuery] = useState("")
   const [matches, setMatches] = useState<GalleryArt[]>([])
+  const [status, setStatus] = useState("")
 
   useEffect(() => {
     if (query.trim() === "") {
       setMatches([])
+      setStatus("")
       return
     }
     let stale = false
+    setStatus("Loading gallery…")
     onSearch(query)
       .then((arts) => {
-        if (!stale) setMatches(arts)
+        if (!stale) {
+          setMatches(arts)
+          setStatus(arts.length ? "" : "No matching printings.")
+        }
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (!stale) setStatus("Gallery unavailable. Check Settings > Card scan.")
+      })
     return () => {
       stale = true
     }
@@ -165,6 +173,11 @@ function GallerySearch({
           </button>
         )}
       </label>
+      {status && (
+        <p role="status" className="mt-2 text-xs text-base-content/60">
+          {status}
+        </p>
+      )}
       {matches.length > 0 && (
         <ul
           className="mt-1 max-h-48 overflow-y-auto rounded-field border border-white/10 text-xs"
