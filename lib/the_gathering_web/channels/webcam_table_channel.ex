@@ -4,7 +4,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   use TheGatheringWeb, :channel
 
   alias TheGathering.Games
-  alias TheGatheringWeb.Presence
+  alias TheGatheringWeb.{Presence, WebcamTableRooms}
 
   @max_players 4
   @starting_life 40
@@ -16,7 +16,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
          {:ok, participant} <- participant(params, socket.assigns.user.id),
          true <- room_available?(Presence.list(socket), participant) do
       send(self(), :after_join)
-      {:ok, assign(socket, :participant, participant)}
+      {:ok, socket |> assign(:participant, participant) |> assign(:room_id, room_id)}
     else
       false -> {:error, %{reason: "room is full or invalid"}}
       {:error, reason} -> {:error, %{reason: reason}}
@@ -27,6 +27,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   def handle_info(:after_join, socket) do
     participant = socket.assigns.participant
     {:ok, _ref} = Presence.track(socket, participant.peer_id, participant)
+    {:ok, _ref} = WebcamTableRooms.track_seat(socket.assigns.room_id, participant)
     push(socket, "presence_state", Presence.list(socket))
     {:noreply, socket}
   end

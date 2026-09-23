@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
-import { CalendarDays, Play, Plus, X } from "lucide-react"
+import { CalendarDays, Plus, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { getGames, getPlayers } from "@/features/games/games"
 import { GameCard } from "@/features/games/game-card"
 import { GameTable } from "@/features/games/game-table"
 import { GameViewToggle, type GameView } from "@/features/games/game-view-toggle"
+import { PlayActions } from "@/features/webcam-table/play-actions"
 import {
   countActiveGameFilters,
   parseGamesSearch,
@@ -75,9 +76,7 @@ function GamesPage() {
         title="Games"
         actions={
           <>
-            <Link to="/table/new" className="btn btn-secondary">
-              <Play className="size-4" fill="currentColor" /> Play
-            </Link>
+            <PlayActions />
             <Link to="/games/new" className="btn btn-primary">
               <Plus className="size-4" /> Log game
             </Link>
