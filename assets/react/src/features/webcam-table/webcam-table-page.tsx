@@ -518,6 +518,14 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
                 : undefined
             }
           />
+          {room.capture && recognition.status === "identifying" && !pickerOpen && !preview && (
+            <p
+              role="status"
+              className="absolute bottom-12 left-1/2 z-10 -translate-x-1/2 rounded-lg bg-base-100/95 px-4 py-2 text-sm text-base-content shadow-lg"
+            >
+              {recognition.loading ? "Loading card scanner…" : "Identifying card…"}
+            </p>
+          )}
           {room.capture && captureOwner && pickerOpen && (
             <CardSuggestions
               capture={room.capture}
