@@ -97,6 +97,9 @@ config :the_gathering,
   manavault_allowed_hosts: manavault_allowed_hosts,
   manavault_allow_insecure_urls: System.get_env("MANAVAULT_ALLOW_INSECURE_URLS") in ["true", "1"]
 
+config :the_gathering, TheGathering.Discord,
+  default_timezone: System.get_env("DISCORD_DEFAULT_TIMEZONE", "America/New_York")
+
 if discord_bot_token = System.get_env("DISCORD_BOT_TOKEN") do
   config :nostrum,
     token: discord_bot_token,

@@ -42,4 +42,5 @@ services:
       # Optional Discord game tracking. An empty token leaves the client disabled.
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      DISCORD_DEFAULT_TIMEZONE: ${DISCORD_DEFAULT_TIMEZONE:-America/New_York}
       DISCORD_SPELLBOT_USER_ID: ${DISCORD_SPELLBOT_USER_ID:-725510263251402832}

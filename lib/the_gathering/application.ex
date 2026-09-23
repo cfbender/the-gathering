@@ -20,11 +20,11 @@ defmodule TheGathering.Application do
       {TheGathering.RateLimiter, clean_period: :timer.minutes(10)},
       TheGathering.Catalog.Supervisor,
       TheGathering.Decklists.Cache,
-      TheGathering.Discord,
       # Start a worker by calling: TheGathering.Worker.start_link(arg)
       # {TheGathering.Worker, arg},
-      # Start to serve requests, typically the last entry
-      TheGatheringWeb.Endpoint
+      TheGatheringWeb.Endpoint,
+      # Queue recovery may generate public table URLs as soon as Discord starts.
+      TheGathering.Discord
     ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html

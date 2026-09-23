@@ -2,7 +2,7 @@ defmodule TheGathering.Discord.Command do
   @moduledoc false
 
   alias Nostrum.Api.ApplicationCommand
-  alias TheGathering.Discord.{SummaryCommand, WonCommand}
+  alias TheGathering.Discord.{NewGameCommand, SummaryCommand, WonCommand}
 
   def definition do
     %{
@@ -28,7 +28,7 @@ defmodule TheGathering.Discord.Command do
   end
 
   @doc """
-  Registers `/log` and `/summary`, removing only the replaced `/won` command.
+  Registers `/log`, `/summary`, and `/newgame`, removing only the replaced `/won` command.
 
   Returns `{:ok, description}` for logging, or the Nostrum API error.
   """
@@ -37,9 +37,9 @@ defmodule TheGathering.Discord.Command do
 
     result =
       Enum.reduce_while(
-        [definition(), SummaryCommand.definition()],
+        [definition(), SummaryCommand.definition(), NewGameCommand.definition()],
         {:ok,
-         "registered /log and /summary #{if guild, do: "in guild #{guild}", else: "globally; new commands can take up to an hour to appear"}"},
+         "registered /log, /summary, and /newgame #{if guild, do: "in guild #{guild}", else: "globally; new commands can take up to an hour to appear"}"},
         fn command, success ->
           result =
             if guild,
