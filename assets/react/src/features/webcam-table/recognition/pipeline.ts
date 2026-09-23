@@ -19,8 +19,8 @@ export interface BundleConstants {
   frame_names: string[]
 }
 
-/** One gallery artwork, in `arts.json` order (= gallery index). */
-export interface GalleryArt {
+/** Exact selectable printing; separate printed sides use face IDs. */
+export interface GalleryPrinting {
   id: string
   name: string
   set: string
@@ -29,7 +29,17 @@ export interface GalleryArt {
   /** 0 is the original printing UUID; 1 uses `<uuid>-1`. `name` is already face-specific. */
   face?: number
   lang?: string
+  border_color?: string | null
+  scryfall_frame?: string | null
+  frame_effects?: string[]
+  promo?: boolean
+}
+
+/** One embedding per illustration, in `arts.json` order (= gallery index). */
+export interface GalleryArt extends GalleryPrinting {
   frame: string
+  illustration_id?: string
+  printings?: GalleryPrinting[]
 }
 
 export interface Candidate extends GalleryArt {
@@ -132,33 +142,55 @@ export function upVote(up: [number, number], constants: BundleConstants): number
 export function searchArts(arts: GalleryArt[], query: string, limit = 24): GalleryArt[] {
   const tokens = query.toLowerCase().trim().split(/\s+/).filter(Boolean)
   if (tokens.length === 0) return []
-  const sets = new Set(arts.map((art) => art.set))
+  const sets = new Set(arts.flatMap((art) => (art.printings ?? [art]).map((p) => p.set)))
   const nameTokens: string[] = []
   let set: string | undefined
   let number: string | undefined
+  let lang: string | undefined
   for (const token of tokens) {
     if (token.startsWith("set:")) set = token.slice(4)
+    else if (token.startsWith("lang:")) lang = token.slice(5)
     else if (token.startsWith("#")) number = token.slice(1)
     else if (sets.has(token) && !set) set = token
     else if (/^\d+[a-z★†]?$/.test(token) && !number) number = token
     else nameTokens.push(token)
   }
   const matches: GalleryArt[] = []
+  const seen = new Set<string>()
   for (const art of arts) {
-    if (set && art.set !== set) continue
-    if (number && (art.collector_number ?? "").toLowerCase() !== number) continue
-    const name = art.name.toLowerCase()
-    if (!nameTokens.every((token) => name.includes(token))) continue
-    matches.push(art)
+    for (const printing of art.printings ?? [art]) {
+      if (seen.has(printing.id)) continue
+      if (set && printing.set !== set) continue
+      if (lang && printing.lang !== lang) continue
+      if (number && (printing.collector_number ?? "").toLowerCase() !== number) continue
+      const name = printing.name.toLowerCase()
+      if (!nameTokens.every((token) => name.includes(token))) continue
+      seen.add(printing.id)
+      matches.push({ ...printing, frame: art.frame })
+    }
   }
   return matches
     .sort(
       (a, b) =>
         a.name.localeCompare(b.name) ||
+        Number(a.lang !== "en") - Number(b.lang !== "en") ||
         a.set.localeCompare(b.set) ||
-        collectorOrder(a.collector_number) - collectorOrder(b.collector_number),
+        collectorOrder(a.collector_number) - collectorOrder(b.collector_number) ||
+        (a.lang ?? "").localeCompare(b.lang ?? ""),
     )
     .slice(0, limit)
+}
+
+export function galleryPrintingCaption(art: GalleryPrinting): string {
+  return [
+    `${art.set.toUpperCase()}${art.collector_number ? ` #${art.collector_number}` : ""}`,
+    art.lang?.toUpperCase(),
+    art.border_color === "borderless" ? "borderless" : undefined,
+    ...(art.frame_effects ?? []),
+    art.promo ? "promo" : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ")
 }
 
 function collectorOrder(number: string | undefined): number {

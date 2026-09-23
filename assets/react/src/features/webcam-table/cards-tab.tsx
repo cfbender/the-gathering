@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn"
 import { CardThumb } from "./board-cards"
 import { printingCaption, usePrintingDetails } from "./card-details"
 import { PanelSection } from "./panel-section"
-import type { GalleryArt } from "./recognition/pipeline"
+import { galleryPrintingCaption, type GalleryArt } from "./recognition/pipeline"
 import type { BoardCard, IdentifiedCard, TableParticipant } from "./use-webcam-room"
 
 export interface CardsTabProps {
@@ -149,7 +149,7 @@ function GallerySearch({
         <Search className="text-base-content/50 size-3.5" />
         <input
           className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-base-content/40"
-          placeholder="Search for a card… (name, set:fin, #274)"
+          placeholder="Search name, set:fin, #274, lang:en"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           aria-label="Search the card gallery"
@@ -174,13 +174,12 @@ function GallerySearch({
             <li key={art.id}>
               <button
                 type="button"
-                className="flex h-7 w-full items-center gap-2 px-2 text-left hover:bg-white/10"
+                className="w-full px-2 py-1.5 text-left hover:bg-white/10"
                 onClick={() => onPick(art)}
               >
-                <span className="truncate font-semibold">{art.name}</span>
-                <span className="text-base-content/55 ml-auto shrink-0 text-[0.65rem]">
-                  {art.set.toUpperCase()}
-                  {art.collector_number ? ` #${art.collector_number}` : ""}
+                <span className="block truncate font-semibold">{art.name}</span>
+                <span className="text-base-content/55 block text-[0.65rem]">
+                  {galleryPrintingCaption(art)}
                 </span>
               </button>
             </li>

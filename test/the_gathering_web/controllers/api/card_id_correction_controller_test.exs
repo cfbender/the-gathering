@@ -63,6 +63,32 @@ defmodule TheGatheringWeb.API.CardIdCorrectionControllerTest do
     assert row["capture_id"] == p["capture_id"]
   end
 
+  test "stores exact sibling and Revised printing labels independently of the ranked art", %{
+    conn: conn,
+    payload: p
+  } do
+    for label <- [
+          "a51fb64d-cc0c-400d-971f-78c28d42043b",
+          "97fa5f07-46ba-408d-a861-bdb1791cc188",
+          "cb9b9a9d-ae4c-4e04-bf9d-cae48f01292c",
+          "6d6deae3-3ed4-47eb-bf4a-4a766ce18135"
+        ] do
+      payload = Map.merge(p, %{"label" => label, "capture_id" => Ecto.UUID.generate()})
+      assert conn |> post(~p"/api/cardid/corrections", payload) |> json_response(201)
+    end
+
+    assert %{corrections: rows} = Corrections.page(0)
+
+    assert Enum.map(rows, & &1["label"]) == [
+             "a51fb64d-cc0c-400d-971f-78c28d42043b",
+             "97fa5f07-46ba-408d-a861-bdb1791cc188",
+             "cb9b9a9d-ae4c-4e04-bf9d-cae48f01292c",
+             "6d6deae3-3ed4-47eb-bf4a-4a766ce18135"
+           ]
+
+    assert Enum.all?(rows, &(&1["top1"] == p["top1"]))
+  end
+
   test "rejects malformed, oversized, and traversing payloads", %{conn: conn, payload: p} do
     for change <- [
           %{"capture_id" => "../escape"},
