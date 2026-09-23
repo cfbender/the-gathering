@@ -1,5 +1,6 @@
 import { Check, ChevronDown } from "lucide-react"
 import { useState, type ReactNode } from "react"
+import { ColorIdentity } from "@/components/mana-symbols"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
@@ -35,15 +36,16 @@ export function CommanderPicker({
           <button
             type="button"
             className={cn(
-              "btn btn-xs h-6 min-h-0 gap-1 border-0 px-2 font-semibold",
+              "btn btn-xs h-6 min-h-0 min-w-0 max-w-full shrink gap-1 border-0 px-2 font-semibold",
               selected ? "btn-ghost text-white/85" : "btn-primary",
             )}
           >
             <CommanderHover deck={open ? undefined : selected}>
-              <span className="max-w-40 truncate">
+              <span className="min-w-0 max-w-40 truncate">
                 {selected ? selected.commander_name : "Select commander"}
               </span>
             </CommanderHover>
+            {selected && <ColorIdentity colors={selected.color_identity} />}
             <ChevronDown className="size-3 shrink-0 opacity-70" />
           </button>
         )}
@@ -73,7 +75,10 @@ export function CommanderPicker({
                       className={cn("size-3.5 shrink-0", deck.id !== selectedDeckId && "invisible")}
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold">{deck.commander_name}</span>
+                      <span className="flex items-center gap-1 font-semibold">
+                        <span className="truncate">{deck.commander_name}</span>
+                        <ColorIdentity colors={deck.color_identity} />
+                      </span>
                       <span className="text-base-content/55 block truncate text-xs">
                         {deck.name}
                       </span>

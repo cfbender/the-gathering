@@ -9,12 +9,13 @@ import {
   Layers,
   ScanSearch,
   ScrollText,
+  Settings,
   Shuffle,
   Users,
   WalletCards,
   Wifi,
 } from "lucide-react"
-import type { ComponentType } from "react"
+import type { ComponentType, ReactNode } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
@@ -24,9 +25,11 @@ import { PanelSection } from "./panel-section"
 import type { RecognizerState } from "./recognition/use-recognizer"
 import type { TableEvent, TableParticipant } from "./use-webcam-room"
 
-export type PanelTab = "table" | "decks" | "cards" | "log"
+export type PanelTab = "table" | "decks" | "cards" | "log" | "settings"
 
 interface Props extends CardsTabProps {
+  settings: ReactNode
+  onHelp: () => void
   open: boolean
   tab: PanelTab
   onOpenChange: (open: boolean) => void
@@ -56,6 +59,7 @@ const TABS: { id: PanelTab; label: string; icon: ComponentType<{ className?: str
   { id: "decks", label: "Decks", icon: Layers },
   { id: "cards", label: "Cards", icon: WalletCards },
   { id: "log", label: "Log", icon: ScrollText },
+  { id: "settings", label: "Settings", icon: Settings },
 ]
 
 export function describeIceServers(servers: RTCIceServer[]): string {
@@ -403,9 +407,18 @@ export function SidePanel(props: Props) {
             </button>
           )
         })}
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={props.onHelp}
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts (?)"
+        >
+          ?
+        </button>
       </nav>
       {open && (
-        <div className="bg-base-200 min-h-0 flex-1 overflow-y-auto border-t border-white/10 lg:w-72 lg:border-t-0 lg:border-l">
+        <div className="bg-base-200 min-h-0 min-w-0 flex-1 overflow-y-auto border-t border-white/10 lg:w-[var(--table-panel-width)] lg:flex-none lg:border-t-0 lg:border-l">
           {props.error && (
             <div
               role="alert"
@@ -414,7 +427,7 @@ export function SidePanel(props: Props) {
               {props.error}
             </div>
           )}
-          <Content {...props} />
+          {tab === "settings" ? props.settings : <Content {...props} />}
         </div>
       )}
     </div>

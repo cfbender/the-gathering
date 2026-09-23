@@ -2,6 +2,7 @@ import { Heart, Minus, Plus, Video, VideoOff } from "lucide-react"
 import type { ButtonHTMLAttributes, ReactNode } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
+import { commanderBackground } from "./commander-colors"
 import { CommanderPicker } from "./commander-picker"
 import type { TableParticipant } from "./use-webcam-room"
 
@@ -50,6 +51,11 @@ export function SeatBar({
 
   return (
     <div
+      style={{
+        background: commanderBackground(
+          decks.find((deck) => deck.id === participant.deck_id)?.color_identity ?? "",
+        ),
+      }}
       className={cn(
         "flex items-center gap-1.5 border-t border-white/10 bg-base-100 text-white",
         compact ? "h-7 px-1.5 text-[0.7rem]" : "h-9 px-2 text-xs",
@@ -119,7 +125,14 @@ export function TileCommanderRow({
   counters,
 }: Pick<Props, "participant" | "decks" | "onChooseDeck" | "counters">) {
   return (
-    <div className="flex h-7 items-center gap-1 bg-base-100 px-1.5">
+    <div
+      className="flex h-7 items-center gap-1 bg-base-100 px-1.5"
+      style={{
+        background: commanderBackground(
+          decks.find((deck) => deck.id === participant.deck_id)?.color_identity ?? "",
+        ),
+      }}
+    >
       {counters}
       <div className="ml-auto min-w-0 [&>button]:max-w-full">
         <CommanderPicker

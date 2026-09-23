@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
 import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { getPlayers } from "@/features/games/games"
 import { useCurrentUser } from "@/lib/auth"
@@ -14,6 +14,8 @@ import { decodeImage, useRecognizer, type RecognizerState } from "./recognition/
 import { SeatBar, TileCommanderRow } from "./seat-bar"
 import { SeatCounterControls } from "./seat-counter-controls"
 import { SidePanel, type PanelTab } from "./side-panel"
+import { HotkeyHelp, useTableHotkeys } from "./table-hotkeys"
+import { RailResizeHandle, TableSettings, useTablePreferences } from "./table-preferences"
 import {
   useWebcamRoom,
   type BoardCard,
@@ -157,6 +159,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   const [finishOpen, setFinishOpen] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
   const [panelTab, setPanelTab] = useState<PanelTab>("table")
+  const [helpOpen, setHelpOpen] = useState(false)
+  const preferences = useTablePreferences(playerId)
   const playedAt = useRef(new Date())
   const board = useActiveBoard(room.participants, room.peerId)
 
@@ -194,7 +198,12 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       recognition.status === "skipped" ||
       (recognition.status === "done" && !isClear(candidates)))
   const pickerOpen =
-    room.capture !== null && captureOwner !== undefined && !preview && (needsChoice || !!picker)
+    room.capture !== null &&
+    captureOwner !== undefined &&
+    !preview &&
+    !helpOpen &&
+    !finishOpen &&
+    (needsChoice || !!picker)
 
   /** Adds the card to the owner's board list at every seat and shows it; a card that is one of
    * the owner's commanders also picks that deck when they have not chosen one yet. Replaces the
@@ -239,6 +248,35 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     setPicker(null)
     room.dismissCapture()
   }
+
+  useTableHotkeys(preferences.hotkeys, pickerOpen, (action) => {
+    switch (action) {
+      case "gainLife":
+        return room.changeLife(1)
+      case "loseLife":
+        return room.changeLife(-1)
+      case "camera":
+        return room.toggleCamera()
+      case "panel":
+        return setPanelOpen((open) => !open)
+      case "help":
+        return setHelpOpen(true)
+      case "dismiss":
+        return dismissPicker()
+      case "previous":
+      case "next": {
+        const index = seated.findIndex(
+          (participant) => participant.peer_id === activeParticipant.peer_id,
+        )
+        const next = seated[(index + (action === "next" ? 1 : -1) + seated.length) % seated.length]
+        if (next) board.select(next.peer_id)
+        return
+      }
+      default:
+        setPanelTab(action)
+        setPanelOpen(true)
+    }
+  })
 
   useEffect(() => {
     function choose(event: KeyboardEvent) {
@@ -287,7 +325,15 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   )
 
   return (
-    <div className="grid h-dvh grid-rows-[auto_minmax(0,1fr)_auto] bg-black text-white lg:grid-cols-[13rem_minmax(0,1fr)_auto] lg:grid-rows-1">
+    <div
+      className="grid h-dvh grid-rows-[auto_minmax(0,1fr)_auto] bg-black text-white lg:grid-cols-[var(--table-camera-width)_0.375rem_minmax(0,1fr)_auto_auto] lg:grid-rows-1"
+      style={
+        {
+          "--table-camera-width": `min(${preferences.camera}px, 24vw)`,
+          "--table-panel-width": `min(${preferences.panel}px, 32vw)`,
+        } as CSSProperties
+      }
+    >
       <aside
         className="flex gap-1.5 overflow-x-auto p-1.5 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto"
         aria-label="Player cameras"
@@ -321,6 +367,12 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           </div>
         ))}
       </aside>
+
+      <RailResizeHandle
+        rail="camera"
+        width={preferences.camera}
+        onChange={(width) => preferences.setWidth("camera", width)}
+      />
 
       <section className="relative flex min-h-0 min-w-0 flex-col" aria-label="Active board">
         <div className="relative min-h-0 flex-1">
@@ -384,7 +436,26 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         {seatBarFor(activeParticipant, "board")}
       </section>
 
+      {panelOpen ? (
+        <RailResizeHandle
+          rail="panel"
+          width={preferences.panel}
+          onChange={(width) => preferences.setWidth("panel", width)}
+        />
+      ) : (
+        <div className="hidden lg:block" />
+      )}
+
       <SidePanel
+        onHelp={() => setHelpOpen(true)}
+        settings={
+          <TableSettings
+            hotkeys={preferences.hotkeys}
+            onHotkeysChange={preferences.setHotkeys}
+            onResetWidths={preferences.resetWidths}
+            onHelp={() => setHelpOpen(true)}
+          />
+        }
         open={panelOpen}
         tab={panelTab}
         onOpenChange={setPanelOpen}
@@ -416,6 +487,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         onRandomizeSeats={room.randomizeSeats}
         onEndGame={() => setFinishOpen(true)}
       />
+
+      <HotkeyHelp open={helpOpen} onOpenChange={setHelpOpen} />
 
       {finishOpen && (
         <FinishGame

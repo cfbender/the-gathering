@@ -155,22 +155,40 @@ always large, everyone else is small, and controls live in a collapsible column.
 └──────────┴─────────────────────────────────────────────┴──┴──────────────┘
 ```
 
-- **Camera rail** (left, `lg:` 13 rem): every seat as a 16:9 tile with a life badge, a compact
+- **Camera rail** (left, `lg:` defaults to 13 rem): every seat as a 16:9 tile with a life badge, a compact
   name bar (camera indicator, ± for your own seat), and that seat's commander action.
   Empty seats up to four render as dashed "Open seat" placeholders. Clicking a tile makes it the
-  active board and pins it.
+  active board and pins it. The rail scrolls vertically without shrinking tiles, including larger
+  rosters; on smaller screens it remains a horizontal strip.
+- **Commander identity** colors both the rail and active-board name bars: one muted solid for
+  mono-color, a WUBRG-ordered gradient for multiple colors, and neutral for colorless or unknown.
+  Commander names show identity pips using the existing mana symbols. The source is the decks
+  API's stored `color_identity` (including partners), not a browser Scryfall request. An empty
+  identity is treated as unknown, not falsely labelled colorless; explicit `C` shows its pip.
 - **Active board** (center): the stage fills the remaining viewport. The large life badge sits
   top-left, a Pin/Pinned toggle top-right, and a name bar underneath carries life controls,
   the camera toggle, and the "Select commander" popover. Unpinned, the stage follows the newest
   remote joiner; when the active player leaves it falls back to your own board. Clicking the
   video starts the click-to-identify flow, and the suggestion card floats bottom-center over the
   stage (keys 1–5 still pick).
-- **Side panel** (right): a narrow icon strip (Table, Decks, Log) plus a collapse chevron. The
+- **Side panel** (right): a narrow icon strip (Table, Decks, Cards, Log, Settings) plus a collapse chevron and shortcut help. The
   Table tab holds the Setup section (players count, Invite players copies the room URL, Select
   your commander, a turn-order table with #/Player/Commander/Life, the primary Randomize turn
   order button, the red End game button, Leave table) followed by collapsed Identify cards and
   Connection sections. Decks lists your commanders; Log shows the table event log. Collapsing the
   panel leaves only the icon strip so the board grows.
+- **Resize dividers** on desktop drag the camera rail (176–360 px, default 208) and panel content
+  (240–480 px, default 288); widths also cap at 24vw / 32vw to preserve board space. Double-click
+  resets one divider. Focus a divider and use Left/Right to resize by 16 px, Home to reset.
+  Settings offers a reset for both widths and a hotkeys toggle. Preferences persist per player
+  in this browser under `the-gathering:table-preferences:<playerId>`; they are not room state.
+- **Keyboard shortcuts**: `+` / `=` gains one life, `-` loses one life (always your own seat),
+  `C` toggles your camera, `B` collapses/expands the panel, `T` / `D` / `A` / `L` / `S` opens
+  Table / Decks / Cards / Log / Settings, `[` / `]` selects and pins the previous/next board,
+  and `?` opens shortcut help. Shortcuts pause while typing, using a keyboard widget, or an
+  overlay is open; modified, composing, and repeat key events are ignored. The card picker
+  retains `1`–`5` and `/`. Escape closes overlays even with table shortcuts disabled.
+  These are provisional bindings pending the Convoke reference; additional settings await that reference too.
 - The `/table/*` routes force the dark theme (`TableShell` in `routes/__root.tsx` swaps
   `data-theme` on mount and restores the user's choice on unmount) so portalled popovers and
   dialogs match the black stage. They render no application header.
