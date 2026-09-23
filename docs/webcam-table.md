@@ -14,7 +14,8 @@ a native-resolution crop from the camera owner's browser, runs the card recogniz
 clicking browser, and shows five numbered candidates plus a gallery search; confirming one posts
 an "identified" line to every seat's log. The recognizer bundle is published to the server from
 `ml/` (see **Recognition** and `ml/README.md`); when the server has none, the panel falls back
-to that player's known commanders as deck-based suggestions.
+to your own known commanders as deck-based suggestions (only on clicks over your own board, since
+only a seat's owner may choose its commander).
 
 ## Decisions
 
@@ -371,8 +372,8 @@ can still save or share what they saw; this feature cannot revoke frames already
 - `features/webcam-table/board.tsx` — `ActiveBoard`, `CameraTile`, `OpenSeat`, `LifeBadge`,
   elimination/current-turn overlays, and `capturePoint` (click → normalized coordinates).
 - `features/webcam-table/seat-bar.tsx` — the name/life/camera bar under a board or tile.
-- `features/webcam-table/commander-picker.tsx` — popover listing a player's decks; any seat can
-  set another player's commander (the server still verifies deck ownership).
+- `features/webcam-table/commander-picker.tsx` — popover listing your own decks; other seats see a
+  read-only commander label, and the server rejects `choose_deck` for decks you do not own.
 - `features/webcam-table/card-suggestions.tsx` — the click-to-identify overlay: crop with the
   detected quad, five numbered candidates, gallery search, timings.
 - `features/webcam-table/recognition/` — `use-recognizer.ts` (hook owning the worker and its

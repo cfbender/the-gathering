@@ -118,7 +118,6 @@ type DataMessage =
       private: boolean
       shareCorrections?: boolean
     }
-  | { type: "deck_suggestion"; deckId: number }
   | { type: "card_identified"; entry: BoardCard }
   | { type: "card_removed"; id: string }
   /** Sent when a data channel opens so a late joiner sees the cards already on the table. */
@@ -326,8 +325,6 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
             inspect: pending.inspect,
             ...message,
           })
-      } else if (message.type === "deck_suggestion") {
-        chooseDeck(message.deckId)
       } else if (message.type === "card_identified") {
         mergeCards([message.entry])
       } else if (message.type === "cards_sync") {
@@ -336,7 +333,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         dropCard(message.id)
       }
     },
-    [chooseDeck, dropCard, mergeCards],
+    [dropCard, mergeCards],
   )
 
   useEffect(() => {
@@ -824,15 +821,6 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     broadcast({ type: "card_removed", id })
   }
 
-  function suggestDeck(targetPeerId: string, suggestedDeckId: number) {
-    if (targetPeerId === peerIdRef.current) chooseDeck(suggestedDeckId)
-    else
-      peersRef.current
-        .get(targetPeerId)
-        ?.channel?.send(JSON.stringify({ type: "deck_suggestion", deckId: suggestedDeckId }))
-    setCapture(null)
-  }
-
   /** Participants in shared seat order; the End game form records seats in this order. */
   const seatedParticipants = useMemo(
     () =>
@@ -873,7 +861,6 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     status,
     error,
     requestCapture,
-    suggestDeck,
     announceCard,
     removeCard,
     chooseDeck,

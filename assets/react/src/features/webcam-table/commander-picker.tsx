@@ -18,8 +18,8 @@ interface Props {
   align?: "start" | "center" | "end"
 }
 
-/** Lists one player's recorded decks so any seat at the table can set that player's commander.
- * The channel rejects decks that do not belong to the seated player. */
+/** Lists the local player's recorded decks so they can pick their own commander. Only the seat
+ * owner renders it; the channel also rejects decks that do not belong to the seated player. */
 export function CommanderPicker({
   playerId,
   playerName,
