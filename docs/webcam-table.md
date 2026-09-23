@@ -477,10 +477,21 @@ duplicate legacy rows are retained as aliases in training metadata but not embed
 Exact-printing corrections map back to the shared artwork for training and evaluation.
 The separate deck printing picker remains English-only.
 
-In the browser, `useRecognizer` fetches `GET /api/cardid/bundle` once per table, starts a Web
-Worker, loads the three graphs plus `arts.json`, and runs one warm-up identify so the first real
-click is not slow. The "Identify cards" section of the side panel shows `checking`, `loading`,
-`ready` (with gallery size and load time), `unavailable` (no bundle published) or `failed`.
+Room entry does not create a recognition worker or fetch models. The first card click or
+gallery search starts `useRecognizer`: it fetches `GET /api/cardid/bundle`, creates the worker,
+loads the three graphs plus compact `arts.json`, and warms up. Concurrent actions share this
+load. The first action waits, displaying "loading card scanner…" or "Loading gallery…";
+only then does the two-second inference timeout begin. Settings > Card scan shows "Not loaded"
+until scanning starts, then `checking`, `loading`, `ready` (version, artwork count and load
+time), `unavailable`, or `failed`. Leaving the room terminates the worker and pending actions.
+
+New exports put sibling printing records in the separate, versioned `printings.json` file.
+Only the first gallery search or expansion of a candidate's printing choices downloads it;
+ordinary image identification needs only `arts.json`. The optional file is shared between
+search/expansion requests and cached by bundle version. Expanding displays loading/retry
+states, and choosing a sibling preserves its exact face, language, set and collector number.
+Old bundles (embedded siblings or representative-only) still work. Re-export/publish a new
+version on the training box to get the split; see `ml/README.md`. No room protocol changes.
 
 Each capture runs identify with a two second timeout: detector pass over the 640 px crop, a
 refine pass on the detected card, upright vote, embed all six art cuts, gallery search. A top-1
@@ -558,7 +569,7 @@ The popup's **printing arrows** wrap around all pages of the existing English pa
 list, newest first. It starts on the clicked printing; if absent (for example, another language
 or a face-specific gallery entry), that printing is prepended. The counter and set/collector
 caption track the displayed printing; browsing never changes the tray. Neighbouring images are
-prefetched. Left/Right works only while the preview has focus, not while typing, using a keyboard
+prefetched (only the two neighbours, at low browser priority). Left/Right works only while the preview has focus, not while typing, using a keyboard
 widget, or viewing rulings. Table shortcuts remain paused under the preview.
 
 Preview and card hover show Scryfall USD prices: `$0.25 · Foil $1.10 · Etched $1.25`, omitting
@@ -569,6 +580,14 @@ clicked card; failed printing lists can be retried.
 Page requests are spaced by 500 ms to respect the existing Scryfall search limit. The list
 excludes tokens and memorabilia, matching the catalog/details contract (Scryfall includes
 memorabilia basic lands in printing searches).
+
+All catalog card images now pass through the authenticated, same-origin image cache described
+in the README. Thumbnails use `small`, previews `normal`, and art tiles `art_crop`; off-screen
+images load lazily and decode asynchronously. The server shares concurrent misses across seats
+and limits upstream image downloads to four at once. Disk storage is `DATA_DIR/card-images`,
+bounded to 512 MiB with oldest-written eviction and 30-day expiry; browsers cache for one day
+and can revalidate using ETags. No new environment variables, service worker, or image
+transformations. `x-card-image-cache: hit|miss` distinguishes server disk reuse from downloads.
 
 Backlog:
 

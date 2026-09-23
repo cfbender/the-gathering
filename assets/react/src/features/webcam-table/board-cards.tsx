@@ -22,6 +22,7 @@ export function CardThumb({
       src={src}
       alt={card.name}
       loading="lazy"
+      decoding="async"
       className="aspect-[5/7] w-full rounded-[4.5%] bg-black object-cover"
     />
   ) : (

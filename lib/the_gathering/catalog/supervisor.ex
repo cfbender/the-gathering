@@ -10,6 +10,7 @@ defmodule TheGathering.Catalog.Supervisor do
     Supervisor.init(
       [
         {Task.Supervisor, name: TheGathering.Catalog.TaskSupervisor},
+        TheGathering.Catalog.CardImages,
         TheGathering.Catalog.SyncServer
       ],
       strategy: :one_for_one

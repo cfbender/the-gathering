@@ -44,6 +44,8 @@ export function usePreviewPrintings(initial: IdentifiedCard) {
     for (const printing of [previous, next]) {
       if (printing.image_uris?.normal) {
         const image = new Image()
+        image.fetchPriority = "low"
+        image.decoding = "async"
         image.src = printing.image_uris.normal
       }
     }

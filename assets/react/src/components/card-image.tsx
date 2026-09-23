@@ -37,6 +37,7 @@ export function CardImage({ imageUris, name, variant = "art", className }: CardI
       src={src}
       alt={name}
       loading="lazy"
+      decoding="async"
       onError={() => setFailed(true)}
       className={cn(
         "bg-base-300 object-cover",

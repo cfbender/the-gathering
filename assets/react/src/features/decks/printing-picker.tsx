@@ -58,7 +58,13 @@ export function PrintingPicker({
         onClick={() => setOpen(true)}
       >
         {preview && (
-          <img src={preview} alt="" className="h-12 w-16 shrink-0 rounded-md object-cover" />
+          <img
+            src={preview}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-12 w-16 shrink-0 rounded-md object-cover"
+          />
         )}
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium">Choose printing</span>
@@ -126,6 +132,7 @@ export function PrintingPicker({
                       src={printing.image_uris.normal}
                       alt=""
                       loading="lazy"
+                      decoding="async"
                       className="aspect-[5/7] w-full rounded-lg object-contain"
                     />
                   )}

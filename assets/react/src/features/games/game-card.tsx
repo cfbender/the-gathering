@@ -13,6 +13,7 @@ function TablePlayer({ seat }: { seat: Seat }) {
             src={seat.deck.commander_art_crop_url}
             alt=""
             loading="lazy"
+            decoding="async"
             className="absolute inset-0 size-full object-cover"
             onError={(event) => (event.currentTarget.hidden = true)}
           />
@@ -66,6 +67,7 @@ export function GameCard({ game }: { game: Game }) {
               src={winner.deck.commander_art_crop_url}
               alt=""
               loading="lazy"
+              decoding="async"
               className="absolute inset-0 -z-20 size-full object-cover object-[center_35%]"
               onError={(event) => (event.currentTarget.hidden = true)}
             />

@@ -15,6 +15,7 @@ export function CardArtBackground({
         src={imageUrl}
         alt=""
         loading="lazy"
+        decoding="async"
         className={cn(
           "absolute inset-0 h-full w-full object-cover opacity-75 transition duration-300",
           interactive && "group-hover:opacity-45",

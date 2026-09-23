@@ -22,6 +22,13 @@ defmodule TheGatheringWeb.Router do
     plug TheGatheringWeb.UserAuth, :require_authenticated_user
   end
 
+  # <img> requests negotiate images, not the JSON API's Accept header.
+  pipeline :card_images do
+    plug :fetch_session
+    plug TheGatheringWeb.UserAuth, :fetch_current_scope_for_user
+    plug TheGatheringWeb.UserAuth, :require_authenticated_user
+  end
+
   pipeline :require_admin do
     plug TheGatheringWeb.UserAuth, :require_admin
   end
@@ -36,6 +43,11 @@ defmodule TheGatheringWeb.Router do
 
   pipeline :rate_limit_sudo do
     plug TheGatheringWeb.RateLimit, bucket: :sudo
+  end
+
+  scope "/api", TheGatheringWeb.API do
+    pipe_through :card_images
+    get "/card-images", CardImageController, :show
   end
 
   scope "/api", TheGatheringWeb.API do

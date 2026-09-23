@@ -1,5 +1,5 @@
 defmodule TheGatheringWeb.API.CardJSON do
-  alias TheGathering.Catalog.Card
+  alias TheGathering.Catalog.{Card, CardImages}
 
   def index(%{cards: cards}), do: %{data: Enum.map(cards, &summary/1)}
   def show(%{card: card}), do: %{data: detail(card)}
@@ -12,7 +12,8 @@ defmodule TheGatheringWeb.API.CardJSON do
       mana_cost: card.mana_cost,
       type_line: card.type_line,
       color_identity: card.color_identity,
-      image_uris: Map.take(card.image_uris || %{}, ["small", "normal", "art_crop"]),
+      image_uris:
+        CardImages.urls(Map.take(card.image_uris || %{}, ["small", "normal", "art_crop"])),
       can_be_commander: card.can_be_commander,
       commander_pairing: card.commander_pairing
     }

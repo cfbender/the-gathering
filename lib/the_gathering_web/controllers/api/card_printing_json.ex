@@ -1,4 +1,6 @@
 defmodule TheGatheringWeb.API.CardPrintingJSON do
+  alias TheGathering.Catalog.CardImages
+
   def index(%{printings: printings, has_more: has_more}),
     do: %{data: Enum.map(printings, &summary/1), has_more: has_more}
 
@@ -31,10 +33,12 @@ defmodule TheGatheringWeb.API.CardPrintingJSON do
           :prices,
           :scryfall_uri
         ])
+        |> Map.update!(:image_uris, &CardImages.urls/1)
     }
   end
 
   defp summary(printing) do
     Map.take(printing, [:id, :name, :set_code, :set_name, :collector_number, :lang, :image_uris])
+    |> Map.update!(:image_uris, &CardImages.urls/1)
   end
 end
