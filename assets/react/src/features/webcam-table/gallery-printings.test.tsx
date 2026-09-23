@@ -59,6 +59,34 @@ const result: Identification = {
 }
 const search = async (query: string) => searchArts([art], query)
 
+it("fetches slim bundle siblings only when expanded and selects the exact returned printing", async () => {
+  const choose = vi.fn()
+  const load = vi.fn().mockResolvedValue(art.printings!.map((p) => ({ ...p, frame: art.frame })))
+  const candidate = { ...result.candidates[0]!, printings: undefined, printing_count: 2 }
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <CardSuggestions
+        capture={capture}
+        playerName="Cody"
+        recognition={{ status: "done", result: { ...result, candidates: [candidate] } }}
+        deckSuggestions={[]}
+        gallerySearchable
+        onChooseCard={choose}
+        onChooseDeck={vi.fn()}
+        onSearch={search}
+        onPrintings={load}
+        galleryVersion="v2"
+        onDismiss={vi.fn()}
+      />
+    </QueryClientProvider>,
+  )
+  expect(load).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByText("2 printings of Sol Talisman"))
+  fireEvent.click(await screen.findByRole("button", { name: "MH2 #236 · EN" }))
+  expect(load).toHaveBeenCalledWith(art.id)
+  expect(choose).toHaveBeenCalledWith(expect.objectContaining({ id: art.printings![0]!.id }))
+})
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()

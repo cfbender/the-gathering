@@ -10,6 +10,7 @@
 import * as ort from "onnxruntime-web/wasm"
 import mjsUrl from "onnxruntime-web/ort-wasm-simd-threaded.mjs?url"
 import wasmUrl from "onnxruntime-web/ort-wasm-simd-threaded.wasm?url"
+import { galleryPrintings } from "./gallery"
 import type { BundleInfo, Identification, WorkerRequest, WorkerResponse } from "./messages"
 import {
   fromWindow,
@@ -35,6 +36,7 @@ interface Loaded {
   version: string
   constants: BundleConstants
   arts: GalleryArt[]
+  printings: () => Promise<GalleryArt[]>
   detector: ort.InferenceSession
   embed: ort.InferenceSession
   search: ort.InferenceSession
@@ -68,7 +70,15 @@ async function load(bundle: BundleInfo) {
     fetchBytes(bundle.files["arts.json"]),
   ])
   const arts = JSON.parse(new TextDecoder().decode(artsBytes)) as GalleryArt[]
-  loaded = { version: bundle.version, constants: bundle.constants, arts, detector, embed, search }
+  loaded = {
+    version: bundle.version,
+    constants: bundle.constants,
+    arts,
+    detector,
+    embed,
+    search,
+    printings: galleryPrintings(arts, bundle.files["printings.json"]),
+  }
   // The first run of each graph pays for kernel setup; do it now, not on the first click.
   const size = bundle.constants.det_input
   const blank: RgbaImage = {
@@ -179,13 +189,21 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       reply({
         type: "matches",
         id: request.id,
-        arts: loaded ? searchArts(loaded.arts, request.query) : [],
+        arts: loaded ? searchArts(await loaded.printings(), request.query) : [],
+      })
+    } else if (request.type === "printings") {
+      const art = (await loaded?.printings())?.find((art) => art.id === request.artId)
+      reply({
+        type: "matches",
+        id: request.id,
+        arts: art
+          ? (art.printings ?? [art]).map((printing) => ({ ...printing, frame: art.frame }))
+          : [],
       })
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (request.type === "load") reply({ type: "load_failed", message })
-    else if (request.type === "identify")
-      reply({ type: "identify_failed", id: request.id, message })
+    else reply({ type: "identify_failed", id: request.id, message })
   }
 }

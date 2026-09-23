@@ -39,6 +39,8 @@ export interface GalleryPrinting {
 export interface GalleryArt extends GalleryPrinting {
   frame: string
   illustration_id?: string
+  url?: string
+  printing_count?: number
   printings?: GalleryPrinting[]
 }
 

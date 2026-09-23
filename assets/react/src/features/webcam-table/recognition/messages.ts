@@ -9,7 +9,7 @@ export interface BundleInfo {
   files: Record<
     "manifest.json" | "arts.json" | "detector.onnx" | "embed.onnx" | "search.onnx",
     string
-  >
+  > & { "printings.json"?: string }
 }
 
 export type WorkerRequest =
@@ -26,6 +26,7 @@ export type WorkerRequest =
       y: number
     }
   | { type: "search"; id: number; query: string }
+  | { type: "printings"; id: number; artId: string }
 
 export interface Identification {
   quad: Quad

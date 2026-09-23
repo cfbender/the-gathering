@@ -1,4 +1,5 @@
 import { Search, X } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import { useEffect, useRef, useState } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
@@ -34,27 +35,48 @@ interface Props {
   onChooseCard: (art: GalleryArt) => void
   onChooseDeck: (deckId: number) => void
   onSearch: (query: string) => Promise<GalleryArt[]>
+  onPrintings?: (artId: string) => Promise<GalleryArt[]>
+  galleryVersion?: string
   onDismiss: () => void
 }
 
 function PrintingChoices({
   art,
   onChoose,
+  onPrintings,
+  version,
 }: {
   art: GalleryArt
   onChoose: (art: GalleryArt) => void
+  onPrintings: Props["onPrintings"]
+  version: string | undefined
 }) {
-  if (!art.printings || art.printings.length < 2) return null
+  const [open, setOpen] = useState(false)
+  const query = useQuery({
+    queryKey: ["gallery-printings", version, art.id],
+    queryFn: () => onPrintings!(art.id),
+    enabled: open && !art.printings && !!onPrintings,
+    staleTime: Infinity,
+  })
+  const printings = art.printings ?? query.data ?? []
+  const count = art.printing_count ?? art.printings?.length ?? 0
+  if (count < 2) return null
   return (
-    <details className="ml-7 text-xs">
+    <details className="ml-7 text-xs" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="cursor-pointer py-1 text-white/60 hover:text-white">
-        {art.printings.length} printings of {art.name}
+        {count} printings of {art.name}
       </summary>
+      {open && !art.printings && query.isPending && <p role="status">Loading printings…</p>}
+      {open && query.isError && (
+        <button type="button" onClick={() => void query.refetch()}>
+          Retry loading printings
+        </button>
+      )}
       <ul
         className="max-h-40 overflow-y-auto rounded-md border border-white/10"
         aria-label={`Printings of ${art.name}`}
       >
-        {art.printings.map((printing) => (
+        {printings.map((printing) => (
           <li key={printing.id} className="grid">
             <CardHover id={printing.id} name={printing.name}>
               <button
@@ -88,6 +110,8 @@ export function CardSuggestions({
   onChooseCard,
   onChooseDeck,
   onSearch,
+  onPrintings,
+  galleryVersion,
   onDismiss,
 }: Props) {
   const [query, setQuery] = useState("")
@@ -191,7 +215,12 @@ export function CardSuggestions({
                     </span>
                   </button>
                 </CardHover>
-                <PrintingChoices art={art} onChoose={onChooseCard} />
+                <PrintingChoices
+                  art={art}
+                  onChoose={onChooseCard}
+                  onPrintings={onPrintings}
+                  version={galleryVersion}
+                />
               </div>
             ))}
             {recognition.status === "skipped" &&

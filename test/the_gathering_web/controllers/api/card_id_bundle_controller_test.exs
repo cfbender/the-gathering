@@ -50,6 +50,26 @@ defmodule TheGatheringWeb.API.CardIdBundleControllerTest do
     assert conn |> get(~p"/api/cardid/bundles/v1/embed.onnx") |> response(200)
   end
 
+  test "only advertises the optional sibling file when the manifest includes it", %{
+    conn: conn,
+    root: root
+  } do
+    publish(root, "v1")
+    data = conn |> get(~p"/api/cardid/bundle") |> json_response(200)
+    refute Map.has_key?(data["data"]["files"], "printings.json")
+
+    manifest_path = Path.join([root, "v1", "manifest.json"])
+    manifest = manifest_path |> File.read!() |> Jason.decode!()
+    File.write!(manifest_path, Jason.encode!(put_in(manifest, ["files", "printings.json"], %{})))
+    File.write!(Path.join([root, "v1", "printings.json"]), ~s({"a":[{"id":"sibling"}]}))
+    data = conn |> get(~p"/api/cardid/bundle") |> json_response(200)
+    url = data["data"]["files"]["printings.json"]
+    assert url == "/api/cardid/bundles/v1/printings.json"
+    response = get(conn, url)
+    assert json_response(response, 200) == %{"a" => [%{"id" => "sibling"}]}
+    assert get_resp_header(response, "cache-control") == ["private, max-age=31536000, immutable"]
+  end
+
   test "refuses files outside the bundle", %{conn: conn, root: root} do
     publish(root, "v1")
     File.write!(Path.join(root, "secret.txt"), "nope")
