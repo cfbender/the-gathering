@@ -181,6 +181,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     life: room.life,
     ...room.counters,
     camera_off: room.cameraOff,
+    eliminated: false,
     joined_at: Number.MAX_SAFE_INTEGER,
   }
   const seated = room.participants.some((participant) => participant.peer_id === room.peerId)
@@ -538,6 +539,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         onRandomizeSeats={room.randomizeSeats}
         shuffleVersion={room.shuffleVersion}
         onRoll={room.rollDice}
+        onSetEliminated={room.setEliminated}
         onEndGame={() => {
           void room.changeTimer("pause").then((state) => {
             if (!state) return

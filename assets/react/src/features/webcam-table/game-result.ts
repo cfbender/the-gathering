@@ -1,4 +1,10 @@
 import type { TableParticipant } from "./use-webcam-room"
+import { activeTurnOrder } from "./table-events"
+
+export function suggestedWinner(participants: TableParticipant[]): string {
+  const remaining = activeTurnOrder(participants)
+  return participants.length >= 2 && remaining.length === 1 ? remaining[0]!.peer_id : ""
+}
 
 interface ResultDetails {
   playedAt: Date

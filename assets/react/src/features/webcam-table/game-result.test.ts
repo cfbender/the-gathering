@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test"
-import { buildGamePayload } from "./game-result"
+import { buildGamePayload, suggestedWinner } from "./game-result"
 import { EMPTY_COUNTERS } from "./seat-counters"
 
-const seat = { ...EMPTY_COUNTERS, life: 40, camera_off: false, joined_at: 1_000 }
+const seat = { ...EMPTY_COUNTERS, life: 40, camera_off: false, eliminated: false, joined_at: 1_000 }
 const participants = [
   {
     ...seat,
@@ -45,6 +45,26 @@ describe("buildGamePayload", () => {
       "loss",
       "loss",
       "win",
+    ])
+  })
+
+  it("suggests the sole remaining player and records eliminated losses in seat order", () => {
+    const seated = participants.map((player, index) => ({ ...player, eliminated: index === 1 }))
+    expect(suggestedWinner(seated)).toBe("peer-a")
+    expect(suggestedWinner(participants)).toBe("")
+    expect(suggestedWinner(seated.map((player) => ({ ...player, eliminated: true })))).toBe("")
+    expect(suggestedWinner([participants[0]!])).toBe("")
+    const payload = buildGamePayload(seated, {
+      playedAt: new Date("2026-09-22T19:30:00Z"),
+      winner: suggestedWinner(seated),
+      duration: "73",
+      turns: "",
+      winCondition: "",
+      notes: "",
+    })
+    expect(payload.game.seats).toEqual([
+      { player_id: 12, deck_id: 41, seat: 1, result: "win" },
+      { player_id: 27, deck_id: null, seat: 2, result: "loss" },
     ])
   })
 

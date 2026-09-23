@@ -45,6 +45,7 @@ const seat: TableParticipant = {
   deck_id: 7,
   life: 40,
   camera_off: false,
+  eliminated: false,
   joined_at: 1000,
 }
 

@@ -31,6 +31,7 @@ import { CommanderPicker } from "./commander-picker"
 import { CommanderActions } from "./new-commander-dialog"
 import { PanelSection } from "./panel-section"
 import type { RecognizerState } from "./recognition/use-recognizer"
+import { activeTurnOrder } from "./table-events"
 import { TableRolls, type RollRequest } from "./table-rolls"
 import type { TableEvent, TableParticipant } from "./use-webcam-room"
 
@@ -62,6 +63,7 @@ interface Props extends CardsTabProps {
   onRandomizeSeats: () => void
   shuffleVersion: number
   onRoll: (request: RollRequest) => void
+  onSetEliminated: (peerId: string, eliminated: boolean) => void
   onEndGame: () => void
 }
 
@@ -131,7 +133,11 @@ function SeatOrderTable({
   localParticipant,
   decks,
   shuffleVersion,
-}: Pick<Props, "participants" | "localParticipant" | "decks" | "shuffleVersion">) {
+  onSetEliminated,
+}: Pick<
+  Props,
+  "participants" | "localParticipant" | "decks" | "shuffleVersion" | "onSetEliminated"
+>) {
   const [step, setStep] = useState(0)
   const body = useRef<HTMLTableSectionElement>(null)
   const positions = useRef(new Map<string, number>())
@@ -148,6 +154,9 @@ function SeatOrderTable({
   }, [shuffleVersion])
   const offset = participants.length ? step % participants.length : 0
   const displayed = [...participants.slice(offset), ...participants.slice(0, offset)]
+  const turns = new Map(
+    activeTurnOrder(displayed).map((participant, index) => [participant.peer_id, index + 1]),
+  )
   useLayoutEffect(() => {
     for (const row of body.current?.rows ?? []) {
       const key = row.dataset.peer ?? ""
@@ -158,6 +167,7 @@ function SeatOrderTable({
         previous !== top &&
         !window.matchMedia("(prefers-reduced-motion: reduce)").matches
       ) {
+        row.getAnimations().forEach((animation) => animation.cancel())
         row.animate(
           [{ transform: `translateY(${previous - top}px)` }, { transform: "translateY(0)" }],
           { duration: 140, easing: "ease-out" },
@@ -178,18 +188,37 @@ function SeatOrderTable({
         </tr>
       </thead>
       <tbody ref={body}>
-        {displayed.map((participant, index) => (
+        {displayed.map((participant) => (
           <tr
             key={participant.peer_id}
             data-peer={participant.peer_id}
-            className="border-t border-white/5"
+            className={cn("border-t border-white/5", participant.eliminated && "text-white/45")}
           >
-            <td className="py-1.5 tabular-nums">{index + 1}</td>
-            <td className="max-w-24 truncate py-1.5 font-semibold">
-              {participant.player_name}
+            <td className="py-1.5 tabular-nums">{turns.get(participant.peer_id) ?? "—"}</td>
+            <td className="max-w-24 py-1.5 font-semibold">
+              <span className={cn("block truncate", participant.eliminated && "line-through")}>
+                {participant.player_name}
+              </span>
               {participant.peer_id === localParticipant.peer_id && (
-                <span className="text-base-content/50 ml-1 font-normal">(you)</span>
+                <span className="text-base-content/50 font-normal">(you) </span>
               )}
+              <button
+                type="button"
+                className="rounded border border-white/15 px-1 py-0.5 text-[0.6rem] font-normal hover:bg-white/10 disabled:opacity-50"
+                aria-pressed={participant.eliminated}
+                aria-label={`Eliminated: ${participant.player_name}`}
+                disabled={participant.departed}
+                title={
+                  participant.departed
+                    ? "Rejoin to restore this player"
+                    : participant.eliminated
+                      ? "Restore player"
+                      : "Mark player eliminated"
+                }
+                onClick={() => onSetEliminated(participant.peer_id, !participant.eliminated)}
+              >
+                {participant.eliminated ? "Out · Undo" : "Eliminate"}
+              </button>
             </td>
             <td className="text-base-content/70 max-w-28 py-1.5">
               <CommanderHover deck={decks.find((deck) => deck.id === participant.deck_id)}>
@@ -274,9 +303,11 @@ function TableTab(props: Props) {
           localParticipant={local}
           decks={decks}
           shuffleVersion={props.shuffleVersion}
+          onSetEliminated={props.onSetEliminated}
         />
         <p className="text-base-content/50 mt-1 text-[0.65rem]">
-          Seats are recorded in this order when the game ends.
+          Out players skip turns but keep their recorded seat. Any player can eliminate or restore a
+          seat.
         </p>
 
         <div className="mt-3 grid gap-1.5">
@@ -284,7 +315,7 @@ function TableTab(props: Props) {
             type="button"
             className="btn btn-primary btn-sm w-full text-xs"
             onClick={onRandomizeSeats}
-            disabled={participants.length < 2}
+            disabled={participants.filter((participant) => !participant.departed).length < 2}
           >
             <Shuffle className="size-3.5" /> Randomize and start
           </button>

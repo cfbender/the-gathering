@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
+  activeTurnOrder,
   appendTableEvent,
   describeParticipantChange,
   describeParticipantLeft,
   orderBySeats,
+  retainEliminatedSeats,
   shuffleSeats,
   type TableEvent,
 } from "./table-events"
@@ -17,6 +19,7 @@ function seat(overrides: Partial<TableParticipant> & { peer_id: string }): Table
     player_name: "Alice",
     life: 40,
     camera_off: false,
+    eliminated: false,
     joined_at: 1_000,
     ...overrides,
   }
@@ -40,6 +43,50 @@ describe("describeParticipantChange", () => {
     ])
     expect(describeParticipantChange(after, after)).toEqual([])
     expect(describeParticipantLeft(after)).toBe("Alice left the table")
+  })
+
+  it("logs elimination and restoration without inventing a life change", () => {
+    const before = seat({ peer_id: "a" })
+    const out = { ...before, eliminated: true }
+    expect(describeParticipantChange(before, out).map((event) => event.text)).toEqual([
+      "Alice was eliminated",
+    ])
+    expect(describeParticipantChange(out, before).map((event) => event.text)).toEqual([
+      "Alice was restored to the game",
+    ])
+    const changes = [
+      describeParticipantChange(before, out)[0]!,
+      describeParticipantChange(out, before)[0]!,
+    ]
+    expect(
+      changes
+        .map((change, id) => ({ ...change, id, at: new Date(id) }))
+        .reduce(appendTableEvent, [] as TableEvent[]),
+    ).toHaveLength(2)
+  })
+})
+
+describe("eliminated seats", () => {
+  const alice = seat({ peer_id: "a", player_id: 1, eliminated: true })
+  const bob = seat({ peer_id: "b", player_id: 2 })
+  const cara = seat({ peer_id: "c", player_id: 3, eliminated: true })
+  const dan = seat({ peer_id: "d", player_id: 4 })
+
+  it("skips eliminated seats at the start and middle without changing recorded order", () => {
+    const recorded = [alice, bob, cara, dan]
+    expect(activeTurnOrder(recorded).map((p) => p.peer_id)).toEqual(["b", "d"])
+    expect(recorded.map((p) => p.peer_id)).toEqual(["a", "b", "c", "d"])
+    expect(activeTurnOrder([alice, cara])).toEqual([])
+    expect(activeTurnOrder([alice, { ...cara, eliminated: false }])).toEqual([
+      { ...cara, eliminated: false },
+    ])
+  })
+
+  it("keeps departed eliminated seats and replaces them by player identity on rejoin", () => {
+    const retained = retainEliminatedSeats([bob], [alice])
+    expect(orderBySeats(retained, ["a", "b"])).toEqual([{ ...alice, departed: true }, bob])
+    const rejoined = { ...alice, peer_id: "new-a" }
+    expect(retainEliminatedSeats([bob, rejoined], [alice])).toEqual([bob, rejoined])
   })
 })
 
