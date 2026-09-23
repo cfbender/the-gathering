@@ -40,6 +40,8 @@ interface Props extends CardsTabProps {
   status: string
   error: string | null
   connectedPeers: number
+  connectionStates: Record<string, RTCPeerConnectionState>
+  iceServers: RTCIceServer[]
   recognizer: RecognizerState
   onInvite: () => void
   inviteCopied: boolean
@@ -54,6 +56,19 @@ const TABS: { id: PanelTab; label: string; icon: ComponentType<{ className?: str
   { id: "cards", label: "Cards", icon: WalletCards },
   { id: "log", label: "Log", icon: ScrollText },
 ]
+
+export function describeIceServers(servers: RTCIceServer[]): string {
+  const urls = servers.flatMap((server) =>
+    Array.isArray(server.urls) ? server.urls : [server.urls],
+  )
+  const stun = urls.filter((url) => url.startsWith("stun:")).length
+  const turn = urls.filter((url) => url.startsWith("turn:") || url.startsWith("turns:")).length
+  if (stun === 0 && turn === 0) return "no STUN or TURN — same network only"
+  const parts = []
+  if (stun > 0) parts.push(`${stun} STUN`)
+  if (turn > 0) parts.push(`${turn} TURN`)
+  return parts.join(", ") + (turn === 0 ? " (no relay)" : "")
+}
 
 function describeRecognizer(state: RecognizerState): string {
   switch (state.status) {
@@ -142,6 +157,8 @@ function TableTab(props: Props) {
     status,
     error,
     connectedPeers,
+    connectionStates,
+    iceServers,
     recognizer,
     onInvite,
     inviteCopied,
@@ -245,7 +262,16 @@ function TableTab(props: Props) {
           </dd>
           <dt className="text-base-content/50">Video</dt>
           <dd>1080p mesh, up to {maxPlayers} players</dd>
+          <dt className="text-base-content/50">ICE</dt>
+          <dd>{describeIceServers(iceServers)}</dd>
         </dl>
+        {Object.values(connectionStates).some((state) => state === "failed") && (
+          <p className="text-warning mt-2 text-xs leading-relaxed">
+            A peer couldn't be reached directly. Players on different networks usually need a TURN
+            relay: set <code>WEBRTC_TURN_URLS</code>, <code>WEBRTC_TURN_USERNAME</code> and{" "}
+            <code>WEBRTC_TURN_CREDENTIAL</code> on the server (see docs/webcam-table.md).
+          </p>
+        )}
       </PanelSection>
     </>
   )

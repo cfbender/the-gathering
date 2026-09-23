@@ -286,6 +286,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
               participant={participant}
               local={participant.peer_id === room.peerId}
               active={participant.peer_id === activeParticipant.peer_id}
+              connectionState={room.connectionStates[participant.peer_id]}
               stream={streamFor(participant, room.peerId, room.localStream, room.streams)}
               onActivate={() => board.select(participant.peer_id)}
             />
@@ -309,6 +310,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           <ActiveBoard
             participant={activeParticipant}
             local={activeParticipant.peer_id === room.peerId}
+            connectionState={room.connectionStates[activeParticipant.peer_id]}
             stream={streamFor(activeParticipant, room.peerId, room.localStream, room.streams)}
             pinned={board.pinned}
             onTogglePin={board.togglePin}
@@ -378,6 +380,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         status={room.status}
         error={room.error}
         connectedPeers={Object.keys(room.streams).length}
+        connectionStates={room.connectionStates}
+        iceServers={room.iceServers}
         recognizer={recognizer.state}
         identifiedCards={room.identifiedCards}
         gallerySearchable={recognizer.ready}

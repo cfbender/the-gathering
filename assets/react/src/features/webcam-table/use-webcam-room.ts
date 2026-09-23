@@ -93,6 +93,22 @@ interface PeerState {
   channel?: RTCDataChannel
   stream?: MediaStream
   candidates: RTCIceCandidateInit[]
+  /** ICE was already restarted once after a failure; a second failure is reported, not retried. */
+  restarted: boolean
+}
+
+/** What a remote seat's tile should say while there is no video from it yet. */
+export function describeConnection(state: RTCPeerConnectionState | undefined): string {
+  switch (state) {
+    case "failed":
+      return "Couldn't connect"
+    case "disconnected":
+      return "Reconnecting…"
+    case "closed":
+      return "Left"
+    default:
+      return "Connecting…"
+  }
 }
 
 const CROP_SIZE = 640
@@ -131,6 +147,10 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   const [seatOrder, setSeatOrder] = useState<string[]>([])
   const [events, setEvents] = useState<TableEvent[]>([])
   const [streams, setStreams] = useState<Record<string, MediaStream>>({})
+  const [connectionStates, setConnectionStates] = useState<Record<string, RTCPeerConnectionState>>(
+    {},
+  )
+  const [iceServers, setIceServers] = useState<RTCIceServer[]>([])
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [cameraOff, setCameraOff] = useState(false)
   // Your own life is tracked locally so rapid ± clicks compound before presence
@@ -243,7 +263,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
       const existing = peersRef.current.get(remotePeerId)
       if (existing) return existing
       const connection = new RTCPeerConnection({ iceServers: config.ice_servers })
-      const peer: PeerState = { connection, candidates: [] }
+      const peer: PeerState = { connection, candidates: [], restarted: false }
       peersRef.current.set(remotePeerId, peer)
       localStreamRef.current
         ?.getTracks()
@@ -260,11 +280,24 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
       connection.ondatachannel = ({ channel: incoming }) =>
         attachDataChannel(remotePeerId, incoming)
       connection.onconnectionstatechange = () => {
-        if (["failed", "closed"].includes(connection.connectionState)) {
+        const state = connection.connectionState
+        setConnectionStates((current) => ({ ...current, [remotePeerId]: state }))
+        if (state === "failed" || state === "closed") {
           setStreams((current) => {
             const next = { ...current }
             delete next[remotePeerId]
             return next
+          })
+        }
+        // One ICE restart covers a transient path loss; the side that made the first offer
+        // makes the new one. If the networks simply cannot reach each other (no TURN), the
+        // second failure stays on screen so the seat knows why.
+        if (state === "failed" && !peer.restarted && peerIdRef.current < remotePeerId) {
+          peer.restarted = true
+          connection.restartIce()
+          void connection.createOffer().then(async (offer) => {
+            await connection.setLocalDescription(offer)
+            sendSignal(remotePeerId, { description: offer })
           })
         }
       }
@@ -276,6 +309,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         const config = await api<{ data: TableConfig }>("/api/webcam-table/config").then(
           (body) => body.data,
         )
+        setIceServers(config.ice_servers)
         const media = await navigator.mediaDevices.getUserMedia({
           video: {
             width: { min: 1920, ideal: 1920 },
@@ -325,6 +359,11 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
             if (!activeIds.has(id)) {
               peer.connection.close()
               peersRef.current.delete(id)
+              setConnectionStates((current) => {
+                const rest = { ...current }
+                delete rest[id]
+                return rest
+              })
             }
           })
           for (const participant of next) {
@@ -470,6 +509,8 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     participants: seatedParticipants,
     events,
     streams,
+    connectionStates,
+    iceServers,
     localStream,
     cameraOff,
     capture,

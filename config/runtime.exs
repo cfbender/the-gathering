@@ -47,8 +47,19 @@ split_urls = fn name ->
   |> Enum.map(&String.trim/1)
 end
 
+# Without STUN, browsers only learn their LAN addresses and internet rooms never connect, so
+# public STUN servers are the default. Set WEBRTC_STUN_URLS=none for a LAN-only install.
+default_stun_urls = ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"]
+
+stun_urls =
+  case split_urls.("WEBRTC_STUN_URLS") do
+    [] -> default_stun_urls
+    ["none"] -> []
+    urls -> urls
+  end
+
 config :the_gathering, :webcam_table,
-  stun_urls: split_urls.("WEBRTC_STUN_URLS"),
+  stun_urls: stun_urls,
   turn_urls: split_urls.("WEBRTC_TURN_URLS"),
   turn_username: System.get_env("WEBRTC_TURN_USERNAME"),
   turn_credential: System.get_env("WEBRTC_TURN_CREDENTIAL")
