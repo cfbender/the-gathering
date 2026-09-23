@@ -1,5 +1,5 @@
 import { Heart, Minus, Plus, Video, VideoOff } from "lucide-react"
-import type { ButtonHTMLAttributes } from "react"
+import type { ButtonHTMLAttributes, ReactNode } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { CommanderPicker } from "./commander-picker"
@@ -13,6 +13,7 @@ interface Props {
   onChooseDeck: (deckId: number) => void
   onChangeLife: (delta: number) => void
   onToggleCamera: () => void
+  counters: ReactNode
 }
 
 function IndicatorButton({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
@@ -38,6 +39,7 @@ export function SeatBar({
   onChooseDeck,
   onChangeLife,
   onToggleCamera,
+  counters,
 }: Props) {
   const compact = size === "tile"
   const cameraIcon = participant.camera_off ? (
@@ -73,6 +75,7 @@ export function SeatBar({
         </span>
       )}
 
+      {!compact && counters}
       <span className="ml-auto flex items-center gap-0.5">
         {local ? (
           <IndicatorButton
@@ -113,15 +116,19 @@ export function TileCommanderRow({
   participant,
   decks,
   onChooseDeck,
-}: Pick<Props, "participant" | "decks" | "onChooseDeck">) {
+  counters,
+}: Pick<Props, "participant" | "decks" | "onChooseDeck" | "counters">) {
   return (
-    <div className="flex h-6 items-center justify-end bg-base-100 px-1.5">
-      <CommanderPicker
-        playerName={participant.player_name}
-        decks={decks}
-        selectedDeckId={participant.deck_id}
-        onChoose={onChooseDeck}
-      />
+    <div className="flex h-7 items-center gap-1 bg-base-100 px-1.5">
+      {counters}
+      <div className="ml-auto min-w-0 [&>button]:max-w-full">
+        <CommanderPicker
+          playerName={participant.player_name}
+          decks={decks}
+          selectedDeckId={participant.deck_id}
+          onChoose={onChooseDeck}
+        />
+      </div>
     </div>
   )
 }

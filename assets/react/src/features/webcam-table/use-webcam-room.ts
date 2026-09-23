@@ -3,13 +3,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import type { GalleryArt } from "./recognition/pipeline"
 import {
+  EMPTY_COUNTERS,
+  changeCounter,
+  describeCounterChanges,
+  type Counter,
+  type SeatCounters,
+} from "./seat-counters"
+import {
   describeParticipantChange,
   describeParticipantLeft,
   orderBySeats,
   shuffleSeats,
 } from "./table-events"
 
-export interface TableParticipant {
+export interface TableParticipant extends SeatCounters {
   peer_id: string
   player_id: number
   player_name: string
@@ -22,7 +29,17 @@ export interface TableParticipant {
 }
 
 /** Status a player publishes about their own seat; mirrors the channel's `update_status`. */
-export type SeatStatus = Partial<Pick<TableParticipant, "life" | "camera_off">>
+export type SeatStatus = Partial<Pick<TableParticipant, "life" | "camera_off"> & SeatCounters>
+
+interface Monarch {
+  peer_id: string
+  player_name: string
+}
+
+interface MonarchEvent {
+  holder: Monarch | null
+  revision: number
+}
 
 export interface TableEvent {
   id: number
@@ -157,6 +174,9 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   // echoes the new total back; presence stays the source for everyone else.
   const lifeRef = useRef(STARTING_LIFE)
   const [life, setLifeState] = useState(STARTING_LIFE)
+  const countersRef = useRef(EMPTY_COUNTERS)
+  const [counters, setCounters] = useState(EMPTY_COUNTERS)
+  const [monarch, setMonarch] = useState<Monarch | null>(null)
   const [capture, setCapture] = useState<CapturedCard | null>(null)
   const cardsRef = useRef<BoardCard[]>([])
   const [identifiedCards, setIdentifiedCards] = useState<BoardCard[]>([])
@@ -240,6 +260,13 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     let disposed = false
     let socket: Socket | null = null
     let presence: Presence | null = null
+    let monarchRevision = 0
+
+    function syncMonarch({ holder, revision }: MonarchEvent) {
+      if (revision <= monarchRevision) return
+      monarchRevision = revision
+      setMonarch(holder)
+    }
 
     function attachDataChannel(peerId: string, dataChannel: RTCDataChannel) {
       const peer = peersRef.current.get(peerId)
@@ -341,6 +368,8 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
           const previous = current?.metas[0] as TableParticipant | undefined
           const next = joined.metas[0] as TableParticipant | undefined
           if (next) log(describeParticipantChange(previous, next))
+          if (previous && next)
+            log(describeCounterChanges(previous, next, next.player_name, participantsRef.current))
         })
         presence.onLeave((_id, current, left) => {
           const participant = left.metas[0] as TableParticipant | undefined
@@ -349,6 +378,12 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         room.on("seat_order", ({ peer_ids }: { peer_ids: string[] }) => {
           setSeatOrder(peer_ids)
           log(["Seat order randomized"])
+        })
+        room.on("monarch_state", syncMonarch)
+        room.on("monarch", (event: MonarchEvent) => {
+          syncMonarch(event)
+          const { holder } = event
+          log([holder ? `${holder.player_name} took the monarch` : "The monarch left the table"])
         })
         presence.onSync(() => {
           const next = presence?.list((_id, value) => value.metas[0] as TableParticipant) ?? []
@@ -405,10 +440,13 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         room
           .join()
           .receive("ok", () => {
+            // A server restart also restarts the monotonic revision clock.
+            monarchRevision = 0
             setStatus("Live — click any board to inspect a card")
             // Presence starts every (re)join at the defaults; republish what this seat knows.
             room.push("update_status", {
               life: lifeRef.current,
+              ...countersRef.current,
               camera_off: !(localStreamRef.current?.getVideoTracks()[0]?.enabled ?? true),
             })
           })
@@ -434,6 +472,17 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     lifeRef.current = next
     setLifeState(next)
     updateStatus({ life: next })
+  }
+
+  function adjustCounter(counter: Counter, delta: number) {
+    const next = changeCounter(countersRef.current, counter, delta)
+    countersRef.current = next
+    setCounters(next)
+    updateStatus(next)
+  }
+
+  function takeMonarch() {
+    channelRef.current?.push("take_monarch", {})
   }
 
   function toggleCamera() {
@@ -499,9 +548,11 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   const seatedParticipants = useMemo(
     () =>
       orderBySeats(participants, seatOrder).map((participant) =>
-        participant.peer_id === peerIdRef.current ? { ...participant, life } : participant,
+        participant.peer_id === peerIdRef.current
+          ? { ...participant, life, ...counters }
+          : participant,
       ),
-    [life, participants, seatOrder],
+    [counters, life, participants, seatOrder],
   )
 
   return {
@@ -524,6 +575,10 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     chooseDeck,
     life,
     changeLife,
+    counters,
+    adjustCounter,
+    monarch,
+    takeMonarch,
     toggleCamera,
     randomizeSeats,
     dismissCapture: () => setCapture(null),

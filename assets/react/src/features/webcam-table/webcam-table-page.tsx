@@ -12,6 +12,7 @@ import { FinishGame } from "./finish-game"
 import type { GalleryArt } from "./recognition/pipeline"
 import { decodeImage, useRecognizer, type RecognizerState } from "./recognition/use-recognizer"
 import { SeatBar, TileCommanderRow } from "./seat-bar"
+import { SeatCounterControls } from "./seat-counter-controls"
 import { SidePanel, type PanelTab } from "./side-panel"
 import {
   useWebcamRoom,
@@ -166,6 +167,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     player_id: playerId,
     player_name: playerName,
     life: room.life,
+    ...room.counters,
     camera_off: room.cameraOff,
     joined_at: Number.MAX_SAFE_INTEGER,
   }
@@ -259,6 +261,18 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     return () => window.clearTimeout(timer)
   }, [inviteCopied])
 
+  const countersFor = (participant: TableParticipant) => (
+    <SeatCounterControls
+      participant={participant}
+      participants={seated}
+      decks={decks}
+      local={participant.peer_id === room.peerId}
+      monarch={room.monarch?.peer_id === participant.peer_id}
+      onAdjust={room.adjustCounter}
+      onTakeMonarch={room.takeMonarch}
+    />
+  )
+
   const seatBarFor = (participant: TableParticipant, size: "board" | "tile") => (
     <SeatBar
       participant={participant}
@@ -268,6 +282,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       onChooseDeck={chooseFor(participant)}
       onChangeLife={room.changeLife}
       onToggleCamera={room.toggleCamera}
+      counters={countersFor(participant)}
     />
   )
 
@@ -284,6 +299,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           >
             <CameraTile
               participant={participant}
+              monarch={room.monarch?.peer_id === participant.peer_id}
               local={participant.peer_id === room.peerId}
               active={participant.peer_id === activeParticipant.peer_id}
               connectionState={room.connectionStates[participant.peer_id]}
@@ -295,6 +311,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
               participant={participant}
               decks={decksFor(participant)}
               onChooseDeck={chooseFor(participant)}
+              counters={countersFor(participant)}
             />
           </div>
         ))}
@@ -309,6 +326,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         <div className="relative min-h-0 flex-1">
           <ActiveBoard
             participant={activeParticipant}
+            monarch={room.monarch?.peer_id === activeParticipant.peer_id}
             local={activeParticipant.peer_id === room.peerId}
             connectionState={room.connectionStates[activeParticipant.peer_id]}
             stream={streamFor(activeParticipant, room.peerId, room.localStream, room.streams)}
