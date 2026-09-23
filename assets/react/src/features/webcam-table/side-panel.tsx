@@ -33,6 +33,7 @@ import type { TableEvent, TableParticipant } from "./use-webcam-room"
 export type PanelTab = "table" | "decks" | "cards" | "log" | "settings"
 
 interface Props extends CardsTabProps {
+  left?: boolean
   settings: ReactNode
   onHelp: () => void
   open: boolean
@@ -89,7 +90,7 @@ export function describeIceServers(servers: RTCIceServer[]): string {
   return parts.join(", ") + (turn === 0 ? " (no relay)" : "")
 }
 
-function describeRecognizer(state: RecognizerState): string {
+export function describeRecognizer(state: RecognizerState): string {
   switch (state.status) {
     case "checking":
       return "Checking for a recognition bundle…"
@@ -378,7 +379,12 @@ export function SidePanel(props: Props) {
     tab === "table" ? TableTab : tab === "decks" ? DecksTab : tab === "cards" ? CardsTab : LogTab
 
   return (
-    <div className="bg-base-100 text-base-content flex max-h-[45dvh] flex-col border-t border-white/10 lg:max-h-none lg:flex-row lg:border-t-0 lg:border-l">
+    <div
+      className={cn(
+        "bg-base-100 text-base-content flex max-h-[45dvh] flex-col border-t border-white/10 lg:max-h-none lg:flex-row lg:border-t-0 lg:border-l",
+        props.left && "lg:order-1 lg:flex-row-reverse",
+      )}
+    >
       <nav
         className="flex shrink-0 items-center gap-1 px-1.5 py-1 lg:w-14 lg:flex-col lg:items-stretch lg:px-1 lg:py-1.5"
         aria-label="Table panels"

@@ -9,6 +9,7 @@ function key(key: string, overrides: Partial<KeyboardEvent> = {}) {
     altKey: false,
     ctrlKey: false,
     metaKey: false,
+    shiftKey: false,
     repeat: false,
     isComposing: false,
     defaultPrevented: false,
@@ -19,9 +20,9 @@ function key(key: string, overrides: Partial<KeyboardEvent> = {}) {
 describe("table hotkeys", () => {
   it("dispatches life, camera, panels, cycling and help without reserving picker keys", () => {
     for (const [input, action] of [
-      ["+", "gainLife"],
-      ["=", "gainLife"],
-      ["-", "loseLife"],
+      ["ArrowUp", "gainLife"],
+      ["ArrowDown", "loseLife"],
+      [" ", "passTurn"],
       ["C", "camera"],
       ["b", "panel"],
       ["t", "table"],
@@ -29,9 +30,12 @@ describe("table hotkeys", () => {
       ["a", "cards"],
       ["l", "log"],
       ["s", "settings"],
-      ["[", "previous"],
-      ["]", "next"],
+      ["[", "loseTax"],
+      ["]", "gainTax"],
+      [",", "previous"],
+      [".", "next"],
       ["?", "help"],
+      ["H", "help"],
     ]) {
       expect(tableHotkeyAction(key(input!), context)).toBe(action)
     }
@@ -52,11 +56,11 @@ describe("table hotkeys", () => {
     const editable = document.createElement("div")
     editable.setAttribute("contenteditable", "true")
     const child = editable.appendChild(document.createElement("span"))
-    expect(tableHotkeyAction(key("+", { target: child }), context)).toBeNull()
+    expect(tableHotkeyAction(key("ArrowUp", { target: child }), context)).toBeNull()
     for (const role of ["textbox", "combobox", "slider", "separator"]) {
       const widget = document.createElement("div")
       widget.setAttribute("role", role)
-      expect(tableHotkeyAction(key("-", { target: widget }), context)).toBeNull()
+      expect(tableHotkeyAction(key("ArrowDown", { target: widget }), context)).toBeNull()
     }
     expect(tableHotkeyAction(key("c", { target: document.createElement("button") }), context)).toBe(
       "camera",
@@ -72,10 +76,12 @@ describe("table hotkeys", () => {
       "isComposing",
       "defaultPrevented",
     ]) {
-      expect(tableHotkeyAction(key("+", { [flag]: true }), context)).toBeNull()
+      for (const input of ["ArrowUp", " ", "]"])
+        expect(tableHotkeyAction(key(input, { [flag]: true }), context)).toBeNull()
     }
     for (const state of [{ enabled: false }, { pickerOpen: true }, { overlayOpen: true }]) {
-      expect(tableHotkeyAction(key("+"), { ...context, ...state })).toBeNull()
+      for (const input of ["ArrowUp", " ", "]"])
+        expect(tableHotkeyAction(key(input), { ...context, ...state })).toBeNull()
     }
     expect(
       tableHotkeyAction(key("Escape", { target: document.createElement("input") }), {
@@ -87,5 +93,29 @@ describe("table hotkeys", () => {
     expect(
       tableHotkeyAction(key("Escape"), { ...context, pickerOpen: true, overlayOpen: true }),
     ).toBeNull()
+  })
+
+  it("distinguishes one and ten life and never changes either while searching", () => {
+    expect(tableHotkeyAction(key("ArrowUp", { shiftKey: true }), context)).toBe("gainTenLife")
+    expect(tableHotkeyAction(key("ArrowDown", { shiftKey: true }), context)).toBe("loseTenLife")
+    const target = document.createElement("input")
+    target.type = "search"
+    for (const input of ["ArrowUp", "ArrowDown", " "]) {
+      for (const shiftKey of [false, true]) {
+        expect(tableHotkeyAction(key(input, { target, shiftKey }), context)).toBeNull()
+        expect(
+          tableHotkeyAction(key(input, { shiftKey }), { ...context, pickerOpen: true }),
+        ).toBeNull()
+      }
+    }
+    expect(tableHotkeyAction(key(" ", { shiftKey: true }), context)).toBeNull()
+  })
+
+  it("preserves native Space activation for buttons and links, including nested children", () => {
+    for (const tag of ["button", "a", "summary"]) {
+      const control = document.createElement(tag)
+      const child = control.appendChild(document.createElement("span"))
+      expect(tableHotkeyAction(key(" ", { target: child }), context)).toBeNull()
+    }
   })
 })

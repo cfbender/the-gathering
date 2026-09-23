@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react"
+import { isPublisherQuality, type PublisherQuality } from "./media-policy"
 
 export const RAIL_WIDTHS = {
   camera: { min: 176, max: 360, initial: 208 },
@@ -9,6 +10,13 @@ interface Preferences {
   hotkeys: boolean
   camera: number
   panel: number
+  followTurn: boolean
+  panelLeft: boolean
+  deviceId: string
+  cameraEnabled: boolean
+  quality: PublisherQuality
+  stats: boolean
+  turnSound: boolean
 }
 
 export function clampRailWidth(rail: Rail, width: number): number {
@@ -19,15 +27,30 @@ export function clampRailWidth(rail: Rail, width: number): number {
 export function useTablePreferences(playerId: number) {
   const key = `the-gathering:table-preferences:${playerId}`
   const [preferences, setPreferences] = useState<Preferences>(() => {
-    const defaults = {
+    const defaults: Preferences = {
       hotkeys: true,
       camera: RAIL_WIDTHS.camera.initial,
       panel: RAIL_WIDTHS.panel.initial,
+      followTurn: false,
+      panelLeft: false,
+      deviceId: "",
+      cameraEnabled: true,
+      quality: "auto",
+      stats: false,
+      turnSound: false,
     }
     try {
       const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "null")
       if (!saved || typeof saved !== "object") return defaults
       return {
+        ...defaults,
+        followTurn: "followTurn" in saved && saved.followTurn === true,
+        panelLeft: "panelLeft" in saved && saved.panelLeft === true,
+        deviceId: "deviceId" in saved && typeof saved.deviceId === "string" ? saved.deviceId : "",
+        cameraEnabled: !("cameraEnabled" in saved && saved.cameraEnabled === false),
+        quality: "quality" in saved && isPublisherQuality(saved.quality) ? saved.quality : "auto",
+        stats: "stats" in saved && saved.stats === true,
+        turnSound: "turnSound" in saved && saved.turnSound === true,
         hotkeys: "hotkeys" in saved && typeof saved.hotkeys === "boolean" ? saved.hotkeys : true,
         camera:
           "camera" in saved && typeof saved.camera === "number"
@@ -52,6 +75,8 @@ export function useTablePreferences(playerId: number) {
   }, [key, preferences])
   return {
     ...preferences,
+    update: (changes: Partial<Preferences>) =>
+      setPreferences((value) => ({ ...value, ...changes })),
     setHotkeys: (hotkeys: boolean) => setPreferences((value) => ({ ...value, hotkeys })),
     setWidth: (rail: Rail, width: number) =>
       setPreferences((value) => ({ ...value, [rail]: clampRailWidth(rail, width) })),
@@ -68,14 +93,16 @@ export function useTablePreferences(playerId: number) {
 export function RailResizeHandle({
   rail,
   width,
+  reversed = false,
   onChange,
 }: {
   rail: Rail
   width: number
+  reversed?: boolean
   onChange: (width: number) => void
 }) {
   const drag = useRef<{ x: number; width: number } | null>(null)
-  const direction = rail === "camera" ? 1 : -1
+  const direction = (rail === "camera" ? 1 : -1) * (reversed ? -1 : 1)
   return (
     <div
       role="separator"
@@ -86,6 +113,7 @@ export function RailResizeHandle({
       aria-valuemax={RAIL_WIDTHS[rail].max}
       aria-valuenow={Math.round(width)}
       title="Drag to resize · double-click to reset · arrow keys to adjust"
+      style={reversed ? { order: rail === "camera" ? 4 : 2 } : undefined}
       className="hidden w-1.5 touch-none cursor-col-resize bg-white/5 hover:bg-primary/60 focus-visible:bg-primary focus-visible:outline-none lg:block"
       onDoubleClick={() => onChange(RAIL_WIDTHS[rail].initial)}
       onPointerDown={(event) => {
@@ -118,43 +146,5 @@ export function RailResizeHandle({
         )
       }}
     />
-  )
-}
-
-export function TableSettings({
-  hotkeys,
-  onHotkeysChange,
-  onResetWidths,
-  onHelp,
-}: {
-  hotkeys: boolean
-  onHotkeysChange: (enabled: boolean) => void
-  onResetWidths: () => void
-  onHelp: () => void
-}) {
-  return (
-    <section className="grid gap-4 p-3 text-xs" aria-label="Table settings">
-      <h2 className="font-bold">Table settings</h2>
-      <p className="text-base-content/60">Saved for your player in this browser.</p>
-      <label className="flex items-center justify-between gap-2">
-        Keyboard shortcuts
-        <input
-          type="checkbox"
-          className="toggle toggle-sm"
-          checked={hotkeys}
-          onChange={(event) => onHotkeysChange(event.target.checked)}
-        />
-      </label>
-      <button type="button" className="btn btn-sm btn-outline" onClick={onHelp}>
-        Keyboard shortcut help
-      </button>
-      <button type="button" className="btn btn-sm btn-outline" onClick={onResetWidths}>
-        Reset rail widths
-      </button>
-      <p className="text-base-content/60">
-        On desktop, drag either divider to resize. Double-click a divider to reset it, or focus it
-        and use arrow keys (Home resets).
-      </p>
-    </section>
   )
 }

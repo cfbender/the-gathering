@@ -1,0 +1,245 @@
+import { Eye, Keyboard, ScanSearch, Video, Volume2 } from "lucide-react"
+import { useState, type ReactNode } from "react"
+import { useTheme } from "@/lib/theme"
+import { useCameraDevices, videoHealth } from "./camera"
+import { isPublisherQuality } from "./media-policy"
+import { PanelSection } from "./panel-section"
+import type { RecognizerState } from "./recognition/use-recognizer"
+import { describeRecognizer } from "./side-panel"
+import type { useTablePreferences } from "./table-preferences"
+import { CorrectionPreference, type useCorrectionUpload } from "./use-correction-upload"
+import type { useWebcamRoom } from "./use-webcam-room"
+
+function Toggle({
+  children,
+  checked,
+  onChange,
+  disabled,
+}: {
+  children: ReactNode
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 text-xs text-slate-300">
+      {children}
+      <input
+        type="checkbox"
+        className="toggle toggle-sm toggle-primary shrink-0"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+    </label>
+  )
+}
+
+function Choice({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-[0.65rem] text-slate-400">{label}</p>
+      <div className="flex rounded-lg bg-black/20 p-0.5" role="group" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`min-w-0 flex-1 rounded-md border px-2 py-2 text-[0.65rem] ${value === option.value ? "border-blue-400/40 bg-blue-400/15 text-blue-200" : "border-transparent text-slate-400 hover:bg-white/5"}`}
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export function TableSettings({
+  preferences,
+  room,
+  recognizer,
+  corrections,
+  onHelp,
+}: {
+  preferences: ReturnType<typeof useTablePreferences>
+  room: Pick<
+    ReturnType<typeof useWebcamRoom>,
+    "cameraOff" | "toggleCamera" | "localStream" | "changeCamera" | "cameraChanging" | "cameraError"
+  >
+  recognizer: RecognizerState
+  corrections: ReturnType<typeof useCorrectionUpload>
+  onHelp: () => void
+}) {
+  const { themeStyle, setThemeStyle } = useTheme()
+  const { devices, error } = useCameraDevices(room.localStream)
+  const [health, setHealth] = useState<string | null>(null)
+  return (
+    <div
+      aria-label="Table settings"
+      className="grid gap-2 p-2 text-xs [&>section]:rounded-xl [&>section]:border [&>section]:border-white/10 [&>section]:bg-slate-900/40 [&>section>button]:h-11"
+    >
+      <PanelSection title="Keyboard shortcuts" icon={Keyboard}>
+        <div className="grid gap-3">
+          <button type="button" className="btn btn-sm btn-outline w-full text-xs" onClick={onHelp}>
+            Keyboard shortcut help <kbd className="kbd kbd-xs">?</kbd>
+          </button>
+          <Toggle checked={preferences.hotkeys} onChange={preferences.setHotkeys}>
+            Enable keyboard shortcuts
+          </Toggle>
+        </div>
+      </PanelSection>
+      <PanelSection title="View" icon={Eye}>
+        <div className="grid gap-4">
+          <Choice
+            label="View mode"
+            value={preferences.followTurn ? "follow" : "selected"}
+            onChange={(value) => preferences.update({ followTurn: value === "follow" })}
+            options={[
+              { value: "follow", label: "Follow active turn" },
+              { value: "selected", label: "Pinned / selected board" },
+            ]}
+          />
+          <Choice
+            label="Side panel position"
+            value={preferences.panelLeft ? "left" : "right"}
+            onChange={(value) => preferences.update({ panelLeft: value === "left" })}
+            options={[
+              { value: "left", label: "Left" },
+              { value: "right", label: "Right" },
+            ]}
+          />
+          <p className="text-[0.65rem] text-slate-400">
+            The camera rail sits on the opposite side on desktop. Selecting a board stops following
+            turns.
+          </p>
+          <Choice
+            label="Theme style"
+            value={themeStyle}
+            onChange={(value) => setThemeStyle(value === "glass" ? "glass" : "classic")}
+            options={[
+              { value: "glass", label: "Glass" },
+              { value: "classic", label: "Classic" },
+            ]}
+          />
+          <button
+            type="button"
+            className="btn btn-sm btn-outline w-full text-xs"
+            onClick={preferences.resetWidths}
+          >
+            Reset rail widths
+          </button>
+        </div>
+      </PanelSection>
+      <PanelSection title="Camera" icon={Video}>
+        <div className="grid gap-4">
+          <Toggle
+            checked={!room.cameraOff}
+            onChange={room.toggleCamera}
+            disabled={!room.localStream}
+          >
+            Enable camera
+          </Toggle>
+          <label className="grid gap-2 text-[0.65rem] text-slate-400">
+            Camera device
+            <select
+              className="select select-sm w-full bg-slate-900 text-slate-200"
+              value={preferences.deviceId}
+              disabled={room.cameraChanging || !room.localStream}
+              onChange={async (event) => {
+                const deviceId = event.target.value
+                if (await room.changeCamera(deviceId)) {
+                  preferences.update({ deviceId })
+                  setHealth(null)
+                }
+              }}
+            >
+              <option value="">System default</option>
+              {preferences.deviceId &&
+                !devices.some((device) => device.deviceId === preferences.deviceId) && (
+                  <option value={preferences.deviceId}>Saved camera (unavailable)</option>
+                )}
+              {devices.map((device, index) => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Camera ${index + 1}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(room.cameraError || error) && (
+            <p role="alert" className="text-amber-300">
+              {room.cameraError || error}
+            </p>
+          )}
+          {room.cameraChanging && <p role="status">Switching camera…</p>}
+          <label className="grid gap-2 text-[0.65rem] text-slate-400">
+            Publisher quality
+            <select
+              className="select select-sm w-full bg-slate-900 text-slate-200"
+              value={preferences.quality}
+              onChange={(event) => {
+                if (isPublisherQuality(event.target.value))
+                  preferences.update({ quality: event.target.value })
+              }}
+            >
+              <option value="auto">Auto — adapts to seat count</option>
+              <option value="1080p">1080p — high quality</option>
+              <option value="720p">720p — balanced</option>
+              <option value="540p">540p — low bandwidth</option>
+            </select>
+          </label>
+          <p className="text-[0.65rem] text-slate-400">
+            Lower if your video appears choppy. Takes effect immediately; card scans keep the native
+            camera resolution.
+          </p>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline w-full text-xs"
+            onClick={() => setHealth(videoHealth(room.localStream))}
+          >
+            Check video health
+          </button>
+          {health && (
+            <p role="status" className="break-words text-[0.65rem] text-slate-300">
+              {health}
+            </p>
+          )}
+          <Toggle checked={preferences.stats} onChange={(stats) => preferences.update({ stats })}>
+            Connection stats overlay
+          </Toggle>
+        </div>
+      </PanelSection>
+      <PanelSection title="Sound" icon={Volume2}>
+        <Toggle
+          checked={preferences.turnSound}
+          onChange={(turnSound) => preferences.update({ turnSound })}
+        >
+          Sound when it becomes your turn
+        </Toggle>
+        <p className="mt-2 text-[0.65rem] text-slate-400">
+          A short tone after you interact with the table. No microphone audio is captured.
+        </p>
+      </PanelSection>
+      <PanelSection title="Card scan" icon={ScanSearch}>
+        <CorrectionPreference upload={corrections} />
+        <p className="mt-3 break-words text-[0.65rem] text-slate-400">
+          {describeRecognizer(recognizer)}
+        </p>
+      </PanelSection>
+      <p className="px-2 py-1 text-[0.65rem] text-slate-500">
+        Preferences are saved in this browser.
+      </p>
+    </div>
+  )
+}

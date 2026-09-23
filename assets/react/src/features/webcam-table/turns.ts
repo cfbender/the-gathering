@@ -40,33 +40,3 @@ export function formatTurnTime(milliseconds: number): string {
   const seconds = Math.floor(milliseconds / 1000)
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
 }
-
-/** Shared metadata for the parent branch's hotkey-help registry. */
-export const PASS_TURN_BINDING = { key: "Space", label: "Pass turn" } as const
-
-export function canPassWithSpace(
-  event: KeyboardEvent,
-  pickerOpen: boolean,
-  dialogOpen: boolean,
-): boolean {
-  if (
-    event.code !== "Space" ||
-    event.repeat ||
-    event.defaultPrevented ||
-    event.isComposing ||
-    event.altKey ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.shiftKey ||
-    pickerOpen ||
-    dialogOpen
-  )
-    return false
-  const target = event.target
-  return !(
-    target instanceof Element &&
-    target.closest(
-      "input, textarea, select, button, a, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='combobox'], [role='menu']",
-    )
-  )
-}

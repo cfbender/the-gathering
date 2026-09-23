@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { elapsedMilliseconds } from "./game-timer"
-import {
-  canPassWithSpace,
-  EMPTY_TURNS,
-  formatTurnTime,
-  nextActiveSeat,
-  turnDisplay,
-  type TurnState,
-} from "./turns"
+import { EMPTY_TURNS, formatTurnTime, nextActiveSeat, turnDisplay, type TurnState } from "./turns"
 import { EMPTY_COUNTERS } from "./seat-counters"
 import type { TableParticipant } from "./use-webcam-room"
 
@@ -58,48 +51,5 @@ describe("next turn", () => {
       milliseconds: 0,
     })
     expect(formatTurnTime(125999)).toBe("2:05")
-  })
-})
-
-describe("Space pass guard", () => {
-  it("passes only plain Space without a picker, dialog, modifier, repeat, or composition", () => {
-    const event = new KeyboardEvent("keydown", { code: "Space", cancelable: true })
-    expect(canPassWithSpace(event, false, false)).toBe(true)
-    expect(canPassWithSpace(event, true, false)).toBe(false)
-    expect(canPassWithSpace(event, false, true)).toBe(false)
-    for (const options of [
-      { code: "Enter" },
-      { repeat: true },
-      { ctrlKey: true },
-      { metaKey: true },
-      { altKey: true },
-      { shiftKey: true },
-      { isComposing: true },
-    ]) {
-      expect(
-        canPassWithSpace(new KeyboardEvent("keydown", { code: "Space", ...options }), false, false),
-      ).toBe(false)
-    }
-    event.preventDefault()
-    expect(canPassWithSpace(event, false, false)).toBe(false)
-  })
-
-  it("does not hijack editing, controls, or a nested editable element", () => {
-    for (const markup of [
-      "<input />",
-      "<textarea></textarea>",
-      "<select></select>",
-      "<button>Pass</button>",
-      '<a href="/">Link</a>',
-      '<div contenteditable="true"><span>Editing</span></div>',
-      '<div role="combobox"></div>',
-    ]) {
-      const root = document.createElement("div")
-      root.innerHTML = markup
-      const target = root.querySelector("span") ?? root.firstElementChild!
-      const event = new KeyboardEvent("keydown", { code: "Space" })
-      target.dispatchEvent(event)
-      expect(canPassWithSpace(event, false, false)).toBe(false)
-    }
   })
 })

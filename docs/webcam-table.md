@@ -200,13 +200,35 @@ always large, everyone else is small, and controls live in a collapsible column.
   resets one divider. Focus a divider and use Left/Right to resize by 16 px, Home to reset.
   Settings offers a reset for both widths and a hotkeys toggle. Preferences persist per player
   in this browser under `the-gathering:table-preferences:<playerId>`; they are not room state.
-- **Keyboard shortcuts**: `+` / `=` gains one life, `-` loses one life (always your own seat),
-  `C` toggles your camera, `B` collapses/expands the panel, `T` / `D` / `A` / `L` / `S` opens
-  Table / Decks / Cards / Log / Settings, `[` / `]` selects and pins the previous/next board,
-  and `?` opens shortcut help. Shortcuts pause while typing, using a keyboard widget, or an
-  overlay is open; modified, composing, and repeat key events are ignored. The card picker
-  retains `1`–`5` and `/`. Escape closes overlays even with table shortcuts disabled.
-  These are provisional bindings pending the Convoke reference; additional settings await that reference too.
+- **Keyboard shortcuts** (Convoke-compatible where the table has the same feature):
+  `Space` passes the turn after the match starts; `↑` / `↓` gains/loses one life and
+  `Shift+↑` / `Shift+↓` gains/loses ten life (always your own seat). `[` / `]` subtracts/adds
+  two commander tax by changing your primary commander's cast count by one; partner commanders
+  retain individual badge controls. `C` toggles your camera, `B` collapses/expands the panel,
+  `T` / `D` / `A` / `L` / `S` opens Table / Decks / Cards / Log / Settings, and `,` / `.`
+  selects and pins the previous/next board. `?` or `H` toggles the grouped shortcut dialog.
+  All table actions, including Space, honor the enable preference and pause while typing,
+  using a keyboard widget, or while an overlay/picker is open. Ctrl/Alt/Meta, composing and
+  repeat events are ignored; Space preserves native button/link activation. The card picker
+  retains `1`–`5` and `/` gallery search. Escape closes overlays even with shortcuts disabled.
+- **Settings** stacks collapsible Keyboard shortcuts, View, Camera, Sound and Card scan sections.
+  View switches between selected/pinned boards and following the active turn; manually selecting
+  or cycling a board stops following. Left/Right swaps the side panel and camera rail on desktop;
+  narrow layouts keep cameras above and controls below. Glass/Classic uses the existing global
+  theme-style preference. Camera lists available devices, remembers the choice and enabled state,
+  and replaces outgoing tracks on existing peer connections without leaving the room. Camera-off state and
+  private-reveal restrictions survive switching. Missing saved cameras fall back to the system
+  default with a warning. Capture requests ideal 1080p (lower-resolution devices are accepted).
+  Publisher quality offers Auto (the existing seat-count tiers), 1080p, 720p or 540p ceilings;
+  it changes sender scaling/bitrate without lowering native card-crop resolution. Stats sample
+  each connection every two seconds while enabled: remote tiles show received resolution, fps,
+  bitrate and the selected remote ICE candidate type; the local tile shows native capture
+  resolution/fps (no network hop). Check video health reports local track settings and state.
+  Turn sound is an opt-in WebAudio tone, unlocked by interaction, on transitions to your turn.
+  Card scan contains recognition bundle status/version and the existing corrections-sharing
+  opt-out (`the-gathering:share-card-corrections`). Other table preferences use the per-player
+  browser key above; sound, stats and follow-turn start off. There is no microphone, hand-count
+  or token-copy binding because those features do not exist here.
 - The `/table/*` routes force the dark theme (`TableShell` in `routes/__root.tsx` swaps
   `data-theme` on mount and restores the user's choice on unmount) so portalled popovers and
   dialogs match the black stage. They render no application header.
@@ -297,8 +319,8 @@ player can continue taking turns; elimination does not automatically end the gam
 An amber dot and highlight mark the current player's row; an amber Current turn badge marks their
 rail tile and board. This is independent of the violet selected/pinned-board border. Space does
 not pass while typing, using a control, holding a modifier, repeating a key, composing text, or
-while a card picker/dialog is open. `PASS_TURN_BINDING` in `turns.ts` exports the key/help label for
-the hotkey registry.
+while a card picker/dialog is open. It shares the guarded registry and enable preference in
+`table-hotkeys.tsx` with the other table shortcuts.
 
 `WebcamTableState` serializes the shared timer, turns and order on the single application server.
 The first valid `seat_order` starts it. Any seat can send `timer` with `pause` or `resume`;
@@ -394,8 +416,11 @@ can still save or share what they saw; this feature cannot revoke frames already
 - `features/webcam-table/use-timer-elapsed.ts` — shared monotonic timer display hook.
 - `features/webcam-table/seat-order-table.tsx` — animated order, current-turn highlight, counts,
   per-player time and elimination controls.
-- `features/webcam-table/turns.ts` — next-seat suggestion, turn display, Space guard and binding
-  metadata (`turns.test.ts`).
+- `features/webcam-table/turns.ts` — next-seat suggestion and turn display (`turns.test.ts`).
+- `features/webcam-table/table-hotkeys.tsx` — guarded table bindings and grouped help dialog.
+- `features/webcam-table/table-settings.tsx` — collapsible browser preferences and camera controls.
+- `features/webcam-table/camera.ts`, `video-stats.tsx`, `use-turn-sound.ts` — device acquisition,
+  connection sampling and opt-in turn notifications.
 - `features/webcam-table/game-timer.ts` — elapsed-time interpolation, formatting, and duration
   prefill helpers (`game-timer.test.ts` also covers roll descriptions).
 - `features/webcam-table/table-rolls.tsx` — dice/coin controls, wire types, and result descriptions.
