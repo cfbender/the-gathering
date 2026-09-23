@@ -1,6 +1,9 @@
 import { queryOptions } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 
+/** Seats per table; mirrors `@max_players` in `WebcamTableChannel` and `WebcamTableRooms`. */
+export const MAX_PLAYERS = 10
+
 /** One live webcam table from `GET /api/webcam-table/rooms`. */
 export interface ActiveTable {
   id: string
