@@ -14,7 +14,6 @@ import { canViewBoard } from "./media-policy"
 import type { GameTimerState } from "./game-timer"
 import type { GalleryArt } from "./recognition/pipeline"
 import { decodeImage, useRecognizer, type RecognizerState } from "./recognition/use-recognizer"
-import { RevealControl } from "./reveal-control"
 import { SeatBar, TileCommanderRow } from "./seat-bar"
 import { SeatCounterControls } from "./seat-counter-controls"
 import { SidePanel, type PanelTab } from "./side-panel"
@@ -25,7 +24,6 @@ import { useCorrectionUpload } from "./use-correction-upload"
 import { useTurnSound } from "./use-turn-sound"
 import { useVideoStats, VideoStatsOverlay } from "./video-stats"
 import { describeRoll } from "./table-rolls"
-import { TableTimer } from "./table-timer"
 import {
   useWebcamRoom,
   type BoardCard,
@@ -425,13 +423,6 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         )}
         aria-label="Player cameras"
       >
-        <RevealControl
-          participants={seated}
-          peerId={room.peerId}
-          target={room.revealTo}
-          busy={room.revealBusy}
-          onChange={room.changeReveal}
-        />
         {seated.map((participant) => (
           <div
             key={participant.peer_id}
@@ -491,7 +482,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         {room.roll && (
           <div
             role="status"
-            className="pointer-events-none absolute top-20 left-1/2 z-30 w-max max-w-[90%] -translate-x-1/2 rounded-xl border border-violet-400/40 bg-zinc-950/95 px-6 py-4 text-center text-lg font-semibold text-violet-100 shadow-xl"
+            className="pointer-events-none absolute top-20 left-1/2 z-30 w-max max-w-[90%] -translate-x-1/2 rounded-xl border border-accent/40 bg-base-100/95 px-6 py-4 text-center text-lg font-semibold text-base-content shadow-xl"
           >
             {describeRoll(room.roll)}
           </div>
@@ -559,12 +550,6 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           )}
           {preview?.kind === "art" && <CardPreview card={preview.card} onClose={closePreview} />}
         </div>
-        <TableTimer
-          sample={room.timer}
-          onChange={(action) => {
-            void room.changeTimer(action)
-          }}
-        />
         {seatBarFor(activeParticipant, "board")}
       </section>
 
@@ -629,6 +614,10 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         onAdjustTurn={room.adjustTurn}
         onRoll={room.rollDice}
         onSetEliminated={room.setEliminated}
+        onChangeTimer={(action) => {
+          void room.changeTimer(action)
+        }}
+        reveal={{ target: room.revealTo, busy: room.revealBusy, onChange: room.changeReveal }}
         onEndGame={() => {
           void room.changeTimer("pause").then((state) => {
             if (!state) return

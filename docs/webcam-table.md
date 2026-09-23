@@ -189,10 +189,11 @@ always large, everyone else is small, and controls live in a collapsible column.
   video starts the click-to-identify flow, and the suggestion card floats bottom-center over the
   stage (keys 1–5 still pick).
 - **Side panel** (right): a narrow icon strip (Table, Decks, Cards, Log, Settings) plus a collapse chevron and shortcut help. The
-  Table tab holds the Setup section (players count, Invite players copies the room URL, Select
-  your commander, a turn-order table with #/Player/Turn/Time (life and commander under the name),
-  an auto-randomize-on-start toggle, the primary Randomize and start button, Pass turn, the red
-  End game button, Leave table), dice/coin controls, and collapsed Identify
+  Table tab holds the Setup section (elapsed-time badge and players count in the header, Invite
+  players copies the room URL, Select your commander, a turn-order table with #/Player/Turn/Time
+  (life and commander under the name), then before the match an auto-randomize toggle and the
+  primary Start match / Randomize and start button, and after it Pass turn and Pause/Resume
+  timer; Reveal hand to…, the red End game button, Leave table), dice/coin controls, and collapsed Identify
   cards and Connection sections. Decks lists your commanders; Log shows the table event log. Collapsing the
   panel leaves only the icon strip so the board grows.
 - **Resize dividers** on desktop drag the camera rail (176–360 px, default 208) and panel content
@@ -352,7 +353,7 @@ controls. Players use their usual voice app alongside the table.
 
 ### Private hand reveal
 
-Choose another seated player in **Reveal hand to**, and wait for the confirmation before
+Choose another seated player in the Table tab's **Reveal hand to…** action, and wait for the confirmation before
 showing your hand. Per-peer cloned video tracks are immediately disabled for non-targets, then
 their senders use `replaceTrack(null)`; the native camera and target's sender stay live.
 Late joiners also start with no outgoing video track. Presence carries `reveal_to`, validated
@@ -412,7 +413,8 @@ can still save or share what they saw; this feature cannot revoke frames already
 - `features/webcam-table/finish-game.tsx` — the End game result dialog.
 - `features/webcam-table/game-result.ts` — winner suggestion and normal recorded-game payload,
   including eliminated seats (`game-result.test.ts`).
-- `features/webcam-table/table-timer.tsx` — dark active-board timer and pause/resume controls.
+- `features/webcam-table/table-timer.tsx` — elapsed-time badge in the Table tab header plus the
+  pause/resume action; both appear once the match has started.
 - `features/webcam-table/use-timer-elapsed.ts` — shared monotonic timer display hook.
 - `features/webcam-table/seat-order-table.tsx` — animated order, current-turn highlight, counts,
   per-player time and elimination controls.
