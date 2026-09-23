@@ -288,6 +288,20 @@ with the detected quad and per-stage timings; low similarity never suppresses re
 focuses a gallery search that understands names, set codes (`forest fin`, `set:fin`) and
 collector numbers (`#280`) so basics and staples with hundreds of printings can be narrowed.
 
+Hover or keyboard-focus a candidate (including gallery search results) to see a larger card
+image beside the picker before choosing. The same hover preview shows a seat's commander in
+the rail, board name bar, turn-order table, commander picker, and Decks tab. Commander hover
+uses the deck serializer's `commander_image_url` (selected printing, or catalog default),
+falling back to `commander_art_crop_url` without a Scryfall details request.
+
+The card popup keeps **Wrong card?**, **Remove**, **Rulings**, and close together in a dark,
+consistently sized toolbar. Clicking outside the visible content, including the space below
+the rules text, closes it. Right-click its content or use **Rulings** to view Scryfall rulings;
+tray entries also have a Rulings button and right-click shortcut. The authenticated
+`GET /api/card-printings/:id/rulings` endpoint fetches `/cards/:id/rulings` with Req and caches
+successful results (including an empty list) in `card_rulings_cache` for one day. Errors are
+not cached, and the dialog offers retry. This cache is independent of printing/catalog refreshes.
+
 Identified cards are not game events and never appear in the Log. Confirming a card (the silent
 clear match, `1`–`5`, a click, or a search result) broadcasts `card_identified` on the data
 channels and every seat adds the entry to that board's **card tray** (`board-cards.tsx`): a
@@ -299,6 +313,14 @@ previews any printing, and the detected cards grouped per player with a Shared /
 toggle. The list is ephemeral like the Log, but a seat that connects later receives the current
 entries (`cards_sync`) when its data channel opens. If the card name matches one of the owner's
 commanders and they have no deck selected yet, it also selects that deck.
+
+Each board keeps **one entry per full card name**, trimmed and case-insensitive (the gallery
+does not provide oracle IDs). Different printings of the same card do not create extra entries.
+Repeat identification opens the existing entry's preview and preserves its first printing and
+position; another player's board can still hold its own entry. Picker choices use the same
+rule. "Wrong card?" removes the mistaken entry, then reuses an existing replacement if present.
+Incoming entries and late-join syncs also deduplicate; simultaneous discoveries choose the oldest
+timestamp, then entry ID, so message arrival order does not decide which printing survives.
 
 Backlog:
 

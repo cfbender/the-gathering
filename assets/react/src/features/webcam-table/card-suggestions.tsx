@@ -2,6 +2,7 @@ import { Search, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
+import { CardHover, CommanderHover } from "./card-hover"
 import type { Identification } from "./recognition/messages"
 import type { GalleryArt } from "./recognition/pipeline"
 import type { CapturedCard } from "./use-webcam-room"
@@ -138,33 +139,35 @@ export function CardSuggestions({
         <div className="min-w-0">
           <div className="grid gap-1">
             {candidates.map((art, index) => (
-              <button
-                key={art.id}
-                type="button"
-                className={cn(
-                  "flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-left text-xs hover:bg-white/15",
-                  index === 0 && clear && "border-success/60 bg-success/15",
-                )}
-                onClick={() => onChooseCard(art)}
-              >
-                <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
-                <span className="truncate font-semibold">{art.name}</span>
-                <span className="truncate text-white/50">{printing(art)}</span>
-                <span className="ml-auto tabular-nums text-white/40">{art.score.toFixed(2)}</span>
-              </button>
+              <CardHover key={art.id} id={art.id} name={art.name}>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex h-8 w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-left text-xs hover:bg-white/15",
+                    index === 0 && clear && "border-success/60 bg-success/15",
+                  )}
+                  onClick={() => onChooseCard(art)}
+                >
+                  <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
+                  <span className="truncate font-semibold">{art.name}</span>
+                  <span className="truncate text-white/50">{printing(art)}</span>
+                  <span className="ml-auto tabular-nums text-white/40">{art.score.toFixed(2)}</span>
+                </button>
+              </CardHover>
             ))}
             {recognition.status === "skipped" &&
               deckSuggestions.map((deck, index) => (
-                <button
-                  key={deck.id}
-                  type="button"
-                  className="flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-left text-xs hover:bg-white/15"
-                  onClick={() => onChooseDeck(deck.id)}
-                >
-                  <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
-                  <span className="truncate font-semibold">{deck.commander_name}</span>
-                  <span className="ml-auto truncate text-white/50">{deck.name}</span>
-                </button>
+                <CommanderHover key={deck.id} deck={deck}>
+                  <button
+                    type="button"
+                    className="flex h-8 w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-left text-xs hover:bg-white/15"
+                    onClick={() => onChooseDeck(deck.id)}
+                  >
+                    <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
+                    <span className="truncate font-semibold">{deck.commander_name}</span>
+                    <span className="ml-auto truncate text-white/50">{deck.name}</span>
+                  </button>
+                </CommanderHover>
               ))}
             {recognition.status === "skipped" && deckSuggestions.length === 0 && (
               <p className="text-xs text-white/65">No decks are recorded for {playerName} yet.</p>
@@ -191,14 +194,16 @@ export function CardSuggestions({
             >
               {matches.map((art) => (
                 <li key={art.id}>
-                  <button
-                    type="button"
-                    className="flex h-7 w-full items-center gap-2 px-2 text-left hover:bg-white/15"
-                    onClick={() => onChooseCard(art)}
-                  >
-                    <span className="truncate font-semibold">{art.name}</span>
-                    <span className="ml-auto shrink-0 text-white/50">{printing(art)}</span>
-                  </button>
+                  <CardHover id={art.id} name={art.name}>
+                    <button
+                      type="button"
+                      className="flex h-7 w-full items-center gap-2 px-2 text-left hover:bg-white/15"
+                      onClick={() => onChooseCard(art)}
+                    >
+                      <span className="truncate font-semibold">{art.name}</span>
+                      <span className="ml-auto shrink-0 text-white/50">{printing(art)}</span>
+                    </button>
+                  </CardHover>
                 </li>
               ))}
             </ul>

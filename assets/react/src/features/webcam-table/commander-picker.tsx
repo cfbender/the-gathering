@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
+import { CommanderHover } from "./card-hover"
 
 interface Props {
   playerName: string
@@ -38,9 +39,11 @@ export function CommanderPicker({
               selected ? "btn-ghost text-white/85" : "btn-primary",
             )}
           >
-            <span className="max-w-40 truncate">
-              {selected ? selected.commander_name : "Select commander"}
-            </span>
+            <CommanderHover deck={open ? undefined : selected}>
+              <span className="max-w-40 truncate">
+                {selected ? selected.commander_name : "Select commander"}
+              </span>
+            </CommanderHover>
             <ChevronDown className="size-3 shrink-0 opacity-70" />
           </button>
         )}
@@ -57,22 +60,26 @@ export function CommanderPicker({
           <ul className="max-h-72 overflow-y-auto">
             {decks.map((deck) => (
               <li key={deck.id}>
-                <button
-                  type="button"
-                  className="hover:bg-base-200 flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm"
-                  onClick={() => {
-                    onChoose(deck.id)
-                    setOpen(false)
-                  }}
-                >
-                  <Check
-                    className={cn("size-3.5 shrink-0", deck.id !== selectedDeckId && "invisible")}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold">{deck.commander_name}</span>
-                    <span className="text-base-content/55 block truncate text-xs">{deck.name}</span>
-                  </span>
-                </button>
+                <CommanderHover deck={deck}>
+                  <button
+                    type="button"
+                    className="hover:bg-base-200 flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm"
+                    onClick={() => {
+                      onChoose(deck.id)
+                      setOpen(false)
+                    }}
+                  >
+                    <Check
+                      className={cn("size-3.5 shrink-0", deck.id !== selectedDeckId && "invisible")}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">{deck.commander_name}</span>
+                      <span className="text-base-content/55 block truncate text-xs">
+                        {deck.name}
+                      </span>
+                    </span>
+                  </button>
+                </CommanderHover>
               </li>
             ))}
           </ul>

@@ -9,6 +9,7 @@ defmodule TheGathering.Catalog do
     CardData,
     Printing,
     Printings,
+    Rulings,
     SyncServer,
     SyncState
   }
@@ -81,6 +82,8 @@ defmodule TheGathering.Catalog do
 
   @doc "Rules text, cost, type, set and images for any printing by Scryfall id (see `Printings.details/1`)."
   def printing_details(id) when is_binary(id), do: Printings.details(id)
+
+  def printing_rulings(id) when is_binary(id), do: Rulings.get(id)
 
   def list_printings(id, name, page) when is_integer(page) and page > 0 do
     case resolve_card(id, name) do
