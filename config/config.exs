@@ -25,6 +25,7 @@ config :the_gathering, TheGathering.Repo,
 # Runtime may set `trust_proxy_headers`.
 config :the_gathering, TheGatheringWeb.RateLimit,
   credentials: [limit: 10, scale: :timer.minutes(5)],
+  corrections: [limit: 30, scale: :timer.minutes(1)],
   sudo: [limit: 5, global_limit: 100, scale: :timer.minutes(5)]
 
 # Configure the endpoint
@@ -48,6 +49,7 @@ config :phoenix,
   json_library: Jason,
   filter_parameters: [
     "password",
+    "image",
     "token",
     "secret",
     "manavault_api_key",

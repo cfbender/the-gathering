@@ -47,6 +47,10 @@ defmodule TheGatheringWeb.Router do
     post "/registration-invite", RegistrationInviteController, :create
     get "/session", SessionController, :show
     delete "/session", SessionController, :delete
+
+    # Read-only export accepts an admin session or the scoped desktop bearer token.
+    get "/cardid/corrections", CardIdCorrectionController, :index
+    get "/cardid/corrections/:id/crop", CardIdCorrectionController, :crop
   end
 
   # Password login and bootstrap registration are the only public endpoints
@@ -84,6 +88,7 @@ defmodule TheGatheringWeb.Router do
     get "/webcam-table/rooms", WebcamTableRoomController, :index
     get "/cardid/bundle", CardIdBundleController, :show
     get "/cardid/bundles/:version/:name", CardIdBundleController, :file
+    post "/cardid/corrections", CardIdCorrectionController, :create
     post "/deck-chooser/:id/outcomes", DeckChooserController, :create_outcome
     get "/discord/result-drafts/:id", DiscordResultDraftController, :show
     post "/discord/result-drafts/:id", DiscordResultDraftController, :create

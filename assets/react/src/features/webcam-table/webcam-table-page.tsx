@@ -18,6 +18,7 @@ import { SeatCounterControls } from "./seat-counter-controls"
 import { SidePanel, type PanelTab } from "./side-panel"
 import { HotkeyHelp, useTableHotkeys } from "./table-hotkeys"
 import { RailResizeHandle, TableSettings, useTablePreferences } from "./table-preferences"
+import { CorrectionPreference, useCorrectionUpload } from "./use-correction-upload"
 import {
   useWebcamRoom,
   type BoardCard,
@@ -153,6 +154,7 @@ function toCard(art: GalleryArt): IdentifiedCard {
 function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   const room = useWebcamRoom(roomId, playerId, null)
   const { recognizer, recognition } = useRecognition(room.capture)
+  const corrections = useCorrectionUpload()
   const [preview, setPreview] = useState<Preview | null>(null)
   /** The picker is open by request ("Wrong card?"), replacing this entry if one is named. */
   const [picker, setPicker] = useState<{ replacing: string | null } | null>(null)
@@ -220,8 +222,15 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
    * the owner's commanders also picks that deck when they have not chosen one yet. Replaces the
    * entry being corrected when the picker came from "Wrong card?". */
   const chooseCard = useCallback(
-    (art: GalleryArt) => {
+    (art: GalleryArt, explicit = true) => {
       if (!captureOwner) return
+      corrections.save(
+        room.capture,
+        recognition.status === "done" ? recognition.result : undefined,
+        art.id,
+        "version" in recognizer.state ? recognizer.state.version : "unavailable",
+        explicit,
+      )
       const commanderDeck = decksFor(captureOwner).find(
         (deck) => deck.commander_name.toLowerCase() === art.name.toLowerCase(),
       )
@@ -233,7 +242,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       setPreview({ kind: "entry", entry, correctable: true })
     },
     // decksFor closes over `decks`, which is stable for the room's lifetime
-    [captureOwner, decks, picker, playerName, room],
+    [captureOwner, corrections, decks, picker, playerName, recognition, recognizer.state, room],
   )
 
   // A new click replaces whatever the last one left on screen.
@@ -247,7 +256,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     if (!top || !room.capture || room.capture.inspect || !isClear(candidates)) return
     if (autoChosen.current === room.capture) return
     autoChosen.current = room.capture
-    chooseCard(top)
+    chooseCard(top, false)
   }, [candidates, chooseCard, room.capture])
 
   const closePreview = useCallback(() => {
@@ -454,6 +463,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           {preview?.kind === "art" && <CardPreview card={preview.card} onClose={closePreview} />}
         </div>
         {seatBarFor(activeParticipant, "board")}
+        <CorrectionPreference upload={corrections} />
       </section>
 
       {panelOpen ? (

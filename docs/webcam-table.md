@@ -279,6 +279,8 @@ can still save or share what they saw; this feature cannot revoke frames already
 - `WebcamTableConfigController` exposes authenticated ICE configuration.
 - `features/webcam-table/use-webcam-room.ts` owns camera, mesh, signaling, native crop RPC,
   seat status (life, camera), seat order, and the event log.
+- `features/webcam-table/use-correction-upload.tsx` uploads explicit picker labels and owns
+  the crop-sharing preference/save note. Both camera owner and clicker must allow sharing.
 - `features/webcam-table/webcam-table-page.tsx` composes the rail, stage, and side panel and owns
   the active-board selection (`useActiveBoard`).
 - `features/webcam-table/board.tsx` — `ActiveBoard`, `CameraTile`, `OpenSeat`, `LifeBadge`,
@@ -384,7 +386,16 @@ timestamp, then entry ID, so message arrival order does not decide which printin
 Backlog:
 
 - record identified cards against the game (currently only in the ephemeral per-board list);
-- record corrections (a confirmed candidate that was not top-1) as labelled captures for the
-  real-capture training set in `ml/data/real/`;
 - WebGPU execution provider with WASM fallback;
 - shift-click manual four-corner capture when the detector misses.
+
+Explicit picker choices (including an explicitly confirmed top-1, but never an automatic
+answer) POST their native JPEG, click, quad/up vote, chosen gallery ID and original ranking
+metadata to `/api/cardid/corrections`. The small checkbox below the active board opts out in
+localStorage; the camera owner's preference also travels with each crop. The save note only
+appears after server acknowledgement and failures never interrupt identification.
+
+Phoenix stores the private, bounded samples under `DATA_DIR/cardid/corrections`. The offline
+desktop importer creates the card warp and merges captures into `ml/data/real`; the NUC never
+trains or runs Python. Admin-only export, filesystem import, manual training and optional
+guarded nightly runs are documented in `ml/README.md`, **Training from in-app corrections**.

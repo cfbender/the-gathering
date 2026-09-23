@@ -17,6 +17,8 @@ services:
       PHX_URL_PORT: ${PHX_URL_PORT:-4000}
       # Set to true behind a reverse proxy so login rate limiting sees real client addresses.
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-}
+      CARDID_CORRECTIONS_TOKEN: ${CARDID_CORRECTIONS_TOKEN:-}
+      CARDID_CORRECTIONS_ADMIN_ID: ${CARDID_CORRECTIONS_ADMIN_ID:-}
       # Optional WebRTC NAT traversal for webcam tables (comma-separated URLs).
       WEBRTC_STUN_URLS: ${WEBRTC_STUN_URLS:-}
       WEBRTC_TURN_URLS: ${WEBRTC_TURN_URLS:-}
