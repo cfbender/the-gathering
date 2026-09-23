@@ -7,6 +7,7 @@ export function useTurnSound(enabled: boolean, activePlayerId: number | null, pl
   useEffect(() => {
     if (!enabled) return
     const prime = () => {
+      if (typeof AudioContext === "undefined") return
       audio.current ??= new AudioContext()
       void audio.current.resume().catch(() => {})
     }
@@ -15,7 +16,7 @@ export function useTurnSound(enabled: boolean, activePlayerId: number | null, pl
     return () => {
       window.removeEventListener("pointerdown", prime)
       window.removeEventListener("keydown", prime)
-      void audio.current?.close()
+      void audio.current?.close().catch(() => {})
       audio.current = null
     }
   }, [enabled])

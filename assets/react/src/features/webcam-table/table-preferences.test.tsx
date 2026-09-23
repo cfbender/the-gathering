@@ -4,6 +4,16 @@ import { clampRailWidth, useTablePreferences } from "./table-preferences"
 
 beforeEach(() => localStorage.clear())
 
+it.each([null, {}, { turnSound: true }, { turnSound: false }])(
+  "defaults sound on but honors an explicit choice: %j",
+  (saved) => {
+    if (saved) localStorage.setItem("the-gathering:table-preferences:1", JSON.stringify(saved))
+    expect(renderHook(() => useTablePreferences(1)).result.current.turnSound).toBe(
+      saved?.turnSound !== false,
+    )
+  },
+)
+
 it("clamps each rail independently and rejects nonfinite widths", () => {
   expect(clampRailWidth("camera", 175)).toBe(176)
   expect(clampRailWidth("camera", 237)).toBe(237)
@@ -61,7 +71,7 @@ it("persists view, camera, stats and sound choices without accepting malformed v
     cameraEnabled: true,
     followTurn: false,
     stats: false,
-    turnSound: false,
+    turnSound: true,
   })
   act(() =>
     first.result.current.update({
