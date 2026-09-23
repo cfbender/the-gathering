@@ -48,6 +48,7 @@ export function RecentGames({ games }: { games: OverviewStats["recent_games"] })
                         src={commander.art_crop_url}
                         alt=""
                         loading="lazy"
+                        decoding="async"
                         className="absolute inset-0 size-full object-cover"
                         onError={(event) => (event.currentTarget.hidden = true)}
                       />

@@ -7,6 +7,7 @@ defmodule TheGathering.Catalog do
     Backfill,
     Card,
     CardData,
+    CardImages,
     Printing,
     Printings,
     Rulings,
@@ -133,8 +134,8 @@ defmodule TheGathering.Catalog do
       summary = %{
         id: id,
         name: name,
-        art_crop_url: Map.get(image_uris || %{}, "art_crop"),
-        image_url: Map.get(image_uris || %{}, "normal"),
+        art_crop_url: CardImages.url(Map.get(image_uris || %{}, "art_crop")),
+        image_url: CardImages.url(Map.get(image_uris || %{}, "normal")),
         color_identity: ColorIdentity.canonical(Enum.join(color_identity || []))
       }
 
@@ -169,8 +170,11 @@ defmodule TheGathering.Catalog do
     |> Repo.all()
     |> Enum.reduce(urls, fn printing, acc ->
       acc
-      |> Map.put({:printing, printing.id}, printing.image_uris["art_crop"])
-      |> Map.put({:image, {:printing, printing.id}}, printing.image_uris["normal"])
+      |> Map.put({:printing, printing.id}, CardImages.url(printing.image_uris["art_crop"]))
+      |> Map.put(
+        {:image, {:printing, printing.id}},
+        CardImages.url(printing.image_uris["normal"])
+      )
     end)
   end
 

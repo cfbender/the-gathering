@@ -230,7 +230,28 @@ After each sync (and after every CSV or Mythic Track import) the app links decks
 
 There is one row per Scryfall `oracle_id`. The preferred printing is English, available on paper, non-digital, and non-promo, then the newest `released_at`; set code, collector number, and Scryfall UUID break ties. `default_cards` is used instead of `oracle_cards` because it provides printing images and lets the app choose that representative deterministically.
 
-In **Deck details**, use **Choose printing** below the commander or partner to match the artwork on your card, then **Save deck**. **Use catalog default** removes the override. Printing choices load on demand from Scryfall (paper printings in all languages, with pagination), so browsing requires an internet connection. Printing metadata is cached separately in SQLite: saved artwork survives catalog refreshes and does not need another Scryfall API request to display. Image files still load from Scryfall's image CDN. Changing a commander or partner clears that slot's printing; printing selection does not change commander identity, colors, imports, or statistics.
+In **Deck details**, use **Choose printing** below the commander or partner to match the artwork on your card, then **Save deck**. **Use catalog default** removes the override. Printing choices load on demand from Scryfall (paper printings in all languages, with pagination), so browsing requires an internet connection. Printing metadata is cached separately in SQLite: saved artwork survives catalog refreshes and does not need another Scryfall API request to display. Image files use the shared cache described below. Changing a commander or partner clears that slot's printing; printing selection does not change commander identity, colors, imports, or statistics.
+
+Card images (`small`, `normal`, `art_crop` JPEGs from `cards.scryfall.io`) are served through
+authenticated `GET /api/card-images?url=…`. Stored catalog URLs remain unchanged; API responses
+point browsers at this endpoint. It stores the original bytes under `DATA_DIR/card-images`
+(`/data/card-images` in Docker), shares concurrent requests for the same URL, and fetches at
+most four images concurrently. There are no new environment variables or services.
+
+The disk cache is capped at **512 MiB**, evicting oldest-written files first on startup and
+insertion; files expire after 30 days. Budget up to an additional 2 MiB for an atomic write.
+It is disposable and can be omitted from backups or cleared while the app is stopped. Browsers
+cache for one day (`private, max-age=86400`, content ETag). URL timestamps remain part of the
+cache key so replacement scans do not collide. Cache misses require internet access; hits do
+not. Disk-write failures still serve the downloaded image without caching it.
+
+Only the exact Scryfall image origin and recognized image paths are accepted; redirects are
+not followed, downloads over 2 MiB or non-JPEG responses are rejected, and only signed-in users
+can fetch. Upstream errors are not cached or automatically retried; HTTP 429 pauses new misses
+for at least 30 seconds (or the numeric `Retry-After`, if longer). At most 128 distinct misses
+can wait or run; excess requests return 502. Scryfall's current [rate limits](https://scryfall.com/docs/api/rate-limits)
+exempt image file origins; the separate card-data API limits remain in force. Images are not
+resized, transformed, or stripped of artist/copyright information.
 
 A card can be a commander when it is a legendary creature or its oracle text says it can be your commander. Backgrounds are deliberately excluded. Partner, Partner with, Friends forever, Choose a Background, and Background are stored as a separate pairing classification for deck-building interfaces.
 
