@@ -135,30 +135,74 @@ export function upVote(up: [number, number], constants: BundleConstants): number
   return Math.hypot(up[0], up[1]) / constants.rotations
 }
 
+interface ArtQuery {
+  nameTokens: string[]
+  set?: string
+  number?: string
+  lang?: string
+}
+
 /**
  * Manual lookup over the gallery for the "that's not it" case. Whitespace-separated tokens:
  * a token equal to a set code (`fin`, `set:fin`) restricts the set, a token that is a
  * collector number (`#278`, `278`, `12a`) restricts the number, everything else must appear
  * in the card name. "forest fin" therefore lists only Final Fantasy forests.
+ *
+ * A bare token that happens to be a set code is ambiguous: "woe strider" is the card Woe
+ * Strider, not a Wilds of Eldraine search for "strider". Such queries are read both ways;
+ * set-restricted hits come first, then plain name hits, with a printing whose name equals
+ * the whole query ahead of everything.
  */
 export function searchArts(arts: GalleryArt[], query: string, limit = 24): GalleryArt[] {
   const tokens = query.toLowerCase().trim().split(/\s+/).filter(Boolean)
   if (tokens.length === 0) return []
   const sets = new Set(arts.flatMap((art) => (art.printings ?? [art]).map((p) => p.set)))
-  const nameTokens: string[] = []
-  let set: string | undefined
-  let number: string | undefined
-  let lang: string | undefined
+  const withSet: ArtQuery = { nameTokens: [] }
+  const asName: ArtQuery = { nameTokens: [] }
+  let ambiguous = false
   for (const token of tokens) {
-    if (token.startsWith("set:")) set = token.slice(4)
-    else if (token.startsWith("lang:")) lang = token.slice(5)
-    else if (token.startsWith("#")) number = token.slice(1)
-    else if (sets.has(token) && !set) set = token
-    else if (/^\d+[a-z★†]?$/.test(token) && !number) number = token
-    else nameTokens.push(token)
+    if (token.startsWith("set:")) withSet.set = asName.set = token.slice(4)
+    else if (token.startsWith("lang:")) withSet.lang = asName.lang = token.slice(5)
+    else if (token.startsWith("#")) withSet.number = asName.number = token.slice(1)
+    else if (sets.has(token) && !withSet.set) {
+      withSet.set = token
+      asName.nameTokens.push(token)
+      ambiguous = true
+    } else if (/^\d+[a-z★†]?$/.test(token) && !withSet.number) {
+      withSet.number = asName.number = token
+    } else {
+      withSet.nameTokens.push(token)
+      asName.nameTokens.push(token)
+    }
   }
-  const matches: GalleryArt[] = []
   const seen = new Set<string>()
+  const matches = [
+    ...matchArts(arts, withSet, seen, 0),
+    ...(ambiguous ? matchArts(arts, asName, seen, 1) : []),
+  ]
+  const exact = tokens.join(" ")
+  return matches
+    .sort(
+      (a, b) =>
+        Number(a.name.toLowerCase() !== exact) - Number(b.name.toLowerCase() !== exact) ||
+        a.group - b.group ||
+        a.name.localeCompare(b.name) ||
+        Number(a.lang !== "en") - Number(b.lang !== "en") ||
+        a.set.localeCompare(b.set) ||
+        collectorOrder(a.collector_number) - collectorOrder(b.collector_number) ||
+        (a.lang ?? "").localeCompare(b.lang ?? ""),
+    )
+    .slice(0, limit)
+    .map(({ group: _group, ...art }) => art)
+}
+
+function matchArts(
+  arts: GalleryArt[],
+  { nameTokens, set, number, lang }: ArtQuery,
+  seen: Set<string>,
+  group: number,
+): Array<GalleryArt & { group: number }> {
+  const matches: Array<GalleryArt & { group: number }> = []
   for (const art of arts) {
     for (const printing of art.printings ?? [art]) {
       if (seen.has(printing.id)) continue
@@ -168,19 +212,10 @@ export function searchArts(arts: GalleryArt[], query: string, limit = 24): Galle
       const name = printing.name.toLowerCase()
       if (!nameTokens.every((token) => name.includes(token))) continue
       seen.add(printing.id)
-      matches.push({ ...printing, frame: art.frame })
+      matches.push({ ...printing, frame: art.frame, group })
     }
   }
   return matches
-    .sort(
-      (a, b) =>
-        a.name.localeCompare(b.name) ||
-        Number(a.lang !== "en") - Number(b.lang !== "en") ||
-        a.set.localeCompare(b.set) ||
-        collectorOrder(a.collector_number) - collectorOrder(b.collector_number) ||
-        (a.lang ?? "").localeCompare(b.lang ?? ""),
-    )
-    .slice(0, limit)
 }
 
 export function galleryPrintingCaption(art: GalleryPrinting): string {
