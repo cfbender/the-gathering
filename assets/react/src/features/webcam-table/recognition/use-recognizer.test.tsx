@@ -94,3 +94,35 @@ it("rejects waiting actions when the bundle cannot load or the table closes", as
   next.unmount()
   await closed
 })
+
+it("warms the bundle once preload turns on and reuses that worker for the first click", async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { version: "v1" } })))
+  vi.stubGlobal("fetch", fetch)
+  vi.stubGlobal("Worker", FakeWorker)
+  const { result, rerender } = renderHook((preload: boolean) => useRecognizer(preload), {
+    initialProps: false,
+  })
+  expect(fetch).not.toHaveBeenCalled()
+  expect(FakeWorker.instances).toHaveLength(0)
+  rerender(true)
+  await waitFor(() => expect(result.current.state.status).toBe("loading"))
+  expect(fetch).toHaveBeenCalledTimes(1)
+  const worker = FakeWorker.instances[0]!
+  expect(worker.postMessage).toHaveBeenCalledWith({ type: "load", bundle: { version: "v1" } })
+  rerender(true)
+  rerender(false)
+  rerender(true)
+  await act(async () => {
+    worker.reply({ type: "ready", version: "v1", arts: 2, ms: 10 })
+  })
+  expect(result.current.state.status).toBe("ready")
+  let search!: ReturnType<typeof result.current.search>
+  act(() => {
+    search = result.current.search("forest")
+  })
+  await waitFor(() => expect(worker.postMessage).toHaveBeenCalledTimes(2))
+  expect(FakeWorker.instances).toHaveLength(1)
+  expect(fetch).toHaveBeenCalledTimes(1)
+  worker.reply({ type: "matches", id: 1, arts: [] })
+  await expect(search).resolves.toEqual([])
+})
