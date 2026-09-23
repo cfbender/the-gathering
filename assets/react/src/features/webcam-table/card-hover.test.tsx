@@ -14,7 +14,12 @@ it("fetches the suffixed face ID and displays the face image and name", async ()
   const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response(
       JSON.stringify({
-        data: { id, name, image_uris: { normal: "https://img.example/back.jpg" } },
+        data: {
+          id,
+          name,
+          image_uris: { normal: "https://img.example/back.jpg" },
+          prices: { usd: "0.25", usd_foil: null, usd_etched: null },
+        },
       }),
     ),
   )
@@ -32,6 +37,7 @@ it("fetches the suffixed face ID and displays the face image and name", async ()
   expect(image.getAttribute("src")).toBe("https://img.example/back.jpg")
   expect(fetch).toHaveBeenCalledWith(`/api/card-printings/${id}/details`, expect.anything())
   expect(screen.getByText(name)).toBeTruthy()
+  expect(screen.getByText("$0.25")).toBeTruthy()
 })
 
 it.each(["https://img.example/selected-printing.jpg", null, undefined])(
