@@ -10,7 +10,7 @@ defmodule TheGathering.Discord.NewGameMessage do
 
     %{
       content: "",
-      allowed_mentions: %{parse: []},
+      allowed_mentions: :none,
       embeds: [
         %{
           title: game.title,
@@ -46,7 +46,7 @@ defmodule TheGathering.Discord.NewGameMessage do
       content:
         Enum.map_join(ids, " ", &"<@#{&1}>") <>
           " Your game is ready! " <> url(game) <> "\nSign in with Discord to join the table.",
-      allowed_mentions: %{parse: [], users: ids},
+      allowed_mentions: [users: ids],
       nonce: "newgame:#{game.id}",
       enforce_nonce: true
     }

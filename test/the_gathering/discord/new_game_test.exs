@@ -1,5 +1,6 @@
 defmodule TheGathering.Discord.NewGameTest do
   use TheGathering.DataCase, async: false
+  alias Nostrum.Api.Helpers
   alias Nostrum.Struct.Interaction
 
   alias TheGathering.Discord.{
@@ -309,7 +310,8 @@ defmodule TheGathering.Discord.NewGameTest do
 
   test "queue rendering suppresses free-text mentions" do
     game = queue(%{title: "@everyone", format: "<@&444>"})
-    assert NewGameMessage.render(game).allowed_mentions == %{parse: []}
+    payload = game |> NewGameMessage.render() |> Helpers.prepare_allowed_mentions()
+    assert payload.allowed_mentions == %{parse: []}
   end
 
   test "first public queue edit can be recovered after restart", %{scheduler: server} do

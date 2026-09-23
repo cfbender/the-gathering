@@ -1,6 +1,7 @@
 defmodule TheGathering.DiscordNewGameAPI do
   @moduledoc false
   use Agent
+  alias Nostrum.Api.Helpers
 
   def start_link(owner),
     do:
@@ -17,12 +18,16 @@ defmodule TheGathering.DiscordNewGameAPI do
   def edit_response(_interaction, response),
     do: record(:edit_response, response, {:ok, %{id: 555}})
 
-  # Match Nostrum's integer-only snowflake guards, not permissive test-only maps.
-  def create(channel, payload) when is_integer(channel),
-    do: record(:create, {channel, payload}, {:ok, %{id: 999}})
+  # Exercise Nostrum's mention conversion as well as its integer-only snowflake guards.
+  def create(channel, payload) when is_integer(channel) do
+    payload = Helpers.prepare_allowed_mentions(payload)
+    record(:create, {channel, payload}, {:ok, %{id: 999}})
+  end
 
-  def edit(channel, message, payload) when is_integer(channel) and is_integer(message),
-    do: record(:edit, {channel, message, payload}, {:ok, %{id: message}})
+  def edit(channel, message, payload) when is_integer(channel) and is_integer(message) do
+    payload = Helpers.prepare_allowed_mentions(payload)
+    record(:edit, {channel, message, payload}, {:ok, %{id: message}})
+  end
 
   def get(333) do
     {:ok,
