@@ -25,25 +25,46 @@ defmodule TheGathering.Catalog.Scryfall do
     end
   end
 
+  @doc "Fetches one printing by Scryfall id, for card details the catalog does not hold."
+  def card(id) when is_binary(id) do
+    limit = Application.get_env(:the_gathering, :scryfall_search_limit, 1)
+
+    with {:allow, _count} <- TheGathering.RateLimiter.hit(:scryfall_card, 100, limit),
+         {:ok, response} <- Req.get("https://api.scryfall.com/cards/#{id}", request_options()) do
+      case response do
+        %{status: 200, body: %{"id" => _id} = card} -> {:ok, card}
+        %{status: 404} -> {:error, :not_found}
+        _other -> {:error, :bad_gateway}
+      end
+    else
+      _error -> {:error, :bad_gateway}
+    end
+  end
+
   defp search_printings(oracle_id, page) do
-    options = [
+    options =
+      request_options(
+        params: [
+          q: "oracleid:#{oracle_id} game:paper lang:en",
+          unique: "prints",
+          order: "released",
+          include_variations: true,
+          page: page
+        ]
+      )
+
+    Req.get("https://api.scryfall.com/cards/search", options)
+  end
+
+  defp request_options(extra \\ []) do
+    [
       headers: headers(),
-      params: [
-        q: "oracleid:#{oracle_id} game:paper lang:en",
-        unique: "prints",
-        order: "released",
-        include_variations: true,
-        page: page
-      ],
       connect_options: [timeout: 3_000],
       receive_timeout: 10_000,
       retry: false
     ]
-
-    options =
-      Keyword.merge(options, Application.get_env(:the_gathering, :scryfall_req_options, []))
-
-    Req.get("https://api.scryfall.com/cards/search", options)
+    |> Keyword.merge(extra)
+    |> Keyword.merge(Application.get_env(:the_gathering, :scryfall_req_options, []))
   end
 
   def fetch do

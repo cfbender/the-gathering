@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import {
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -12,18 +11,21 @@ import {
   ScrollText,
   Shuffle,
   Users,
+  WalletCards,
   Wifi,
 } from "lucide-react"
-import { useState, type ComponentType, type ReactNode } from "react"
+import type { ComponentType } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
+import { CardsTab, type CardsTabProps } from "./cards-tab"
 import { CommanderPicker } from "./commander-picker"
+import { PanelSection } from "./panel-section"
 import type { RecognizerState } from "./recognition/use-recognizer"
 import type { TableEvent, TableParticipant } from "./use-webcam-room"
 
-export type PanelTab = "table" | "decks" | "log"
+export type PanelTab = "table" | "decks" | "cards" | "log"
 
-interface Props {
+interface Props extends CardsTabProps {
   open: boolean
   tab: PanelTab
   onOpenChange: (open: boolean) => void
@@ -49,6 +51,7 @@ interface Props {
 const TABS: { id: PanelTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
   { id: "table", label: "Table", icon: Gamepad2 },
   { id: "decks", label: "Decks", icon: Layers },
+  { id: "cards", label: "Cards", icon: WalletCards },
   { id: "log", label: "Log", icon: ScrollText },
 ]
 
@@ -85,40 +88,6 @@ function RecognizerBadge({ state }: { state: RecognizerState }) {
           ? "off"
           : "loading"
   return <span className={cn("badge badge-xs", tone)}>{label}</span>
-}
-
-function PanelSection({
-  title,
-  icon: Icon,
-  meta,
-  defaultOpen = true,
-  children,
-}: {
-  title: string
-  icon: ComponentType<{ className?: string }>
-  meta?: ReactNode
-  defaultOpen?: boolean
-  children: ReactNode
-}) {
-  const [expanded, setExpanded] = useState(defaultOpen)
-  return (
-    <section className="border-b border-white/10">
-      <button
-        type="button"
-        className="hover:bg-white/5 flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-bold"
-        onClick={() => setExpanded((value) => !value)}
-        aria-expanded={expanded}
-      >
-        <Icon className="text-base-content/60 size-3.5" />
-        <span className="flex-1">{title}</span>
-        {meta}
-        <ChevronDown
-          className={cn("text-base-content/60 size-3.5 transition", !expanded && "-rotate-90")}
-        />
-      </button>
-      {expanded && <div className="px-3 pb-3">{children}</div>}
-    </section>
-  )
 }
 
 function commanderName(participant: TableParticipant, decks: DeckSummary[]) {
@@ -256,10 +225,12 @@ function TableTab(props: Props) {
       >
         <p className="text-base-content/70 text-xs leading-relaxed">
           Click a card on any board. The camera owner returns a native 640 px crop, the recognizer
-          runs in your browser and lists its top five; press <kbd className="kbd kbd-xs">1</kbd>–
-          <kbd className="kbd kbd-xs">5</kbd> to confirm one or <kbd className="kbd kbd-xs">/</kbd>{" "}
-          to search by name, set code or collector number. Confirmed cards go to the Log at every
-          seat.
+          runs in your browser, and a clear match opens the card with its rules text and lands in
+          that board's tray (the tab at the bottom of the video) at every seat. Say "Wrong card?" on
+          the preview, or Shift+click, to pick from its top five instead: press{" "}
+          <kbd className="kbd kbd-xs">1</kbd>–<kbd className="kbd kbd-xs">5</kbd> or{" "}
+          <kbd className="kbd kbd-xs">/</kbd> to search by name, set code or collector number. The
+          Cards tab lists everything identified at the table.
         </p>
         <p className="text-base-content/50 mt-2 text-xs">{describeRecognizer(recognizer)}</p>
       </PanelSection>
@@ -351,7 +322,8 @@ function LogTab({ events }: Props) {
  * plus the stacked, collapsible sections for the active tab. */
 export function SidePanel(props: Props) {
   const { open, tab, onOpenChange, onTabChange } = props
-  const Content = tab === "table" ? TableTab : tab === "decks" ? DecksTab : LogTab
+  const Content =
+    tab === "table" ? TableTab : tab === "decks" ? DecksTab : tab === "cards" ? CardsTab : LogTab
 
   return (
     <div className="bg-base-100 text-base-content flex max-h-[45dvh] flex-col border-t border-white/10 lg:max-h-none lg:flex-row lg:border-t-0 lg:border-l">

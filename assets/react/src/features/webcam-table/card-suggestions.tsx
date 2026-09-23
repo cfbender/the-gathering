@@ -1,10 +1,10 @@
-import { Check, Search, X } from "lucide-react"
+import { Search, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import type { Identification } from "./recognition/messages"
 import type { GalleryArt } from "./recognition/pipeline"
-import type { CapturedCard, IdentifiedCard } from "./use-webcam-room"
+import type { CapturedCard } from "./use-webcam-room"
 
 /** What recognition did with the current capture. */
 export type Recognition =
@@ -14,13 +14,9 @@ export type Recognition =
   | { status: "skipped"; reason: string }
 
 /** Top-1 leads the runner-up by at least this cosine margin: it is the answer, not a guess,
- * and gets logged without a keypress. From `ml/` evaluation: the margin for ~99% precision on
- * real captures with the detector. */
+ * and a plain click records it on the board without showing this panel. From `ml/` evaluation: the margin for
+ * ~99% precision on real captures with the detector. */
 export const CLEAR_MARGIN = 0.08
-
-/** How long an auto-confirmed answer stays on screen for corrections before the panel closes
- * by itself (typing in the search keeps it open). */
-export const AUTO_DISMISS_MS = 6000
 
 export function isClear(candidates: Identification["candidates"]): boolean {
   const [first, second] = candidates
@@ -31,8 +27,6 @@ interface Props {
   capture: CapturedCard
   playerName: string
   recognition: Recognition
-  /** The answer already logged for this click (the recognizer's clear top-1), if any. */
-  confirmed: IdentifiedCard | null
   deckSuggestions: DeckSummary[]
   /** The worker has the gallery, so the manual search can run even when a click timed out. */
   gallerySearchable: boolean
@@ -46,14 +40,14 @@ function printing(art: GalleryArt) {
   return `${art.set.toUpperCase()}${art.collector_number ? ` #${art.collector_number}` : ""}`
 }
 
-/** Floating panel over the board after a card click: the native crop with the detected card
- * outlined, the recognizer's numbered top five (keys 1–5), and a gallery search for the
+/** Floating panel over the board when a click needs a human: the recognizer was unsure (or
+ * off), or the clicker held Shift to choose for themselves. Shows the native crop with the
+ * detected card outlined, the numbered top five (keys 1–5), and a gallery search for the
  * "that's not it" case. Without a published bundle the seat's decks stand in. */
 export function CardSuggestions({
   capture,
   playerName,
   recognition,
-  confirmed,
   deckSuggestions,
   gallerySearchable,
   onChooseCard,
@@ -83,14 +77,6 @@ export function CardSuggestions({
     }
   }, [onSearch, query])
 
-  // An auto-confirmed answer needs no further action: close the panel unless someone is
-  // typing a correction into the search.
-  useEffect(() => {
-    if (!confirmed || query !== "") return
-    const timer = window.setTimeout(onDismiss, AUTO_DISMISS_MS)
-    return () => window.clearTimeout(timer)
-  }, [confirmed, onDismiss, query])
-
   useEffect(() => {
     function focusSearch(event: KeyboardEvent) {
       if (event.key !== "/" || event.target instanceof HTMLInputElement) return
@@ -107,14 +93,8 @@ export function CardSuggestions({
       aria-label="Card suggestions"
     >
       <header className="flex items-center justify-between px-3 pt-2">
-        <span className="truncate text-[0.65rem] font-bold tracking-wider text-white/60 uppercase">
-          {confirmed ? (
-            <>
-              <span className="text-success">Logged {confirmed.name}</span> · not it? pick another
-            </>
-          ) : (
-            <>Identify card · {playerName}’s board</>
-          )}
+        <span className="text-[0.65rem] font-bold tracking-wider text-white/60 uppercase">
+          Identify card · {playerName}’s board
         </span>
         <button
           type="button"
@@ -164,16 +144,12 @@ export function CardSuggestions({
                 className={cn(
                   "flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-left text-xs hover:bg-white/15",
                   index === 0 && clear && "border-success/60 bg-success/15",
-                  confirmed && confirmed.id !== art.id && "opacity-80",
                 )}
                 onClick={() => onChooseCard(art)}
               >
                 <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
                 <span className="truncate font-semibold">{art.name}</span>
                 <span className="truncate text-white/50">{printing(art)}</span>
-                {confirmed?.id === art.id && (
-                  <Check className="text-success size-3.5 shrink-0" aria-label="Logged" />
-                )}
                 <span className="ml-auto tabular-nums text-white/40">{art.score.toFixed(2)}</span>
               </button>
             ))}

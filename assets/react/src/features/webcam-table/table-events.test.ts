@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
-  describeCardIdentified,
   describeParticipantChange,
   describeParticipantLeft,
   orderBySeats,
@@ -18,35 +17,6 @@ function seat(overrides: Partial<TableParticipant> & { peer_id: string }): Table
     ...overrides,
   }
 }
-
-describe("describeCardIdentified", () => {
-  const card = { id: "x", name: "Command Tower", set: "fic", collector_number: "301" }
-
-  it("names the card, printing and whose board it was on", () => {
-    expect(describeCardIdentified("Cody", seat({ peer_id: "m", player_name: "Mara" }), card)).toBe(
-      "Cody identified Command Tower [FIC #301] on Mara's board",
-    )
-  })
-
-  it("handles your own board and a missing collector number", () => {
-    expect(
-      describeCardIdentified("Alice", seat({ peer_id: "a" }), {
-        ...card,
-        collector_number: undefined,
-      }),
-    ).toBe("Alice identified Command Tower [FIC] on their board")
-    expect(describeCardIdentified("Alice", undefined, card)).toBe(
-      "Alice identified Command Tower [FIC #301]",
-    )
-  })
-
-  it("words an override of the auto-confirmed answer as a correction", () => {
-    const wrong = { id: "y", name: "Plains", set: "hob", collector_number: "3" }
-    expect(
-      describeCardIdentified("Cody", seat({ peer_id: "m", player_name: "Mara" }), card, wrong),
-    ).toBe("Cody corrected Plains to Command Tower [FIC #301] on Mara's board")
-  })
-})
 
 describe("describeParticipantChange", () => {
   it("announces a brand-new seat", () => {

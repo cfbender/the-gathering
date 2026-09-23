@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import type { GalleryArt } from "./recognition/pipeline"
 import {
-  describeCardIdentified,
   describeParticipantChange,
   describeParticipantLeft,
   orderBySeats,
@@ -50,10 +49,24 @@ export interface CapturedCard {
   /** The click in crop pixels; the crop is clamped to the frame so it is not always centred. */
   clickX: number
   clickY: number
+  /** Shift+click: the clicker wants to see and choose among the candidates even when the
+   * recognizer is sure. A plain click logs a clear answer silently. */
+  inspect: boolean
 }
 
 /** A card a seat named on someone's board, recognized or picked by hand. */
 export type IdentifiedCard = Pick<GalleryArt, "id" | "name" | "set" | "collector_number">
+
+/** One entry in the shared per-board list of identified cards. Ephemeral like the Log: it
+ * lives on the data channels and is synced to seats that connect later. */
+export interface BoardCard {
+  id: string
+  ownerPeerId: string
+  byPlayerName: string
+  card: IdentifiedCard
+  /** Clicker's clock (ms); only used to order the list. */
+  at: number
+}
 
 type Signal = { description: RTCSessionDescriptionInit } | { candidate: RTCIceCandidateInit }
 
@@ -70,14 +83,10 @@ type DataMessage =
       clickY: number
     }
   | { type: "deck_suggestion"; deckId: number }
-  | {
-      type: "card_identified"
-      ownerPeerId: string
-      byPlayerName: string
-      card: IdentifiedCard
-      /** Set when this overrides an earlier answer for the same click. */
-      replaces?: IdentifiedCard
-    }
+  | { type: "card_identified"; entry: BoardCard }
+  | { type: "card_removed"; id: string }
+  /** Sent when a data channel opens so a late joiner sees the cards already on the table. */
+  | { type: "cards_sync"; entries: BoardCard[] }
 
 interface PeerState {
   connection: RTCPeerConnection
@@ -116,7 +125,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   const channelRef = useRef<Channel | null>(null)
   const peersRef = useRef(new Map<string, PeerState>())
   const participantsRef = useRef<TableParticipant[]>([])
-  const pendingCaptures = useRef(new Map<string, string>())
+  const pendingCaptures = useRef(new Map<string, { targetPeerId: string; inspect: boolean }>())
   const eventIdRef = useRef(0)
   const [participants, setParticipants] = useState<TableParticipant[]>([])
   const [seatOrder, setSeatOrder] = useState<string[]>([])
@@ -129,6 +138,8 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   const lifeRef = useRef(STARTING_LIFE)
   const [life, setLifeState] = useState(STARTING_LIFE)
   const [capture, setCapture] = useState<CapturedCard | null>(null)
+  const cardsRef = useRef<BoardCard[]>([])
+  const [identifiedCards, setIdentifiedCards] = useState<BoardCard[]>([])
   const [status, setStatus] = useState("Opening 1080p camera…")
   const [error, setError] = useState<string | null>(null)
 
@@ -151,6 +162,26 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     channelRef.current?.push("update_status", changes)
   }, [])
 
+  /** Merges entries into the shared card list (deduplicated by id, oldest first). */
+  const mergeCards = useCallback((entries: BoardCard[]) => {
+    const byId = new Map(cardsRef.current.map((entry) => [entry.id, entry]))
+    for (const entry of entries) byId.set(entry.id, entry)
+    cardsRef.current = [...byId.values()].sort((a, b) => a.at - b.at)
+    setIdentifiedCards(cardsRef.current)
+  }, [])
+
+  const dropCard = useCallback((id: string) => {
+    cardsRef.current = cardsRef.current.filter((entry) => entry.id !== id)
+    setIdentifiedCards(cardsRef.current)
+  }, [])
+
+  const broadcast = useCallback((message: DataMessage) => {
+    const payload = JSON.stringify(message)
+    for (const peer of peersRef.current.values()) {
+      if (peer.channel?.readyState === "open") peer.channel.send(payload)
+    }
+  }, [])
+
   const handleData = useCallback(
     (fromPeerId: string, event: MessageEvent<string>) => {
       const message = JSON.parse(event.data) as DataMessage
@@ -162,17 +193,27 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
             JSON.stringify({ type: "capture_response", requestId: message.requestId, ...result }),
           )
       } else if (message.type === "capture_response") {
+        const pending = pendingCaptures.current.get(message.requestId)
         pendingCaptures.current.delete(message.requestId)
         const owner = participantsRef.current.find((item) => item.peer_id === fromPeerId)
-        if (owner) setCapture({ peerId: fromPeerId, playerId: owner.player_id, ...message })
+        if (owner && pending)
+          setCapture({
+            peerId: fromPeerId,
+            playerId: owner.player_id,
+            inspect: pending.inspect,
+            ...message,
+          })
       } else if (message.type === "deck_suggestion") {
         chooseDeck(message.deckId)
       } else if (message.type === "card_identified") {
-        const owner = participantsRef.current.find((item) => item.peer_id === message.ownerPeerId)
-        log([describeCardIdentified(message.byPlayerName, owner, message.card, message.replaces)])
+        mergeCards([message.entry])
+      } else if (message.type === "cards_sync") {
+        mergeCards(message.entries)
+      } else if (message.type === "card_removed") {
+        dropCard(message.id)
       }
     },
-    [chooseDeck, log],
+    [chooseDeck, dropCard, mergeCards],
   )
 
   useEffect(() => {
@@ -185,6 +226,13 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
       if (!peer) return
       peer.channel = dataChannel
       dataChannel.onmessage = (event) => handleData(peerId, event)
+      // Incoming channels can already be open when announced, so sync in both cases.
+      const syncCards = () => {
+        if (cardsRef.current.length > 0)
+          dataChannel.send(JSON.stringify({ type: "cards_sync", entries: cardsRef.current }))
+      }
+      if (dataChannel.readyState === "open") syncCards()
+      else dataChannel.onopen = syncCards
     }
 
     function sendSignal(target: string, signal: Signal) {
@@ -363,56 +411,49 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     channelRef.current?.push("seat_order", { peer_ids: shuffleSeats(current) })
   }
 
-  function requestCapture(targetPeerId: string, x: number, y: number) {
+  function requestCapture(targetPeerId: string, x: number, y: number, inspect = false) {
     if (targetPeerId === peerIdRef.current && localVideoRef.current) {
       const result = captureCrop(localVideoRef.current, x, y)
-      setCapture({ peerId: targetPeerId, playerId, ...result })
+      setCapture({ peerId: targetPeerId, playerId, inspect, ...result })
       return
     }
     const requestId = crypto.randomUUID()
-    pendingCaptures.current.set(requestId, targetPeerId)
+    pendingCaptures.current.set(requestId, { targetPeerId, inspect })
     peersRef.current
       .get(targetPeerId)
       ?.channel?.send(JSON.stringify({ type: "capture_request", requestId, x, y }))
     setStatus("Requesting native camera crop…")
   }
 
-  /** Names a card on `ownerPeerId`'s board: logged here and at every other seat. An
-   * auto-confirmed answer keeps the capture open so it can still be corrected; a correction
-   * names the answer it `replaces`. */
-  function announceCard(
-    ownerPeerId: string,
-    byPlayerName: string,
-    card: IdentifiedCard,
-    options: { replaces?: IdentifiedCard; keepCapture?: boolean } = {},
-  ) {
-    const owner = participantsRef.current.find((item) => item.peer_id === ownerPeerId)
-    const { replaces, keepCapture } = options
-    log([describeCardIdentified(byPlayerName, owner, card, replaces)])
-    const message = JSON.stringify({
-      type: "card_identified",
+  /** Names a card on `ownerPeerId`'s board: added to that board's card list here and at
+   * every other seat. The capture stays current so the clicker can still say "wrong card" and
+   * pick again from the same crop; the page dismisses it when it is done with the result. */
+  function announceCard(ownerPeerId: string, byPlayerName: string, card: IdentifiedCard) {
+    const entry: BoardCard = {
+      id: crypto.randomUUID(),
       ownerPeerId,
       byPlayerName,
       card,
-      replaces,
-    })
-    for (const peer of peersRef.current.values()) {
-      if (peer.channel?.readyState === "open") peer.channel.send(message)
+      at: Date.now(),
     }
-    if (!keepCapture) setCapture(null)
+    mergeCards([entry])
+    broadcast({ type: "card_identified", entry })
+    return entry
   }
 
-  function suggestDeck(
-    targetPeerId: string,
-    suggestedDeckId: number,
-    options: { keepCapture?: boolean } = {},
-  ) {
+  /** Takes a misidentified card off its board's list at every seat. */
+  function removeCard(id: string) {
+    dropCard(id)
+    broadcast({ type: "card_removed", id })
+  }
+
+  function suggestDeck(targetPeerId: string, suggestedDeckId: number) {
     if (targetPeerId === peerIdRef.current) chooseDeck(suggestedDeckId)
     else
       peersRef.current
         .get(targetPeerId)
         ?.channel?.send(JSON.stringify({ type: "deck_suggestion", deckId: suggestedDeckId }))
-    if (!options.keepCapture) setCapture(null)
+    setCapture(null)
   }
 
   /** Participants in shared seat order; the End game form records seats in this order. */
@@ -432,11 +473,13 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     localStream,
     cameraOff,
     capture,
+    identifiedCards,
     status,
     error,
     requestCapture,
     suggestDeck,
     announceCard,
+    removeCard,
     chooseDeck,
     life,
     changeLife,
