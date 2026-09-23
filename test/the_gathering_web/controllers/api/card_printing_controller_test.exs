@@ -108,6 +108,71 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
            |> get_in(["data", "set_code"]) == "new"
   end
 
+  test "serves sibling and early-core printings without catalog membership", %{conn: conn} do
+    for {id, name, set, number, lang} <- [
+          {"a51fb64d-cc0c-400d-971f-78c28d42043b", "Sol Talisman", "mh2", "236", "en"},
+          {"0a7cb0f8-2946-4b00-a192-0b31c8e1ec5c", "Nettlecyst", "mkc", "233", "en"},
+          {"97fa5f07-46ba-408d-a861-bdb1791cc188", "Serra Angel", "3ed", "40", "en"},
+          {"555e2c50-4d68-4ed1-b2eb-bd31dfc9f569", "Lightning Bolt", "3ed", "162", "it"}
+        ] do
+      refute Catalog.get_card(id)
+
+      Req.Test.expect(__MODULE__, fn request ->
+        assert request.request_path == "/cards/#{id}"
+
+        card =
+          scryfall_card(id, name)
+          |> Map.merge(%{"set" => set, "collector_number" => number, "lang" => lang})
+
+        Req.Test.json(request, card)
+      end)
+
+      body = conn |> get(~p"/api/card-printings/#{id}/details") |> json_response(200)
+      assert body["data"]["id"] == id
+      assert body["data"]["name"] == name
+      assert body["data"]["set_code"] == set
+      assert body["data"]["collector_number"] == number
+      assert body["data"]["lang"] == lang
+      assert body["data"]["image_uris"]["normal"] == "https://img.example/#{id}-default-card.jpg"
+
+      Req.Test.expect(__MODULE__, fn request ->
+        assert request.request_path == "/cards/#{id}/rulings"
+        Req.Test.json(request, %{data: []})
+      end)
+
+      assert %{"data" => []} =
+               conn |> get(~p"/api/card-printings/#{id}/rulings") |> json_response(200)
+    end
+  end
+
+  test "a selectable sibling face without its own scan still returns its name and rules", %{
+    conn: conn
+  } do
+    Req.Test.expect(__MODULE__, fn request ->
+      card =
+        scryfall_card(@mdfc, "Front // Back")
+        |> Map.delete("image_uris")
+        |> Map.merge(%{
+          "layout" => "modal_dfc",
+          "image_status" => "missing",
+          "card_faces" => [
+            %{"name" => "Front"},
+            %{"name" => "Back", "oracle_text" => "Draw a card.", "type_line" => "Sorcery"}
+          ]
+        })
+
+      Req.Test.json(request, card)
+    end)
+
+    id = @mdfc <> "-1"
+    body = conn |> get(~p"/api/card-printings/#{id}/details") |> json_response(200)
+    assert body["data"]["id"] == id
+    assert body["data"]["name"] == "Back"
+    assert body["data"]["oracle_text"] == "Draw a card."
+    assert body["data"]["type_line"] == "Sorcery"
+    assert body["data"]["image_uris"] == %{}
+  end
+
   test "fetches full printing details by Scryfall id and caches the printing", %{conn: conn} do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.request_path == "/cards/#{@saga}"

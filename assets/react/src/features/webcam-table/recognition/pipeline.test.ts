@@ -128,6 +128,53 @@ describe("searchArts", () => {
     expect(searchArts(arts, "forest", 2)).toHaveLength(2)
   })
 
+  it("searches sibling sets, numbers and languages without adding ranked artwork rows", () => {
+    const art: GalleryArt = {
+      id: "extended",
+      name: "Nettlecyst",
+      set: "mh2",
+      collector_number: "471",
+      frame: "extended",
+      printings: [
+        { id: "jp", name: "Nettlecyst", set: "mkc", collector_number: "233", lang: "ja" },
+        { id: "reprint", name: "Nettlecyst", set: "mkc", collector_number: "233", lang: "en" },
+        { id: "regular", name: "Nettlecyst", set: "mh2", collector_number: "231", lang: "en" },
+        {
+          id: "extended",
+          name: "Nettlecyst",
+          set: "mh2",
+          collector_number: "471",
+          lang: "en",
+          frame_effects: ["extendedart"],
+        },
+      ],
+    }
+    expect(searchArts([art], "Nettlecyst mkc #233").map((p) => p.id)).toEqual(["reprint", "jp"])
+    expect(searchArts([art], "Nettlecyst set:mkc lang:ja")).toEqual([
+      { ...art.printings![0], frame: "extended" },
+    ])
+    expect(searchArts([art], "Nettlecyst mh2 231").map((p) => p.id)).toEqual(["regular"])
+    expect(searchArts([art, art], "Nettlecyst", 20)).toHaveLength(4)
+    expect(searchArts([art], "Nettlecyst mkc lang:de")).toEqual([])
+  })
+
+  it("finds Revised and Unlimited printings even when the gallery representative is Alpha", () => {
+    const art: GalleryArt = {
+      id: "alpha",
+      name: "Serra Angel",
+      set: "lea",
+      collector_number: "40",
+      frame: "old",
+      printings: [
+        { id: "alpha", name: "Serra Angel", set: "lea", collector_number: "40", lang: "en" },
+        { id: "revised", name: "Serra Angel", set: "3ed", collector_number: "40", lang: "en" },
+        { id: "unlimited", name: "Serra Angel", set: "2ed", collector_number: "40", lang: "en" },
+      ],
+    }
+    expect(searchArts([art], "serra 3ed #40").map((p) => p.id)).toEqual(["revised"])
+    expect(searchArts([art], "serra set:2ed").map((p) => p.id)).toEqual(["unlimited"])
+  })
+
   it("searches and returns face metadata without collapsing sides", () => {
     const front: GalleryArt = {
       id: "b0a96416-9ee5-4202-a99f-e09db8794567",

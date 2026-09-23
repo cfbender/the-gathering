@@ -462,9 +462,20 @@ Gallery coverage includes paper artwork in any language (including Japanese-only
 art), prepare cards, meld cards, and both scanned sides of transform/MDFC/reversible cards
 and double-faced tokens. Separate sides use face names and IDs `<scryfall UUID>` (front)
 and `<scryfall UUID>-1` (back); prepare/adventure share one art and keep their combined name.
-Split, flip and art-series layouts remain excluded. See `ml/README.md`, **Gallery coverage
-and face IDs**, for crop geometry and the refresh/export/publish commands. Deploying this
+Split, flip and art-series layouts remain excluded. See `ml/README.md`, **Gallery coverage,
+printings and face IDs**, for crop geometry and the refresh/export/publish commands. Deploying this
 code alone does not rebuild the gallery bundle.
+
+The gallery uses Scryfall's **all_cards** metadata to attach all paper printing/language
+siblings to each distinct illustration, instead of letting `unique_artwork` choose the
+only selectable printing. Regular-frame Sol Talisman and Essence Channeler, Nettlecyst
+reprints, and early core sets such as Revised (`3ed`) and Unlimited (`2ed`) are searchable
+even when another printing supplies the embedding. Placeholder-scan siblings are included
+when that illustration has a usable scan elsewhere; artworks with no usable scan remain
+absent. Each illustration still has one embedding/crop. Existing IDs and splits are kept;
+duplicate legacy rows are retained as aliases in training metadata but not embedded twice.
+Exact-printing corrections map back to the shared artwork for training and evaluation.
+The separate deck printing picker remains English-only.
 
 In the browser, `useRecognizer` fetches `GET /api/cardid/bundle` once per table, starts a Web
 Worker, loads the three graphs plus `arts.json`, and runs one warm-up identify so the first real
@@ -492,8 +503,13 @@ The **picker** (`card-suggestions.tsx`) is user-initiated only: it opens for a n
 no bundle is published (deck suggestions stand in), on "Wrong card?", or when the clicker
 Shift+clicks to choose for themselves. It shows five numbered candidates (`1`–`5`), the crop
 with the detected quad and per-stage timings; low similarity never suppresses results. `/`
-focuses a gallery search that understands names, set codes (`forest fin`, `set:fin`) and
-collector numbers (`#280`) so basics and staples with hundreds of printings can be narrowed.
+focuses a gallery search that understands names, set codes (`forest fin`, `set:fin`),
+collector numbers (`#280`) and language (`lang:ja`). English results sort first. Expand a
+candidate's printing count to select its exact set/number/language; choices also show frame
+effects, borderless treatment and promos. The Cards tab searches the same printing choices.
+Ranks/keyboard `1`–`5` remain one per artwork, not one per reprint. Identical art cannot tell
+printings apart automatically; the user chooses a sibling, and its own ID drives details,
+hover images, rulings and correction labels. Name-based board deduplication is unchanged.
 
 Hover or keyboard-focus a candidate (including gallery search results) to see a larger card
 image beside the picker before choosing. The same hover preview shows a seat's commander in

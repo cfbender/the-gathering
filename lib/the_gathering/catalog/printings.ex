@@ -43,7 +43,7 @@ defmodule TheGathering.Catalog.Printings do
   defp select_face(%{"layout" => layout, "card_faces" => faces} = card, index, id)
        when layout in @face_layouts do
     case Enum.at(faces, index) do
-      %{"image_uris" => %{} = _images} = face ->
+      %{"name" => _name} = face ->
         {:ok,
          card
          |> Map.drop(["card_faces" | @face_fields])

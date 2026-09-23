@@ -4,7 +4,7 @@ import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { CardHover, CommanderHover } from "./card-hover"
 import type { Identification } from "./recognition/messages"
-import type { GalleryArt } from "./recognition/pipeline"
+import { galleryPrintingCaption, type GalleryArt } from "./recognition/pipeline"
 import type { CapturedCard } from "./use-webcam-room"
 
 /** What recognition did with the current capture. */
@@ -37,8 +37,42 @@ interface Props {
   onDismiss: () => void
 }
 
-function printing(art: GalleryArt) {
-  return `${art.set.toUpperCase()}${art.collector_number ? ` #${art.collector_number}` : ""}`
+function PrintingChoices({
+  art,
+  onChoose,
+}: {
+  art: GalleryArt
+  onChoose: (art: GalleryArt) => void
+}) {
+  if (!art.printings || art.printings.length < 2) return null
+  return (
+    <details className="ml-7 text-xs">
+      <summary className="cursor-pointer py-1 text-white/60 hover:text-white">
+        {art.printings.length} printings of {art.name}
+      </summary>
+      <ul
+        className="max-h-40 overflow-y-auto rounded-md border border-white/10"
+        aria-label={`Printings of ${art.name}`}
+      >
+        {art.printings.map((printing) => (
+          <li key={printing.id} className="grid">
+            <CardHover id={printing.id} name={printing.name}>
+              <button
+                type="button"
+                className="w-full px-2 py-1.5 text-left text-white/75 hover:bg-white/15"
+                onClick={() => onChoose({ ...printing, frame: art.frame })}
+              >
+                {printing.name !== art.name && (
+                  <span className="block font-semibold">{printing.name}</span>
+                )}
+                {galleryPrintingCaption(printing)}
+              </button>
+            </CardHover>
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
 }
 
 /** Floating panel over the board when a click needs a human: the recognizer was unsure (or
@@ -90,7 +124,7 @@ export function CardSuggestions({
 
   return (
     <section
-      className="absolute bottom-4 left-1/2 z-10 w-[min(38rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-white/15 bg-black/85 text-white shadow-2xl backdrop-blur-xl"
+      className="absolute bottom-4 left-1/2 z-10 max-h-[calc(100%-2rem)] w-[min(38rem,calc(100%-2rem))] -translate-x-1/2 overflow-y-auto rounded-xl border border-white/15 bg-black/85 text-white shadow-2xl backdrop-blur-xl"
       aria-label="Card suggestions"
     >
       <header className="flex items-center justify-between px-3 pt-2">
@@ -139,21 +173,26 @@ export function CardSuggestions({
         <div className="min-w-0">
           <div className="grid gap-1">
             {candidates.map((art, index) => (
-              <CardHover key={art.id} id={art.id} name={art.name}>
-                <button
-                  type="button"
-                  className={cn(
-                    "flex h-8 w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-left text-xs hover:bg-white/15",
-                    index === 0 && clear && "border-success/60 bg-success/15",
-                  )}
-                  onClick={() => onChooseCard(art)}
-                >
-                  <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
-                  <span className="truncate font-semibold">{art.name}</span>
-                  <span className="truncate text-white/50">{printing(art)}</span>
-                  <span className="ml-auto tabular-nums text-white/40">{art.score.toFixed(2)}</span>
-                </button>
-              </CardHover>
+              <div key={art.id} className="grid">
+                <CardHover id={art.id} name={art.name}>
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex h-8 w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-2 text-left text-xs hover:bg-white/15",
+                      index === 0 && clear && "border-success/60 bg-success/15",
+                    )}
+                    onClick={() => onChooseCard(art)}
+                  >
+                    <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
+                    <span className="truncate font-semibold">{art.name}</span>
+                    <span className="truncate text-white/50">{galleryPrintingCaption(art)}</span>
+                    <span className="ml-auto tabular-nums text-white/40">
+                      {art.score.toFixed(2)}
+                    </span>
+                  </button>
+                </CardHover>
+                <PrintingChoices art={art} onChoose={onChooseCard} />
+              </div>
             ))}
             {recognition.status === "skipped" &&
               deckSuggestions.map((deck, index) => (
@@ -180,7 +219,7 @@ export function CardSuggestions({
               <input
                 ref={searchRef}
                 className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-white/40"
-                placeholder="Not it? Search name, set code, #number  (/)"
+                placeholder="Search name, set:mh2, #236, lang:en  (/)"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 aria-label="Search the card gallery"
@@ -193,15 +232,15 @@ export function CardSuggestions({
               aria-label="Search results"
             >
               {matches.map((art) => (
-                <li key={art.id}>
+                <li key={art.id} className="grid">
                   <CardHover id={art.id} name={art.name}>
                     <button
                       type="button"
-                      className="flex h-7 w-full items-center gap-2 px-2 text-left hover:bg-white/15"
+                      className="w-full px-2 py-1.5 text-left hover:bg-white/15"
                       onClick={() => onChooseCard(art)}
                     >
-                      <span className="truncate font-semibold">{art.name}</span>
-                      <span className="ml-auto shrink-0 text-white/50">{printing(art)}</span>
+                      <span className="block truncate font-semibold">{art.name}</span>
+                      <span className="block text-white/50">{galleryPrintingCaption(art)}</span>
                     </button>
                   </CardHover>
                 </li>
