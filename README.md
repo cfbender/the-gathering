@@ -263,7 +263,7 @@ A card can be a commander when it is a legendary creature or its oracle text say
 docker build -t the-gathering .
 ```
 
-Images are published to `ghcr.io/cfbender/the-gathering` by the [container workflow](.github/workflows/container.yml) on pushes to `main` and version tags.
+Images are published to `ghcr.io/cfbender/the-gathering` by the [container workflow](.github/workflows/container.yml) on pushes to `main` and version tags. Published images are `linux/amd64` only; build locally (above) for other architectures.
 
 ## Development
 
