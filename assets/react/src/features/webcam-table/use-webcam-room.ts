@@ -19,6 +19,7 @@ import {
   describeParticipantChange,
   describeParticipantLeft,
   orderBySeats,
+  retainEliminatedSeats,
   shuffleSeats,
   type TableEvent,
   type TableEventContent,
@@ -36,12 +37,17 @@ export interface TableParticipant extends SeatCounters {
   joined_at: number
   camera_off: boolean
   reveal_to?: string | null
+  eliminated: boolean
+  /** Retained result seat after an eliminated player disconnects. */
+  departed?: boolean
   deck_id?: number
   deck_name?: string
 }
 
 /** Status a player publishes about their own seat; mirrors the channel's `update_status`. */
-export type SeatStatus = Partial<Pick<TableParticipant, "life" | "camera_off"> & SeatCounters>
+export type SeatStatus = Partial<
+  Pick<TableParticipant, "life" | "camera_off" | "eliminated"> & SeatCounters
+>
 
 interface Monarch {
   peer_id: string
@@ -178,6 +184,7 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   const pendingCaptures = useRef(new Map<string, { targetPeerId: string; inspect: boolean }>())
   const eventIdRef = useRef(0)
   const [participants, setParticipants] = useState<TableParticipant[]>([])
+  const [eliminatedSeats, setEliminatedSeats] = useState<TableParticipant[]>([])
   const [seatOrder, setSeatOrder] = useState<string[]>([])
   const [shuffleVersion, setShuffleVersion] = useState(0)
   const [timer, setTimer] = useState<TimerSample | null>(null)
@@ -481,10 +488,24 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
         })
         room.on(
           "table_state",
-          ({ timer: state, peer_ids }: { timer: GameTimerState; peer_ids: string[] }) => {
+          ({
+            timer: state,
+            peer_ids,
+            eliminated_seats,
+          }: {
+            timer: GameTimerState
+            peer_ids: string[]
+            eliminated_seats: TableParticipant[]
+          }) => {
             receiveTimer(state)
             setSeatOrder(peer_ids)
+            setEliminatedSeats(eliminated_seats)
           },
+        )
+        room.on(
+          "eliminated_seats",
+          ({ participants: eliminated }: { participants: TableParticipant[] }) =>
+            setEliminatedSeats(eliminated),
         )
         room.on("timer_state", receiveTimer)
         room.on("roll", (result: TableRoll) => {
@@ -693,6 +714,13 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     })
   }
 
+  function setEliminated(peerId: string, eliminated: boolean) {
+    channelRef.current
+      ?.push("set_eliminated", { peer_id: peerId, eliminated })
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+      .receive("timeout", () => setError("Elimination request timed out; try again"))
+  }
+
   function rollDice(request: RollRequest) {
     channelRef.current
       ?.push("roll", request)
@@ -775,17 +803,19 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   /** Participants in shared seat order; the End game form records seats in this order. */
   const seatedParticipants = useMemo(
     () =>
-      orderBySeats(participants, seatOrder).map((participant) =>
-        participant.peer_id === peerIdRef.current
-          ? { ...participant, life, ...counters }
-          : participant,
+      orderBySeats(retainEliminatedSeats(participants, eliminatedSeats), seatOrder).map(
+        (participant) =>
+          participant.peer_id === peerIdRef.current
+            ? { ...participant, life, ...counters }
+            : participant,
       ),
-    [counters, life, participants, seatOrder],
+    [counters, life, participants, eliminatedSeats, seatOrder],
   )
 
   return {
     peerId: peerIdRef.current,
     participants: seatedParticipants,
+    setEliminated,
     shuffleVersion,
     timer,
     roll,

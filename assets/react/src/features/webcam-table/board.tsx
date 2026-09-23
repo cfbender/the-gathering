@@ -47,6 +47,16 @@ function CameraOffOverlay({ compact }: { compact?: boolean }) {
   )
 }
 
+function EliminatedOverlay() {
+  return (
+    <div className="pointer-events-none absolute inset-0 bg-black/50">
+      <span className="absolute top-2 left-1/2 -translate-x-1/2 rounded border border-white/25 bg-zinc-950/90 px-2 py-1 text-xs font-bold tracking-wide text-white">
+        Eliminated
+      </span>
+    </div>
+  )
+}
+
 /** Life total badge overlaid on the top-left of a board, like a table scoreboard. */
 export function LifeBadge({ life, size }: { life: number; size: "board" | "tile" }) {
   return (
@@ -119,7 +129,13 @@ export function ActiveBoard({
           <StreamVideo stream={stream} muted={local} className="object-contain" />
         ) : (
           <VideoPlaceholder
-            label={local ? "Starting camera…" : describeConnection(connectionState)}
+            label={
+              participant.departed
+                ? "Left table"
+                : local
+                  ? "Starting camera…"
+                  : describeConnection(connectionState)
+            }
           />
         )}
         {participant.camera_off && <CameraOffOverlay />}
@@ -132,6 +148,7 @@ export function ActiveBoard({
           Click a card to identify it · Shift+click to choose
         </span>
       </button>
+      {participant.eliminated && <EliminatedOverlay />}
       <LifeBadge life={participant.life} size="board" />
       {monarch && (
         <span
@@ -201,7 +218,13 @@ export function CameraTile({
       ) : (
         <VideoPlaceholder
           compact
-          label={local ? "Starting camera…" : describeConnection(connectionState)}
+          label={
+            participant.departed
+              ? "Left table"
+              : local
+                ? "Starting camera…"
+                : describeConnection(connectionState)
+          }
         />
       )}
       {participant.camera_off && <CameraOffOverlay compact />}
@@ -210,6 +233,7 @@ export function CameraTile({
           {revealBadge}
         </span>
       )}
+      {participant.eliminated && <EliminatedOverlay />}
       <LifeBadge life={participant.life} size="tile" />
       {monarch && (
         <span

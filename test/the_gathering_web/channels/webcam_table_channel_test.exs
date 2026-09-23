@@ -468,6 +468,104 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert WebcamTableState.update_timer(timer, "start", 50_000) == timer
   end
 
+  test "validates elimination in own status without changing life", %{
+    socket: socket,
+    room_id: room_id
+  } do
+    assert_reply push(socket, "update_status", %{"eliminated" => true}), :ok
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+    assert %{eliminated: true, life: 40} = meta
+    assert_reply push(socket, "update_status", %{"eliminated" => "true"}), :error
+    assert_reply push(socket, "update_status", %{"eliminated" => false}), :ok
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+    assert meta.eliminated == false
+  end
+
+  test "any seat can eliminate and restore a present peer; unrelated updates preserve it", %{
+    socket: socket,
+    room_id: room_id
+  } do
+    other = join_player(room_id, "peer-b", "Bob")
+
+    assert_reply push(other, "set_eliminated", %{"peer_id" => "peer-a", "eliminated" => true}),
+                 :ok
+
+    assert_broadcast "eliminated_seats", %{participants: [%{peer_id: "peer-a", eliminated: true}]}
+    assert_reply push(socket, "update_status", %{"life" => 7}), :ok
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+    assert %{eliminated: true, life: 7} = meta
+
+    assert_reply push(other, "set_eliminated", %{"peer_id" => "peer-a", "eliminated" => false}),
+                 :ok
+
+    assert_broadcast "eliminated_seats", %{participants: []}
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+    assert meta.eliminated == false
+
+    for payload <- [
+          %{},
+          %{"peer_id" => "peer-a", "eliminated" => 1},
+          %{"peer_id" => "peer-a", "eliminated" => true, "life" => 0}
+        ] do
+      assert_reply push(other, "set_eliminated", payload), :error, %{
+        reason: "invalid elimination"
+      }
+    end
+
+    assert_reply push(other, "set_eliminated", %{"peer_id" => "ghost", "eliminated" => true}),
+                 :error
+
+    foreign = join_player(Ecto.UUID.generate(), "elsewhere", "Cara")
+
+    assert_reply push(foreign, "set_eliminated", %{"peer_id" => "peer-a", "eliminated" => true}),
+                 :error
+  end
+
+  test "departed eliminated seats survive for results and late joins; rejoining replaces their peer id",
+       %{socket: socket, room_id: room_id, player: player} do
+    other = join_player(room_id, "peer-b", "Bob")
+    assert_reply push(socket, "seat_order", %{"peer_ids" => ["peer-a", "peer-b"]}), :ok
+    assert_reply push(socket, "update_status", %{"eliminated" => true}), :ok
+
+    %{metas: [%{phx_ref: presence_ref}]} =
+      Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+
+    Process.unlink(socket.channel_pid)
+    ref = Process.monitor(socket.channel_pid)
+    assert_reply leave(socket), :ok
+    assert_receive {:DOWN, ^ref, :process, _, _}
+
+    assert_broadcast "presence_diff", %{
+      leaves: %{"peer-a" => %{metas: [%{phx_ref: ^presence_ref}]}}
+    }
+
+    assert_reply push(other, "seat_order", %{"peer_ids" => ["peer-b"]}), :ok
+
+    assert %{peer_ids: ["peer-a", "peer-b"], eliminated_seats: [%{player_id: id}]} =
+             WebcamTableState.snapshot(room_id)
+
+    assert id == player.id
+
+    join_player(room_id, "peer-c", "Cara")
+    assert_push "table_state", %{eliminated_seats: [%{player_id: ^id, eliminated: true}]}
+
+    rejoined =
+      UserSocket
+      |> socket("peer-a-new", %{user: Accounts.get_user(player.user_id)})
+      |> subscribe_and_join!(WebcamTableChannel, "webcam_table:#{room_id}", %{
+        "peer_id" => "peer-a-new",
+        "player_id" => player.id
+      })
+
+    assert_push "table_state", %{
+      peer_ids: ["peer-a-new", "peer-b"],
+      eliminated_seats: [%{peer_id: "peer-a-new"}]
+    }
+
+    assert_reply push(rejoined, "update_status", %{"eliminated" => false}), :ok
+    assert WebcamTableState.snapshot(room_id).eliminated_seats == []
+  end
+
   defp join_player(room_id, peer_id, name) do
     user = AccountsFixtures.user_fixture()
     {:ok, player} = Games.create_player(%{name: name}, user.id)

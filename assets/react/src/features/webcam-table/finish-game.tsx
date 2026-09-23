@@ -12,7 +12,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { invalidateGameRelated, WIN_CONDITIONS, type Game } from "@/features/games/games"
 import { api, ApiError } from "@/lib/api"
 import { cn } from "@/lib/cn"
-import { buildGamePayload } from "./game-result"
+import { buildGamePayload, suggestedWinner } from "./game-result"
 import { durationMinutes, type GameTimerState } from "./game-timer"
 import type { TableParticipant } from "./use-webcam-room"
 
@@ -28,7 +28,7 @@ interface Props {
 export function FinishGame({ participants, playedAt, timer, onOpenChange }: Props) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [winner, setWinner] = useState("")
+  const [winner, setWinner] = useState(() => suggestedWinner(participants))
   const [duration, setDuration] = useState(() => durationMinutes(timer))
   const [turns, setTurns] = useState("")
   const [winCondition, setWinCondition] = useState("")
@@ -94,6 +94,9 @@ export function FinishGame({ participants, playedAt, timer, onOpenChange }: Prop
                 >
                   <span className="mr-2 opacity-60 tabular-nums">{index + 1}.</span>
                   {participant.player_name}
+                  {participant.eliminated && (
+                    <span className="ml-2 text-xs opacity-60">Eliminated</span>
+                  )}
                   <span className="ml-auto text-xs opacity-65">
                     {participant.deck_name ?? "No deck"}
                   </span>
@@ -110,6 +113,12 @@ export function FinishGame({ participants, playedAt, timer, onOpenChange }: Prop
               </ToggleGroupItem>
             </ToggleGroup>
           </fieldset>
+          {participants.some((participant) => participant.eliminated) && (
+            <p className="text-base-content/60 text-xs md:col-span-2">
+              The last player still in suggests the winner; everyone else records a loss. You can
+              correct the winner or choose a draw for the whole table.
+            </p>
+          )}
           <label className="form-control">
             <span className="label-text mb-1">Duration (minutes)</span>
             <input

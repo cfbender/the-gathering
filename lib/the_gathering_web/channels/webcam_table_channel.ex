@@ -27,13 +27,31 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   @impl true
   def handle_info(:after_join, socket) do
-    participant = socket.assigns.participant
+    {state, participant} =
+      WebcamTableState.join(socket.assigns.room_id, self(), socket.assigns.participant)
+
+    # The seat was already tracked while reserving it; a rejoining eliminated player
+    # takes back the retained seat, so republish it.
+    if participant != socket.assigns.participant do
+      {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
+    end
+
     {:ok, _ref} = WebcamTableRooms.track_seat(socket.assigns.room_id, participant)
-    state = WebcamTableState.join(socket.assigns.room_id, self())
     push(socket, "table_state", state)
     push(socket, "presence_state", Presence.list(socket))
     :ok = WebcamTableMonarch.sync(socket.topic)
-    {:noreply, socket}
+    {:noreply, assign(socket, :participant, participant)}
+  end
+
+  def handle_info({:set_eliminated, peer_id, eliminated}, socket) do
+    if socket.assigns.participant.peer_id == peer_id do
+      participant = %{socket.assigns.participant | eliminated: eliminated}
+      {:ok, _ref} = Presence.update(socket, peer_id, participant)
+      WebcamTableState.remember_seat(socket.assigns.room_id, participant)
+      {:noreply, assign(socket, :participant, participant)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:monarch_state, event}, socket) do
@@ -81,6 +99,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
         {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
         # Peers may have cached the deck list before this deck was created or edited.
         broadcast!(socket, "deck_selected", %{deck_id: deck.id})
+        WebcamTableState.remember_seat(socket.assigns.room_id, participant)
         {:reply, :ok, assign(socket, :participant, participant)}
 
       _other ->
@@ -113,6 +132,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
       {:ok, changes} ->
         participant = Map.merge(socket.assigns.participant, changes)
         {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
+        WebcamTableState.remember_seat(socket.assigns.room_id, participant)
         {:reply, :ok, assign(socket, :participant, participant)}
 
       :error ->
@@ -130,6 +150,30 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   def handle_in("take_monarch", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid monarch claim"}}, socket}
+
+  # Any seated player may eliminate/restore a present seat. The target channel
+  # owns its presence update, so subsequent life/camera updates cannot overwrite it.
+  def handle_in(
+        "set_eliminated",
+        %{"peer_id" => peer_id, "eliminated" => eliminated} = payload,
+        socket
+      )
+      when map_size(payload) == 2 and is_binary(peer_id) and is_boolean(eliminated) do
+    if Map.has_key?(Presence.list(socket), peer_id) do
+      Phoenix.PubSub.broadcast!(
+        TheGathering.PubSub,
+        socket.topic,
+        {:set_eliminated, peer_id, eliminated}
+      )
+
+      {:reply, :ok, socket}
+    else
+      {:reply, {:error, %{reason: "player must be present to change elimination"}}, socket}
+    end
+  end
+
+  def handle_in("set_eliminated", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid elimination"}}, socket}
 
   # Seat order is shared so every browser records the same turn order. The
   # proposed order must name exactly the peers present at that moment.
@@ -221,6 +265,9 @@ defmodule TheGatheringWeb.WebcamTableChannel do
           do: {:cont, {:ok, Map.put(changes, :commander_damage, damage)}},
           else: {:halt, :error}
 
+      {"eliminated", eliminated}, {:ok, changes} when is_boolean(eliminated) ->
+        {:cont, {:ok, Map.put(changes, :eliminated, eliminated)}}
+
       _invalid, _changes ->
         {:halt, :error}
     end)
@@ -259,6 +306,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
           commander_casts: %{},
           commander_damage: %{},
           reveal_to: nil,
+          eliminated: false,
           # Default seat order is join order, so every browser sees the same seats.
           joined_at: System.system_time(:millisecond)
         }

@@ -70,7 +70,33 @@ export function describeParticipantChange(
       kind: "camera",
     })
   }
+  if (next.eliminated !== previous.eliminated) {
+    lines.push({
+      text: `${next.player_name} ${next.eliminated ? "was eliminated" : "was restored to the game"}`,
+      actor: next.peer_id,
+      kind: next.eliminated ? "eliminated" : "restored",
+    })
+  }
   return lines
+}
+
+/** Playing order skips out seats; recording order still includes every seat. */
+export function activeTurnOrder(participants: TableParticipant[]): TableParticipant[] {
+  return participants.filter((participant) => !participant.eliminated)
+}
+
+/** Eliminated players remain recordable after leaving; a rejoin replaces the retained seat. */
+export function retainEliminatedSeats(
+  live: TableParticipant[],
+  eliminated: TableParticipant[],
+): TableParticipant[] {
+  const present = new Set(live.map((participant) => participant.player_id))
+  return [
+    ...live,
+    ...eliminated
+      .filter((participant) => !present.has(participant.player_id))
+      .map((participant) => ({ ...participant, departed: true })),
+  ]
 }
 
 export function describeParticipantLeft(participant: TableParticipant) {
