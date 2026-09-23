@@ -201,12 +201,17 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   })
   const decksFor = (participant: TableParticipant) =>
     decks.filter((deck) => deck.player_id === participant.player_id)
-  const chooseFor = (participant: TableParticipant) => (deckId: number) =>
-    room.suggestDeck(participant.peer_id, deckId)
   const captureOwner = room.capture
     ? seated.find((participant) => participant.peer_id === room.capture?.peerId)
     : undefined
-  const suggestions = captureOwner ? decksFor(captureOwner).slice(0, 5) : []
+  // Only a seat's owner may pick its commander, so deck shortcuts appear on your own clicks only.
+  const captureIsLocal = captureOwner?.peer_id === room.peerId
+  const suggestions = captureOwner && captureIsLocal ? decksFor(captureOwner).slice(0, 5) : []
+  const chooseDeckForCapture = (deckId: number) => {
+    if (!captureIsLocal) return
+    room.chooseDeck(deckId)
+    dismissPicker()
+  }
   const candidates = recognition.status === "done" ? recognition.result.candidates : []
   // The picker is for the cases a human has to settle: no recognizer, a near-tie, a
   // Shift+click asking to choose, or "Wrong card?" on a result. A clear answer to a plain
@@ -254,8 +259,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       const commanderDeck = decksFor(captureOwner).find(
         (deck) => deck.commander_name.toLowerCase() === art.name.toLowerCase(),
       )
-      if (commanderDeck && !captureOwner.deck_id)
-        room.suggestDeck(captureOwner.peer_id, commanderDeck.id)
+      if (commanderDeck && !captureOwner.deck_id && captureOwner.peer_id === room.peerId)
+        room.chooseDeck(commanderDeck.id)
       if (picker?.replacing) room.removeCard(picker.replacing)
       const entry = room.announceCard(captureOwner.peer_id, playerName, toCard(art))
       setPicker(null)
@@ -327,11 +332,19 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       const art = candidates[index]
       if (art) return chooseCard(art)
       const deck = suggestions[index]
-      if (deck && recognition.status === "skipped") room.suggestDeck(room.capture.peerId, deck.id)
+      if (deck && recognition.status === "skipped") chooseDeckForCapture(deck.id)
     }
     window.addEventListener("keydown", choose)
     return () => window.removeEventListener("keydown", choose)
-  }, [candidates, chooseCard, pickerOpen, recognition.status, room, suggestions])
+  }, [
+    candidates,
+    chooseCard,
+    chooseDeckForCapture,
+    pickerOpen,
+    recognition.status,
+    room,
+    suggestions,
+  ])
 
   useEffect(() => {
     if (!inviteCopied) return
@@ -357,7 +370,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       local={participant.peer_id === room.peerId}
       decks={decksFor(participant)}
       size={size}
-      onChooseDeck={chooseFor(participant)}
+      onChooseDeck={room.chooseDeck}
       onChangeLife={room.changeLife}
       onToggleCamera={room.toggleCamera}
       onAdjustCounter={room.adjustCounter}
@@ -406,7 +419,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             <TileCommanderRow
               participant={participant}
               decks={decksFor(participant)}
-              onChooseDeck={chooseFor(participant)}
+              onChooseDeck={room.chooseDeck}
               local={participant.peer_id === room.peerId}
               onAdjustCounter={room.adjustCounter}
               counters={countersFor(participant)}
@@ -466,7 +479,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
               deckSuggestions={suggestions}
               gallerySearchable={recognizer.ready}
               onChooseCard={chooseCard}
-              onChooseDeck={(deckId) => room.suggestDeck(captureOwner.peer_id, deckId)}
+              onChooseDeck={chooseDeckForCapture}
               onSearch={recognizer.search}
               onDismiss={dismissPicker}
             />

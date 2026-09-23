@@ -154,4 +154,30 @@ describe("inline commander tax", () => {
     fireEvent.click(screen.getByText("Partners"))
     expect(onChooseDeck).toHaveBeenCalledWith(7)
   })
+
+  it("shows other seats a read-only commander label instead of the picker", () => {
+    render(
+      <CommanderTax
+        participant={seat}
+        decks={[deck]}
+        local={false}
+        onChooseDeck={() => {}}
+        onAdjust={() => {}}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Choose Alice's commander" })).toBeNull()
+    expect(screen.getByText("Tymna / Thrasios")).toBeTruthy()
+    cleanup()
+    render(
+      <CommanderTax
+        participant={{ ...seat, deck_id: undefined }}
+        decks={[deck]}
+        local={false}
+        onChooseDeck={() => {}}
+        onAdjust={() => {}}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: /commander/ })).toBeNull()
+    expect(screen.getByText("No commander yet")).toBeTruthy()
+  })
 })

@@ -118,29 +118,45 @@ export function CommanderTax({
           onAdjust={(delta) => onAdjust({ kind: "casts", commander: name }, delta)}
         />
       ))}
-      <CommanderPicker
-        playerId={participant.player_id}
-        playerName={participant.player_name}
-        decks={decks}
-        selectedDeckId={participant.deck_id}
-        onChoose={onChooseDeck}
-      >
-        <button
-          type="button"
+      {local ? (
+        <CommanderPicker
+          playerId={participant.player_id}
+          playerName={participant.player_name}
+          decks={decks}
+          selectedDeckId={participant.deck_id}
+          onChoose={onChooseDeck}
+        >
+          <button
+            type="button"
+            className={cn(
+              "flex min-w-0 items-center gap-1 rounded px-1 py-1 text-xs font-semibold hover:bg-white/10",
+              deck ? (COLOR_TEXT[deck.color_identity] ?? "text-amber-300") : "text-primary",
+            )}
+            title={label || "Select commander"}
+            aria-label={`Choose ${participant.player_name}'s commander`}
+          >
+            <CommanderHover deck={deck}>
+              <span className="truncate">{label || "Select commander"}</span>
+            </CommanderHover>
+            {deck && <ColorIdentity colors={deck.color_identity} />}
+            <ChevronDown className="size-3 shrink-0 opacity-70" />
+          </button>
+        </CommanderPicker>
+      ) : (
+        // Only a seat's owner picks its commander; other seats just see it.
+        <span
           className={cn(
-            "flex min-w-0 items-center gap-1 rounded px-1 py-1 text-xs font-semibold hover:bg-white/10",
-            deck ? (COLOR_TEXT[deck.color_identity] ?? "text-amber-300") : "text-primary",
+            "flex min-w-0 items-center gap-1 px-1 py-1 text-xs font-semibold",
+            deck ? (COLOR_TEXT[deck.color_identity] ?? "text-amber-300") : "text-white/45",
           )}
-          title={label || "Select commander"}
-          aria-label={`Choose ${participant.player_name}'s commander`}
+          title={label || undefined}
         >
           <CommanderHover deck={deck}>
-            <span className="truncate">{label || "Select commander"}</span>
+            <span className="truncate">{label || "No commander yet"}</span>
           </CommanderHover>
           {deck && <ColorIdentity colors={deck.color_identity} />}
-          <ChevronDown className="size-3 shrink-0 opacity-70" />
-        </button>
-      </CommanderPicker>
+        </span>
+      )}
     </div>
   )
 }
