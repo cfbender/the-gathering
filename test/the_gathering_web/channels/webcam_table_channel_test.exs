@@ -3,7 +3,7 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
   import Phoenix.ChannelTest
 
   alias TheGathering.{Accounts, AccountsFixtures, Games}
-  alias TheGatheringWeb.{Presence, UserSocket, WebcamTableChannel}
+  alias TheGatheringWeb.{Presence, UserSocket, WebcamTableChannel, WebcamTableRooms}
 
   @endpoint TheGatheringWeb.Endpoint
 
@@ -237,6 +237,103 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
                "peer_id" => "peer-b",
                "player_id" => player.id
              })
+  end
+
+  test "reveal validates targets, preserves status, and ends when the target leaves", %{
+    socket: socket,
+    room_id: room_id
+  } do
+    other = join_seat(room_id, "peer-b")
+    assert_reply push(socket, "reveal", %{"target" => "peer-b"}), :ok
+    assert_reply push(socket, "update_status", %{"life" => 31}), :ok
+
+    assert %{metas: [%{reveal_to: "peer-b", life: 31}]} =
+             Presence.get_by_key(socket.topic, "peer-a")
+
+    for target <- ["peer-a", "absent", ""] do
+      assert_reply push(socket, "reveal", %{"target" => target}), :error
+    end
+
+    for payload <- [%{"target" => 123}, %{}, %{"target" => nil, "peer_id" => "peer-b"}] do
+      assert_reply push(socket, "reveal", payload), :error
+    end
+
+    assert_reply push(socket, "update_status", %{"reveal_to" => "peer-b"}), :error
+    assert_reply push(socket, "reveal", %{"target" => nil}), :ok
+    assert %{metas: [%{reveal_to: nil}]} = Presence.get_by_key(socket.topic, "peer-a")
+    assert_reply push(socket, "reveal", %{"target" => "peer-b"}), :ok
+
+    Process.unlink(other.channel_pid)
+    leave(other)
+    # Match the reveal-clear diff rather than waiting an arbitrary amount of time.
+    assert_push "presence_diff", %{joins: %{"peer-a" => %{metas: [%{reveal_to: nil}]}}}
+    # The earlier manual clear can also be queued, so synchronize on the target's leave.
+    assert_push "presence_diff", %{leaves: %{"peer-b" => _}}, 1_000
+    _ = :sys.get_state(socket.channel_pid)
+    assert %{metas: [%{reveal_to: nil}]} = Presence.get_by_key(socket.topic, "peer-a")
+  end
+
+  test "admits ten seats, marks the lobby full, and refuses the eleventh", %{
+    socket: socket,
+    room_id: room_id
+  } do
+    for index <- 2..9, do: join_seat(room_id, "peer-#{index}")
+    refute Enum.find(WebcamTableRooms.active_rooms(), &(&1.id == room_id)).full
+    join_seat(room_id, "peer-10")
+    assert map_size(Presence.list(socket)) == 10
+    assert Enum.find(WebcamTableRooms.active_rooms(), &(&1.id == room_id)).full
+
+    {user, player} = linked_player("peer-11")
+
+    assert {:error, %{reason: "room is full or invalid"}} =
+             UserSocket
+             |> socket("peer-11", %{user: user})
+             |> subscribe_and_join(WebcamTableChannel, socket.topic, %{
+               "peer_id" => "peer-11",
+               "player_id" => player.id
+             })
+
+    order = ["peer-a" | Enum.map(2..10, &"peer-#{&1}")]
+    assert_reply push(socket, "seat_order", %{"peer_ids" => Enum.reverse(order)}), :ok
+    assert_broadcast "seat_order", %{peer_ids: peer_ids}
+    assert peer_ids == Enum.reverse(order)
+  end
+
+  test "rejects empty and duplicate peer IDs", %{socket: seated} do
+    {user, player} = linked_player("Bob")
+
+    for peer_id <- ["", "peer-a"] do
+      assert {:error, _reason} =
+               UserSocket
+               |> socket(peer_id, %{user: user})
+               |> subscribe_and_join(WebcamTableChannel, seated.topic, %{
+                 "peer_id" => peer_id,
+                 "player_id" => player.id
+               })
+    end
+
+    assert map_size(Presence.list(seated)) == 1
+  end
+
+  defp linked_player(name) do
+    user = AccountsFixtures.user_fixture()
+    {:ok, player} = Games.create_player(%{name: name}, user.id)
+    {user, player}
+  end
+
+  defp join_seat(room_id, peer_id) do
+    {user, player} = linked_player(peer_id)
+
+    joined =
+      UserSocket
+      |> socket(peer_id, %{user: user})
+      |> subscribe_and_join!(WebcamTableChannel, "webcam_table:#{room_id}", %{
+        "peer_id" => peer_id,
+        "player_id" => player.id
+      })
+
+    _ = :sys.get_state(joined.channel_pid)
+    joined
   end
 
   test "rejects a player not linked to the authenticated account", %{

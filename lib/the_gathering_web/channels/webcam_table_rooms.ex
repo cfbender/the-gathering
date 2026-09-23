@@ -11,7 +11,7 @@ defmodule TheGatheringWeb.WebcamTableRooms do
   alias TheGatheringWeb.Presence
 
   @lobby_topic "webcam_tables"
-  @max_players 4
+  @max_players 10
 
   @doc "Registers the calling channel process's seat in the lobby."
   def track_seat(room_id, participant) do

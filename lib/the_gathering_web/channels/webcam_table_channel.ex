@@ -6,15 +6,17 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   alias TheGathering.Games
   alias TheGatheringWeb.{Presence, WebcamTableMonarch, WebcamTableRooms}
 
-  @max_players 4
+  @max_players 10
   @starting_life 40
   @life_range -999..999
+
+  intercept ["presence_diff"]
 
   @impl true
   def join("webcam_table:" <> room_id, params, socket) do
     with true <- valid_room_id?(room_id),
          {:ok, participant} <- participant(params, socket.assigns.user.id),
-         true <- room_available?(Presence.list(socket), participant) do
+         true <- reserve_seat(socket, participant) do
       send(self(), :after_join)
       {:ok, socket |> assign(:participant, participant) |> assign(:room_id, room_id)}
     else
@@ -26,7 +28,6 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   @impl true
   def handle_info(:after_join, socket) do
     participant = socket.assigns.participant
-    {:ok, _ref} = Presence.track(socket, participant.peer_id, participant)
     {:ok, _ref} = WebcamTableRooms.track_seat(socket.assigns.room_id, participant)
     push(socket, "presence_state", Presence.list(socket))
     :ok = WebcamTableMonarch.sync(socket.topic)
@@ -35,6 +36,22 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   def handle_info({:monarch_state, event}, socket) do
     push(socket, "monarch_state", event)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_out("presence_diff", diff, socket) do
+    target = socket.assigns.participant.reveal_to
+
+    socket =
+      if target && Map.has_key?(diff.leaves, target) &&
+           not Map.has_key?(Presence.list(socket), target) do
+        put_reveal(socket, nil)
+      else
+        socket
+      end
+
+    push(socket, "presence_diff", diff)
     {:noreply, socket}
   end
 
@@ -71,6 +88,22 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     do: {:reply, {:error, %{reason: "invalid deck"}}, socket}
 
   # Ephemeral state a player publishes about their own seat, carried by presence.
+  def handle_in("reveal", %{"target" => target} = payload, socket)
+      when map_size(payload) == 1 and (is_binary(target) or is_nil(target)) do
+    if is_nil(target) or
+         (target != socket.assigns.participant.peer_id and
+            Map.has_key?(Presence.list(socket), target)) do
+      {:reply, :ok, put_reveal(socket, target)}
+    else
+      {:reply, {:error, %{reason: "reveal target must be another seated player"}}, socket}
+    end
+  end
+
+  def handle_in("reveal", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid reveal"}}, socket}
+
+  # Ephemeral table state a player publishes about their own seat: life total and
+  # whether their camera is off. It rides on presence like the deck.
   def handle_in("update_status", payload, socket) when is_map(payload) do
     case status_changes(payload) do
       {:ok, changes} ->
@@ -109,6 +142,12 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   def handle_in("seat_order", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid seat order"}}, socket}
+
+  defp put_reveal(socket, target) do
+    participant = %{socket.assigns.participant | reveal_to: target}
+    {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
+    assign(socket, :participant, participant)
+  end
 
   defp status_changes(payload) do
     Enum.reduce_while(payload, {:ok, %{}}, fn
@@ -157,7 +196,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   defp valid_damage?(_damage), do: false
 
   defp participant(%{"peer_id" => peer_id, "player_id" => player_id} = params, user_id)
-       when is_binary(peer_id) and is_integer(player_id) do
+       when is_binary(peer_id) and byte_size(peer_id) > 0 and is_integer(player_id) do
     case Games.get_player(player_id) do
       %{user_id: ^user_id} = player ->
         participant = %{
@@ -170,6 +209,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
           rad: 0,
           commander_casts: %{},
           commander_damage: %{},
+          reveal_to: nil,
           # Default seat order is join order, so every browser sees the same seats.
           joined_at: System.system_time(:millisecond)
         }
@@ -189,9 +229,22 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   defp room_available?(presences, participant) do
     map_size(presences) < @max_players and
+      not Map.has_key?(presences, participant.peer_id) and
       Enum.all?(presences, fn {_peer_id, %{metas: metas}} ->
         Enum.all?(metas, &(&1.player_id != participant.player_id))
       end)
+  end
+
+  # Serialize the capacity check and track, including simultaneous final-seat joins.
+  defp reserve_seat(socket, participant) do
+    :global.trans({{__MODULE__, socket.topic}, self()}, fn ->
+      if room_available?(Presence.list(socket), participant) do
+        {:ok, _ref} = Presence.track(socket, participant.peer_id, participant)
+        true
+      else
+        false
+      end
+    end)
   end
 
   defp maybe_put_deck(participant, deck_id) when is_integer(deck_id) do

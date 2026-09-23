@@ -17,7 +17,7 @@ defmodule TheGatheringWeb.API.WebcamTableConfigControllerTest do
 
     assert %{
              "data" => %{
-               "max_players" => 4,
+               "max_players" => 10,
                "minimum_height" => 1080,
                "socket_token" => socket_token,
                "ice_servers" => [
