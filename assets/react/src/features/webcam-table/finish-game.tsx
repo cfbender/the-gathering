@@ -13,23 +13,23 @@ import { invalidateGameRelated, WIN_CONDITIONS, type Game } from "@/features/gam
 import { api, ApiError } from "@/lib/api"
 import { cn } from "@/lib/cn"
 import { buildGamePayload } from "./game-result"
+import { durationMinutes, type GameTimerState } from "./game-timer"
 import type { TableParticipant } from "./use-webcam-room"
 
 interface Props {
   /** Seated players in turn order; seats are recorded 1..n in this order. */
   participants: TableParticipant[]
   playedAt: Date
+  timer: GameTimerState
   onOpenChange: (open: boolean) => void
 }
 
 /** End game → result form → POST /api/games, so the table lands in normal history. */
-export function FinishGame({ participants, playedAt, onOpenChange }: Props) {
+export function FinishGame({ participants, playedAt, timer, onOpenChange }: Props) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [winner, setWinner] = useState("")
-  const [duration] = useState(() =>
-    Math.max(1, Math.round((Date.now() - playedAt.getTime()) / 60_000)).toString(),
-  )
+  const [duration, setDuration] = useState(() => durationMinutes(timer))
   const [turns, setTurns] = useState("")
   const [winCondition, setWinCondition] = useState("")
   const [notes, setNotes] = useState("")
@@ -111,11 +111,21 @@ export function FinishGame({ participants, playedAt, onOpenChange }: Props) {
             </ToggleGroup>
           </fieldset>
           <label className="form-control">
-            <span className="label-text mb-1">Duration</span>
-            <div className="input input-bordered bg-base-200 flex items-center font-semibold">
-              {duration} {duration === "1" ? "minute" : "minutes"}
-            </div>
-            <span className="text-base-content/50 mt-1 text-xs">Tracked from room creation</span>
+            <span className="label-text mb-1">Duration (minutes)</span>
+            <input
+              className="input input-bordered"
+              type="number"
+              min="1"
+              step="1"
+              placeholder="Optional"
+              value={duration}
+              onChange={(event) => setDuration(event.target.value)}
+            />
+            <span className="text-base-content/50 mt-1 text-xs">
+              {timer.started_at === null
+                ? "Timer was not started; enter a duration if known."
+                : "Shared timer, excluding pauses. Rounded to the nearest minute (minimum 1)."}
+            </span>
           </label>
           <label className="form-control">
             <span className="label-text mb-1">Turns</span>
@@ -168,6 +178,11 @@ export function FinishGame({ participants, playedAt, onOpenChange }: Props) {
               {mutation.isPending ? "Recording…" : "Record result"}
             </button>
           </div>
+          {timer.started_at !== null && (
+            <p className="text-base-content/50 text-xs md:col-span-2">
+              The table timer is paused. If you go back, use Resume timer to keep playing.
+            </p>
+          )}
         </form>
       </DialogContent>
     </Dialog>

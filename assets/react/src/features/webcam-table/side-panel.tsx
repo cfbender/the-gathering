@@ -15,7 +15,14 @@ import {
   WalletCards,
   Wifi,
 } from "lucide-react"
-import type { ComponentType, ReactNode } from "react"
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react"
 import { commanderNames, type DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
@@ -24,6 +31,7 @@ import { CommanderPicker } from "./commander-picker"
 import { CommanderActions } from "./new-commander-dialog"
 import { PanelSection } from "./panel-section"
 import type { RecognizerState } from "./recognition/use-recognizer"
+import { TableRolls, type RollRequest } from "./table-rolls"
 import type { TableEvent, TableParticipant } from "./use-webcam-room"
 
 export type PanelTab = "table" | "decks" | "cards" | "log" | "settings"
@@ -52,6 +60,8 @@ interface Props extends CardsTabProps {
   inviteCopied: boolean
   onChooseDeck: (deckId: number) => void
   onRandomizeSeats: () => void
+  shuffleVersion: number
+  onRoll: (request: RollRequest) => void
   onEndGame: () => void
 }
 
@@ -120,9 +130,45 @@ function SeatOrderTable({
   participants,
   localParticipant,
   decks,
-}: Pick<Props, "participants" | "localParticipant" | "decks">) {
+  shuffleVersion,
+}: Pick<Props, "participants" | "localParticipant" | "decks" | "shuffleVersion">) {
+  const [step, setStep] = useState(0)
+  const body = useRef<HTMLTableSectionElement>(null)
+  const positions = useRef(new Map<string, number>())
+  useEffect(() => {
+    if (!shuffleVersion || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    let frame = 1
+    setStep(frame)
+    const interval = window.setInterval(() => {
+      frame += 1
+      setStep(frame < 7 ? frame : 0)
+      if (frame >= 7) window.clearInterval(interval)
+    }, 160)
+    return () => window.clearInterval(interval)
+  }, [shuffleVersion])
+  const offset = participants.length ? step % participants.length : 0
+  const displayed = [...participants.slice(offset), ...participants.slice(0, offset)]
+  useLayoutEffect(() => {
+    for (const row of body.current?.rows ?? []) {
+      const key = row.dataset.peer ?? ""
+      const top = row.offsetTop
+      const previous = positions.current.get(key)
+      if (
+        previous !== undefined &&
+        previous !== top &&
+        !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        row.animate(
+          [{ transform: `translateY(${previous - top}px)` }, { transform: "translateY(0)" }],
+          { duration: 140, easing: "ease-out" },
+        )
+      }
+      positions.current.set(key, top)
+    }
+  }, [participants, step])
+
   return (
-    <table className="w-full text-[0.7rem]">
+    <table className="w-full text-[0.7rem]" aria-label="Turn order" aria-busy={step !== 0}>
       <thead className="text-base-content/50 text-[0.6rem] tracking-wider uppercase">
         <tr>
           <th className="w-5 py-1 text-left font-semibold">#</th>
@@ -131,9 +177,13 @@ function SeatOrderTable({
           <th className="py-1 text-right font-semibold">Life</th>
         </tr>
       </thead>
-      <tbody>
-        {participants.map((participant, index) => (
-          <tr key={participant.peer_id} className="border-t border-white/5">
+      <tbody ref={body}>
+        {displayed.map((participant, index) => (
+          <tr
+            key={participant.peer_id}
+            data-peer={participant.peer_id}
+            className="border-t border-white/5"
+          >
             <td className="py-1.5 tabular-nums">{index + 1}</td>
             <td className="max-w-24 truncate py-1.5 font-semibold">
               {participant.player_name}
@@ -219,7 +269,12 @@ function TableTab(props: Props) {
         <h3 className="text-base-content/50 mt-4 mb-1 text-[0.6rem] font-bold tracking-wider uppercase">
           Turn order
         </h3>
-        <SeatOrderTable participants={participants} localParticipant={local} decks={decks} />
+        <SeatOrderTable
+          participants={participants}
+          localParticipant={local}
+          decks={decks}
+          shuffleVersion={props.shuffleVersion}
+        />
         <p className="text-base-content/50 mt-1 text-[0.65rem]">
           Seats are recorded in this order when the game ends.
         </p>
@@ -231,7 +286,7 @@ function TableTab(props: Props) {
             onClick={onRandomizeSeats}
             disabled={participants.length < 2}
           >
-            <Shuffle className="size-3.5" /> Randomize turn order
+            <Shuffle className="size-3.5" /> Randomize and start
           </button>
           <button
             type="button"
@@ -264,6 +319,8 @@ function TableTab(props: Props) {
         </p>
         <p className="text-base-content/50 mt-2 text-xs">{describeRecognizer(recognizer)}</p>
       </PanelSection>
+
+      <TableRolls onRoll={props.onRoll} />
 
       <PanelSection title="Connection" icon={Wifi} defaultOpen={false}>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
@@ -350,7 +407,10 @@ function LogTab({ events }: Props) {
               >
                 {event.at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </time>
-              <span>{event.text}</span>
+              <span>
+                {event.text}
+                {event.count && <span className="ml-1 text-white/40">×{event.count}</span>}
+              </span>
             </li>
           ))}
         </ol>
