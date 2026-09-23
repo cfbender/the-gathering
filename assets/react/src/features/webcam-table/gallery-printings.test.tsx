@@ -123,6 +123,7 @@ it("searches and previews an exact sibling in the Cards tab", async () => {
       onPreviewArt={preview}
       onPreviewCard={vi.fn()}
       onRemoveCard={vi.fn()}
+      onClearOwnCards={vi.fn()}
     />,
   )
   fireEvent.change(screen.getByRole("textbox", { name: "Search the card gallery" }), {
@@ -143,6 +144,7 @@ it("picker search uses a sibling's own details for hover and selects that printi
           id,
           name: "Sol Talisman",
           image_uris: { normal: "https://img.example/regular.jpg" },
+          prices: { usd: "0.99", usd_foil: null, usd_etched: null },
         },
       }),
     ),
