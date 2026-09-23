@@ -236,7 +236,11 @@ republished after every (re)join because presence restarts at the defaults.
 
 The shield button in each seat bar opens **Counters**. Everyone can inspect a seat; only its
 owner can change its counters. `poison` and `rad` start at zero. `commander_casts` maps commander
-names to command-zone cast counts and displays the next tax as twice the count. Both commander
+names to command-zone cast counts. The commander art thumbnails beside the name/deck selector
+on the active board and rail display tax badges at twice the cast count. Click a thumbnail to
+add 2 tax; right-click or use its minus button to subtract 2, down to zero. Partners have separate
+thumbnails and badges. Other players' tax is read-only, and missing art uses a placeholder.
+Commander-name text uses the deck's color identity (gold for multicolor). Both commander
 and partner/background names come from the selected deck. `commander_damage` maps opposing
 player IDs to commander-name/count maps, keeping identical commanders at different seats separate.
 Recorded damage stays visible when a source changes deck or leaves. Damage does not adjust life

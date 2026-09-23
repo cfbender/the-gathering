@@ -20,14 +20,12 @@ function CounterRow({
   value,
   local,
   onAdjust,
-  tax = false,
   threshold,
 }: {
   label: string
   value: number
   local: boolean
   onAdjust: (delta: number) => void
-  tax?: boolean
   threshold?: number
 }) {
   const warning = threshold !== undefined && value >= threshold
@@ -47,9 +45,9 @@ function CounterRow({
       )}
       <span
         className="min-w-8 text-center text-sm font-bold tabular-nums"
-        aria-label={`${label}: ${tax ? value * 2 : value}${tax ? " tax" : ""}`}
+        aria-label={`${label}: ${value}`}
       >
-        {tax ? `+${value * 2}` : value}
+        {value}
       </span>
       {local && (
         <button
@@ -81,7 +79,6 @@ export function SeatCounterControls({
 }: Props) {
   const namesFor = (seat: TableParticipant) =>
     commanderNames(decks.find((deck) => deck.id === seat.deck_id))
-  const commanders = namesFor(participant)
   const opponents = participants.filter((seat) => seat.player_id !== participant.player_id)
   const sourceIds = new Set([
     ...opponents.map((seat) => String(seat.player_id)),
@@ -99,11 +96,7 @@ export function SeatCounterControls({
       playerName: source?.player_name ?? `Player ${id} (left)`,
     }))
   })
-  const row = (
-    label: string,
-    counter: Counter,
-    options: { tax?: boolean; threshold?: number } = {},
-  ) => (
+  const row = (label: string, counter: Counter, options: { threshold?: number } = {}) => (
     <CounterRow
       key={label}
       label={label}
@@ -161,20 +154,6 @@ export function SeatCounterControls({
             {monarch ? "You are the monarch" : "Take the monarch"}
           </button>
         )}
-        <div className="mt-2 border-t border-base-content/10 pt-2">
-          <h3 className="text-xs font-bold">Commander tax</h3>
-          <p className="my-1 text-[0.65rem] text-base-content/55">
-            +2 per cast from the command zone. Track each commander separately.
-          </p>
-          {commanders.map((commander) =>
-            row(commander, { kind: "casts", commander }, { tax: true }),
-          )}
-          {commanders.length === 0 && (
-            <p className="py-2 text-xs text-base-content/55">
-              Select a deck to track commander tax.
-            </p>
-          )}
-        </div>
         <div className="mt-2 border-t border-base-content/10 pt-2">
           <h3 className="text-xs font-bold">Commander damage received</h3>
           <p className="my-1 text-[0.65rem] text-base-content/55">

@@ -3,7 +3,8 @@ import type { ButtonHTMLAttributes, ReactNode } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
 import { commanderBackground } from "./commander-colors"
-import { CommanderPicker } from "./commander-picker"
+import { CommanderTax } from "./commander-tax"
+import type { Counter } from "./seat-counters"
 import type { TableParticipant } from "./use-webcam-room"
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
   onChangeLife: (delta: number) => void
   onToggleCamera: () => void
   counters: ReactNode
+  onAdjustCounter: (counter: Counter, delta: number) => void
 }
 
 function IndicatorButton({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
@@ -41,6 +43,7 @@ export function SeatBar({
   onChangeLife,
   onToggleCamera,
   counters,
+  onAdjustCounter,
 }: Props) {
   const compact = size === "tile"
   const cameraIcon = participant.camera_off ? (
@@ -58,7 +61,7 @@ export function SeatBar({
       }}
       className={cn(
         "flex items-center gap-1.5 border-t border-white/10 bg-base-100 text-white",
-        compact ? "h-7 px-1.5 text-[0.7rem]" : "h-9 px-2 text-xs",
+        compact ? "h-7 px-1.5 text-[0.7rem]" : "min-h-11 flex-wrap px-2 py-1 text-xs",
       )}
     >
       <span className={cn("truncate font-bold", compact ? "max-w-24" : "max-w-48")}>
@@ -106,13 +109,15 @@ export function SeatBar({
       </span>
 
       {!compact && (
-        <CommanderPicker
-          playerId={participant.player_id}
-          playerName={participant.player_name}
-          decks={decks}
-          selectedDeckId={participant.deck_id}
-          onChoose={onChooseDeck}
-        />
+        <div className="max-w-full min-w-0 sm:max-w-[50%]">
+          <CommanderTax
+            participant={participant}
+            decks={decks}
+            local={local}
+            onChooseDeck={onChooseDeck}
+            onAdjust={onAdjustCounter}
+          />
+        </div>
       )}
     </div>
   )
@@ -124,10 +129,15 @@ export function TileCommanderRow({
   decks,
   onChooseDeck,
   counters,
-}: Pick<Props, "participant" | "decks" | "onChooseDeck" | "counters">) {
+  local,
+  onAdjustCounter,
+}: Pick<
+  Props,
+  "participant" | "decks" | "onChooseDeck" | "counters" | "local" | "onAdjustCounter"
+>) {
   return (
     <div
-      className="flex min-h-7 items-center gap-1 bg-base-100 px-1.5"
+      className="flex min-h-10 items-center gap-1 bg-base-100 px-1.5 py-1"
       style={{
         background: commanderBackground(
           decks.find((deck) => deck.id === participant.deck_id)?.color_identity ?? "",
@@ -135,13 +145,13 @@ export function TileCommanderRow({
       }}
     >
       {counters}
-      <div className="ml-auto min-w-0 [&>button]:max-w-full">
-        <CommanderPicker
-          playerId={participant.player_id}
-          playerName={participant.player_name}
+      <div className="ml-auto min-w-0">
+        <CommanderTax
+          participant={participant}
           decks={decks}
-          selectedDeckId={participant.deck_id}
-          onChoose={onChooseDeck}
+          local={local}
+          onChooseDeck={onChooseDeck}
+          onAdjust={onAdjustCounter}
         />
       </div>
     </div>
