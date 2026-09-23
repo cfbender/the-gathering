@@ -38,6 +38,16 @@ end
 config :the_gathering, TheGatheringWeb.RateLimit,
   trust_proxy_headers: System.get_env("TRUST_PROXY_HEADERS") in ["true", "1"]
 
+corrections_admin_id =
+  case Integer.parse(System.get_env("CARDID_CORRECTIONS_ADMIN_ID", "")) do
+    {id, ""} when id > 0 -> id
+    _ -> nil
+  end
+
+config :the_gathering, :cardid_corrections_export,
+  token: System.get_env("CARDID_CORRECTIONS_TOKEN"),
+  admin_id: corrections_admin_id
+
 catalog_sync_hours = String.to_integer(System.get_env("CATALOG_SYNC_INTERVAL_HOURS", "168"))
 config :the_gathering, :catalog_sync_interval_ms, catalog_sync_hours * 60 * 60 * 1_000
 

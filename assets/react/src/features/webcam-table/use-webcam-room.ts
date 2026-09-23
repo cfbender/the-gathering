@@ -4,6 +4,7 @@ import { api } from "@/lib/api"
 import { mergeIdentifiedCards, sameCard } from "./identified-cards"
 import { canViewBoard, videoEncoding } from "./media-policy"
 import type { GalleryArt } from "./recognition/pipeline"
+import { sharesCorrections } from "./use-correction-upload"
 import {
   EMPTY_COUNTERS,
   changeCounter,
@@ -69,6 +70,8 @@ export interface CapturedCard {
   /** The click in crop pixels; the crop is clamped to the frame so it is not always centred. */
   clickX: number
   clickY: number
+  /** Camera owner's consent, carried with the crop; absent older peers do not opt in. */
+  shareCorrections?: boolean
   /** Shift+click: the clicker wants to see and choose among the candidates even when the
    * recognizer is sure. A plain click logs a clear answer silently. */
   inspect: boolean
@@ -104,6 +107,7 @@ type DataMessage =
       clickX: number
       clickY: number
       private: boolean
+      shareCorrections?: boolean
     }
   | { type: "deck_suggestion"; deckId: number }
   | { type: "card_identified"; entry: BoardCard }
@@ -157,6 +161,7 @@ function captureCrop(video: HTMLVideoElement, x: number, y: number) {
     cropSize: size,
     clickX: x * width - left,
     clickY: y * height - top,
+    shareCorrections: sharesCorrections(),
   }
 }
 

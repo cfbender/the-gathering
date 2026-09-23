@@ -52,6 +52,10 @@ defmodule TheGatheringWeb.RateLimit do
     end
   end
 
+  defp hit(:corrections, conn, scale, limit) do
+    RateLimiter.hit({:corrections, conn.assigns.current_scope.user.id}, scale, limit)
+  end
+
   defp hit(bucket, conn, scale, limit) do
     RateLimiter.hit({bucket, client_ip(conn)}, scale, limit)
   end
