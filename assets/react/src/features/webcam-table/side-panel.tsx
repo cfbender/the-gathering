@@ -24,9 +24,11 @@ import { CommanderPicker } from "./commander-picker"
 import { CommanderActions } from "./new-commander-dialog"
 import type { TimerSample } from "./game-timer"
 import { PanelSection } from "./panel-section"
+import { RevealControl } from "./reveal-control"
 import type { RecognizerState } from "./recognition/use-recognizer"
 import { SeatOrderTable } from "./seat-order-table"
 import { TableRolls, type RollRequest } from "./table-rolls"
+import { TimerBadge, TimerToggle } from "./table-timer"
 import { nextActiveSeat, type TurnState } from "./turns"
 import type { TableEvent, TableParticipant } from "./use-webcam-room"
 
@@ -67,6 +69,13 @@ interface Props extends CardsTabProps {
   onRoll: (request: RollRequest) => void
   onSetEliminated: (peerId: string, eliminated: boolean) => void
   onEndGame: () => void
+  onChangeTimer: (action: "pause" | "resume") => void
+  /** Private reveal: who the local camera is currently shown to, if anyone. */
+  reveal: {
+    target: string | null
+    busy: boolean
+    onChange: (target: string | null) => Promise<void>
+  }
 }
 
 const TABS: { id: PanelTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
@@ -149,6 +158,7 @@ function TableTab(props: Props) {
     onRandomizeSeats,
     onEndGame,
   } = props
+  const started = props.timer?.state.started_at != null
 
   return (
     <>
@@ -156,8 +166,11 @@ function TableTab(props: Props) {
         title="Setup"
         icon={Gamepad2}
         meta={
-          <span className="text-base-content/60 flex items-center gap-1 text-[0.65rem] font-semibold">
-            <Users className="size-3" /> {participants.length}/{maxPlayers}
+          <span className="text-base-content/60 flex items-center gap-2 text-[0.65rem] font-semibold">
+            <TimerBadge sample={props.timer} />
+            <span className="flex items-center gap-1">
+              <Users className="size-3" /> {participants.length}/{maxPlayers}
+            </span>
           </span>
         }
       >
@@ -211,35 +224,47 @@ function TableTab(props: Props) {
         </p>
 
         <div className="mt-3 grid gap-1.5">
-          <label className="mb-1 flex items-center justify-between gap-2 text-[0.65rem] text-white/60">
-            Auto-randomize order on start
-            <input
-              type="checkbox"
-              className="toggle toggle-xs toggle-primary"
-              checked={props.autoRandomize}
-              onChange={(event) => props.onAutoRandomize(event.target.checked)}
-            />
-          </label>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm w-full text-xs"
-            onClick={onRandomizeSeats}
-            disabled={participants.filter((participant) => !participant.departed).length < 2}
-          >
-            <Shuffle className="size-3.5" />{" "}
-            {props.timer?.state.started_at == null && !props.autoRandomize
-              ? "Start match"
-              : "Randomize and start"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-outline btn-sm w-full text-xs"
-            onClick={props.onPassTurn}
-            disabled={props.turns.active_player_id === null}
-            title={`Next: ${nextActiveSeat(participants, props.turns.active_player_id)?.player_name ?? "No eligible players"}`}
-          >
-            Pass turn <kbd className="kbd kbd-xs">Space</kbd>
-          </button>
+          {!started && (
+            <>
+              <label className="text-base-content/60 mb-1 flex items-center justify-between gap-2 text-[0.65rem]">
+                Auto-randomize order on start
+                <input
+                  type="checkbox"
+                  className="toggle toggle-xs toggle-primary"
+                  checked={props.autoRandomize}
+                  onChange={(event) => props.onAutoRandomize(event.target.checked)}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm w-full text-xs"
+                onClick={onRandomizeSeats}
+                disabled={participants.filter((participant) => !participant.departed).length < 2}
+              >
+                <Shuffle className="size-3.5" />{" "}
+                {props.autoRandomize ? "Randomize and start" : "Start match"}
+              </button>
+            </>
+          )}
+          {started && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm w-full text-xs"
+              onClick={props.onPassTurn}
+              disabled={props.turns.active_player_id === null}
+              title={`Next: ${nextActiveSeat(participants, props.turns.active_player_id)?.player_name ?? "No eligible players"}`}
+            >
+              Pass turn <kbd className="kbd kbd-xs">Space</kbd>
+            </button>
+          )}
+          <TimerToggle sample={props.timer} onChange={props.onChangeTimer} />
+          <RevealControl
+            participants={participants}
+            peerId={local.peer_id}
+            target={props.reveal.target}
+            busy={props.reveal.busy}
+            onChange={props.reveal.onChange}
+          />
           <button
             type="button"
             className="btn btn-error btn-sm w-full text-xs"

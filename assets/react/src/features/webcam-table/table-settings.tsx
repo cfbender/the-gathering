@@ -22,7 +22,7 @@ function Toggle({
   disabled?: boolean
 }) {
   return (
-    <label className="flex items-center justify-between gap-3 text-xs text-slate-300">
+    <label className="flex items-center justify-between gap-3 text-xs text-base-content/80">
       {children}
       <input
         type="checkbox"
@@ -48,13 +48,13 @@ function Choice({
 }) {
   return (
     <div>
-      <p className="mb-2 text-[0.65rem] text-slate-400">{label}</p>
+      <p className="mb-2 text-[0.65rem] text-base-content/60">{label}</p>
       <div className="flex rounded-lg bg-black/20 p-0.5" role="group" aria-label={label}>
         {options.map((option) => (
           <button
             key={option.value}
             type="button"
-            className={`min-w-0 flex-1 rounded-md border px-2 py-2 text-[0.65rem] ${value === option.value ? "border-blue-400/40 bg-blue-400/15 text-blue-200" : "border-transparent text-slate-400 hover:bg-white/5"}`}
+            className={`min-w-0 flex-1 rounded-md border px-2 py-2 text-[0.65rem] ${value === option.value ? "border-primary/50 bg-primary/20 text-base-content" : "border-transparent text-base-content/60 hover:bg-white/5"}`}
             aria-pressed={value === option.value}
             onClick={() => onChange(option.value)}
           >
@@ -88,7 +88,7 @@ export function TableSettings({
   return (
     <div
       aria-label="Table settings"
-      className="grid gap-2 p-2 text-xs [&>section]:rounded-xl [&>section]:border [&>section]:border-white/10 [&>section]:bg-slate-900/40 [&>section>button]:h-11"
+      className="grid gap-2 p-2 text-xs [&>section]:rounded-xl [&>section]:border [&>section]:border-white/10 [&>section]:bg-base-100/40 [&>section>button]:h-11"
     >
       <PanelSection title="Keyboard shortcuts" icon={Keyboard}>
         <div className="grid gap-3">
@@ -120,7 +120,7 @@ export function TableSettings({
               { value: "right", label: "Right" },
             ]}
           />
-          <p className="text-[0.65rem] text-slate-400">
+          <p className="text-[0.65rem] text-base-content/60">
             The camera rail sits on the opposite side on desktop. Selecting a board stops following
             turns.
           </p>
@@ -151,10 +151,10 @@ export function TableSettings({
           >
             Enable camera
           </Toggle>
-          <label className="grid gap-2 text-[0.65rem] text-slate-400">
+          <label className="grid gap-2 text-[0.65rem] text-base-content/60">
             Camera device
             <select
-              className="select select-sm w-full bg-slate-900 text-slate-200"
+              className="select select-sm w-full bg-base-100 text-base-content"
               value={preferences.deviceId}
               disabled={room.cameraChanging || !room.localStream}
               onChange={async (event) => {
@@ -183,10 +183,10 @@ export function TableSettings({
             </p>
           )}
           {room.cameraChanging && <p role="status">Switching camera…</p>}
-          <label className="grid gap-2 text-[0.65rem] text-slate-400">
+          <label className="grid gap-2 text-[0.65rem] text-base-content/60">
             Publisher quality
             <select
-              className="select select-sm w-full bg-slate-900 text-slate-200"
+              className="select select-sm w-full bg-base-100 text-base-content"
               value={preferences.quality}
               onChange={(event) => {
                 if (isPublisherQuality(event.target.value))
@@ -199,7 +199,7 @@ export function TableSettings({
               <option value="540p">540p — low bandwidth</option>
             </select>
           </label>
-          <p className="text-[0.65rem] text-slate-400">
+          <p className="text-[0.65rem] text-base-content/60">
             Lower if your video appears choppy. Takes effect immediately; card scans keep the native
             camera resolution.
           </p>
@@ -211,7 +211,7 @@ export function TableSettings({
             Check video health
           </button>
           {health && (
-            <p role="status" className="break-words text-[0.65rem] text-slate-300">
+            <p role="status" className="break-words text-[0.65rem] text-base-content/80">
               {health}
             </p>
           )}
@@ -227,17 +227,17 @@ export function TableSettings({
         >
           Sound when it becomes your turn
         </Toggle>
-        <p className="mt-2 text-[0.65rem] text-slate-400">
+        <p className="mt-2 text-[0.65rem] text-base-content/60">
           A short tone after you interact with the table. No microphone audio is captured.
         </p>
       </PanelSection>
       <PanelSection title="Card scan" icon={ScanSearch}>
         <CorrectionPreference upload={corrections} />
-        <p className="mt-3 break-words text-[0.65rem] text-slate-400">
+        <p className="mt-3 break-words text-[0.65rem] text-base-content/60">
           {describeRecognizer(recognizer)}
         </p>
       </PanelSection>
-      <p className="px-2 py-1 text-[0.65rem] text-slate-500">
+      <p className="px-2 py-1 text-[0.65rem] text-base-content/50">
         Preferences are saved in this browser.
       </p>
     </div>

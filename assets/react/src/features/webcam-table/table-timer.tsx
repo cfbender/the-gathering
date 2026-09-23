@@ -1,43 +1,49 @@
 import { Pause, Play, Timer } from "lucide-react"
+import { cn } from "@/lib/cn"
 import { formatElapsed, type TimerSample } from "./game-timer"
 import { useTimerElapsed } from "./use-timer-elapsed"
 
-export function TableTimer({
+/** Compact elapsed-time badge for the Table tab header. Non-interactive because the section
+ * header is itself a button. */
+export function TimerBadge({ sample }: { sample: TimerSample | null }) {
+  const elapsed = useTimerElapsed(sample)
+  const started = sample?.state.started_at != null
+  const paused = sample?.state.paused_at != null
+  if (!started) return null
+  return (
+    <span
+      role="timer"
+      aria-label={`Game timer ${paused ? "paused" : "running"}`}
+      className={cn(
+        "badge badge-sm gap-1 border-white/10 font-semibold tabular-nums",
+        paused ? "bg-base-300 text-base-content/60" : "bg-primary/20 text-base-content",
+      )}
+    >
+      {paused ? <Pause className="size-3" /> : <Timer className="size-3" />}
+      {formatElapsed(elapsed)}
+    </span>
+  )
+}
+
+/** Pause/resume action for the Table tab; hidden until the match has started. */
+export function TimerToggle({
   sample,
   onChange,
 }: {
   sample: TimerSample | null
   onChange: (action: "pause" | "resume") => void
 }) {
-  const elapsed = useTimerElapsed(sample)
   const started = sample?.state.started_at != null
   const paused = sample?.state.paused_at != null
-
+  if (!started) return null
   return (
-    <div
-      className="flex items-center justify-between gap-3 border-t border-white/10 bg-zinc-950 px-4 py-2"
-      aria-label="Game timer"
+    <button
+      type="button"
+      className="btn btn-ghost btn-sm w-full text-xs"
+      onClick={() => onChange(paused ? "resume" : "pause")}
     >
-      <div className="flex items-center gap-3">
-        <Timer className="size-4 text-violet-300" />
-        <span className="text-xl font-semibold tracking-wider text-white tabular-nums" role="timer">
-          {formatElapsed(elapsed)}
-        </span>
-        <span className="text-xs text-white/50">
-          {!started ? "Ready to start" : paused ? "Paused" : "Playing"}
-        </span>
-      </div>
-      {started && (
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm gap-1.5 text-xs"
-          disabled={!sample}
-          onClick={() => onChange(paused ? "resume" : "pause")}
-        >
-          {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
-          {paused ? "Resume timer" : "Pause timer"}
-        </button>
-      )}
-    </div>
+      {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+      {paused ? "Resume timer" : "Pause timer"}
+    </button>
   )
 }

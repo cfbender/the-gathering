@@ -89,7 +89,7 @@ export function VideoStatsOverlay({
   const settings = localStream?.getVideoTracks()[0]?.getSettings()
   return (
     <span
-      className="pointer-events-none absolute top-1 right-8 max-w-[calc(100%-5rem)] rounded bg-black/85 px-1.5 py-1 text-[0.6rem] text-slate-200 tabular-nums"
+      className="pointer-events-none absolute top-1 right-8 max-w-[calc(100%-5rem)] rounded bg-black/85 px-1.5 py-1 text-[0.6rem] text-base-content tabular-nums"
       aria-label="Video statistics"
     >
       {settings?.width ?? stats?.width ?? "?"} × {settings?.height ?? stats?.height ?? "?"} ·{" "}

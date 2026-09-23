@@ -256,7 +256,7 @@ export function HotkeyHelp({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="border-slate-700 bg-slate-900 text-slate-200 sm:max-w-lg"
+        className="border-white/10 bg-base-100 text-base-content sm:max-w-lg"
         onKeyDown={(event) => {
           if (
             !event.repeat &&
@@ -273,14 +273,14 @@ export function HotkeyHelp({
           }
         }}
       >
-        <DialogHeader className="shrink-0 border-slate-700">
+        <DialogHeader className="shrink-0 border-white/10">
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogClose onClose={() => onOpenChange(false)} />
         </DialogHeader>
         <div className="min-h-0 overflow-y-auto p-5">
           {["Turn & counters", "Video", "Cards", "View & panels"].map((section) => (
             <section key={section} className="mb-5">
-              <h3 className="mb-2 text-[0.65rem] font-bold tracking-wider text-slate-400 uppercase">
+              <h3 className="mb-2 text-[0.65rem] font-bold tracking-wider text-base-content/60 uppercase">
                 {section}
               </h3>
               <div className="grid gap-2">
@@ -289,13 +289,13 @@ export function HotkeyHelp({
                   .map(({ chips, title, description }) => (
                     <div
                       key={title}
-                      className="flex items-start gap-4 rounded-xl border border-slate-700/70 p-3"
+                      className="flex items-start gap-4 rounded-xl border border-white/10 p-3"
                     >
                       <div className="flex shrink-0 gap-1">
                         {chips.map((chip) => (
                           <kbd
                             key={chip}
-                            className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-2 text-xs font-bold"
+                            className="rounded-lg border border-white/15 bg-base-300 px-2 py-2 text-xs font-bold"
                           >
                             {chip}
                           </kbd>
@@ -303,18 +303,18 @@ export function HotkeyHelp({
                       </div>
                       <div className="min-w-0">
                         <h4 className="text-sm font-bold">{title}</h4>
-                        <p className="mt-1 text-xs text-slate-400">{description}</p>
+                        <p className="mt-1 text-xs text-base-content/60">{description}</p>
                       </div>
                     </div>
                   ))}
               </div>
             </section>
           ))}
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="mt-3 text-xs text-base-content/60">
             Table shortcuts pause while typing or using an overlay. Enable them in Settings.
           </p>
         </div>
-        <footer className="shrink-0 border-t border-slate-700 px-5 py-4 text-xs text-slate-400">
+        <footer className="shrink-0 border-t border-white/10 px-5 py-4 text-xs text-base-content/60">
           Press <kbd className="kbd kbd-xs">?</kbd> or <kbd className="kbd kbd-xs">H</kbd> to toggle
           this menu
         </footer>
