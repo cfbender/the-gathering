@@ -14,6 +14,8 @@ defmodule TheGathering.Catalog.Printings do
         |> Enum.filter(
           &(&1["oracle_id"] == card.oracle_id and "paper" in &1["games"] and &1["lang"] == "en")
         )
+        # Scryfall includes memorabilia basics; CardData intentionally does not describe them.
+        |> Enum.reject(&(&1["set_type"] in ["token", "memorabilia"]))
         |> Enum.map(&printing_data/1)
 
       Repo.insert_all(Printing, rows, on_conflict: :replace_all, conflict_target: :id)
@@ -71,6 +73,7 @@ defmodule TheGathering.Catalog.Printings do
       layout: Map.get(card, "layout", "normal"),
       rarity: Map.get(card, "rarity"),
       released_at: Map.get(card, "released_at"),
+      prices: Map.new(["usd", "usd_foil", "usd_etched"], &{&1, get_in(card, ["prices", &1])}),
       scryfall_uri: Map.get(card, "scryfall_uri")
     })
   end

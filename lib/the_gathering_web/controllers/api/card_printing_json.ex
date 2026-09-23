@@ -28,6 +28,7 @@ defmodule TheGatheringWeb.API.CardPrintingJSON do
           :layout,
           :rarity,
           :released_at,
+          :prices,
           :scryfall_uri
         ])
     }

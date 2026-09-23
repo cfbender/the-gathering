@@ -26,7 +26,7 @@ defmodule TheGatheringWeb.API.CardPrintingController do
   def details(conn, %{"id" => id}) do
     with {:ok, details} <- Catalog.printing_details(id) do
       conn
-      |> put_resp_header("cache-control", "private, max-age=86400")
+      |> put_resp_header("cache-control", "private, max-age=3600")
       |> render(:details, details: details)
     end
   end

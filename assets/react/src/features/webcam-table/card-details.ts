@@ -24,6 +24,7 @@ export interface PrintingDetails {
   rarity: string | null
   released_at: string | null
   scryfall_uri: string | null
+  prices: { usd: string | null; usd_foil: string | null; usd_etched: string | null }
 }
 
 export function getPrintingDetails(id: string) {
@@ -32,14 +33,26 @@ export function getPrintingDetails(id: string) {
   ).then((body) => body.data)
 }
 
-/** Details for one printing; a printing never changes, so the answer is kept for the table. */
+/** Prices change, so refresh printing details after one hour. */
 export function usePrintingDetails(id: string | null) {
   return useQuery({
     queryKey: ["card-printings", id, "details"],
     queryFn: () => getPrintingDetails(id as string),
     enabled: id !== null,
-    staleTime: Infinity,
+    staleTime: 60 * 60 * 1000,
   })
+}
+
+export function printingPrices(prices: PrintingDetails["prices"]) {
+  return (
+    [
+      prices.usd && `$${prices.usd}`,
+      prices.usd_foil && `Foil $${prices.usd_foil}`,
+      prices.usd_etched && `Etched $${prices.usd_etched}`,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "—"
+  )
 }
 
 /** "The Hobbit Eternal · #104", falling back to the set code when the name is unknown. */

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vite-plus/test"
 import { CardHover, CommanderHover } from "./card-hover"
 
@@ -57,3 +57,25 @@ it.each(["https://img.example/selected-printing.jpg", null, undefined])(
     expect(fetch).not.toHaveBeenCalled()
   },
 )
+
+it("shows printing prices on focus without moving focus into the hover card", () => {
+  const client = new QueryClient()
+  client.setQueryData(["card-printings", "forest", "details"], {
+    image_uris: { normal: "https://img.example/forest.jpg" },
+    prices: { usd: "0.25", usd_foil: "1.10", usd_etched: null },
+  })
+  render(
+    <QueryClientProvider client={client}>
+      <CardHover id="forest" name="Forest">
+        <button>Forest</button>
+      </CardHover>
+    </QueryClientProvider>,
+  )
+  const trigger = screen.getByRole("button", { name: "Forest" })
+  act(() => trigger.focus())
+  expect(screen.getByText("$0.25 · Foil $1.10")).toBeTruthy()
+  expect(screen.getByRole("img", { name: "Forest" }).getAttribute("src")).toBe(
+    "https://img.example/forest.jpg",
+  )
+  expect(document.activeElement).toBe(trigger)
+})

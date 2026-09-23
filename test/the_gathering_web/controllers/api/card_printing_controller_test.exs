@@ -81,7 +81,12 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
       other = scryfall_card("partner", "Thrasios, Triton Hero")
       digital = printing |> Map.put("id", "digital") |> Map.put("games", ["arena"])
       japanese = printing |> Map.put("id", "japanese") |> Map.put("lang", "ja")
-      Req.Test.json(conn, %{data: [printing, other, digital, japanese], has_more: true})
+      memorabilia = printing |> Map.put("id", "memorabilia") |> Map.put("set_type", "memorabilia")
+
+      Req.Test.json(conn, %{
+        data: [printing, other, digital, japanese, memorabilia],
+        has_more: true
+      })
     end)
 
     body = conn |> get(~p"/api/card-printings?card_id=commander&page=2") |> json_response(200)
@@ -94,6 +99,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
 
     refute Catalog.get_printing("digital")
     refute Catalog.get_printing("japanese")
+    refute Catalog.get_printing("memorabilia")
     assert Catalog.get_card("double-faced-print") == nil
 
     assert conn
@@ -117,6 +123,12 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
           "layout" => "saga",
           "rarity" => "mythic",
           "released_at" => "2020-01-24",
+          "prices" => %{
+            "usd" => "0.25",
+            "usd_foil" => "1.10",
+            "usd_etched" => nil,
+            "eur" => "0.20"
+          },
           "scryfall_uri" => "https://scryfall.com/card/thb/52",
           "image_uris" => %{
             "small" => "https://img.example/saga-small.jpg",
@@ -128,11 +140,9 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
       Req.Test.json(conn, card)
     end)
 
-    body =
-      conn
-      |> get(~p"/api/card-printings/#{@saga}/details")
-      |> json_response(200)
-      |> Map.fetch!("data")
+    response = get(conn, ~p"/api/card-printings/#{@saga}/details")
+    assert get_resp_header(response, "cache-control") == ["private, max-age=3600"]
+    body = response |> json_response(200) |> Map.fetch!("data")
 
     assert body["name"] == "Kiora Bests the Sea God"
     assert body["mana_cost"] == "{5}{U}{U}"
@@ -142,6 +152,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
     assert body["set_name"] == "New Set"
     assert body["collector_number"] == "9"
     assert body["layout"] == "saga"
+    assert body["prices"] == %{"usd" => "0.25", "usd_foil" => "1.10", "usd_etched" => nil}
 
     assert body["image_uris"] == %{
              "small" => "https://img.example/saga-small.jpg",
@@ -193,6 +204,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
     assert body["name"] == "Valki, God of Lies"
     assert body["power"] == "2"
     assert body["toughness"] == "1"
+    assert body["prices"] == %{"usd" => nil, "usd_foil" => nil, "usd_etched" => nil}
 
     assert body["oracle_text"] ==
              "When Valki enters, each opponent reveals their hand."
