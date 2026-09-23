@@ -33,9 +33,13 @@ vi.mock("./use-webcam-room", async (importOriginal) => {
     },
   }
 })
-vi.mock("./recognition/use-recognizer", () => ({
-  useRecognizer: () => ({ ready: false, state: { status: "unavailable" } }),
-}))
+vi.mock("./recognition/use-recognizer", () => {
+  const identify = () => Promise.reject(new Error("not installed"))
+  return {
+    decodeImage: async () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+    useRecognizer: () => ({ ready: false, state: { status: "unavailable" }, identify }),
+  }
+})
 vi.mock("./side-panel", () => ({ SidePanel: () => null }))
 vi.mock("./card-suggestions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./card-suggestions")>()),

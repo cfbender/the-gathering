@@ -4,6 +4,7 @@ import type { BundleInfo, Identification, WorkerRequest, WorkerResponse } from "
 import type { GalleryArt, RgbaImage } from "./pipeline"
 
 export type RecognizerState =
+  | { status: "idle" }
   | { status: "checking" }
   /** No bundle has been published to the server yet (`/api/cardid/bundle` → 404). */
   | { status: "unavailable" }
@@ -26,13 +27,21 @@ interface Pending {
  * `identify` and `search` calls. Everything heavy happens off the main thread.
  */
 export function useRecognizer() {
-  const [state, setState] = useState<RecognizerState>({ status: "checking" })
+  const [state, setState] = useState<RecognizerState>({ status: "idle" })
   const workerRef = useRef<Worker | null>(null)
   const pendingRef = useRef(new Map<number, Pending>())
   const nextIdRef = useRef(0)
+  const loadingRef = useRef<Promise<void> | null>(null)
+  const rejectLoadRef = useRef<(error: Error) => void>(() => {})
 
-  useEffect(() => {
-    let disposed = false
+  const start = useCallback(() => {
+    if (loadingRef.current) return loadingRef.current
+    setState({ status: "checking" })
+    let resolveLoad!: () => void
+    loadingRef.current = new Promise<void>((resolve, reject) => {
+      resolveLoad = resolve
+      rejectLoadRef.current = reject
+    })
     const worker = new Worker(new URL("./recognizer.worker.ts", import.meta.url), {
       type: "module",
     })
@@ -48,8 +57,10 @@ export function useRecognizer() {
           arts: message.arts,
           loadMs: message.ms,
         })
+        resolveLoad()
       } else if (message.type === "load_failed") {
         setState({ status: "failed", message: message.message })
+        rejectLoadRef.current(new Error(message.message))
       } else if (message.type === "identified" || message.type === "matches") {
         settle(pending, message.id)?.resolve(
           message.type === "identified" ? message.result : message.arts,
@@ -58,17 +69,21 @@ export function useRecognizer() {
         settle(pending, message.id)?.reject(new Error(message.message))
       }
     }
-    worker.onerror = (event) =>
+    worker.onerror = (event) => {
       setState({ status: "failed", message: event.message || "worker crashed" })
+      rejectLoadRef.current(new Error(event.message || "worker crashed"))
+      for (const id of pending.keys()) settle(pending, id)?.reject(new Error("worker crashed"))
+    }
 
     api<{ data: BundleInfo }>("/api/cardid/bundle")
       .then(({ data }) => {
-        if (disposed) return
+        if (workerRef.current !== worker) return
         setState({ status: "loading", version: data.version })
         post(worker, { type: "load", bundle: data })
       })
       .catch((error: unknown) => {
-        if (disposed) return
+        if (workerRef.current !== worker) return
+        rejectLoadRef.current(error instanceof Error ? error : new Error(String(error)))
         if (error instanceof ApiError && error.status === 404) setState({ status: "unavailable" })
         else
           setState({
@@ -76,19 +91,28 @@ export function useRecognizer() {
             message: error instanceof Error ? error.message : String(error),
           })
       })
+    return loadingRef.current
+  }, [])
 
+  useEffect(() => {
+    const pending = pendingRef.current
     return () => {
-      disposed = true
-      worker.terminate()
+      workerRef.current?.terminate()
       workerRef.current = null
-      for (const entry of pending.values()) entry.reject(new Error("table closed"))
-      pending.clear()
+      rejectLoadRef.current(new Error("table closed"))
+      loadingRef.current = null
+      for (const id of pending.keys()) settle(pending, id)?.reject(new Error("table closed"))
     }
   }, [])
 
   const request = useCallback(
-    <T>(build: (id: number) => WorkerRequest, transfer: Transferable[], timeoutMs?: number) =>
-      new Promise<T>((resolve, reject) => {
+    async <T>(
+      build: (id: number) => WorkerRequest,
+      transfer: Transferable[],
+      timeoutMs?: number,
+    ) => {
+      await start()
+      return new Promise<T>((resolve, reject) => {
         const worker = workerRef.current
         if (!worker) return reject(new Error("recognizer not running"))
         const id = (nextIdRef.current += 1)
@@ -101,8 +125,9 @@ export function useRecognizer() {
         }
         pendingRef.current.set(id, entry)
         worker.postMessage(build(id), transfer)
-      }),
-    [],
+      })
+    },
+    [start],
   )
 
   const identify = useCallback(

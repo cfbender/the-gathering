@@ -9,7 +9,7 @@ import type { CapturedCard } from "./use-webcam-room"
 
 /** What recognition did with the current capture. */
 export type Recognition =
-  | { status: "identifying" }
+  | { status: "identifying"; loading?: boolean }
   | { status: "done"; result: Identification }
   /** Recognition did not run or did not finish; the reason is shown and deck suggestions stand in. */
   | { status: "skipped"; reason: string }
@@ -252,7 +252,8 @@ export function CardSuggestions({
             {capture.cropSize} px crop of {capture.nativeWidth}×{capture.nativeHeight}
             {recognition.status === "done" &&
               ` · detector ${recognition.result.timings.detector.toFixed(0)} ms · embed ${recognition.result.timings.embed.toFixed(0)} ms · search ${recognition.result.timings.search.toFixed(0)} ms · upright ${Math.round(recognition.result.upVote * 100)}%`}
-            {recognition.status === "identifying" && " · identifying…"}
+            {recognition.status === "identifying" &&
+              (recognition.loading ? " · loading card scanner…" : " · identifying…")}
             {recognition.status === "skipped" &&
               ` · recognition ${recognition.reason}; deck-based suggestions`}
           </p>

@@ -21,7 +21,7 @@ import { LifeControl } from "./life-control"
 import { canViewBoard } from "./media-policy"
 import type { GameTimerState } from "./game-timer"
 import type { GalleryArt } from "./recognition/pipeline"
-import { decodeImage, useRecognizer, type RecognizerState } from "./recognition/use-recognizer"
+import { decodeImage, useRecognizer } from "./recognition/use-recognizer"
 import { RevealControl } from "./reveal-control"
 import { SeatBar } from "./seat-bar"
 import { SeatCounterControls } from "./seat-counter-controls"
@@ -95,21 +95,6 @@ function useActiveBoard(participants: TableParticipant[], localPeerId: string) {
   }
 }
 
-/** Why a click did not get recognized, for the suggestion panel footer. */
-function skippedReason(state: RecognizerState): string {
-  switch (state.status) {
-    case "unavailable":
-      return "not installed on this server"
-    case "checking":
-    case "loading":
-      return "still loading"
-    case "failed":
-      return `failed: ${state.message}`
-    case "ready":
-      return "unavailable"
-  }
-}
-
 /** Runs the recognizer on every new capture: decode the owner's crop, identify at the click,
  * and hold the outcome next to the capture it belongs to. The outcome is only reported while
  * that same capture is current, so a new click never sees the previous click's answer. */
@@ -119,13 +104,6 @@ function useRecognition(capture: CapturedCard | null) {
 
   useEffect(() => {
     if (!capture) return
-    if (!recognizer.ready) {
-      setOutcome({
-        capture,
-        recognition: { status: "skipped", reason: skippedReason(recognizer.state) },
-      })
-      return
-    }
     let stale = false
     decodeImage(capture.image)
       .then((image) => recognizer.identify(image, capture.clickX, capture.clickY))
@@ -146,11 +124,12 @@ function useRecognition(capture: CapturedCard | null) {
     return () => {
       stale = true
     }
-    // Re-run for a new capture only; the recognizer becoming ready later does not re-identify.
-  }, [capture])
+  }, [capture, recognizer.identify])
 
   const recognition: Recognition =
-    outcome && outcome.capture === capture ? outcome.recognition : { status: "identifying" }
+    outcome && outcome.capture === capture
+      ? outcome.recognition
+      : { status: "identifying", loading: !recognizer.ready }
   return { recognizer, recognition }
 }
 
@@ -545,7 +524,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
               playerName={captureOwner.player_name}
               recognition={recognition}
               deckSuggestions={suggestions}
-              gallerySearchable={recognizer.ready}
+              gallerySearchable
               onChooseCard={chooseCard}
               onChooseDeck={chooseDeckForCapture}
               onSearch={recognizer.search}
@@ -619,7 +598,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         iceServers={room.iceServers}
         recognizer={recognizer.state}
         identifiedCards={room.identifiedCards}
-        gallerySearchable={recognizer.ready}
+        gallerySearchable
         onSearch={recognizer.search}
         onPreviewCard={(entry) =>
           setPreview({ kind: "entry", entry, shown: entry.card, correctable: false })
