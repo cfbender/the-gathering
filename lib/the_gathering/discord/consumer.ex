@@ -10,6 +10,7 @@ defmodule TheGathering.Discord.Consumer do
   alias TheGathering.Discord.{
     Command,
     LogCommand,
+    NewGameCommand,
     SpellBotParser,
     SummaryCommand,
     Tracker,
@@ -41,6 +42,16 @@ defmodule TheGathering.Discord.Consumer do
 
   def handle_event({:INTERACTION_CREATE, %{data: %{name: "summary"}} = interaction, _ws_state}) do
     SummaryCommand.respond(interaction)
+  end
+
+  def handle_event({:INTERACTION_CREATE, %{data: %{name: "newgame"}} = interaction, _ws_state}) do
+    NewGameCommand.respond(interaction)
+  end
+
+  def handle_event(
+        {:INTERACTION_CREATE, %{data: %{custom_id: "newgame:" <> _}} = interaction, _ws_state}
+      ) do
+    NewGameCommand.respond(interaction)
   end
 
   def handle_event({:INTERACTION_CREATE, %{data: %{name: name}} = interaction, _ws_state})

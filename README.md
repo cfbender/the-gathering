@@ -159,11 +159,19 @@ suggestions instead. Design notes are in
 | `MANAVAULT_ALLOW_INSECURE_URLS` | unset | Set to `true` to permit HTTP personal ManaVault origins that resolve to public addresses. |
 | `DISCORD_CLIENT_ID` | unset | Discord application client ID; enables member OAuth sign-in when paired with the secret. |
 | `DISCORD_CLIENT_SECRET` | unset | Discord application client secret. |
-| `DISCORD_BOT_TOKEN` | unset | Discord bot token; enables automatic recording of completed SpellBot games when set. |
-| `DISCORD_GUILD_ID` | unset | Optional server ID for immediate guild-scoped `/won` and `/summary` registration; without it commands are global. Restricts summaries to that server when set. |
+| `DISCORD_BOT_TOKEN` | unset | Enables the optional Discord bot: SpellBot tracking, `/log`, `/summary`, and `/newgame` webcam-table queues. |
+| `DISCORD_GUILD_ID` | unset | Optional server ID for immediate guild-scoped `/log`, `/summary`, and `/newgame` registration; without it commands are global. Restricts invocation to that server when set. |
+| `DISCORD_DEFAULT_TIMEZONE` | `America/New_York` | IANA timezone for `/newgame start:8pm` and `tomorrow 7pm`. Discord displays parsed timestamps in each viewer's local time. |
 | `DISCORD_SPELLBOT_USER_ID` | `725510263251402832` | Discord user ID accepted as SpellBot, useful when running a private SpellBot deployment. |
 | `THE_GATHERING_ADMIN_USERNAME` | unset | Creates this admin on container startup when paired with the password. |
 | `THE_GATHERING_ADMIN_PASSWORD` | unset | Password for container or Mix-task admin bootstrap. |
+
+Use `/newgame [start] [min_players] [title] [format]` to post a public Join/Leave
+queue. The default minimum is three (configurable from two to ten). Without
+`start`, it opens a webcam-table link as soon as the minimum joins; scheduled
+queues start or expire at the requested time. The host or a Discord Administrator
+can Cancel. See [Discord integration](docs/discord-integration.md#webcam-table-queues-with-newgame)
+for time syntax, permissions, and restart/delivery behavior.
 
 ### Accounts and registration
 

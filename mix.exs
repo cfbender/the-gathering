@@ -50,6 +50,7 @@ defmodule TheGathering.MixProject do
       {:req, "~> 0.5"},
       {:assent, "~> 0.3.1"},
       {:nimble_csv, "~> 1.2"},
+      {:tz, "~> 0.28"},
       {:nostrum, "~> 0.10.4", runtime: false},
       {:dns_cluster, "~> 0.3.0"},
       {:bandit, "~> 1.5"},

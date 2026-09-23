@@ -11,10 +11,16 @@ defmodule TheGathering.Discord.CommandTest do
     for guild <- [nil, "333"] do
       Application.put_env(:the_gathering, Discord, guild_id: guild)
       assert {:ok, description} = Command.register(888, __MODULE__)
-      assert description =~ "/log and /summary"
+      assert description =~ "/log, /summary, and /newgame"
       assert_receive {:created, ^guild, %{name: "log", options: options}}
       assert %{type: 6, required: false} = Enum.find(options, &(&1.name == "winner"))
       assert_receive {:created, ^guild, %{name: "summary"}}
+
+      assert_receive {:created, ^guild,
+                      %{name: "newgame", dm_permission: false, options: options}}
+
+      assert Enum.map(options, & &1.name) == ["start", "min_players", "title", "format"]
+      assert %{type: 4, min_value: 2, max_value: 10, required: false} = Enum.at(options, 1)
       assert_receive {:deleted, ^guild, 123}
       refute_receive {:deleted, ^guild, 456}
     end

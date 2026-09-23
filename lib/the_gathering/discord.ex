@@ -84,6 +84,7 @@ defmodule TheGathering.Discord do
 
         children = [
           {TheGathering.Discord.Tracker, sink: sink},
+          TheGathering.Discord.NewGameScheduler,
           TheGathering.Discord.Consumer
         ]
 

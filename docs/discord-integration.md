@@ -275,6 +275,66 @@ crashing the gateway consumer.
 
 ## Configuration and self-host setup
 
+### Webcam-table queues with `/newgame`
+
+`/newgame` is guild-only and accepts four **optional** options:
+
+| Option | Type | Meaning |
+| --- | --- | --- |
+| `start` | string, max 100 characters | `8pm`, `20:30`, `in 45m`, `in 2h`, `tomorrow 7pm`, or Discord `<t:unix>` / `<t:unix:F>` / `<t:unix:R>`. Omit to start when filled. |
+| `min_players` | integer 2–10 | Minimum roster size; defaults to 3. |
+| `title` | string, max 100 characters | Defaults to `Commander game`. |
+| `format` | string, max 100 characters | Free text; defaults to `Commander`. |
+
+The public embed shows the title, start time, minimum, format and roster. Join
+and Leave update it in place and privately confirm the action. Repeated clicks
+do not duplicate players; the roster caps at ten. **The host must click Join to
+play**, just like everyone else. Cancel is a button, not a slash subcommand;
+only the host or a Discord **Administrator** (including the guild owner) can
+cancel. The app's admin role and Discord Manage Guild alone do not grant this
+permission. Guild roles come from Nostrum's cache because version 0.10 drops
+the interaction's member permission field. All buttons are bound to the original
+guild, channel and message, and disabled once started, cancelled or expired.
+
+Any member of the server can queue, without first linking an app account. To
+enter the actual table, players must sign in with Discord; normal registration
+and disabled-account restrictions still apply. The roster is coordination, not
+a seat reservation or room access list. The lobby URL uses the Phoenix endpoint's
+`PHX_HOST`, `PHX_SCHEME`, and `PHX_URL_PORT`; it identifies a UUID room without
+creating presence. It appears in active tables only after someone enters.
+
+Bare clock times use `DISCORD_DEFAULT_TIMEZONE` (IANA, default
+`America/New_York`), choosing today if still future, otherwise tomorrow.
+`tomorrow` means the next local calendar day, not 24 elapsed hours. Invalid or
+past explicit timestamps are rejected privately. Nonexistent or ambiguous DST
+clock times are rejected with a request for a Discord timestamp. The `tz`
+dependency supplies bundled IANA rules; update it with app releases (no runtime
+timezone downloads). Discord `<t:unix:F>` and `<t:unix:R>` echoes show the parsed
+time in each viewer's timezone. `in Nm` / `in Nh` mean elapsed time.
+
+The supervised scheduler scans SQLite on boot and every five seconds, in batches
+of 100; Discord request/rate-limit delays can extend that interval. At the deadline
+the existing roster starts if its minimum is met; otherwise it expires. A click
+at or after the deadline cannot rescue an underfilled queue. Unscheduled queues
+wait indefinitely until filled or cancelled. Overdue queues are processed on
+restart, even after a long outage. Records and rosters are retained, not deleted.
+The status transition is an atomic `UPDATE ... WHERE status = 'open'`; the room
+UUID cannot be replaced by a second start. Roster changes and message edits are
+serialized by the scheduler; API calls happen outside database transactions.
+
+A ready message mentions only joined players and posts the lobby link. Failed
+notifications stay pending in SQLite and retry; the announcement ID is saved
+before updating the original embed so an edit failure does not repeat the ping.
+A stable Discord nonce also deduplicates short-window announcement retries.
+Discord does **not** offer permanent nonce deduplication: a crash after Discord
+accepts a post but before its ID is saved, followed by a long outage, can repeat
+the announcement, but never creates a second room. Initial slash-response
+placeholder failures are not retried automatically; rerun `/newgame`. The message
+ID is saved before exposing buttons, so the first actionable queue edit can be
+retried after a restart. A crash before saving that ID leaves only a placeholder
+and requires a new command. Deleted messages or revoked channel permissions leave pending work
+and warning logs until access is restored; records are preserved for diagnosis.
+
 ### Rendered game summaries
 
 `/summary` posts a PNG recap of the **latest recorded game across the instance**,
@@ -321,7 +381,8 @@ also subject to the render cap. No summary request modifies the game.
 | `DISCORD_CLIENT_ID` | yes for member sign-in | Discord application ID. |
 | `DISCORD_CLIENT_SECRET` | yes for member sign-in | OAuth2 client secret. |
 | `DISCORD_BOT_TOKEN` | yes to enable | Secret bot token. Unset/empty means no Discord process starts. |
-| `DISCORD_GUILD_ID` | no | Register `/log` and `/summary` immediately in one server; omit for global commands, which can take up to an hour to appear. Also restricts invocation to that server. |
+| `DISCORD_GUILD_ID` | no | Register `/log`, `/summary`, and `/newgame` immediately in one server; omit for global commands, which can take up to an hour to appear. Also restricts invocation to that server. |
+| `DISCORD_DEFAULT_TIMEZONE` | no | IANA timezone for `/newgame` clock times; defaults to `America/New_York`. |
 | `DISCORD_SPELLBOT_USER_ID` | no | Trusted SpellBot bot user ID; defaults to production SpellBot (`725510263251402832`). |
 
 1. In the [Discord Developer Portal](https://discord.com/developers/applications),
@@ -329,11 +390,11 @@ also subject to the render cap. No summary request modifies the game.
 2. On **Bot**, enable **Message Content Intent**. No Guild Members or Presence
    intent is needed.
 3. On **OAuth2 → URL Generator**, select `bot` and `applications.commands`.
-   Grant **View Channels**, **Send Messages**, and **Attach Files**
-   (`permissions=35840`) for public image summaries. Ensure the bot can view the
+   Grant **View Channels**, **Send Messages**, **Embed Links**, and **Attach Files**
+   (`permissions=52224`) for queues and public image summaries. Ensure the bot can view the
    specific channel where SpellBot posts games. It does not need Read Message History.
 4. Invite the bot with a URL shaped like
-   `https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=35840`.
+   `https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=52224`.
 5. Put the token and optional IDs in `.env`, then restart the container. Never
    paste the token into logs or support messages.
 6. Start a SpellBot game and confirm the container logs
@@ -369,8 +430,8 @@ how far it got. Read the log from the top of the last start:
 | `Shard websocket closed (errno 4014, …)` repeating, no `READY` | Discord rejected the requested intents. Enable **Message Content Intent** on the **Bot** page. |
 | `Discord bot connected as <bot> in 0 guild(s)` | The bot was never invited to the server. Use the invite URL from step 4. |
 | `Discord bot connected …` but the bot looks offline in Discord | The bot sets an online presence ("Watching SpellBot games") right after this line. If the member list still shows it offline, the gateway session dropped afterwards; look for `Shard websocket closed` lines below it. |
-| `Discord registered /log and /summary in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
-| `Discord registered /log and /summary globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
+| `Discord registered /log, /summary, and /newgame in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
+| `Discord registered /log, /summary, and /newgame globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
 | `Could not register Discord commands: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |
 | No `Discord observed SpellBot game …` line when a game starts | The line appears only once the post reads **Your game is ready!** (see the message flow above). Otherwise the bot cannot see the channel (grant **View Channels** there), or the message is from a different SpellBot deployment: set `DISCORD_SPELLBOT_USER_ID` to that bot's user ID. Set `LOG_LEVEL=debug` to log why each SpellBot message was ignored. |
 
