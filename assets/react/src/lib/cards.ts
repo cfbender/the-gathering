@@ -12,6 +12,8 @@ export interface CardSummary {
   name: string
   mana_cost: string | null
   type_line: string
+  /** Optional for legacy stored snapshots; API catalog responses always include it. */
+  game_changer?: boolean
   color_identity: string[]
   image_uris: CardImageUris
   can_be_commander: boolean

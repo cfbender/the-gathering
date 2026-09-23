@@ -2,6 +2,7 @@ import { Search, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useRef, useState } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { cn } from "@/lib/cn"
 import { CardHover, CommanderHover } from "./card-hover"
 import type { Identification } from "./recognition/messages"
@@ -233,6 +234,7 @@ export function CardSuggestions({
                   >
                     <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
                     <span className="truncate font-semibold">{deck.commander_name}</span>
+                    <GameChangerBadge gameChanger={deck.commander_game_changer} compact />
                     <span className="ml-auto truncate text-white/50">{deck.name}</span>
                   </button>
                 </CommanderHover>

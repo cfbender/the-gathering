@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import type { ComponentType, ReactNode } from "react"
 import { commanderNames, type DeckSummary } from "@/features/decks/decks"
+import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
 import { CardsTab, type CardsTabProps } from "./cards-tab"
@@ -163,6 +164,7 @@ function TableTab(props: Props) {
     onEndGame,
   } = props
   const started = props.timer?.state.started_at != null
+  const selectedDeck = playerDecks.find((deck) => deck.id === local.deck_id)
 
   return (
     <>
@@ -202,7 +204,11 @@ function TableTab(props: Props) {
               <Layers className="size-3.5" />
               <CommanderHover deck={playerDecks.find((deck) => deck.id === local.deck_id)}>
                 <span className="min-w-0 flex-1 whitespace-normal">
-                  {commanderName(local, playerDecks) ?? "Select your commander"}
+                  {selectedDeck ? (
+                    <DeckCommanders deck={selectedDeck} />
+                  ) : (
+                    (commanderName(local, playerDecks) ?? "Select your commander")
+                  )}
                 </span>
               </CommanderHover>
             </button>
@@ -353,7 +359,9 @@ function DecksTab({ playerDecks, localParticipant: local, onChooseDeck }: Props)
                     aria-pressed={selected}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block font-semibold">{commanderNames(deck)}</span>
+                      <span className="block font-semibold">
+                        <DeckCommanders deck={deck} />
+                      </span>
                       <span className="text-base-content/55 block truncate">{deck.name}</span>
                     </span>
                     {selected && <Check className="text-primary size-3.5" />}

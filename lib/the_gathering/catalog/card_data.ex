@@ -35,6 +35,7 @@ defmodule TheGathering.Catalog.CardData do
       released_at: date(Map.get(card, "released_at")),
       layout: Map.get(card, "layout", "normal"),
       rarity: Map.get(card, "rarity", "common"),
+      game_changer: Map.get(card, "game_changer") == true,
       commander_legal: get_in(card, ["legalities", "commander"]) == "legal",
       can_be_commander: can_be_commander?(type_line, oracle_text),
       commander_pairing: commander_pairing(type_line, oracle_text),

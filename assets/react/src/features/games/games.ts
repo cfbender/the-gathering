@@ -28,6 +28,7 @@ export interface Seat {
   kills: number | null
   mvp_card_id: string | null
   mvp_card_name: string | null
+  mvp_game_changer?: boolean
   mvp_art_crop_url: string | null
   notes: string | null
   player: PlayerSummary

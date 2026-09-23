@@ -12,5 +12,6 @@ defmodule TheGathering.Catalog.Printing do
     field :collector_number, :string
     field :lang, :string, default: "en"
     field :image_uris, :map
+    field :game_changer, :boolean, default: false
   end
 end

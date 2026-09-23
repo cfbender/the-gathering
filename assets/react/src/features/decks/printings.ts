@@ -4,6 +4,7 @@ import type { CardImageUris, SelectedCard } from "@/lib/cards"
 export interface CardPrinting {
   id: string
   name: string
+  game_changer?: boolean
   set_code: string
   set_name: string
   collector_number: string

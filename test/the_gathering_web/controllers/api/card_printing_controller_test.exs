@@ -72,6 +72,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
 
       printing =
         scryfall_card("commander", "Tymna the Weaver")
+        |> Map.put("game_changer", true)
         |> Map.put("id", "double-faced-print")
         |> Map.delete("image_uris")
         |> Map.put("card_faces", [
@@ -91,7 +92,10 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
 
     body = conn |> get(~p"/api/card-printings?card_id=commander&page=2") |> json_response(200)
 
-    assert %{"data" => [%{"id" => "double-faced-print", "lang" => "en"}], "has_more" => true} =
+    assert %{
+             "data" => [%{"id" => "double-faced-print", "lang" => "en", "game_changer" => true}],
+             "has_more" => true
+           } =
              body
 
     assert Catalog.get_printing("double-faced-print").image_uris["art_crop"] ==
@@ -101,6 +105,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
     refute Catalog.get_printing("japanese")
     refute Catalog.get_printing("memorabilia")
     assert Catalog.get_card("double-faced-print") == nil
+    assert Catalog.get_printing("double-faced-print").game_changer
 
     assert conn
            |> get(~p"/api/card-printings/double-faced-print")
@@ -210,6 +215,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
     body = response |> json_response(200) |> Map.fetch!("data")
 
     assert body["name"] == "Kiora Bests the Sea God"
+    assert body["game_changer"] == false
     assert body["mana_cost"] == "{5}{U}{U}"
     assert body["type_line"] == "Enchantment — Saga"
     assert body["oracle_text"] == "I — Create an 8/8 blue Kraken."
@@ -236,6 +242,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
         scryfall_card(@mdfc, "Valki, God of Lies // Tibalt, Cosmic Impostor")
         |> Map.delete("image_uris")
         |> Map.put("layout", "modal_dfc")
+        |> Map.put("game_changer", true)
         |> Map.put("card_faces", [
           %{
             "name" => "Valki, God of Lies",
@@ -267,6 +274,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
 
     assert body["mana_cost"] == "{1}{B}"
     assert body["name"] == "Valki, God of Lies"
+    assert body["game_changer"] == true
     assert body["power"] == "2"
     assert body["toughness"] == "1"
     assert body["prices"] == %{"usd" => nil, "usd_foil" => nil, "usd_etched" => nil}
@@ -280,6 +288,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
     back = conn |> get(~p"/api/card-printings/#{back_id}/details") |> json_response(200)
     assert back["data"]["id"] == back_id
     assert back["data"]["name"] == "Tibalt, Cosmic Impostor"
+    assert back["data"]["game_changer"] == true
     assert back["data"]["oracle_text"] == "You may play cards exiled with Tibalt."
     assert back["data"]["mana_cost"] == "{5}{B}{R}"
     assert back["data"]["type_line"] == "Legendary Planeswalker — Tibalt"
@@ -294,7 +303,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
              "data" =>
                Map.take(
                  back["data"],
-                 ~w(id name set_code set_name collector_number lang image_uris)
+                 ~w(id name game_changer set_code set_name collector_number lang image_uris)
                )
            }
   end

@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import { UsersRound } from "lucide-react"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { formatDate } from "@/features/games/games"
 import { cn } from "@/lib/cn"
 import type { OverviewStats } from "@/lib/stats"
@@ -53,6 +54,9 @@ export function RecentGames({ games }: { games: OverviewStats["recent_games"] })
                         onError={(event) => (event.currentTarget.hidden = true)}
                       />
                     )}
+                    <span className="absolute bottom-0">
+                      <GameChangerBadge gameChanger={commander.game_changer} compact />
+                    </span>
                   </li>
                 )
               })}

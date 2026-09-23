@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react"
 import { ColorIdentity } from "@/components/mana-symbols"
 import type { DeckSummary } from "@/features/decks/decks"
+import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
 import { CommanderPicker } from "./commander-picker"
@@ -54,7 +55,7 @@ export function CommanderControl({
             aria-label={`Choose ${participant.player_name}'s commander`}
           >
             <CommanderHover deck={deck}>
-              <span className="truncate">{label || "Select commander"}</span>
+              {deck ? <DeckCommanders deck={deck} compact /> : <span>Select commander</span>}
             </CommanderHover>
             {deck && !compact && <ColorIdentity colors={deck.color_identity} />}
             <ChevronDown className="size-3 shrink-0 opacity-70" />
@@ -70,7 +71,7 @@ export function CommanderControl({
           title={label || undefined}
         >
           <CommanderHover deck={deck}>
-            <span className="truncate">{label || "No commander yet"}</span>
+            {deck ? <DeckCommanders deck={deck} compact /> : <span>No commander yet</span>}
           </CommanderHover>
           {deck && !compact && <ColorIdentity colors={deck.color_identity} />}
         </span>

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Flame, Medal, Target } from "lucide-react"
 import { CardArtBackground } from "@/components/card-art-background"
+import { GameChangerBadge } from "@/components/game-changer-badge"
 import { BarChart, LineChart } from "./charts"
 import { ColorSection } from "./color-section"
 import { ColorRadar } from "./color-radar"
@@ -129,6 +130,7 @@ export function PlayerStats({ playerId }: { playerId: string }) {
                 <CardArtBackground imageUrl={card.art_crop_url} />
                 <div className="text-base-content relative z-10">
                   <strong className="block truncate">{card.name}</strong>
+                  <GameChangerBadge gameChanger={card.game_changer} />
                   <span className="text-base-content/80 text-xs">
                     {card.mentions} {card.mentions === 1 ? "mention" : "mentions"}
                   </span>

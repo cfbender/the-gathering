@@ -3,6 +3,13 @@ defmodule TheGathering.Catalog.CardDataTest do
 
   alias TheGathering.Catalog.CardData
 
+  test "copies the Scryfall Game Changer flag, defaulting missing values to false" do
+    card = %{"id" => "rhystic", "oracle_id" => "oracle-rhystic", "name" => "Rhystic Study"}
+    assert CardData.from_scryfall(Map.put(card, "game_changer", true)).game_changer
+    refute CardData.from_scryfall(Map.put(card, "game_changer", false)).game_changer
+    refute CardData.from_scryfall(card).game_changer
+  end
+
   test "derives commander eligibility without treating Backgrounds as commanders" do
     assert CardData.can_be_commander?("Legendary Creature — Human Wizard", "")
     refute CardData.can_be_commander?("Legendary Artifact", "")

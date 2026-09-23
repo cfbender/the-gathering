@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { commanderNames, type DeckSummary } from "@/features/decks/decks"
+import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
 import type { TimerSample } from "./game-timer"
@@ -97,13 +98,15 @@ export function SeatOrderTable({
                     {seat.peer_id === localParticipant.peer_id ? " (you)" : ""}
                   </span>
                 </span>
-                <span className="block truncate text-[0.6rem] text-white/45" title={commander}>
+                <span className="block text-[0.6rem] text-white/45" title={commander}>
                   {seat.life} life
                   {commander && (
                     <>
                       {" · "}
                       <CommanderHover deck={deck}>
-                        <span tabIndex={0}>{commander}</span>
+                        <span tabIndex={0}>
+                          {deck ? <DeckCommanders deck={deck} compact /> : commander}
+                        </span>
                       </CommanderHover>
                     </>
                   )}

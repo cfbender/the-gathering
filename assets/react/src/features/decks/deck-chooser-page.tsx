@@ -6,6 +6,7 @@ import { CardArtBackground } from "@/components/card-art-background"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Button } from "@/components/ui/button"
 import { getDeckPick, recordDeckOutcome, type DeckPick } from "@/features/decks/deck-chooser"
+import { DeckCommanders } from "./deck-commanders"
 import {
   SyncRemoteDecksButton,
   SyncRemoteDecksResult,
@@ -132,8 +133,7 @@ function DeckCandidate({
           <div className="badge badge-primary badge-outline mb-3">Your pick</div>
           <h2 className="text-4xl font-black tracking-normal sm:text-6xl">{deck.name}</h2>
           <p className="text-base-content/85 mt-3 text-lg sm:text-xl">
-            {deck.commander_name}
-            {deck.partner_name && ` + ${deck.partner_name}`}
+            <DeckCommanders deck={deck} />
           </p>
           <ColorIdentity colors={deck.color_identity} className="mt-3 text-xl" />
           <div className="mt-5 flex flex-wrap gap-2 text-sm">

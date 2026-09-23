@@ -7,11 +7,13 @@ export interface DeckSummary {
   name: string
   commander_card_id: string | null
   commander_name: string
+  commander_game_changer?: boolean
   commander_printing_id?: string | null
   commander_art_crop_url: string | null
   commander_image_url?: string | null
   partner_card_id: string | null
   partner_name: string | null
+  partner_game_changer?: boolean
   partner_printing_id?: string | null
   partner_art_crop_url: string | null
   partner_image_url?: string | null

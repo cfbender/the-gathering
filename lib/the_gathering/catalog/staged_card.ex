@@ -21,6 +21,7 @@ defmodule TheGathering.Catalog.StagedCard do
     field :released_at, :date
     field :layout, :string
     field :rarity, :string
+    field :game_changer, :boolean, default: false
     field :commander_legal, :boolean
     field :can_be_commander, :boolean
     field :commander_pairing, :string

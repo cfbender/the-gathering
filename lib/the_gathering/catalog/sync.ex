@@ -9,7 +9,7 @@ defmodule TheGathering.Catalog.Sync do
   alias TheGathering.Repo
 
   @batch_size 250
-  @card_columns ~w(id oracle_id name normalized_name mana_cost cmc type_line oracle_text colors color_identity image_uris set_code collector_number released_at layout rarity commander_legal can_be_commander commander_pairing inserted_at updated_at)
+  @card_columns ~w(id oracle_id name normalized_name mana_cost cmc type_line oracle_text colors color_identity image_uris set_code collector_number released_at layout rarity game_changer commander_legal can_be_commander commander_pairing inserted_at updated_at)
 
   def run(opts \\ []) do
     state = start_state()

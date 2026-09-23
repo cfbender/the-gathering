@@ -75,6 +75,36 @@ function preview(id = "bolt", fetchList = false) {
   return { onClose, onWrongCard, onRemove }
 }
 
+it("shows a Game Changer badge for a revealed card and clears it when another card is opened", () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  })
+  const cards = [
+    { id: "rhystic", name: "Rhystic Study", set: "wot", game_changer: true },
+    { id: "bolt", name: "Lightning Bolt", set: "m11", game_changer: false },
+    { id: "unknown", name: "Unknown card", set: "tst" },
+  ]
+  for (const card of cards) {
+    client.setQueryData(["card-printings", "preview", card.name], [])
+    client.setQueryData(["card-printings", card.id, "details"], {
+      ...card,
+      set_code: card.set,
+      image_uris: {},
+    })
+  }
+  const view = (index: number) => (
+    <QueryClientProvider client={client}>
+      <CardPreview card={cards[index]!} onClose={() => {}} />
+    </QueryClientProvider>
+  )
+  const { rerender } = render(view(0))
+  expect(screen.getByText("Game Changer")).toBeTruthy()
+  rerender(view(1))
+  expect(screen.queryByText("Game Changer")).toBeNull()
+  rerender(view(2))
+  expect(screen.queryByText("Game Changer")).toBeNull()
+})
+
 it("keeps content and toolbar clicks inside, while layout gaps and backdrop close", () => {
   const { onClose, onWrongCard } = preview()
   fireEvent.click(screen.getByLabelText("Rules text"))

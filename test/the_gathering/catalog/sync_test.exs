@@ -1,10 +1,45 @@
 defmodule TheGathering.Catalog.SyncTest do
-  use TheGathering.DataCase
+  use TheGathering.DataCase, async: false
 
   alias TheGathering.Catalog
   alias TheGathering.Catalog.Sync
 
   @fixture Path.expand("../../support/fixtures/scryfall_catalog.jsonl", __DIR__)
+
+  @tag :tmp_dir
+  test "publishes and refreshes Game Changer flags through staging and backfill", %{tmp_dir: dir} do
+    source = Path.join(dir, "game-changers.jsonl")
+
+    cards = [
+      %{
+        "id" => "rhystic",
+        "oracle_id" => "oracle-rhystic",
+        "name" => "Rhystic Study",
+        "game_changer" => true
+      },
+      %{
+        "id" => "bolt",
+        "oracle_id" => "oracle-bolt",
+        "name" => "Lightning Bolt",
+        "game_changer" => false
+      }
+    ]
+
+    File.write!(source, Enum.map_join(cards, "\n", &Jason.encode!/1))
+    assert {:ok, 2} = Sync.run(source: {:file, source})
+    assert Catalog.get_card!("rhystic").game_changer
+    refute Catalog.get_card!("bolt").game_changer
+    Catalog.backfill()
+    assert Catalog.get_card!("rhystic").game_changer
+
+    File.write!(
+      source,
+      Enum.map_join(cards, "\n", &Jason.encode!(Map.put(&1, "game_changer", false)))
+    )
+
+    assert {:ok, 2} = Sync.run(source: {:file, source})
+    refute Catalog.get_card!("rhystic").game_changer
+  end
 
   test "chooses the latest preferred paper printing and is idempotent" do
     assert {:ok, 2} = Sync.run(source: {:file, @fixture})

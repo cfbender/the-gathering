@@ -135,6 +135,7 @@ defmodule TheGathering.Catalog.Printings do
       set_name: card["set_name"],
       collector_number: card["collector_number"],
       lang: card["lang"],
+      game_changer: Map.get(card, "game_changer") == true,
       image_uris: Map.take(images, ["small", "normal", "art_crop"])
     }
   end

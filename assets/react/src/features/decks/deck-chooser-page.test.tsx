@@ -69,6 +69,31 @@ afterEach(() => {
 })
 
 describe("deck chooser", () => {
+  it.each([true, false, undefined])(
+    "labels a partner Game Changer only when flagged: %s",
+    async (flag) => {
+      const body = pick(1, "Partner deck")
+      const deck = {
+        ...body.data.deck,
+        commander_name: "Kraum, Ludevic's Opus",
+        commander_game_changer: false,
+        partner_name: "Thrasios, Triton Hero",
+        partner_game_changer: flag,
+      }
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ data: { ...body.data, deck } }), {
+            headers: { "content-type": "application/json" },
+          }),
+        ),
+      )
+      renderPage()
+      await screen.findByText("Thrasios, Triton Hero")
+      expect(screen.queryAllByText("Game Changer")).toHaveLength(flag ? 1 : 0)
+    },
+  )
+
   it("hides hosted-deck sync until a deck host is configured", async () => {
     vi.stubGlobal(
       "fetch",

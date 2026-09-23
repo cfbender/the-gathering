@@ -1,5 +1,5 @@
 defmodule TheGatheringWeb.API.CardControllerTest do
-  use TheGatheringWeb.ConnCase
+  use TheGatheringWeb.ConnCase, async: false
 
   alias TheGathering.Catalog.{Card, CardData, Sync}
   alias TheGathering.Repo
@@ -22,10 +22,26 @@ defmodule TheGatheringWeb.API.CardControllerTest do
                  "id" => "jotun",
                  "name" => "Jötun Grunt",
                  "image_uris" => %{},
+                 "game_changer" => false,
                  "can_be_commander" => false
                }
              ]
            } = json_response(conn, 200)
+  end
+
+  test "summaries and details expose Game Changers", %{conn: conn} do
+    insert_card!(%{
+      "id" => "rhystic",
+      "oracle_id" => "oracle-rhystic",
+      "name" => "Rhystic Study",
+      "game_changer" => true
+    })
+
+    assert %{"data" => [%{"game_changer" => true}]} =
+             conn |> get(~p"/api/cards?q=Rhystic") |> json_response(200)
+
+    assert %{"data" => %{"game_changer" => true}} =
+             conn |> get(~p"/api/cards/rhystic") |> json_response(200)
   end
 
   test "GET /api/cards partner mode includes Backgrounds without loosening commander mode", %{

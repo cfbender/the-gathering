@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { commanderNames, type DeckSummary } from "@/features/decks/decks"
+import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
 import { CommanderActions } from "./new-commander-dialog"
@@ -48,16 +49,7 @@ export function CommanderPicker({
                 className="min-w-0 max-w-40 text-left leading-tight"
                 title={selected && commanderNames(selected)}
               >
-                {selected ? (
-                  <>
-                    <span className="block truncate">{selected.commander_name}</span>
-                    {selected.partner_name && (
-                      <span className="block truncate">/ {selected.partner_name}</span>
-                    )}
-                  </>
-                ) : (
-                  "Select commander"
-                )}
+                {selected ? <DeckCommanders deck={selected} /> : "Select commander"}
               </span>
             </CommanderHover>
             {selected && <ColorIdentity colors={selected.color_identity} />}
@@ -91,7 +83,7 @@ export function CommanderPicker({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1 font-semibold">
-                        <span className="min-w-0">{commanderNames(deck)}</span>
+                        <DeckCommanders deck={deck} />
                         <ColorIdentity colors={deck.color_identity} />
                       </span>
                       <span className="text-base-content/55 block truncate text-xs">

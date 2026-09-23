@@ -617,6 +617,7 @@ defmodule TheGathering.StatsTest do
     assert detail.commander == %{
              id: "Krenko, Mob Boss",
              name: "Krenko, Mob Boss",
+             game_changer: false,
              art_crop_url: nil,
              color_identity: nil
            }

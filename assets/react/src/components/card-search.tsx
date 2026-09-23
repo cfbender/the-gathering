@@ -3,6 +3,7 @@ import { Search, X } from "lucide-react"
 import { useEffect, useId, useRef, useState } from "react"
 import type { KeyboardEvent } from "react"
 import { CardImage } from "./card-image"
+import { GameChangerBadge } from "./game-changer-badge"
 import { ManaCost } from "./mana-symbols"
 import type { CardSummary } from "@/lib/cards"
 import { searchCards, type CardSearchMode } from "@/lib/cards"
@@ -143,6 +144,7 @@ export function CardSearch({
           />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium">{value.name}</span>
+            <GameChangerBadge gameChanger={value.game_changer} />
             <span className="text-base-content/60 block truncate text-xs">{value.type_line}</span>
           </span>
           {value.mana_cost && <ManaCost cost={value.mana_cost} className="shrink-0" />}
@@ -182,6 +184,7 @@ export function CardSearch({
               />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{card.name}</span>
+                <GameChangerBadge gameChanger={card.game_changer} />
                 <span className="block truncate text-xs opacity-70">{card.type_line}</span>
               </span>
               {card.mana_cost && <ManaCost cost={card.mana_cost} className="shrink-0" />}

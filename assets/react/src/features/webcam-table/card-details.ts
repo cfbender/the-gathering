@@ -8,6 +8,7 @@ export interface PrintingDetails {
   id: string
   oracle_id: string
   name: string
+  game_changer?: boolean
   set_code: string
   set_name: string | null
   collector_number: string
