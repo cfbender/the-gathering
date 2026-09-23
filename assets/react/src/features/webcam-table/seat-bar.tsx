@@ -1,4 +1,4 @@
-import { Ellipsis, Eye, Pin, PinOff, Video, VideoOff } from "lucide-react"
+import { Ellipsis, Eye, FlipVertical2, Pin, PinOff, Video, VideoOff } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +23,8 @@ export function SeatBar({
   onReveal,
   onTogglePin,
   onSetEliminated,
+  flipped = false,
+  onToggleFlip,
   canEliminate = local,
 }: {
   participant: TableParticipant
@@ -35,6 +37,8 @@ export function SeatBar({
   onReveal: () => void
   onTogglePin: () => void
   onSetEliminated: (eliminated: boolean) => void
+  flipped?: boolean
+  onToggleFlip?: () => void
   canEliminate?: boolean
 }) {
   const compact = size === "tile"
@@ -84,6 +88,16 @@ export function SeatBar({
             {pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
             {pinned ? "Unpin board" : "Pin as active board"}
           </DropdownMenuItem>
+          {!local && onToggleFlip && (
+            <DropdownMenuItem
+              onSelect={onToggleFlip}
+              aria-label={`${flipped ? "Unflip" : "Flip"} ${participant.player_name}'s video vertically`}
+              title="Only changes your view; remembered for this player"
+            >
+              <FlipVertical2 className="size-4" />
+              {flipped ? "Unflip video vertically" : "Flip video vertically"}
+            </DropdownMenuItem>
+          )}
           {local && (
             <>
               <DropdownMenuItem onSelect={onToggleCamera}>
