@@ -1,4 +1,19 @@
+import type { GameTimerState } from "./game-timer"
 import type { BoardCard, IdentifiedCard } from "./use-webcam-room"
+
+/** Everything identified on one board goes away; the other boards keep their cards. */
+export function clearBoardCards(entries: BoardCard[], ownerPeerId: string): BoardCard[] {
+  return entries.filter((entry) => entry.ownerPeerId !== ownerPeerId)
+}
+
+/** A game starts when the shared timer first gains a start time. A late joiner's initial
+ * timer sample already has one, and must not wipe the cards it is about to be synced. */
+export function gameJustStarted(
+  previous: GameTimerState | null | undefined,
+  next: GameTimerState,
+): boolean {
+  return previous != null && previous.started_at == null && next.started_at != null
+}
 
 /** The recognition gallery has full names, not oracle IDs. Keep both faces of a card's name. */
 export function sameCard(a: IdentifiedCard, b: IdentifiedCard) {

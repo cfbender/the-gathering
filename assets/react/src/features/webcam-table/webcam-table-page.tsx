@@ -531,6 +531,11 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             cards={room.identifiedCards}
             onPreview={(entry) => setPreview({ kind: "entry", entry, correctable: false })}
             onRemove={room.removeCard}
+            onClear={
+              activeParticipant.peer_id === localParticipant.peer_id
+                ? room.clearOwnCards
+                : undefined
+            }
           />
           {room.capture && captureOwner && pickerOpen && (
             <CardSuggestions
@@ -617,6 +622,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         onPreviewCard={(entry) => setPreview({ kind: "entry", entry, correctable: false })}
         onPreviewArt={(art) => setPreview({ kind: "art", card: toCard(art) })}
         onRemoveCard={room.removeCard}
+        onClearOwnCards={room.clearOwnCards}
         inviteCopied={inviteCopied}
         onInvite={() => {
           void navigator.clipboard.writeText(window.location.href)

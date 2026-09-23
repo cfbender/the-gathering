@@ -490,7 +490,7 @@ falling back to `commander_art_crop_url` without a Scryfall details request.
 The card popup keeps **Wrong card?**, **Remove**, **Rulings**, and close together in a dark,
 consistently sized toolbar. Clicking outside the visible content, including the space below
 the rules text, closes it. Right-click its content or use **Rulings** to view Scryfall rulings;
-tray entries also have a Rulings button and right-click shortcut. The authenticated
+the popup is the only place rulings are offered (tray entries just open the popup). The authenticated
 `GET /api/card-printings/:id/rulings` endpoint fetches `/cards/:id/rulings` with Req and caches
 successful results (including an empty list) in `card_rulings_cache` for one day. Errors are
 not cached, and the dialog offers retry. This cache is independent of printing/catalog refreshes.
@@ -506,6 +506,13 @@ previews any printing, and the detected cards grouped per player with a Shared /
 toggle. The list is ephemeral like the Log, but a seat that connects later receives the current
 entries (`cards_sync`) when its data channel opens. If the card name matches one of the owner's
 commanders and they have no deck selected yet, it also selects that deck.
+
+Only a board's owner can wipe it: the tray on your own board and your own group in the Cards
+tab offer **Clear cards**, which broadcasts `cards_cleared` with your peer ID and empties that
+board at every seat (other boards keep their entries). Starting a game also clears every board:
+each seat watches the shared timer and drops all cards on the lobby-to-started transition, so
+cards identified while waiting never carry into the game. A late joiner's first timer sample is
+already started and does not count as a transition, so the `cards_sync` it receives survives.
 
 Each board keeps **one entry per full card name**, trimmed and case-insensitive (the gallery
 does not provide oracle IDs). Different printings of the same card do not create extra entries.
