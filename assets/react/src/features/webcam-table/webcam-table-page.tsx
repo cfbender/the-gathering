@@ -97,9 +97,10 @@ function useActiveBoard(participants: TableParticipant[], localPeerId: string) {
 
 /** Runs the recognizer on every new capture: decode the owner's crop, identify at the click,
  * and hold the outcome next to the capture it belongs to. The outcome is only reported while
- * that same capture is current, so a new click never sees the previous click's answer. */
-function useRecognition(capture: CapturedCard | null) {
-  const recognizer = useRecognizer()
+ * that same capture is current, so a new click never sees the previous click's answer.
+ * The bundle warms up in the background once `connected`, not on the first click. */
+function useRecognition(capture: CapturedCard | null, connected: boolean) {
+  const recognizer = useRecognizer(connected)
   const [outcome, setOutcome] = useState<{ capture: CapturedCard; recognition: Recognition }>()
 
   useEffect(() => {
@@ -159,7 +160,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   }
   const videoStats = useVideoStats(preferences.stats, room.getPeerStats)
   useTurnSound(preferences.turnSound, room.turns.active_player_id, playerId)
-  const { recognizer, recognition } = useRecognition(room.capture)
+  // Presence has synced once any seat is listed, i.e. the channel join succeeded.
+  const { recognizer, recognition } = useRecognition(room.capture, room.participants.length > 0)
   const corrections = useCorrectionUpload()
   const [preview, setPreview] = useState<Preview | null>(null)
   /** The picker is open by request ("Wrong card?"), replacing this entry if one is named. */

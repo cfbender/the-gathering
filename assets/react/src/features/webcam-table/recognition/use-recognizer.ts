@@ -25,8 +25,12 @@ interface Pending {
  * Owns the recognition Web Worker for the lifetime of a table: fetches the bundle
  * description once, lets the worker download and warm the graphs, and exposes promise-based
  * `identify` and `search` calls. Everything heavy happens off the main thread.
+ *
+ * Loading starts as soon as `preload` turns true (the page passes "connected to the room"),
+ * so the first click does not pay for the bundle download; a click or search before that
+ * still starts it on demand.
  */
-export function useRecognizer() {
+export function useRecognizer(preload = false) {
   const [state, setState] = useState<RecognizerState>({ status: "idle" })
   const workerRef = useRef<Worker | null>(null)
   const pendingRef = useRef(new Map<number, Pending>())
@@ -42,9 +46,15 @@ export function useRecognizer() {
       resolveLoad = resolve
       rejectLoadRef.current = reject
     })
-    const worker = new Worker(new URL("./recognizer.worker.ts", import.meta.url), {
-      type: "module",
-    })
+    let worker: Worker
+    try {
+      worker = new Worker(new URL("./recognizer.worker.ts", import.meta.url), { type: "module" })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setState({ status: "failed", message })
+      rejectLoadRef.current(new Error(message))
+      return loadingRef.current
+    }
     workerRef.current = worker
     const pending = pendingRef.current
 
@@ -93,6 +103,11 @@ export function useRecognizer() {
       })
     return loadingRef.current
   }, [])
+
+  useEffect(() => {
+    // Failures are already reflected in `state`; nothing awaits this warmup.
+    if (preload) start().catch(() => {})
+  }, [preload, start])
 
   useEffect(() => {
     const pending = pendingRef.current

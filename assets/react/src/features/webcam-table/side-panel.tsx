@@ -105,7 +105,7 @@ export function describeIceServers(servers: RTCIceServer[]): string {
 export function describeRecognizer(state: RecognizerState): string {
   switch (state.status) {
     case "idle":
-      return "Not loaded. Click a card or search to load card scanning."
+      return "Card scanning loads in the background once you are connected to the table."
     case "checking":
       return "Checking for a recognition bundle…"
     case "unavailable":
