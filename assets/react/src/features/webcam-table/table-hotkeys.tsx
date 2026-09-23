@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { PASS_TURN_BINDING } from "./turns"
 
 export const TABLE_HOTKEYS = [
   { keys: ["+", "="], action: "gainLife", label: "Gain 1 life (your seat)" },
@@ -114,6 +115,10 @@ export function HotkeyHelp({
               </dd>
             </div>
           ))}
+          <dt>{PASS_TURN_BINDING.label} (once the game has started)</dt>
+          <dd>
+            <kbd className="kbd kbd-sm">{PASS_TURN_BINDING.key}</kbd>
+          </dd>
           <dt>Close overlay</dt>
           <dd>
             <kbd className="kbd kbd-sm">Escape</kbd>

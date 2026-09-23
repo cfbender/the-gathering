@@ -191,6 +191,37 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   def handle_in("seat_order", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid seat order"}}, socket}
 
+  def handle_in("start_game", payload, socket) when payload == %{} do
+    {:reply, WebcamTableState.start_game(socket.assigns.room_id), socket}
+  end
+
+  def handle_in("start_game", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid start"}}, socket}
+
+  def handle_in("turn_settings", %{"auto_randomize" => enabled} = payload, socket)
+      when map_size(payload) == 1 and is_boolean(enabled) do
+    {:reply, WebcamTableState.turn_settings(socket.assigns.room_id, enabled), socket}
+  end
+
+  def handle_in("turn_settings", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid turn settings"}}, socket}
+
+  def handle_in("pass_turn", %{"revision" => revision} = payload, socket)
+      when map_size(payload) == 1 and is_integer(revision) and revision >= 0 do
+    {:reply, WebcamTableState.pass_turn(socket.assigns.room_id, revision), socket}
+  end
+
+  def handle_in("pass_turn", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid pass turn"}}, socket}
+
+  def handle_in("adjust_turn", %{"player_id" => player_id, "delta" => delta} = payload, socket)
+      when map_size(payload) == 2 and is_integer(player_id) and delta in [-1, 1] do
+    {:reply, WebcamTableState.adjust_turn(socket.assigns.room_id, player_id, delta), socket}
+  end
+
+  def handle_in("adjust_turn", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid turn adjustment"}}, socket}
+
   def handle_in("timer", %{"action" => action} = payload, socket)
       when map_size(payload) == 1 and action in ["pause", "resume"] do
     timer = WebcamTableState.timer(socket.assigns.room_id, action)

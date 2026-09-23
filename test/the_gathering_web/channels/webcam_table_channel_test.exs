@@ -381,10 +381,14 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
   } do
     assert_reply push(socket, "seat_order", %{"peer_ids" => ["peer-a"]}), :ok
     assert_reply push(socket, "timer", %{"action" => "pause"}), :ok, timer
-    # Consume the original seat's initial snapshot before looking for the new seat's.
-    assert_push "table_state", %{timer: %{started_at: nil}}
     other = join_player(room_id, "peer-b", "Bob")
-    assert_push "table_state", %{timer: joined_timer, peer_ids: ["peer-a"]}
+    paused_at = timer.paused_at
+
+    assert_push "table_state", %{
+      timer: %{paused_at: ^paused_at} = joined_timer,
+      peer_ids: ["peer-a"]
+    }
+
     assert Map.drop(joined_timer, [:server_now]) == Map.drop(timer, [:server_now])
     assert_reply push(other, "timer", %{"action" => "resume"}), :ok, resumed
     assert resumed.started_at == timer.started_at
@@ -566,16 +570,92 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert WebcamTableState.snapshot(room_id).eliminated_seats == []
   end
 
-  defp join_player(room_id, peer_id, name) do
-    user = AccountsFixtures.user_fixture()
-    {:ok, player} = Games.create_player(%{name: name}, user.id)
+  test "shared turns start in order, pass once per revision and survive late joins", %{
+    socket: socket,
+    room_id: room_id,
+    player: player
+  } do
+    other = join_player(room_id, "peer-b", "Bob")
+    bob = other.assigns.participant.player_id
+    alice = player.id
+    assert_reply push(socket, "pass_turn", %{"revision" => 0}), :error
+    assert_reply push(other, "turn_settings", %{"auto_randomize" => false}), :ok
+    assert_broadcast "table_state", %{auto_randomize: false}
+    assert_reply push(socket, "start_game", %{}), :ok
+    assert_broadcast "seat_order", %{peer_ids: ["peer-a", "peer-b"], shuffled: false}
 
-    UserSocket
-    |> socket(peer_id, %{user: user})
-    |> subscribe_and_join!(WebcamTableChannel, "webcam_table:#{room_id}", %{
-      "peer_id" => peer_id,
-      "player_id" => player.id
-    })
+    assert_broadcast "table_state", %{
+      turns: %{active_player_id: ^alice, counts: %{^alice => 1}, revision: 1}
+    }
+
+    first = WebcamTableState.snapshot(room_id)
+    assert_reply push(other, "pass_turn", %{"revision" => 1}), :ok
+    assert_reply push(socket, "pass_turn", %{"revision" => 1}), :error
+
+    assert_broadcast "table_state", %{
+      turns: %{active_player_id: ^bob, counts: %{^alice => 1, ^bob => 1}, revision: 2}
+    }
+
+    assert_reply push(other, "adjust_turn", %{"player_id" => alice, "delta" => 1}), :ok
+    assert WebcamTableState.snapshot(room_id).turns.counts[alice] == 2
+    assert_reply push(socket, "timer", %{"action" => "pause"}), :ok, paused
+    assert_reply push(socket, "pass_turn", %{"revision" => 2}), :ok
+    current = WebcamTableState.snapshot(room_id)
+    assert current.turns.counts == %{alice => 3, bob => 1}
+    assert current.turns.active_player_id == alice
+    assert current.turns.started_elapsed_ms == WebcamTableState.elapsed(paused, paused.server_now)
+    assert current.timer.started_at == first.timer.started_at
+    join_player(room_id, "peer-c", "Cara")
+    expected = current.turns
+    assert_push "table_state", %{turns: ^expected, auto_randomize: false}
+    # A reshuffle leaves the active player, counts and pause untouched.
+    assert_reply push(socket, "seat_order", %{"peer_ids" => ["peer-c", "peer-b", "peer-a"]}), :ok
+    assert WebcamTableState.snapshot(room_id).turns == expected
+    assert WebcamTableState.snapshot(room_id).timer.paused_at == paused.paused_at
+  end
+
+  test "eliminating and disconnecting the current seat skips it without resetting counts", %{
+    socket: socket,
+    room_id: room_id,
+    player: player
+  } do
+    other = join_player(room_id, "peer-b", "Bob")
+    bob = other.assigns.participant.player_id
+    alice = player.id
+    assert_reply push(socket, "seat_order", %{"peer_ids" => ["peer-a", "peer-b"]}), :ok
+    assert_reply push(socket, "update_status", %{"eliminated" => true}), :ok
+    assert_broadcast "table_state", %{turns: %{active_player_id: ^bob, revision: 2}}
+    assert_reply push(other, "pass_turn", %{"revision" => 2}), :ok
+    assert WebcamTableState.snapshot(room_id).turns.counts == %{alice => 1, bob => 2}
+    assert_reply push(socket, "update_status", %{"eliminated" => false}), :ok
+    Process.unlink(other.channel_pid)
+    ref = Process.monitor(other.channel_pid)
+    assert_reply leave(other), :ok
+    assert_receive {:DOWN, ^ref, :process, _, _}
+
+    assert_broadcast "table_state", %{
+      turns: %{active_player_id: ^alice, counts: %{^alice => 2, ^bob => 2}, revision: 4}
+    }
+  end
+
+  test "validates turn requests and rejects forged counts, times and unknown players", %{
+    socket: socket
+  } do
+    for {event, payload} <- [
+          {"start_game", %{"started_at" => 1}},
+          {"turn_settings", %{"auto_randomize" => "false"}},
+          {"turn_settings", %{"auto_randomize" => true, "order" => []}},
+          {"pass_turn", %{}},
+          {"pass_turn", %{"revision" => -1}},
+          {"pass_turn", %{"revision" => 1.5}},
+          {"pass_turn", %{"revision" => 0, "elapsed_ms" => 0}},
+          {"adjust_turn", %{"player_id" => -1, "delta" => 1}},
+          {"adjust_turn", %{"player_id" => 1, "delta" => 2}},
+          {"adjust_turn", %{"player_id" => 1, "delta" => -1, "count" => 999}},
+          {"adjust_turn", %{"player_id" => "1", "delta" => 1}}
+        ] do
+      assert_reply push(socket, event, payload), :error
+    end
   end
 
   test "rejects a player not linked to the authenticated account", %{

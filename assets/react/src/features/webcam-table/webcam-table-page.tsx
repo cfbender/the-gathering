@@ -22,6 +22,7 @@ import { RailResizeHandle, TableSettings, useTablePreferences } from "./table-pr
 import { CorrectionPreference, useCorrectionUpload } from "./use-correction-upload"
 import { describeRoll } from "./table-rolls"
 import { TableTimer } from "./table-timer"
+import { canPassWithSpace } from "./turns"
 import {
   useWebcamRoom,
   type BoardCard,
@@ -223,6 +224,20 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     !finishOpen &&
     (needsChoice || !!picker)
 
+  useEffect(() => {
+    function pass(event: KeyboardEvent) {
+      const dialogOpen = !!document.querySelector(
+        '[role="dialog"], [role="alertdialog"], dialog[open]',
+      )
+      if (room.turns.active_player_id === null || !canPassWithSpace(event, pickerOpen, dialogOpen))
+        return
+      event.preventDefault()
+      room.passTurn()
+    }
+    window.addEventListener("keydown", pass)
+    return () => window.removeEventListener("keydown", pass)
+  }, [pickerOpen, room.passTurn, room.turns.active_player_id])
+
   /** Adds the card to the owner's board list at every seat and shows it; a card that is one of
    * the owner's commanders also picks that deck when they have not chosen one yet. Replaces the
    * entry being corrected when the picker came from "Wrong card?". */
@@ -382,6 +397,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
               {...revealFor(participant)}
               local={participant.peer_id === room.peerId}
               active={participant.peer_id === activeParticipant.peer_id}
+              currentTurn={participant.player_id === room.turns.active_player_id}
               connectionState={room.connectionStates[participant.peer_id]}
               stream={streamFor(participant, room.peerId, room.localStream, room.streams)}
               onActivate={() => board.select(participant.peer_id)}
@@ -425,6 +441,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             monarch={room.monarch?.peer_id === activeParticipant.peer_id}
             {...revealFor(activeParticipant)}
             local={activeParticipant.peer_id === room.peerId}
+            currentTurn={activeParticipant.player_id === room.turns.active_player_id}
             connectionState={room.connectionStates[activeParticipant.peer_id]}
             stream={streamFor(activeParticipant, room.peerId, room.localStream, room.streams)}
             pinned={board.pinned}
@@ -538,6 +555,12 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         onChooseDeck={room.chooseDeck}
         onRandomizeSeats={room.randomizeSeats}
         shuffleVersion={room.shuffleVersion}
+        turns={room.turns}
+        timer={room.timer}
+        autoRandomize={room.autoRandomize}
+        onAutoRandomize={room.setAutoRandomize}
+        onPassTurn={room.passTurn}
+        onAdjustTurn={room.adjustTurn}
         onRoll={room.rollDice}
         onSetEliminated={room.setEliminated}
         onEndGame={() => {

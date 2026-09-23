@@ -25,6 +25,7 @@ import {
   type TableEventContent,
 } from "./table-events"
 import { describeRoll, type RollRequest, type TableRoll } from "./table-rolls"
+import { EMPTY_TURNS, type TurnState } from "./turns"
 
 export type { TableEvent } from "./table-events"
 
@@ -188,6 +189,8 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   const [seatOrder, setSeatOrder] = useState<string[]>([])
   const [shuffleVersion, setShuffleVersion] = useState(0)
   const [timer, setTimer] = useState<TimerSample | null>(null)
+  const [turns, setTurns] = useState<TurnState>(EMPTY_TURNS)
+  const [autoRandomize, setAutoRandomizeState] = useState(true)
   const [roll, setRoll] = useState<TableRoll | null>(null)
   const [events, setEvents] = useState<TableEvent[]>([])
   const [streams, setStreams] = useState<Record<string, MediaStream>>({})
@@ -472,11 +475,14 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
           const participant = left.metas[0] as TableParticipant | undefined
           if (participant && current.metas.length === 0) log([describeParticipantLeft(participant)])
         })
-        room.on("seat_order", ({ peer_ids }: { peer_ids: string[] }) => {
-          setSeatOrder(peer_ids)
-          setShuffleVersion((version) => version + 1)
-          log(["Seat order randomized"])
-        })
+        room.on(
+          "seat_order",
+          ({ peer_ids, shuffled }: { peer_ids: string[]; shuffled: boolean }) => {
+            setSeatOrder(peer_ids)
+            if (shuffled) setShuffleVersion((version) => version + 1)
+            log([shuffled ? "Seat order randomized" : "Game started in seat order"])
+          },
+        )
         room.on("monarch_state", syncMonarch)
         room.on("monarch", (event: MonarchEvent) => {
           syncMonarch(event)
@@ -492,14 +498,20 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
             timer: state,
             peer_ids,
             eliminated_seats,
+            turns: turnState,
+            auto_randomize,
           }: {
             timer: GameTimerState
             peer_ids: string[]
             eliminated_seats: TableParticipant[]
+            turns: TurnState
+            auto_randomize: boolean
           }) => {
             receiveTimer(state)
             setSeatOrder(peer_ids)
             setEliminatedSeats(eliminated_seats)
+            setTurns(turnState)
+            setAutoRandomizeState(auto_randomize)
           },
         )
         room.on(
@@ -685,7 +697,28 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
   function randomizeSeats() {
     const current = orderBySeats(participantsRef.current, seatOrder).map((item) => item.peer_id)
     channelRef.current
-      ?.push("seat_order", { peer_ids: shuffleSeats(current) })
+      ?.push(
+        timer?.state.started_at == null ? "start_game" : "seat_order",
+        timer?.state.started_at == null ? {} : { peer_ids: shuffleSeats(current) },
+      )
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+  }
+
+  const passTurn = useCallback(() => {
+    channelRef.current
+      ?.push("pass_turn", { revision: turns.revision })
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+  }, [turns.revision])
+
+  function adjustTurn(playerId: number, delta: -1 | 1) {
+    channelRef.current
+      ?.push("adjust_turn", { player_id: playerId, delta })
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+  }
+
+  function setAutoRandomize(enabled: boolean) {
+    channelRef.current
+      ?.push("turn_settings", { auto_randomize: enabled })
       .receive("error", ({ reason }: { reason: string }) => setError(reason))
   }
 
@@ -818,6 +851,11 @@ export function useWebcamRoom(roomId: string, playerId: number, deckId: number |
     setEliminated,
     shuffleVersion,
     timer,
+    turns,
+    autoRandomize,
+    setAutoRandomize,
+    passTurn,
+    adjustTurn,
     roll,
     changeTimer,
     rollDice,
