@@ -4,6 +4,21 @@ import { clampRailWidth, useTablePreferences } from "./table-preferences"
 
 beforeEach(() => localStorage.clear())
 
+it.each([
+  [null, []],
+  ["42", []],
+  [
+    [42, "73", null, -1, 0, 1.5, {}, 73],
+    [42, 73],
+  ],
+])("ignores malformed saved flip identities: %j", (saved, expected) => {
+  localStorage.setItem(
+    "the-gathering:table-preferences:1",
+    JSON.stringify({ flippedPlayerIds: saved }),
+  )
+  expect(renderHook(() => useTablePreferences(1)).result.current.flippedPlayerIds).toEqual(expected)
+})
+
 it.each([null, {}, { turnSound: true }, { turnSound: false }])(
   "defaults sound on but honors an explicit choice: %j",
   (saved) => {

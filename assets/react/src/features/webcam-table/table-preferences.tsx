@@ -17,6 +17,7 @@ interface Preferences {
   quality: PublisherQuality
   stats: boolean
   turnSound: boolean
+  flippedPlayerIds: number[]
 }
 
 export function clampRailWidth(rail: Rail, width: number): number {
@@ -38,6 +39,7 @@ export function useTablePreferences(playerId: number) {
       quality: "auto",
       stats: false,
       turnSound: true,
+      flippedPlayerIds: [],
     }
     try {
       const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "null")
@@ -51,6 +53,12 @@ export function useTablePreferences(playerId: number) {
         quality: "quality" in saved && isPublisherQuality(saved.quality) ? saved.quality : "auto",
         stats: "stats" in saved && saved.stats === true,
         turnSound: !("turnSound" in saved && saved.turnSound === false),
+        flippedPlayerIds:
+          "flippedPlayerIds" in saved && Array.isArray(saved.flippedPlayerIds)
+            ? saved.flippedPlayerIds.filter(
+                (id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0,
+              )
+            : [],
         hotkeys: "hotkeys" in saved && typeof saved.hotkeys === "boolean" ? saved.hotkeys : true,
         camera:
           "camera" in saved && typeof saved.camera === "number"
@@ -75,6 +83,13 @@ export function useTablePreferences(playerId: number) {
   }, [key, preferences])
   return {
     ...preferences,
+    toggleVideoFlip: (remotePlayerId: number) =>
+      setPreferences((value) => ({
+        ...value,
+        flippedPlayerIds: value.flippedPlayerIds.includes(remotePlayerId)
+          ? value.flippedPlayerIds.filter((id) => id !== remotePlayerId)
+          : [...value.flippedPlayerIds, remotePlayerId],
+      })),
     update: (changes: Partial<Preferences>) =>
       setPreferences((value) => ({ ...value, ...changes })),
     setHotkeys: (hotkeys: boolean) => setPreferences((value) => ({ ...value, hotkeys })),

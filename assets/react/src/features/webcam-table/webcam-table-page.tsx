@@ -212,6 +212,9 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   })
   const decksFor = (participant: TableParticipant) =>
     decks.filter((deck) => deck.player_id === participant.player_id)
+  const isFlipped = (participant: TableParticipant) =>
+    participant.peer_id !== room.peerId &&
+    preferences.flippedPlayerIds.includes(participant.player_id)
   const captureOwner = room.capture
     ? seated.find((participant) => participant.peer_id === room.capture?.peerId)
     : undefined
@@ -408,6 +411,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       pinned={isPinned(participant)}
       onTogglePin={() => togglePinFor(participant)}
       onSetEliminated={(eliminated) => room.setEliminated(participant.peer_id, eliminated)}
+      flipped={isFlipped(participant)}
+      onToggleFlip={() => preferences.toggleVideoFlip(participant.player_id)}
       canEliminate={!room.spectating && (room.isOwner || participant.peer_id === room.peerId)}
     />
   )
@@ -445,6 +450,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
                 monarch={room.monarch?.peer_id === participant.peer_id}
                 {...revealFor(participant)}
                 local={participant.peer_id === room.peerId}
+                flipped={isFlipped(participant)}
                 active={participant.peer_id === activeParticipant.peer_id}
                 currentTurn={participant.player_id === room.turns.active_player_id}
                 connectionState={room.connectionStates[participant.peer_id]}
@@ -514,6 +520,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             monarch={room.monarch?.peer_id === activeParticipant.peer_id}
             {...revealFor(activeParticipant)}
             local={activeParticipant.peer_id === room.peerId}
+            flipped={isFlipped(activeParticipant)}
             currentTurn={activeParticipant.player_id === room.turns.active_player_id}
             connectionState={room.connectionStates[activeParticipant.peer_id]}
             stream={streamFor(activeParticipant, room.peerId, room.localStream, room.streams)}
@@ -521,7 +528,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             pinned={isPinned(activeParticipant)}
             onTogglePin={() => togglePinFor(activeParticipant)}
             onInspect={(event) => {
-              const point = capturePoint(event)
+              const point = capturePoint(event, isFlipped(activeParticipant))
               if (point)
                 room.requestCapture(activeParticipant.peer_id, point.x, point.y, event.shiftKey)
             }}

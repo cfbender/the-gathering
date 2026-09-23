@@ -72,7 +72,7 @@ function CurrentTurnBadge({ compact = false }: { compact?: boolean }) {
 }
 
 /** Maps a click on a `object-contain` video to normalized source coordinates. */
-export function capturePoint(event: MouseEvent<HTMLElement>) {
+export function capturePoint(event: MouseEvent<HTMLElement>, flipped = false) {
   const video = event.currentTarget.querySelector("video")
   if (!video || !video.videoWidth || !video.videoHeight) return null
 
@@ -83,10 +83,11 @@ export function capturePoint(event: MouseEvent<HTMLElement>) {
   const renderedHeight = sourceRatio > boundsRatio ? bounds.width / sourceRatio : bounds.height
   const left = bounds.left + (bounds.width - renderedWidth) / 2
   const top = bounds.top + (bounds.height - renderedHeight) / 2
+  const y = Math.max(0, Math.min(1, (event.clientY - top) / renderedHeight))
 
   return {
     x: Math.max(0, Math.min(1, (event.clientX - left) / renderedWidth)),
-    y: Math.max(0, Math.min(1, (event.clientY - top) / renderedHeight)),
+    y: flipped ? 1 - y : y,
   }
 }
 
@@ -95,6 +96,7 @@ export function ActiveBoard({
   monarch,
   stream,
   local,
+  flipped = false,
   currentTurn = false,
   connectionState,
   hiddenLabel,
@@ -108,6 +110,7 @@ export function ActiveBoard({
   monarch?: boolean
   stream?: MediaStream
   local: boolean
+  flipped?: boolean
   currentTurn?: boolean
   connectionState?: RTCPeerConnectionState
   hiddenLabel?: string
@@ -129,7 +132,10 @@ export function ActiveBoard({
         {hiddenLabel ? (
           <VideoPlaceholder label={hiddenLabel} />
         ) : stream ? (
-          <StreamVideo stream={stream} className="object-contain" />
+          <StreamVideo
+            stream={stream}
+            className={cn("object-contain", flipped && "-scale-y-100")}
+          />
         ) : (
           <VideoPlaceholder
             label={
@@ -188,6 +194,7 @@ export function CameraTile({
   monarch,
   stream,
   local,
+  flipped = false,
   connectionState,
   hiddenLabel,
   revealBadge,
@@ -200,6 +207,7 @@ export function CameraTile({
   monarch?: boolean
   stream?: MediaStream
   local: boolean
+  flipped?: boolean
   connectionState?: RTCPeerConnectionState
   hiddenLabel?: string
   revealBadge?: string
@@ -225,7 +233,7 @@ export function CameraTile({
         {hiddenLabel ? (
           <VideoPlaceholder compact label={hiddenLabel} />
         ) : stream ? (
-          <StreamVideo stream={stream} className="object-cover" />
+          <StreamVideo stream={stream} className={cn("object-cover", flipped && "-scale-y-100")} />
         ) : (
           <VideoPlaceholder
             compact
