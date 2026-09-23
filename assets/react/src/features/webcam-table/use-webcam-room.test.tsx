@@ -143,3 +143,23 @@ it("late spectators never request a camera or publish life/counters", async () =
   })
   expect(wire.push.mock.calls.filter(([event]) => event === "update_status")).toEqual([])
 })
+
+it("keeps the hidden capture video playing after the camera replaces the placeholder", async () => {
+  // Swapping srcObject pauses a media element; a paused capture video would hand every
+  // click the same frozen first frame instead of what is on the table now.
+  const track = { enabled: true, stop: vi.fn(), getSettings: () => ({ height: 1080 }) }
+  const camera = { getTracks: () => [track], getVideoTracks: () => [track] }
+  wire.camera.mockResolvedValue(camera)
+  const playedSources: unknown[] = []
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (
+    this: HTMLVideoElement,
+  ) {
+    playedSources.push(this.srcObject)
+    return Promise.resolve()
+  })
+  renderRoom()
+  await waitFor(() => expect(wire.joined).not.toBeNull())
+  await act(async () => wire.joined?.({ participant: saved }))
+  await waitFor(() => expect(wire.camera).toHaveBeenCalledOnce())
+  await waitFor(() => expect(playedSources).toContain(camera))
+})
