@@ -127,6 +127,72 @@ describe.each(["tile", "board"] as const)("%s life control", (size) => {
 })
 
 describe("seat counters", () => {
+  it("shows partner art and unrevealed placeholders, and applies only pending life once", () => {
+    vi.useFakeTimers()
+    const onChangeLife = vi.fn()
+    function Seat() {
+      const [participant, setParticipant] = useState(seat)
+      return (
+        <SeatCounterControls
+          participant={participant}
+          participants={[
+            participant,
+            opponent,
+            { ...opponent, player_id: 3, player_name: "Cara", deck_id: undefined },
+          ]}
+          decks={[
+            {
+              ...deck,
+              commander_art_crop_url: "/api/card-images/tymna",
+              partner_art_crop_url: "/api/card-images/thrasios",
+            },
+          ]}
+          local
+          monarch={false}
+          onTakeMonarch={vi.fn()}
+          onChangeLife={onChangeLife}
+          onAdjust={(counter, delta) =>
+            setParticipant((previous) => ({
+              ...previous,
+              ...changeCounter(previous, counter, delta),
+            }))
+          }
+        />
+      )
+    }
+    render(<Seat />)
+    fireEvent.click(screen.getByRole("button", { name: "Alice's counters" }))
+    expect(screen.getByRole("img", { name: "Bob · Tymna" }).getAttribute("src")).toBe(
+      "/api/card-images/tymna",
+    )
+    expect(screen.getByRole("img", { name: "Bob · Thrasios" }).getAttribute("src")).toBe(
+      "/api/card-images/thrasios",
+    )
+    expect(screen.queryByText("Bob · Tymna")).toBeNull()
+    expect(screen.getByText("Cara · Commander not revealed")).toBeTruthy()
+    expect(screen.getByRole("img", { name: "No image available for Cara" })).toBeTruthy()
+    const increase = screen.getByRole("button", { name: "Increase Bob · Tymna" })
+    for (let i = 0; i < 3; i++) fireEvent.click(increase)
+    fireEvent.click(screen.getByRole("button", { name: "Increase Bob · Thrasios" }))
+    expect(onChangeLife).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Apply -3 life for Bob · Tymna" }))
+    expect(onChangeLife.mock.calls).toEqual([[-3]])
+    expect(screen.queryByRole("button", { name: "Apply -3 life for Bob · Tymna" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Apply -1 life for Bob · Thrasios" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Decrease Bob · Tymna" }))
+    fireEvent.click(screen.getByRole("button", { name: "Apply +1 life for Bob · Tymna" }))
+    expect(onChangeLife.mock.calls).toEqual([[-3], [1]])
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(screen.queryByRole("button", { name: /Apply .* life/ })).toBeNull()
+    fireEvent.click(increase)
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })
+    fireEvent.click(screen.getByRole("button", { name: "Alice's counters" }))
+    expect(screen.queryByRole("button", { name: /Apply .* life/ })).toBeNull()
+    vi.useRealTimers()
+  })
+
   it("uses ±1 casts for ±2 tax per partner, ±1 poison/rad/damage, and keeps the panel open", () => {
     const onAdjust = vi.fn()
     const onTakeMonarch = vi.fn()
@@ -151,6 +217,7 @@ describe("seat counters", () => {
               monarch={false}
               onOpenChange={onOpenChange}
               onTakeMonarch={onTakeMonarch}
+              onChangeLife={vi.fn()}
               onAdjust={(counter, delta) => {
                 onAdjust(counter, delta)
                 setParticipant((previous) => ({
@@ -199,6 +266,7 @@ describe("seat counters", () => {
         local
         monarch={false}
         onAdjust={onAdjust}
+        onChangeLife={vi.fn()}
         onTakeMonarch={vi.fn()}
       />,
     )
@@ -232,6 +300,7 @@ describe("seat counters", () => {
         local={false}
         monarch
         onAdjust={vi.fn()}
+        onChangeLife={vi.fn()}
         onTakeMonarch={vi.fn()}
       />,
     )
