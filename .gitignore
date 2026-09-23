@@ -27,3 +27,7 @@ the_gathering-*.tar
 # Amp orb portal registrations
 .amp/portals/
 .env
+
+# Amp thread transfer bundles and review artifacts
+.amp/*.bundle
+.amp/in/
