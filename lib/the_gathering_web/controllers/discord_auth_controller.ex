@@ -21,8 +21,9 @@ defmodule TheGatheringWeb.DiscordAuthController do
         registration_invite_hash: get_session(conn, :registration_invite_hash)
       }
 
+      # Keep the invitation available if OAuth is canceled or restarted. Each
+      # attempt still binds its own digest and rechecks it during registration.
       conn
-      |> delete_session(:registration_invite_hash)
       |> put_session(@oauth_session, oauth_session)
       |> redirect(external: url)
     else
@@ -49,6 +50,7 @@ defmodule TheGatheringWeb.DiscordAuthController do
              Map.get(oauth_session, :registration_invite_hash)
            ) do
       conn
+      |> delete_session(:registration_invite_hash)
       |> UserAuth.log_in_user(user)
       |> redirect(to: oauth_session.return_to)
     else
