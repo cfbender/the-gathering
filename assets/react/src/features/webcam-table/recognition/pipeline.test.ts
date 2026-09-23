@@ -106,7 +106,16 @@ describe("searchArts", () => {
     { id: "3", name: "Forest", set: "blb", collector_number: "278", frame: "modern" },
     { id: "4", name: "Forest Bear", set: "m19", collector_number: "12", frame: "modern" },
     { id: "5", name: "Command Tower", set: "fic", collector_number: "301", frame: "modern" },
+    { id: "6", name: "Woe Strider", set: "thb", collector_number: "123", frame: "modern" },
+    { id: "7", name: "Restless Fortress", set: "woe", collector_number: "258", frame: "modern" },
+    { id: "8", name: "Woe Strider", set: "woe", collector_number: "9", frame: "modern" },
   ]
+
+  it("reads a bare set code as part of the name when the card is named that way", () => {
+    expect(searchArts(arts, "woe strider").map((art) => art.id)).toEqual(["8", "6"])
+    expect(searchArts(arts, "Woe").map((art) => art.id)).toEqual(["7", "8", "6"])
+    expect(searchArts(arts, "set:woe strider").map((art) => art.id)).toEqual(["8"])
+  })
 
   it("narrows by set code and orders by collector number", () => {
     expect(searchArts(arts, "forest fin").map((art) => art.id)).toEqual(["2", "1"])

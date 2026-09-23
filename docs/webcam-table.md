@@ -515,7 +515,9 @@ no bundle is published (deck suggestions stand in), on "Wrong card?", or when th
 Shift+clicks to choose for themselves. It shows five numbered candidates (`1`–`5`), the crop
 with the detected quad and per-stage timings; low similarity never suppresses results. `/`
 focuses a gallery search that understands names, set codes (`forest fin`, `set:fin`),
-collector numbers (`#280`) and language (`lang:ja`). English results sort first. Expand a
+collector numbers (`#280`) and language (`lang:ja`). A bare word that is also a set code is
+read both ways, so `woe strider` finds Woe Strider as well as any WOE "strider"; use `set:`
+to force the set. English results sort first. Expand a
 candidate's printing count to select its exact set/number/language; choices also show frame
 effects, borderless treatment and promos. The Cards tab searches the same printing choices.
 Ranks/keyboard `1`–`5` remain one per artwork, not one per reprint. Identical art cannot tell
