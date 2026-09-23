@@ -22,6 +22,9 @@ services:
       WEBRTC_TURN_URLS: ${WEBRTC_TURN_URLS:-}
       WEBRTC_TURN_USERNAME: ${WEBRTC_TURN_USERNAME:-}
       WEBRTC_TURN_CREDENTIAL: ${WEBRTC_TURN_CREDENTIAL:-}
+      # Or a Cloudflare Realtime TURN key; the server mints short-lived credentials per room join.
+      CLOUDFLARE_TURN_KEY_ID: ${CLOUDFLARE_TURN_KEY_ID:-}
+      CLOUDFLARE_TURN_API_TOKEN: ${CLOUDFLARE_TURN_API_TOKEN:-}
       # debug explains why the Discord bot ignored a message.
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Optional self-hosted ManaVault origin whose shared deck links should resolve.

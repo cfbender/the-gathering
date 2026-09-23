@@ -151,6 +151,7 @@ suggestions instead. Design notes are in
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
 | `WEBRTC_STUN_URLS` | Google + Cloudflare public STUN | Comma-separated STUN URLs for webcam-table NAT discovery. Needed for any room that is not on one LAN; `none` disables STUN for LAN-only installs. |
 | `WEBRTC_TURN_URLS` | unset | Comma-separated TURN URLs; with `WEBRTC_TURN_USERNAME` and `WEBRTC_TURN_CREDENTIAL`, relays webcam-table media when peers cannot connect directly. |
+| `CLOUDFLARE_TURN_KEY_ID` | unset | With `CLOUDFLARE_TURN_API_TOKEN`, a Cloudflare Realtime TURN key. The server mints per-join credentials that expire after `CLOUDFLARE_TURN_TTL_SECONDS` (default 21600); relayed traffic is free up to 1,000 GB/month, then $0.05/GB. |
 | `MANAVAULT_URL` | unset | Origin of a self-hosted ManaVault instance whose shared deck links are recognized and resolved. |
 | `MANAVAULT_ALLOWED_HOSTS` | unset | Comma-separated exact hostnames allowed for personal ManaVault listing on private networks; also permits HTTP for those hosts. |
 | `MANAVAULT_ALLOW_INSECURE_URLS` | unset | Set to `true` to permit HTTP personal ManaVault origins that resolve to public addresses. |
