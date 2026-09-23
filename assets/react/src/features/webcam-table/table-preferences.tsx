@@ -37,7 +37,7 @@ export function useTablePreferences(playerId: number) {
       cameraEnabled: true,
       quality: "auto",
       stats: false,
-      turnSound: false,
+      turnSound: true,
     }
     try {
       const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "null")
@@ -50,7 +50,7 @@ export function useTablePreferences(playerId: number) {
         cameraEnabled: !("cameraEnabled" in saved && saved.cameraEnabled === false),
         quality: "quality" in saved && isPublisherQuality(saved.quality) ? saved.quality : "auto",
         stats: "stats" in saved && saved.stats === true,
-        turnSound: "turnSound" in saved && saved.turnSound === true,
+        turnSound: !("turnSound" in saved && saved.turnSound === false),
         hotkeys: "hotkeys" in saved && typeof saved.hotkeys === "boolean" ? saved.hotkeys : true,
         camera:
           "camera" in saved && typeof saved.camera === "number"
