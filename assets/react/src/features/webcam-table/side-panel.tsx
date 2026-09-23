@@ -122,7 +122,7 @@ function RecognizerBadge({ state }: { state: RecognizerState }) {
       ? "badge-success"
       : state.status === "failed"
         ? "badge-error"
-        : state.status === "unavailable"
+        : state.status === "unavailable" || state.status === "idle"
           ? "badge-ghost"
           : "badge-warning"
   const label =
@@ -132,7 +132,9 @@ function RecognizerBadge({ state }: { state: RecognizerState }) {
         ? "failed"
         : state.status === "unavailable"
           ? "off"
-          : "loading"
+          : state.status === "idle"
+            ? "not loaded"
+            : "loading"
   return <span className={cn("badge badge-xs", tone)}>{label}</span>
 }
 
