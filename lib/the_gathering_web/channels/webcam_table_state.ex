@@ -243,6 +243,13 @@ defmodule TheGatheringWeb.WebcamTableState do
          (entry.owner_id == player_id or Enum.any?(team, &(&1.player_id == player_id))) do
       life = entry.team_life[team_index] |> Kernel.+(delta) |> max(-999) |> min(999)
       entry = put_in(entry, [:team_life, team_index], life)
+
+      # Zero shared life knocks the whole team out; restoring stays manual.
+      entry =
+        if life <= 0 and Enum.any?(team, &(not &1.eliminated)),
+          do: eliminate_seats(room, entry, team, true),
+          else: entry
+
       Session.save(room, entry)
       broadcast_state(room, entry)
       {:reply, :ok, put_in(state, [:rooms, room], entry)}
@@ -261,34 +268,8 @@ defmodule TheGatheringWeb.WebcamTableState do
         do: WebcamTableTurns.team(ordered_seats(entry), seat.player_id),
         else: [seat]
 
-    entry =
-      Enum.reduce(targets, entry, fn seat, entry ->
-        seat = %{seat | eliminated: eliminated}
-
-        case entry.connections[seat.player_id] do
-          {pid, _ref} -> send(pid, {:seat_eliminated, eliminated})
-          nil -> :ok
-        end
-
-        eliminated_seats =
-          if eliminated,
-            do: Map.put(entry.eliminated_seats, seat.player_id, seat),
-            else: Map.delete(entry.eliminated_seats, seat.player_id)
-
-        %{
-          entry
-          | all_seats: Map.put(entry.all_seats, seat.player_id, seat),
-            eliminated_seats: eliminated_seats
-        }
-      end)
-
-    entry = reconcile_turn(entry)
+    entry = eliminate_seats(room, entry, targets, eliminated)
     Session.save(room, entry)
-
-    Endpoint.broadcast!("webcam_table:#{room}", "eliminated_seats", %{
-      participants: Map.values(entry.eliminated_seats)
-    })
-
     broadcast_state(room, entry)
     {:reply, :ok, put_in(state, [:rooms, room], entry)}
   end
@@ -526,6 +507,39 @@ defmodule TheGatheringWeb.WebcamTableState do
     do: peers |> Enum.chunk_every(2) |> Enum.shuffle() |> List.flatten()
 
   defp shuffle(peers, _entry), do: Enum.shuffle(peers)
+
+  # Marks seats in or out, tells their live channels, and moves the turn on if
+  # the active seat just left. Callers save and broadcast the returned entry.
+  defp eliminate_seats(room, entry, seats, eliminated) do
+    entry =
+      Enum.reduce(seats, entry, fn seat, entry ->
+        seat = %{seat | eliminated: eliminated}
+
+        case entry.connections[seat.player_id] do
+          {pid, _ref} -> send(pid, {:seat_eliminated, eliminated})
+          nil -> :ok
+        end
+
+        eliminated_seats =
+          if eliminated,
+            do: Map.put(entry.eliminated_seats, seat.player_id, seat),
+            else: Map.delete(entry.eliminated_seats, seat.player_id)
+
+        %{
+          entry
+          | all_seats: Map.put(entry.all_seats, seat.player_id, seat),
+            eliminated_seats: eliminated_seats
+        }
+      end)
+
+    entry = reconcile_turn(entry)
+
+    Endpoint.broadcast!("webcam_table:#{room}", "eliminated_seats", %{
+      participants: Map.values(entry.eliminated_seats)
+    })
+
+    entry
+  end
 
   defp reconcile_turn(%{timer: %{started_at: nil}} = entry), do: entry
 
