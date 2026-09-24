@@ -1,5 +1,6 @@
 defmodule TheGatheringWeb.API.WebcamTableConfigControllerTest do
   use TheGatheringWeb.ConnCase, async: false
+  import Phoenix.ChannelTest, only: [socket: 3]
 
   setup :register_and_log_in_user
 
@@ -42,6 +43,24 @@ defmodule TheGatheringWeb.API.WebcamTableConfigControllerTest do
            } = conn |> get(~p"/api/webcam-table/config") |> json_response(200)
 
     assert is_binary(socket_token)
+  end
+
+  test "issues an encrypted socket token that connects as the signed-in user", %{
+    conn: conn,
+    user: user
+  } do
+    %{"data" => %{"socket_token" => socket_token}} =
+      conn |> get(~p"/api/webcam-table/config") |> json_response(200)
+
+    session_token = get_session(conn, :user_token)
+    refute socket_token =~ Base.url_encode64(session_token, padding: false)
+
+    socket = socket(TheGatheringWeb.UserSocket, nil, %{})
+
+    assert {:ok, connected} =
+             TheGatheringWeb.UserSocket.connect(%{"token" => socket_token}, socket, %{})
+
+    assert connected.assigns.user.id == user.id
   end
 
   describe "with a Cloudflare TURN key" do
