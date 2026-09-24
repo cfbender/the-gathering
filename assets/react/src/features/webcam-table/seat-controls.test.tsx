@@ -80,7 +80,7 @@ it("keeps life interactions separate from selecting the camera board", () => {
       }
     />,
   )
-  fireEvent.focus(screen.getByRole("button", { name: /show life controls/ }))
+  fireEvent.focus(screen.getByRole("textbox", { name: /edit life total/ }))
   fireEvent.click(screen.getByRole("button", { name: "Gain 1 life" }))
   expect(onChangeLife).toHaveBeenCalledWith(1)
   expect(onActivate).not.toHaveBeenCalled()
@@ -94,7 +94,7 @@ describe.each(["tile", "board"] as const)("%s life control", (size) => {
     render(
       <LifeControl life={37} local size={size} counters={() => null} onChangeLife={onChangeLife} />,
     )
-    const box = screen.getByRole("button", { name: "37 life; show life controls" })
+    const box = screen.getByRole("textbox", { name: "37 life; edit life total" })
     expect(screen.queryByRole("button", { name: "Gain 1 life" })).toBeNull()
     fireEvent.mouseEnter(box)
     fireEvent.click(screen.getByRole("button", { name: "Gain 1 life" }))
@@ -110,6 +110,31 @@ describe.each(["tile", "board"] as const)("%s life control", (size) => {
     expect(screen.queryByRole("button", { name: "Lose 1 life" })).toBeNull()
   })
 
+  it("commits a typed total as one delta on Enter or blur, and discards on Escape or junk", () => {
+    const onChangeLife = vi.fn()
+    render(
+      <LifeControl life={37} local size={size} counters={() => null} onChangeLife={onChangeLife} />,
+    )
+    const box = screen.getByRole("textbox", { name: "37 life; edit life total" })
+    fireEvent.change(box, { target: { value: "25" } })
+    fireEvent.keyDown(box, { key: "Enter" })
+    fireEvent.blur(box)
+    fireEvent.change(box, { target: { value: "-3" } })
+    fireEvent.blur(box)
+    fireEvent.change(box, { target: { value: "5000" } })
+    fireEvent.blur(box)
+    expect(onChangeLife.mock.calls).toEqual([[-12], [-40], [962]])
+    fireEvent.change(box, { target: { value: "12" } })
+    fireEvent.keyDown(box, { key: "Escape" })
+    fireEvent.blur(box)
+    for (const junk of ["", "abc", "37"]) {
+      fireEvent.change(box, { target: { value: junk } })
+      fireEvent.blur(box)
+    }
+    expect(onChangeLife).toHaveBeenCalledTimes(3)
+    expect((box as HTMLInputElement).value).toBe("37")
+  })
+
   it("never renders remote life buttons even on hover", () => {
     render(
       <LifeControl
@@ -122,6 +147,7 @@ describe.each(["tile", "board"] as const)("%s life control", (size) => {
     )
     fireEvent.mouseEnter(screen.getByLabelText("37 life"))
     expect(screen.queryByRole("button", { name: /life/, hidden: true })).toBeNull()
+    expect(screen.queryByRole("textbox")).toBeNull()
     expect(screen.getByRole("button", { name: "Counters" })).toBeTruthy()
   })
 })
@@ -231,7 +257,7 @@ describe("seat counters", () => {
       )
     }
     render(<Seat />)
-    fireEvent.focus(screen.getByRole("button", { name: /show life controls/ }))
+    fireEvent.focus(screen.getByRole("textbox", { name: /edit life total/ }))
     fireEvent.click(screen.getByRole("button", { name: "Alice's counters" }))
     fireEvent.click(screen.getByRole("button", { name: "Increase Tymna commander tax" }))
     expect(screen.getByLabelText("Tymna commander tax: 6").textContent).toBe("6")
@@ -404,4 +430,29 @@ it("shows remote commander names without a picker", () => {
   expect(screen.getByText("Tymna")).toBeTruthy()
   expect(screen.getByText("Thrasios")).toBeTruthy()
   expect(screen.getByTitle("Tymna / Thrasios")).toBeTruthy()
+})
+
+it("shows each commander's tax in a badge left of the name, only once a deck is chosen", () => {
+  const { rerender } = render(
+    <CommanderControl
+      participant={{ ...seat, commander_casts: { Tymna: 2 } }}
+      decks={[deck]}
+      local={false}
+      onChooseDeck={vi.fn()}
+    />,
+  )
+  const badge = screen.getByRole("img", { name: "Commander tax: Tymna +4, Thrasios +0" })
+  expect(badge.textContent).toBe("+4/+0")
+  expect(badge.compareDocumentPosition(screen.getByText("Tymna"))).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  )
+  rerender(
+    <CommanderControl
+      participant={{ ...seat, deck_id: undefined }}
+      decks={[deck]}
+      local={false}
+      onChooseDeck={vi.fn()}
+    />,
+  )
+  expect(screen.queryByRole("img", { name: /Commander tax/ })).toBeNull()
 })

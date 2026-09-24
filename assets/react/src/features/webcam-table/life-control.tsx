@@ -1,6 +1,58 @@
 import { Minus, Plus } from "lucide-react"
-import { useState, type ReactNode } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { cn } from "@/lib/cn"
+
+/**
+ * The owner types a new total directly; it commits on Enter or blur as one signed delta, so
+ * seat and Two-Headed Giant team life share the same `onChangeLife` path. Escape discards.
+ */
+function LifeInput({
+  life,
+  className,
+  onChangeLife,
+}: {
+  life: number
+  className: string
+  onChangeLife: (delta: number) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const discard = useRef(false)
+  const value = draft ?? String(life)
+
+  const commit = () => {
+    const typed = draft?.trim() ?? ""
+    if (!discard.current && /^-?\d+$/.test(typed)) {
+      const delta = Math.max(-999, Math.min(999, Number(typed))) - life
+      if (delta !== 0) onChangeLife(delta)
+    }
+    discard.current = false
+    setDraft(null)
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      maxLength={4}
+      className={cn(className, "cursor-text text-center outline-none focus:border-primary")}
+      style={{ width: `calc(${Math.max(value.length, 2)}ch + 1.25rem)` }}
+      value={value}
+      aria-label={`${life} life; edit life total`}
+      title="Type a new life total"
+      onFocus={(event) => event.currentTarget.select()}
+      onChange={(event) => setDraft(event.currentTarget.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur()
+        if (event.key === "Escape") {
+          discard.current = true
+          event.currentTarget.blur()
+        }
+      }}
+    />
+  )
+}
 
 /** The life box is the keyboard/touch entry point; camera selection stays separate. */
 export function LifeControl({
@@ -37,9 +89,7 @@ export function LifeControl({
     >
       <div className="grid gap-0.5">
         {local ? (
-          <button type="button" className={box} aria-label={`${life} life; show life controls`}>
-            {life}
-          </button>
+          <LifeInput life={life} className={box} onChangeLife={onChangeLife} />
         ) : (
           <span className={box} aria-label={`${life} life`}>
             {life}
