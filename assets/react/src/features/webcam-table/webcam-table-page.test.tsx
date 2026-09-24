@@ -1,13 +1,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { useMemo } from "react"
 import { afterEach, expect, it, vi } from "vite-plus/test"
 import type { GalleryArt } from "./recognition/pipeline"
+import { serveCards, wire } from "./test-support/fake-phoenix"
+import { installFakeMedia, serveTableConfig } from "./test-support/fake-webrtc"
 import type { CapturedCard } from "./use-webcam-room"
 import { WebcamTablePage } from "./webcam-table-page"
 
-// Keep the real room hook (including announceCard/deduplication); replace only camera capture
-// and the unavailable recognition worker with an explicit two-printing picker fixture.
+// Keep the real room hook (including announceCard/deduplication) against a fake server that
+// echoes card changes; replace only camera capture and the unavailable recognition worker
+// with an explicit two-printing picker fixture.
+vi.mock("phoenix", () => import("./test-support/fake-phoenix"))
 vi.mock("./use-webcam-room", async (importOriginal) => {
   const original = await importOriginal<typeof import("./use-webcam-room")>()
   return {
@@ -65,8 +69,10 @@ afterEach(() => {
 })
 
 it("previews the newly identified printing while retaining one original tray entry and its actions", async () => {
-  // No socket or media is needed for the local identification path.
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 503 }))
+  wire.reset()
+  installFakeMedia()
+  serveTableConfig()
+  serveCards()
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
@@ -95,6 +101,7 @@ it("previews the newly identified printing while retaining one original tray ent
       <WebcamTablePage roomId="preview-test" />
     </QueryClientProvider>,
   )
+  await waitFor(() => expect(wire.channel).not.toBeNull())
   fireEvent.click(await screen.findByRole("button", { name: "Identify first Forest" }))
   expect(screen.getByText(/LEA · #280/)).toBeTruthy()
   fireEvent.click(screen.getByRole("button", { name: "Close card details" }))

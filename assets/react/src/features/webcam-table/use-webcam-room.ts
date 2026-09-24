@@ -4,12 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import type { GameFormat } from "@/features/games/game-format"
 import { openCamera } from "./camera"
-import {
-  clearBoardCards,
-  gameJustStarted,
-  mergeIdentifiedCards,
-  sameCard,
-} from "./identified-cards"
+import { applyCardCommand, sameCard, type CardCommand } from "./identified-cards"
 import { canViewBoard, videoEncoding, type PublisherQuality } from "./media-policy"
 import type { GameTimerState, TimerSample } from "./game-timer"
 import type { GalleryArt } from "./recognition/pipeline"
@@ -98,8 +93,8 @@ export interface CapturedCard {
 /** A card a seat named on someone's board, recognized or picked by hand. */
 export type IdentifiedCard = Pick<GalleryArt, "id" | "name" | "set" | "collector_number">
 
-/** One entry in the shared per-board list of identified cards. Ephemeral like the Log: it
- * lives on the data channels and is synced to seats that connect later. */
+/** One entry in the shared per-board list of identified cards. The server owns the list: it
+ * validates every change and broadcasts the whole list, including to seats that join later. */
 export interface BoardCard {
   id: string
   ownerPeerId: string
@@ -125,12 +120,6 @@ type DataMessage =
       private: boolean
       shareCorrections?: boolean
     }
-  | { type: "card_identified"; entry: BoardCard }
-  | { type: "card_removed"; id: string }
-  /** The board's owner cleared everything identified on it. */
-  | { type: "cards_cleared"; ownerPeerId: string }
-  /** Sent when a data channel opens so a late joiner sees the cards already on the table. */
-  | { type: "cards_sync"; entries: BoardCard[] }
 
 interface PeerState {
   connection: RTCPeerConnection
@@ -238,6 +227,9 @@ export function useWebcamRoom(
   const [monarch, setMonarch] = useState<Monarch | null>(null)
   const [capture, setCapture] = useState<CapturedCard | null>(null)
   const cardsRef = useRef<BoardCard[]>([])
+  const serverCardsRef = useRef<BoardCard[]>([])
+  const pendingCardsRef = useRef(new Map<number, CardCommand>())
+  const cardCommandRef = useRef(0)
   const [identifiedCards, setIdentifiedCards] = useState<BoardCard[]>([])
   const [status, setStatus] = useState("Opening 1080p camera…")
   const [error, setError] = useState<string | null>(null)
@@ -378,82 +370,81 @@ export function useWebcamRoom(
     }
   }
 
-  /** Every ingress uses the same per-board card identity rule, including late-join syncs. */
-  const mergeCards = useCallback((entries: BoardCard[]) => {
-    cardsRef.current = mergeIdentifiedCards(cardsRef.current, entries)
+  /** Shows the server's list with this seat's unanswered commands applied on top. */
+  const showCards = useCallback(() => {
+    cardsRef.current = [...pendingCardsRef.current.values()].reduce(
+      applyCardCommand,
+      serverCardsRef.current,
+    )
     setIdentifiedCards(cardsRef.current)
   }, [])
 
-  const dropCard = useCallback((id: string) => {
-    cardsRef.current = cardsRef.current.filter((entry) => entry.id !== id)
-    setIdentifiedCards(cardsRef.current)
-  }, [])
+  const receiveCards = useCallback(
+    (entries: BoardCard[]) => {
+      serverCardsRef.current = entries
+      showCards()
+    },
+    [showCards],
+  )
 
-  const dropBoardCards = useCallback((ownerPeerId: string) => {
-    cardsRef.current = clearBoardCards(cardsRef.current, ownerPeerId)
-    setIdentifiedCards(cardsRef.current)
-  }, [])
+  /** Sends a card change to the server and shows it until the server answers. The server
+   * broadcasts its list before replying, so an accepted change never flickers; a rejected or
+   * timed-out change falls back to the server's list. */
+  const sendCardCommand = useCallback(
+    (command: CardCommand) => {
+      const channel = channelRef.current
+      if (spectatorRef.current || !channel) return
+      const id = (cardCommandRef.current += 1)
+      pendingCardsRef.current.set(id, command)
+      showCards()
+      const settle = () => {
+        pendingCardsRef.current.delete(id)
+        showCards()
+      }
+      channel
+        .push("cards", command)
+        .receive("ok", settle)
+        .receive("error", settle)
+        .receive("timeout", settle)
+    },
+    [showCards],
+  )
 
-  const dropAllCards = useCallback(() => {
-    cardsRef.current = []
-    setIdentifiedCards(cardsRef.current)
-  }, [])
-
-  const broadcast = useCallback((message: DataMessage) => {
-    if (spectatorRef.current) return
-    channelRef.current?.push("cards", message)
-    const payload = JSON.stringify(message)
-    for (const peer of peersRef.current.values()) {
-      if (peer.channel?.readyState === "open") peer.channel.send(payload)
+  const handleData = useCallback((fromPeerId: string, event: MessageEvent<string>) => {
+    const message = JSON.parse(event.data) as DataMessage
+    if (message.type === "capture_request" && localVideoRef.current) {
+      if (
+        !canViewBoard(peerIdRef.current, fromPeerId, revealToRef.current) ||
+        !localStreamRef.current?.getVideoTracks()[0]?.enabled
+      )
+        return
+      const result = captureCrop(localVideoRef.current, message.x, message.y)
+      peersRef.current.get(fromPeerId)?.channel?.send(
+        JSON.stringify({
+          type: "capture_response",
+          requestId: message.requestId,
+          private: !!revealToRef.current,
+          ...result,
+        }),
+      )
+    } else if (message.type === "capture_response") {
+      const pending = pendingCaptures.current.get(message.requestId)
+      pendingCaptures.current.delete(message.requestId)
+      const owner = participantsRef.current.find((item) => item.peer_id === fromPeerId)
+      if (
+        owner &&
+        pending?.targetPeerId === fromPeerId &&
+        canViewBoard(fromPeerId, peerIdRef.current, owner.reveal_to) &&
+        !owner.camera_off
+      )
+        setCapture({
+          peerId: fromPeerId,
+          playerId: owner.player_id,
+          inspect: pending.inspect,
+          ...message,
+        })
     }
   }, [])
-
-  const handleData = useCallback(
-    (fromPeerId: string, event: MessageEvent<string>) => {
-      const message = JSON.parse(event.data) as DataMessage
-      if (message.type === "capture_request" && localVideoRef.current) {
-        if (
-          !canViewBoard(peerIdRef.current, fromPeerId, revealToRef.current) ||
-          !localStreamRef.current?.getVideoTracks()[0]?.enabled
-        )
-          return
-        const result = captureCrop(localVideoRef.current, message.x, message.y)
-        peersRef.current.get(fromPeerId)?.channel?.send(
-          JSON.stringify({
-            type: "capture_response",
-            requestId: message.requestId,
-            private: !!revealToRef.current,
-            ...result,
-          }),
-        )
-      } else if (message.type === "capture_response") {
-        const pending = pendingCaptures.current.get(message.requestId)
-        pendingCaptures.current.delete(message.requestId)
-        const owner = participantsRef.current.find((item) => item.peer_id === fromPeerId)
-        if (
-          owner &&
-          pending?.targetPeerId === fromPeerId &&
-          canViewBoard(fromPeerId, peerIdRef.current, owner.reveal_to) &&
-          !owner.camera_off
-        )
-          setCapture({
-            peerId: fromPeerId,
-            playerId: owner.player_id,
-            inspect: pending.inspect,
-            ...message,
-          })
-      } else if (message.type === "card_identified") {
-        mergeCards([message.entry])
-      } else if (message.type === "cards_sync") {
-        mergeCards(message.entries)
-      } else if (message.type === "card_removed") {
-        dropCard(message.id)
-      } else if (message.type === "cards_cleared") {
-        dropBoardCards(message.ownerPeerId)
-      }
-    },
-    [dropBoardCards, dropCard, mergeCards],
-  )
 
   useEffect(() => {
     let disposed = false
@@ -472,10 +463,7 @@ export function useWebcamRoom(
 
     let lastTimer: GameTimerState | null = null
 
-    // Every seat hears the same timer_state, so a fresh game empties every board without a
-    // separate broadcast; cards identified in the lobby do not carry into the game.
     function receiveTimer(state: GameTimerState) {
-      if (gameJustStarted(lastTimer, state)) dropAllCards()
       lastTimer = state
       setTimer({ state, receivedAt: performance.now() })
     }
@@ -485,13 +473,6 @@ export function useWebcamRoom(
       if (!peer) return
       peer.channel = dataChannel
       dataChannel.onmessage = (event) => handleData(peerId, event)
-      // Incoming channels can already be open when announced, so sync in both cases.
-      const syncCards = () => {
-        if (cardsRef.current.length > 0)
-          dataChannel.send(JSON.stringify({ type: "cards_sync", entries: cardsRef.current }))
-      }
-      if (dataChannel.readyState === "open") syncCards()
-      else dataChannel.onopen = syncCards
     }
 
     function sendSignal(target: string, signal: Signal) {
@@ -654,10 +635,10 @@ export function useWebcamRoom(
           setConnectionStates({})
           setStatus("Reconnecting… Your game is saved.")
         })
-        room.on("identified_cards", ({ entries }: { entries: BoardCard[] }) => {
-          cardsRef.current = entries
-          setIdentifiedCards(entries)
-        })
+        // The server starts every game with empty boards and says so in table_state.
+        room.on("identified_cards", ({ entries }: { entries: BoardCard[] }) =>
+          receiveCards(entries),
+        )
         room.on(
           "table_state",
           ({
@@ -691,10 +672,7 @@ export function useWebcamRoom(
             setTeamLife(team_life)
             if (owner_id !== undefined) setOwnerId(owner_id)
             if (savedMonarch) syncMonarch(savedMonarch)
-            if (cards) {
-              cardsRef.current = cards
-              setIdentifiedCards(cards)
-            }
+            if (cards) receiveCards(cards)
           },
         )
         room.on(
@@ -844,7 +822,7 @@ export function useWebcamRoom(
       peersRef.current.clear()
       localStreamRef.current?.getTracks().forEach((track) => track.stop())
     }
-  }, [deckId, dropAllCards, handleData, log, playerId, queryClient, refreshVideo, roomId])
+  }, [deckId, handleData, log, playerId, queryClient, receiveCards, refreshVideo, roomId])
 
   async function changeReveal(target: string | null) {
     if (revealBusy || !channelRef.current) return
@@ -1048,21 +1026,18 @@ export function useWebcamRoom(
       (capture?.peerId === ownerPeerId && capture.private)
     )
       return entry
-    mergeCards([entry])
-    broadcast({ type: "card_identified", entry })
+    sendCardCommand({ type: "card_identified", entry })
     return entry
   }
 
   /** Takes a misidentified card off its board's list at every seat. */
   function removeCard(id: string) {
-    dropCard(id)
-    broadcast({ type: "card_removed", id })
+    sendCardCommand({ type: "card_removed", id })
   }
 
   /** Empties the local seat's own board at every seat; other boards are not ours to clear. */
   function clearOwnCards() {
-    dropBoardCards(peerIdRef.current)
-    broadcast({ type: "cards_cleared", ownerPeerId: peerIdRef.current })
+    sendCardCommand({ type: "cards_cleared", ownerPeerId: peerIdRef.current })
   }
 
   /** Participants in shared seat order; the End game form records seats in this order. */
