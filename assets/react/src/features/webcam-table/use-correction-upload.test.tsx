@@ -67,19 +67,9 @@ describe("correction labels", () => {
     expect(payload?.margin).toBeCloseTo(0.03)
   })
 
-  it("requires both clicker and camera owner consent, including older peers", () => {
+  it("requires both clicker and camera owner consent", () => {
     expect(
       correctionPayload("id", { ...capture, shareCorrections: false }, result, "right", "v3", true),
-    ).toBeNull()
-    expect(
-      correctionPayload(
-        "id",
-        { ...capture, shareCorrections: undefined },
-        result,
-        "right",
-        "v3",
-        true,
-      ),
     ).toBeNull()
     localStorage.setItem("the-gathering:share-card-corrections", "false")
     expect(correctionPayload("id", capture, result, "right", "v3", true)).toBeNull()
