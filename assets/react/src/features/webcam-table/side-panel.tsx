@@ -79,7 +79,6 @@ interface Props extends CardsTabProps {
   onPassTurn: () => void
   onAdjustTurn: (playerId: number, delta: -1 | 1) => void
   onRoll: (request: RollRequest) => void
-  onSetEliminated: (peerId: string, eliminated: boolean) => void
   onEndGame: () => void
   onChangeTimer: (action: "pause" | "resume") => void
   /** Private reveal: who the local camera is currently shown to, if anyone. */
@@ -248,16 +247,16 @@ function TableTab(props: Props) {
           localParticipant={local}
           decks={decks}
           shuffleVersion={props.shuffleVersion}
-          onSetEliminated={props.onSetEliminated}
           turns={props.turns}
           timer={props.timer}
           onAdjustTurn={props.onAdjustTurn}
           readOnly={props.isOwner === false}
         />
         <p className="text-base-content/50 mt-1 text-[0.65rem]">
-          Out players skip turns but keep their recorded seat. The room owner reorders seats with
-          the arrows{props.mode !== "commander" ? " until the match starts" : ""}; players can also
-          eliminate or restore their own seat.
+          The room owner reorders seats with the arrows
+          {props.mode !== "commander" ? " until the match starts" : ""}. Once playing, eliminate or
+          restore a player from their seat menu; out players skip turns but keep their recorded
+          seat.
         </p>
 
         <div className="mt-3 grid gap-1.5">

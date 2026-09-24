@@ -331,7 +331,9 @@ newer claims. A crown appears on the holder's tile and active board and survives
 and server restarts along with the rest of the room snapshot.
 Counter changes and monarch transfers are added to every connected browser's Log.
 
-The room owner can mark a present seat eliminated or undo it in the turn-order table.
+Once the match has started, the room owner can eliminate or restore any present seat, and each
+player their own, from the ⋯ seat menu on the video tile or board bar; nothing is eliminable in
+the lobby.
 `set_eliminated` validates a present peer ID and a boolean; the target channel merges it into
 its own presence so later life/camera updates cannot overwrite elimination. Players may also
 publish their own `eliminated` through `update_status`. In every format, a life update that

@@ -431,7 +431,11 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       onSetEliminated={(eliminated) => room.setEliminated(participant.peer_id, eliminated)}
       flipped={isFlipped(participant)}
       onToggleFlip={() => preferences.toggleVideoFlip(participant.player_id)}
-      canEliminate={!room.spectating && (room.isOwner || participant.peer_id === room.peerId)}
+      canEliminate={
+        room.timer?.state.started_at != null &&
+        !room.spectating &&
+        (room.isOwner || participant.peer_id === room.peerId)
+      }
     />
   )
 
@@ -731,7 +735,6 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         onPassTurn={room.passTurn}
         onAdjustTurn={room.adjustTurn}
         onRoll={room.rollDice}
-        onSetEliminated={room.setEliminated}
         onChangeTimer={(action) => {
           void room.changeTimer(action)
         }}

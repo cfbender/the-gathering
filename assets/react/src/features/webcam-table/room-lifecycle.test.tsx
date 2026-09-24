@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, expect, it, vi } from "vite-plus/test"
 import { StreamVideo } from "./board"
@@ -76,6 +76,25 @@ it("shows open seats before start and none after the shared timer starts", () =>
   cleanup()
   renderTable(true)
   expect(screen.queryByText("Open seat")).toBeNull()
+})
+
+it("offers Eliminate player in the seat menu only after the match starts", async () => {
+  const openMenu = async () => {
+    const trigger = screen.getAllByRole("button", { name: "Cody's seat actions" })[0]!
+    act(() => trigger.focus())
+    fireEvent.keyDown(trigger, { key: "ArrowDown" })
+    await screen.findByRole("menu")
+  }
+  renderTable(false)
+  expect(screen.queryByRole("button", { name: /Eliminat/ })).toBeNull()
+  await openMenu()
+  expect(screen.getByRole("menuitem", { name: "Pin as active board" })).toBeTruthy()
+  expect(screen.queryByRole("menuitem", { name: /Eliminate|Restore/ })).toBeNull()
+  cleanup()
+  renderTable(true)
+  expect(screen.queryByRole("button", { name: /Eliminat/ })).toBeNull()
+  await openMenu()
+  expect(screen.getByRole("menuitem", { name: "Eliminate player" })).toBeTruthy()
 })
 
 it("renders a late joiner as a spectator without a phantom seat or game controls", () => {
