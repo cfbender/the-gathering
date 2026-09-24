@@ -15,7 +15,8 @@ defmodule TheGatheringWeb.WebcamTableState do
     do: GenServer.call(__MODULE__, {:join, room, pid, participant})
 
   def snapshot(room), do: GenServer.call(__MODULE__, {:snapshot, room})
-  def order(room, peers), do: GenServer.call(__MODULE__, {:order, room, peers, true})
+  # A manual mid-game reorder (Commander only); `start_game` reports whether it shuffled.
+  def order(room, peers), do: GenServer.call(__MODULE__, {:order, room, peers, false})
   def arrange(room, peers), do: GenServer.call(__MODULE__, {:arrange, room, peers})
   def mode(room, mode), do: GenServer.call(__MODULE__, {:mode, room, mode})
 
@@ -26,7 +27,9 @@ defmodule TheGatheringWeb.WebcamTableState do
     do: GenServer.call(__MODULE__, {:eliminate, room, peer_id, eliminated})
 
   def timer(room, action), do: GenServer.call(__MODULE__, {:timer, room, action})
-  def start_game(room), do: GenServer.call(__MODULE__, {:start_game, room})
+
+  def start_game(room, randomize \\ nil),
+    do: GenServer.call(__MODULE__, {:start_game, room, randomize})
 
   def turn_settings(room, auto_randomize),
     do: GenServer.call(__MODULE__, {:turn_settings, room, auto_randomize})
@@ -282,8 +285,9 @@ defmodule TheGatheringWeb.WebcamTableState do
     {:reply, snapshot, put_in(state, [:rooms, room], entry)}
   end
 
-  def handle_call({:start_game, room}, from, state) do
+  def handle_call({:start_game, room, randomize}, from, state) do
     entry = Map.fetch!(state.rooms, room)
+    randomize = if is_nil(randomize), do: entry.auto_randomize, else: randomize
 
     peers =
       entry
@@ -295,16 +299,11 @@ defmodule TheGatheringWeb.WebcamTableState do
       not is_nil(entry.timer.started_at) ->
         {:reply, :ok, state}
 
-      entry.mode == "two_headed_giant" and (length(peers) < 4 or rem(length(peers), 2) != 0) ->
-        {:reply,
-         {:error, %{reason: "Two-Headed Giant requires an even number of players (at least 4)"}},
-         state}
-
-      entry.mode == "five_star" and length(peers) != 5 ->
-        {:reply, {:error, %{reason: "Five Star requires exactly 5 players"}}, state}
+      reason = roster_error(entry.mode, length(peers)) ->
+        {:reply, {:error, %{reason: reason}}, state}
 
       true ->
-        peers = shuffle(peers, entry)
+        peers = shuffle(peers, %{entry | auto_randomize: randomize})
 
         life =
           if entry.mode == "two_headed_giant",
@@ -312,7 +311,7 @@ defmodule TheGatheringWeb.WebcamTableState do
             else: %{}
 
         state = put_in(state, [:rooms, room, :team_life], life)
-        handle_call({:order, room, peers, entry.auto_randomize}, from, state)
+        handle_call({:order, room, peers, randomize}, from, state)
     end
   end
 
@@ -500,6 +499,14 @@ defmodule TheGatheringWeb.WebcamTableState do
     |> Map.values()
     |> Enum.sort_by(&{Map.get(positions, &1.peer_id, 999), &1.joined_at, &1.peer_id})
   end
+
+  defp roster_error("two_headed_giant", count) when count < 4 or rem(count, 2) != 0,
+    do: "Two-Headed Giant requires an even number of players (at least 4)"
+
+  defp roster_error("five_star", count) when count != 5,
+    do: "Five Star requires exactly 5 players"
+
+  defp roster_error(_mode, _count), do: nil
 
   defp shuffle(peers, %{auto_randomize: false}), do: peers
 

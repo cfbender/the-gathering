@@ -971,6 +971,38 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert Session.load(room).team_life == %{}
   end
 
+  test "start_game with randomize: false keeps the arranged order despite auto-randomize", %{
+    socket: owner,
+    room_id: room
+  } do
+    for peer <- ["peer-b", "peer-c", "peer-d"], do: join_seat(room, peer)
+    peers = ["peer-d", "peer-a", "peer-b", "peer-c"]
+    assert_reply push(owner, "arrange_seats", %{"peer_ids" => peers}), :ok
+    assert_reply push(owner, "start_game", %{"randomize" => "false"}), :error
+    assert_reply push(owner, "start_game", %{"randomize" => false, "extra" => 1}), :error
+    assert WebcamTableState.snapshot(room).timer.started_at == nil
+    assert WebcamTableState.snapshot(room).auto_randomize
+
+    assert_reply push(owner, "start_game", %{"randomize" => false}), :ok
+    assert_broadcast "seat_order", %{peer_ids: ^peers, shuffled: false}
+    assert WebcamTableState.snapshot(room).peer_ids == peers
+    assert WebcamTableState.snapshot(room).timer.started_at != nil
+  end
+
+  test "start_game with randomize: true shuffles even when auto-randomize is off", %{
+    socket: owner,
+    room_id: room
+  } do
+    for peer <- ["peer-b", "peer-c", "peer-d"], do: join_seat(room, peer)
+    peers = ["peer-d", "peer-a", "peer-b", "peer-c"]
+    assert_reply push(owner, "arrange_seats", %{"peer_ids" => peers}), :ok
+    assert_reply push(owner, "turn_settings", %{"auto_randomize" => false}), :ok
+    assert_reply push(owner, "start_game", %{"randomize" => true}), :ok
+    assert_broadcast "seat_order", %{peer_ids: shuffled, shuffled: true}
+    assert Enum.sort(shuffled) == Enum.sort(peers)
+    assert WebcamTableState.snapshot(room).peer_ids == shuffled
+  end
+
   defp disconnect(socket) do
     Process.unlink(socket.channel_pid)
     ref = Process.monitor(socket.channel_pid)

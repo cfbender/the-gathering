@@ -27,7 +27,6 @@ import {
   describeParticipantLeft,
   orderBySeats,
   retainEliminatedSeats,
-  shuffleSeats,
   type TableEvent,
   type TableEventContent,
 } from "./table-events"
@@ -212,7 +211,6 @@ export function useWebcamRoom(
   const [shuffleVersion, setShuffleVersion] = useState(0)
   const [timer, setTimer] = useState<TimerSample | null>(null)
   const [turns, setTurns] = useState<TurnState>(EMPTY_TURNS)
-  const [autoRandomize, setAutoRandomizeState] = useState(true)
   const [mode, setModeState] = useState<GameFormat>("commander")
   const [teamLife, setTeamLife] = useState<Record<number, number>>({})
   const [spectating, setSpectating] = useState(false)
@@ -619,7 +617,13 @@ export function useWebcamRoom(
           ({ peer_ids, shuffled }: { peer_ids: string[]; shuffled: boolean }) => {
             setSeatOrder(peer_ids)
             if (shuffled) setShuffleVersion((version) => version + 1)
-            log([shuffled ? "Seat order randomized" : "Game started in seat order"])
+            log([
+              shuffled
+                ? "Seat order randomized"
+                : lastTimer?.started_at == null
+                  ? "Game started in seat order"
+                  : "Seat order changed",
+            ])
           },
         )
         room.on("monarch_state", syncMonarch)
@@ -661,7 +665,6 @@ export function useWebcamRoom(
             peer_ids,
             eliminated_seats,
             turns: turnState,
-            auto_randomize,
             mode: gameMode = "commander",
             team_life = {},
             seats,
@@ -673,7 +676,6 @@ export function useWebcamRoom(
             peer_ids: string[]
             eliminated_seats: TableParticipant[]
             turns: TurnState
-            auto_randomize: boolean
             mode?: GameFormat
             team_life?: Record<number, number>
             seats?: TableParticipant[]
@@ -685,7 +687,6 @@ export function useWebcamRoom(
             setSeatOrder(peer_ids)
             setEliminatedSeats(seats ?? eliminated_seats)
             setTurns(turnState)
-            setAutoRandomizeState(auto_randomize)
             setModeState(gameMode)
             setTeamLife(team_life)
             if (owner_id !== undefined) setOwnerId(owner_id)
@@ -908,13 +909,10 @@ export function useWebcamRoom(
     updateStatus({ camera_off: next })
   }
 
-  function randomizeSeats() {
-    const current = orderBySeats(participantsRef.current, seatOrder).map((item) => item.peer_id)
+  /** Owner starts the match, either keeping the arranged order or shuffling it. */
+  function startGame(randomize: boolean) {
     channelRef.current
-      ?.push(
-        timer?.state.started_at == null ? "start_game" : "seat_order",
-        timer?.state.started_at == null ? {} : { peer_ids: shuffleSeats(current) },
-      )
+      ?.push("start_game", { randomize })
       .receive("ok", () => setError(null))
       .receive("error", ({ reason }: { reason: string }) => setError(reason))
   }
@@ -931,12 +929,6 @@ export function useWebcamRoom(
       .receive("error", ({ reason }: { reason: string }) => setError(reason))
   }
 
-  function setAutoRandomize(enabled: boolean) {
-    channelRef.current
-      ?.push("turn_settings", { auto_randomize: enabled })
-      .receive("error", ({ reason }: { reason: string }) => setError(reason))
-  }
-
   function setMode(mode: GameFormat) {
     channelRef.current
       ?.push("set_mode", { mode })
@@ -950,6 +942,10 @@ export function useWebcamRoom(
       .receive("error", ({ reason }: { reason: string }) => setError(reason))
   }
 
+  /**
+   * Owner swaps a seat with its neighbour. Before the match starts this only
+   * rearranges; once started (Commander only) the server re-seats mid-game.
+   */
   function moveSeat(peerId: string, delta: -1 | 1) {
     const peers = seatedParticipants.map((seat) => seat.peer_id)
     const index = peers.indexOf(peerId)
@@ -957,7 +953,7 @@ export function useWebcamRoom(
     if (index < 0 || other < 0 || other >= peers.length) return
     ;[peers[index], peers[other]] = [peers[other]!, peers[index]!]
     channelRef.current
-      ?.push("arrange_seats", { peer_ids: peers })
+      ?.push(timer?.state.started_at == null ? "arrange_seats" : "seat_order", { peer_ids: peers })
       .receive("error", ({ reason }: { reason: string }) => setError(reason))
   }
 
@@ -1096,13 +1092,11 @@ export function useWebcamRoom(
     shuffleVersion,
     timer,
     turns,
-    autoRandomize,
     mode,
     setMode,
     teamLife,
     adjustTeamLife,
     moveSeat,
-    setAutoRandomize,
     passTurn,
     adjustTurn,
     roll,
@@ -1137,7 +1131,7 @@ export function useWebcamRoom(
     monarch,
     takeMonarch,
     toggleCamera,
-    randomizeSeats,
+    startGame,
     dismissCapture: () => setCapture(null),
   }
 }

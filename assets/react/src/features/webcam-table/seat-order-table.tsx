@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronUp } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { commanderNames, type DeckSummary } from "@/features/decks/decks"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
@@ -62,6 +63,9 @@ export function SeatOrderTable({
   )
   const protectedSeats =
     mode === "five_star" ? unattackableSeats(participants, localParticipant.player_id) : []
+  // Team formats key shared life and turns by seat pair, so their order locks at start.
+  const canReorder =
+    !readOnly && onMoveSeat != null && (timer?.state.started_at == null || mode === "commander")
 
   return (
     <table
@@ -73,12 +77,17 @@ export function SeatOrderTable({
         <tr>
           <th className="w-5 py-1 text-left font-semibold">#</th>
           <th className="py-1 text-left font-semibold">Player</th>
+          {canReorder && (
+            <th className="w-7 py-1">
+              <span className="sr-only">Reorder</span>
+            </th>
+          )}
           <th className="w-16 py-1 text-center font-semibold">Turn</th>
           <th className="w-11 py-1 text-right font-semibold">Time</th>
         </tr>
       </thead>
       <tbody>
-        {displayed.map((seat, index) => {
+        {displayed.map((seat) => {
           const active =
             turnId(participants, seat.player_id, mode) === turns.active_player_id &&
             !seat.eliminated
@@ -128,28 +137,6 @@ export function SeatOrderTable({
                 {protectedSeats.includes(seat.peer_id) && (
                   <span className="block text-[0.6rem] text-warning">Can't attack yet</span>
                 )}
-                {!readOnly && timer?.state.started_at == null && onMoveSeat && (
-                  <span className="flex gap-1">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-xs"
-                      aria-label={`Move ${seat.player_name} up`}
-                      disabled={index === 0}
-                      onClick={() => onMoveSeat(seat.peer_id, -1)}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-xs"
-                      aria-label={`Move ${seat.player_name} down`}
-                      disabled={index === participants.length - 1}
-                      onClick={() => onMoveSeat(seat.peer_id, 1)}
-                    >
-                      ↓
-                    </button>
-                  </span>
-                )}
                 {!readOnly && (
                   <button
                     type="button"
@@ -164,6 +151,30 @@ export function SeatOrderTable({
                   </button>
                 )}
               </td>
+              {canReorder && onMoveSeat && (
+                <td className="py-2">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <button
+                      type="button"
+                      className="btn btn-square btn-outline btn-xs size-5 min-h-0"
+                      aria-label={`Move ${seat.player_name} up`}
+                      disabled={participants.indexOf(seat) === 0}
+                      onClick={() => onMoveSeat(seat.peer_id, -1)}
+                    >
+                      <ChevronUp className="size-3" />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-square btn-outline btn-xs size-5 min-h-0"
+                      aria-label={`Move ${seat.player_name} down`}
+                      disabled={participants.indexOf(seat) === participants.length - 1}
+                      onClick={() => onMoveSeat(seat.peer_id, 1)}
+                    >
+                      <ChevronDown className="size-3" />
+                    </button>
+                  </div>
+                </td>
+              )}
               <td className="py-2 text-center tabular-nums">
                 <div className="flex items-center justify-center">
                   {!readOnly && (

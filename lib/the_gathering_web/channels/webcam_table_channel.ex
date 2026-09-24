@@ -282,8 +282,14 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   def handle_in("adjust_team_life", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid team life adjustment"}}, socket}
 
+  # An explicit `randomize` overrides the room's auto-randomize setting for this start.
   def handle_in("start_game", payload, socket) when payload == %{} do
     {:reply, WebcamTableState.start_game(socket.assigns.room_id), socket}
+  end
+
+  def handle_in("start_game", %{"randomize" => randomize} = payload, socket)
+      when map_size(payload) == 1 and is_boolean(randomize) do
+    {:reply, WebcamTableState.start_game(socket.assigns.room_id, randomize), socket}
   end
 
   def handle_in("start_game", _payload, socket),
