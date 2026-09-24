@@ -27,6 +27,9 @@ config :the_gathering, TheGatheringWeb.RateLimit,
   credentials: [limit: 10, scale: :timer.minutes(5)],
   corrections: [limit: 30, scale: :timer.minutes(1)],
   sudo: [limit: 5, global_limit: 100, scale: :timer.minutes(5)],
+  # Each webcam table config request mints fresh 6-hour Cloudflare TURN
+  # credentials; clients fetch it on page load and after socket errors.
+  turn_credentials: [limit: 20, scale: :timer.minutes(5)],
   # Webcam table channels (see TheGatheringWeb.ChannelRateLimit). Every life
   # tap is one event and one SQLite write, so allow bursts of rapid clicking
   # while capping the sustained rate. Signals burst when a seat connects to

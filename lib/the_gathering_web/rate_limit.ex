@@ -52,8 +52,9 @@ defmodule TheGatheringWeb.RateLimit do
     end
   end
 
-  defp hit(:corrections, conn, scale, limit) do
-    RateLimiter.hit({:corrections, conn.assigns.current_scope.user.id}, scale, limit)
+  # Signed-in endpoints limit each account rather than each address.
+  defp hit(bucket, conn, scale, limit) when bucket in [:corrections, :turn_credentials] do
+    RateLimiter.hit({bucket, conn.assigns.current_scope.user.id}, scale, limit)
   end
 
   defp hit(bucket, conn, scale, limit) do

@@ -3,6 +3,8 @@ defmodule TheGatheringWeb.API.WebcamTableConfigController do
 
   alias TheGathering.CloudflareTurn
 
+  plug TheGatheringWeb.RateLimit, bucket: :turn_credentials
+
   @token_salt "webcam table socket"
 
   def show(conn, _params) do

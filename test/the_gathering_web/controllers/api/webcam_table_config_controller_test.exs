@@ -3,6 +3,16 @@ defmodule TheGatheringWeb.API.WebcamTableConfigControllerTest do
 
   setup :register_and_log_in_user
 
+  setup %{user: user} do
+    # SQLite reuses rolled-back user IDs, so clear any earlier test's count.
+    TheGathering.RateLimiter.set({:turn_credentials, user.id}, turn_scale(), 0)
+    :ok
+  end
+
+  defp turn_scale,
+    do:
+      Application.fetch_env!(:the_gathering, TheGatheringWeb.RateLimit)[:turn_credentials][:scale]
+
   test "returns authenticated ICE configuration", %{conn: conn} do
     previous = Application.get_env(:the_gathering, :webcam_table)
 
@@ -116,6 +126,22 @@ defmodule TheGatheringWeb.API.WebcamTableConfigControllerTest do
       assert %{"data" => %{"ice_servers" => [%{"urls" => ["stun:stun.cloudflare.com:3478"]}]}} =
                conn |> get(~p"/api/webcam-table/config") |> json_response(200)
     end
+  end
+
+  test "limits credential minting per account", %{conn: conn, user: user} do
+    limit =
+      Application.fetch_env!(:the_gathering, TheGatheringWeb.RateLimit)[:turn_credentials][:limit]
+
+    TheGathering.RateLimiter.set({:turn_credentials, user.id}, turn_scale(), limit)
+    limited = get(conn, ~p"/api/webcam-table/config")
+
+    assert json_response(limited, 429) == %{"errors" => %{"detail" => "Too Many Requests"}}
+    assert [_seconds] = get_resp_header(limited, "retry-after")
+
+    other_user = TheGathering.AccountsFixtures.user_fixture()
+    TheGathering.RateLimiter.set({:turn_credentials, other_user.id}, turn_scale(), 0)
+    other = log_in_user(build_conn(), other_user)
+    assert other |> get(~p"/api/webcam-table/config") |> json_response(200)
   end
 
   test "requires authentication", %{conn: conn} do
