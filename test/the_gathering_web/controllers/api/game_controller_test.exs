@@ -231,6 +231,66 @@ defmodule TheGatheringWeb.API.GameControllerTest do
     assert Games.get_game(delete_game.id) == nil
   end
 
+  test "editing keeps seat ids while swapping seat numbers and changing format", %{
+    conn: conn,
+    user: user,
+    alice: alice,
+    bob: bob
+  } do
+    {:ok, carol} = Games.create_player(%{name: "Carol"})
+    {:ok, dave} = Games.create_player(%{name: "Dave"})
+
+    {:ok, game} =
+      Games.create_game(
+        %{
+          played_at: ~U[2026-09-20 12:00:00Z],
+          seats: [
+            %{player_id: alice.id, seat: 1, result: "win"},
+            %{player_id: bob.id, seat: 2, result: "loss"},
+            %{player_id: carol.id, seat: 3, result: "loss"},
+            %{player_id: dave.id, seat: 4, result: "loss"}
+          ]
+        },
+        user.id
+      )
+
+    seat_id = fn player -> Enum.find(game.seats, &(&1.player_id == player.id)).id end
+
+    # Reorder so Alice + Carol form team 1 (seats 1 + 2), sending the existing row ids.
+    seats = [
+      %{id: seat_id.(alice), player_id: alice.id, seat: 1, result: "win"},
+      %{id: seat_id.(carol), player_id: carol.id, seat: 2, result: "win"},
+      %{id: seat_id.(bob), player_id: bob.id, seat: 3, result: "loss"},
+      %{id: seat_id.(dave), player_id: dave.id, seat: 4, result: "loss"}
+    ]
+
+    response =
+      conn
+      |> patch(~p"/api/games/#{game.id}", %{game: %{format: "two_headed_giant", seats: seats}})
+      |> json_response(200)
+
+    assert response["data"]["format"] == "two_headed_giant"
+
+    assert Enum.map(response["data"]["seats"], &{&1["seat"], &1["player"]["name"], &1["id"]}) ==
+             [
+               {1, "Alice", seat_id.(alice)},
+               {2, "Carol", seat_id.(carol)},
+               {3, "Bob", seat_id.(bob)},
+               {4, "Dave", seat_id.(dave)}
+             ]
+
+    # An invalid edit rolls the whole change back, so parked seat numbers never leak out.
+    invalid = Enum.map(seats, &%{&1 | result: "win"})
+
+    assert conn
+           |> recycle()
+           |> log_in_user(user)
+           |> patch(~p"/api/games/#{game.id}", %{game: %{seats: invalid}})
+           |> json_response(422)
+
+    assert Games.get_game!(game.id).seats |> Enum.map(& &1.seat) |> Enum.sort() == [1, 2, 3, 4]
+  end
+
   test "rejects a win condition outside the canonical enum", %{conn: conn, alice: alice, bob: bob} do
     response =
       conn
