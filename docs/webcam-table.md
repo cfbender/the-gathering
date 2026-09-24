@@ -177,14 +177,17 @@ Spectators receive boards/cameras without requesting camera permission and canno
 The first seated player owns table setup, timer and turn-count corrections; players retain their
 own life/counter/commander controls. Any seated player can pass the turn.
 
-Protocol 2 adds the authoritative seat to the join reply and adds `seats`, `owner_id`, `monarch`
-and `cards` to `table_state`; existing events remain. Legacy clients' initial full status echo is
-ignored to protect restored seats. New clients refresh the one-day socket token on connection
-failure. **First deployment migration:** existing ephemeral games cannot be reconstructed after
-the old server stops. Finish them before deploying, migrate the database, and reload existing
-clients once. Old clients cannot display spectator mode or hydrate local controls from join replies;
-the server still enforces read-only spectator access. Subsequent restarts with updated clients
-recover automatically without a page refresh.
+Join replies carry the authoritative seat, and `table_state` includes `seats`, `owner_id`,
+`monarch` and `cards`. Clients refresh the one-day socket token (encrypted with
+`Phoenix.Token.encrypt`, so page scripts cannot read the session token inside it) on connection
+failure. Game state survives restarts: rooms reload their saved session on the next join.
+
+The server bounds untrusted input: `peer_id` must be a canonical UUID (clients use
+`crypto.randomUUID()`), WebRTC `signal` payloads are capped at 64 KB of JSON, and the websocket
+refuses frames over 128 KB. Every channel event spends a token from a per-connection bucket
+(signals have their own, larger bucket) and replies `{reason: "rate limited"}` when it is empty;
+joins and TURN credential requests (`GET /api/webcam-table/config`) are limited per account.
+Limits live under `config :the_gathering, TheGatheringWeb.RateLimit`.
 
 The Games page still finds live tables without the URL: every seated channel process also
 tracks itself on one lobby presence topic (`TheGatheringWeb.WebcamTableRooms`), and
@@ -433,7 +436,8 @@ can still save or share what they saw; this feature cannot revoke frames already
 
 ## File and component structure
 
-- `TheGatheringWeb.UserSocket` verifies a short-lived token wrapping the tracked cookie session.
+- `TheGatheringWeb.UserSocket` issues and decrypts a short-lived encrypted token wrapping the tracked
+  cookie session.
 - `TheGatheringWeb.WebcamTableChannel` caps rooms at ten, relays targeted WebRTC signals,
   merges `update_status`/`set_eliminated` into presence, validates `seat_order`/`timer`/`timer_sync`,
   `start_game`/`turn_settings`/`pass_turn`/`adjust_turn`, and generates
@@ -612,7 +616,11 @@ the preview when clicked. The **Cards** tab of the side panel (`cards-tab.tsx`) 
 newest identified card with its details (Clear hides it locally), a gallery search that
 previews any printing, and the detected cards grouped per player with a Shared / My board
 toggle. The list is persisted through the channel's `cards` event (up to 500 entries per room)
-and synchronized through `identified_cards` and `table_state`. Data-channel messages remain for
+and synchronized through `identified_cards` and `table_state`. The server stamps each entry's
+`byPlayerName` from the sender's seat (any client-supplied name is ignored), and every
+`identified_cards` broadcast carries the change `type` and the acting seat as
+`by: {peer_id, player_name}`. Any seated player may remove any entry to correct a
+misidentification; spectators cannot change the list. Data-channel messages remain for
 older clients; private reveal identifications are never persisted. If the card name matches one of the owner's
 commanders and they have no deck selected yet, it also selects that deck.
 

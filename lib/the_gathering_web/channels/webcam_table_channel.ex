@@ -31,8 +31,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
          events: ChannelRateLimit.new(:webcam_table_events),
          signals: ChannelRateLimit.new(:webcam_table_signals)
        })
-       |> assign(:owner?, state.owner_id == participant.player_id)
-       |> assign(:protocol, Map.get(params, "protocol", 1))}
+       |> assign(:owner?, state.owner_id == participant.player_id)}
     else
       # Only an invalid room id fails `valid_room_id?/1`; a full room is reported by the room.
       false -> {:error, %{reason: "invalid room"}}
@@ -110,23 +109,6 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   defp handle_event(event, _payload, %{assigns: %{participant: %{spectator: true}}} = socket)
        when event not in ["signal", "timer_sync"] do
     {:reply, {:error, %{reason: "spectators cannot change the game"}}, socket}
-  end
-
-  # Old clients republish defaults immediately after joining. Ignore that one
-  # legacy status echo rather than overwriting the restored durable seat.
-  defp handle_event(
-         "update_status",
-         %{
-           "life" => _,
-           "poison" => _,
-           "rad" => _,
-           "commander_casts" => _,
-           "commander_damage" => _,
-           "camera_off" => _
-         },
-         %{assigns: %{protocol: 1}} = socket
-       ) do
-    {:reply, :ok, assign(socket, :protocol, 2)}
   end
 
   defp handle_event(event, _payload, %{assigns: %{owner?: false}} = socket)

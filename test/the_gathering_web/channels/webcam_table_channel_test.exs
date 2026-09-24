@@ -181,6 +181,21 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert meta.life == 37
   end
 
+  test "a full status update right after joining is applied", %{socket: socket, room_id: room} do
+    full = %{
+      "life" => 33,
+      "poison" => 1,
+      "rad" => 2,
+      "commander_casts" => %{},
+      "commander_damage" => %{},
+      "camera_off" => true
+    }
+
+    assert_reply push(socket, "update_status", full), :ok
+    assert %{metas: [%{life: 33, camera_off: true}]} = Presence.get_by_key(socket.topic, @peer_a)
+    assert Enum.map(WebcamTables.snapshot(room).seats, & &1.life) == [33]
+  end
+
   test "publishes separate commander counters and rejects invalid updates atomically", %{
     socket: socket,
     room_id: room_id
@@ -1029,11 +1044,10 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert saved.turns == WebcamTables.snapshot(room).turns
   end
 
-  test "2HG randomizes whole pairs, and legacy snapshots restore as Commander", %{
+  test "2HG randomizes whole pairs, and older snapshot formats start fresh", %{
     socket: owner,
     room_id: room
   } do
-    alias TheGathering.WebcamTables.Session
     for peer <- [@peer_b, @peer_c, @peer_d, @peer_e], do: join_seat(room, peer)
     assert_reply push(owner, "set_mode", %{"mode" => "two_headed_giant"}), :ok
     assert_reply push(owner, "start_game", %{}), :error
@@ -1046,17 +1060,9 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
              Enum.sort(Enum.chunk_every(peers, 2))
 
     persisted = Repo.get!(Session, room)
-    decoded = Jason.decode!(persisted.snapshot)
-
-    legacy = %{
-      decoded
-      | "version" => 1,
-        "state" => Map.drop(decoded["state"], ["mode", "team_life"])
-    }
-
+    legacy = persisted.snapshot |> Jason.decode!() |> Map.put("version", 1)
     persisted |> Ecto.Changeset.change(snapshot: Jason.encode!(legacy)) |> Repo.update!()
-    assert Session.load(room).mode == "commander"
-    assert Session.load(room).team_life == %{}
+    assert Session.load(room) == nil
   end
 
   test "start_game with randomize: false keeps the arranged order despite auto-randomize", %{
@@ -1121,8 +1127,7 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     |> socket(peer, %{user: Accounts.get_user(player.user_id)})
     |> subscribe_and_join!(WebcamTableChannel, "webcam_table:#{room}", %{
       "peer_id" => peer,
-      "player_id" => player.id,
-      "protocol" => 2
+      "player_id" => player.id
     })
   end
 
