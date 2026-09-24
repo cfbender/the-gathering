@@ -5,7 +5,7 @@ import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
 import { CommanderPicker } from "./commander-picker"
-import { commanderNames } from "./seat-counters"
+import { commanderNames, counterValue } from "./seat-counters"
 import type { TableParticipant } from "./use-webcam-room"
 
 const COLOR_TEXT: Record<string, string> = {
@@ -18,7 +18,28 @@ const COLOR_TEXT: Record<string, string> = {
   "": "text-white/85",
 }
 
-/** The compact name opens the owner's deck picker; tax lives in the counters panel. */
+/** Current tax per commander, in name order; adjust it from the counters panel or hotkeys. */
+function TaxBadge({ participant, names }: { participant: TableParticipant; names: string[] }) {
+  const taxes = names.map(
+    (commander) => 2 * counterValue(participant, { kind: "casts", commander }),
+  )
+  const label = `Commander tax: ${names.map((name, index) => `${name} +${taxes[index]}`).join(", ")}`
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded bg-black/45 px-1 font-bold text-white tabular-nums",
+        taxes.every((tax) => tax === 0) && "text-white/55",
+      )}
+      role="img"
+      aria-label={label}
+      title={label}
+    >
+      {taxes.map((tax) => `+${tax}`).join("/")}
+    </span>
+  )
+}
+
+/** The compact name opens the owner's deck picker; the tax badge sits left of the name. */
 export function CommanderControl({
   participant,
   decks,
@@ -33,7 +54,8 @@ export function CommanderControl({
   onChooseDeck: (deckId: number) => void
 }) {
   const deck = decks.find((candidate) => candidate.id === participant.deck_id)
-  const label = commanderNames(deck).join(" / ")
+  const names = commanderNames(deck)
+  const label = names.join(" / ")
 
   return (
     <div className="flex min-w-0 items-center gap-1.5">
@@ -54,6 +76,7 @@ export function CommanderControl({
             title={label || "Select commander"}
             aria-label={`Choose ${participant.player_name}'s commander`}
           >
+            {deck && <TaxBadge participant={participant} names={names} />}
             <CommanderHover deck={deck}>
               {deck ? <DeckCommanders deck={deck} compact /> : <span>Select commander</span>}
             </CommanderHover>
@@ -70,6 +93,7 @@ export function CommanderControl({
           )}
           title={label || undefined}
         >
+          {deck && <TaxBadge participant={participant} names={names} />}
           <CommanderHover deck={deck}>
             {deck ? <DeckCommanders deck={deck} compact /> : <span>No commander yet</span>}
           </CommanderHover>

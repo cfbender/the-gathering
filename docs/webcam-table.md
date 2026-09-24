@@ -226,7 +226,11 @@ always large, everyone else is small, and controls live in a collapsible column.
 - **Camera rail** (left, `lg:` defaults to 15 rem): every seat as a 16:9 tile with one life control
   over the video and a single-line name / ⋯ menu / camera indicator / commander bar. Hover or
   focus your life box (tap on touch screens) to reveal stacked ±1 buttons and the counters chevron.
+  Your life box is also a text field: type a new total and press Enter (or click away) to apply it
+  as one change; Escape or a non-number discards the edit.
   Other seats have read-only life and an always-visible chevron to inspect their counters.
+  Once a commander is chosen, a tax badge (`+4`, or `+4/+2` for partners in name order) sits just
+  left of the commander name on every seat; adjust it from the counters panel or tax hotkeys.
   The ⋯ menu offers pin/unpin and eliminate/restore for every seat; your own menu also has
   camera on/off and Reveal hand, opening the existing private-reveal flow in a dialog.
   Commander names truncate when necessary; the full name remains in the title/hover preview.
