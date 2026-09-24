@@ -11,7 +11,11 @@ defmodule TheGatheringWeb.Endpoint do
     same_site: "Lax"
   ]
 
-  socket "/socket", TheGatheringWeb.UserSocket, websocket: true, longpoll: false
+  # The largest legitimate client frame is a WebRTC signal, capped at 64 KB by
+  # WebcamTableChannel; leave headroom for the envelope and JSON escaping.
+  socket "/socket", TheGatheringWeb.UserSocket,
+    websocket: [max_frame_size: 131_072],
+    longpoll: false
 
   # Vite output (hashed filenames) is safe to cache forever.
   plug Plug.Static,
