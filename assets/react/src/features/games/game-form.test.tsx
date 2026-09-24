@@ -203,6 +203,24 @@ describe("GameForm submissions", () => {
     ])
   })
 
+  it("shows nested seat errors as text instead of crashing the page", async () => {
+    const { fetch } = renderGame()
+    fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (input === "/api/games/44" && init?.method === "PATCH") {
+        return new Response(
+          JSON.stringify({ errors: { seats: [{}, { seat: ["has already been taken"] }] } }),
+          { status: 422, headers: { "content-type": "application/json" } },
+        )
+      }
+      return response([])
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }))
+    expect(await screen.findByText("Seat 2: seat has already been taken")).toBeTruthy()
+    expect(screen.getByRole("alert").textContent).toContain("Could not save the game")
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
   it("submits an archived player's persisted ID without trying to recreate the player", async () => {
     const { fetch } = renderGame()
 

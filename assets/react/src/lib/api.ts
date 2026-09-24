@@ -1,5 +1,12 @@
-/** Field errors as rendered by `TheGatheringWeb.ChangesetJSON`: `{ field: ["message"] }`. */
-export type FieldErrors = Record<string, string | string[] | Record<string, unknown> | undefined>
+/** Errors for one nested row of a `cast_assoc` list: `{ seat: ["message"] }`, or `{}` when valid. */
+export type RowErrors = Record<string, string[] | undefined>
+
+/** Field errors as rendered by `TheGatheringWeb.ChangesetJSON`: `{ field: ["message"] }`,
+ * with nested rows as `{ seats: [{}, { seat: ["message"] }] }`. */
+export type FieldErrors = Record<
+  string,
+  string | Array<string | RowErrors> | Record<string, unknown> | undefined
+>
 
 /** Error body from the Phoenix API: `{ errors: { detail: "Not Found" } }` or field errors. */
 export interface ApiErrorBody {
@@ -19,16 +26,39 @@ export class ApiError extends Error {
     this.errors = errors
   }
 
-  /** Messages for a single field, empty when the field is valid or unknown. */
+  /**
+   * Messages for a single field, empty when the field is valid or unknown.
+   *
+   * `cast_assoc` errors arrive as one object per row (`seats: [{}, {seat: ["…"]}]`);
+   * those flatten to "Seat 2: seat has already been taken" so forms never render objects.
+   */
   fieldErrors(field: string): string[] {
     const value = this.errors[field]
-    return Array.isArray(value) ? value : []
+    if (!Array.isArray(value)) return []
+    const label = field.endsWith("s") ? field.slice(0, -1) : field
+    return value.flatMap((entry, index) => {
+      if (typeof entry === "string") return [entry]
+      if (!entry || typeof entry !== "object") return []
+      return Object.entries(entry).flatMap(([key, messages]) =>
+        (messages ?? []).map(
+          (message) => `${capitalize(label)} ${index + 1}: ${humanize(key)} ${message}`,
+        ),
+      )
+    })
   }
 
   /** The top-level `errors.detail` message, or `null` when the response only had field errors. */
   get detail(): string | null {
     return typeof this.errors.detail === "string" ? this.errors.detail : null
   }
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function humanize(key: string): string {
+  return key.replace(/_id$/, "").replaceAll("_", " ")
 }
 
 function csrfToken(): string | null {
