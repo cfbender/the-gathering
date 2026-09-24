@@ -33,7 +33,10 @@ config :the_gathering, :catalog_sync_enabled, false
 # unlimited; the rate limit tests lower it for their own addresses.
 config :the_gathering, TheGatheringWeb.RateLimit,
   credentials: [limit: 1_000_000, scale: :timer.minutes(5)],
-  sudo: [limit: 1_000_000, global_limit: 1_000_000, scale: :timer.minutes(5)]
+  sudo: [limit: 1_000_000, global_limit: 1_000_000, scale: :timer.minutes(5)],
+  webcam_table_events: [capacity: 1_000_000, refill_per_second: 1_000_000],
+  webcam_table_signals: [capacity: 1_000_000, refill_per_second: 1_000_000],
+  webcam_table_joins: [limit: 1_000_000, scale: :timer.minutes(1)]
 
 # Deck-list tests exercise ManaVault links against a stubbed self-hosted origin.
 config :the_gathering, TheGathering.Decklists, manavault_url: "https://manavault.example.com"

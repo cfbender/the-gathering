@@ -4,7 +4,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   use TheGatheringWeb, :channel
 
   alias TheGathering.Games
-  alias TheGatheringWeb.{Presence, WebcamTableRooms, WebcamTableState}
+  alias TheGatheringWeb.{ChannelRateLimit, Presence, WebcamTableRooms, WebcamTableState}
 
   @starting_life 40
   @life_range -999..999
@@ -16,7 +16,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   @impl true
   def join("webcam_table:" <> room_id, params, socket) do
-    with true <- valid_room_id?(room_id),
+    with :ok <- join_rate_limit(socket.assigns.user.id),
+         true <- valid_room_id?(room_id),
          {:ok, participant} <- participant(params, socket.assigns.user.id),
          {:ok, state, participant} <- WebcamTableState.join(room_id, self(), participant) do
       send(self(), :after_join)
@@ -25,6 +26,10 @@ defmodule TheGatheringWeb.WebcamTableChannel do
        socket
        |> assign(:participant, participant)
        |> assign(:room_id, room_id)
+       |> assign(:rate_limits, %{
+         events: ChannelRateLimit.new(:webcam_table_events),
+         signals: ChannelRateLimit.new(:webcam_table_signals)
+       })
        |> assign(:owner?, state.owner_id == participant.player_id)
        |> assign(:protocol, Map.get(params, "protocol", 1))}
     else
@@ -80,63 +85,83 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     {:noreply, socket}
   end
 
+  # Every event spends a token before it is handled, so floods are refused
+  # before they validate, broadcast or write SQLite. Signals have their own,
+  # larger bucket because connecting to a full table sends dozens at once.
   @impl true
-  def handle_in(event, _payload, %{assigns: %{participant: %{spectator: true}}} = socket)
-      when event not in ["signal", "timer_sync"] do
+  def handle_in(event, payload, socket) do
+    bucket = if event == "signal", do: :signals, else: :events
+
+    case ChannelRateLimit.take(socket.assigns.rate_limits[bucket]) do
+      {:ok, updated} ->
+        rate_limits = Map.put(socket.assigns.rate_limits, bucket, updated)
+        handle_event(event, payload, assign(socket, :rate_limits, rate_limits))
+
+      {:error, :rate_limited} ->
+        {:reply, {:error, %{reason: "rate limited"}}, socket}
+    end
+  end
+
+  defp handle_event(event, _payload, %{assigns: %{participant: %{spectator: true}}} = socket)
+       when event not in ["signal", "timer_sync"] do
     {:reply, {:error, %{reason: "spectators cannot change the game"}}, socket}
   end
 
   # Old clients republish defaults immediately after joining. Ignore that one
   # legacy status echo rather than overwriting the restored durable seat.
-  def handle_in(
-        "update_status",
-        %{
-          "life" => _,
-          "poison" => _,
-          "rad" => _,
-          "commander_casts" => _,
-          "commander_damage" => _,
-          "camera_off" => _
-        },
-        %{assigns: %{protocol: 1}} = socket
-      ) do
+  defp handle_event(
+         "update_status",
+         %{
+           "life" => _,
+           "poison" => _,
+           "rad" => _,
+           "commander_casts" => _,
+           "commander_damage" => _,
+           "camera_off" => _
+         },
+         %{assigns: %{protocol: 1}} = socket
+       ) do
     {:reply, :ok, assign(socket, :protocol, 2)}
   end
 
-  def handle_in(event, _payload, %{assigns: %{owner?: false}} = socket)
-      when event in [
-             "start_game",
-             "seat_order",
-             "arrange_seats",
-             "set_mode",
-             "turn_settings",
-             "adjust_turn",
-             "timer"
-           ] do
+  defp handle_event(event, _payload, %{assigns: %{owner?: false}} = socket)
+       when event in [
+              "start_game",
+              "seat_order",
+              "arrange_seats",
+              "set_mode",
+              "turn_settings",
+              "adjust_turn",
+              "timer"
+            ] do
     {:reply, {:error, %{reason: "only the room owner can change table controls"}}, socket}
   end
 
-  def handle_in("cards", %{"type" => "cards_cleared", "ownerPeerId" => owner} = payload, socket) do
+  defp handle_event(
+         "cards",
+         %{"type" => "cards_cleared", "ownerPeerId" => owner} = payload,
+         socket
+       ) do
     if owner == socket.assigns.participant.peer_id,
       do: {:reply, update_cards(socket, payload), socket},
       else: {:reply, {:error, %{reason: "only the board owner can clear its cards"}}, socket}
   end
 
   # Attribution is always the sender's seat; a client-supplied name is ignored.
-  def handle_in("cards", %{"type" => "card_identified", "entry" => entry} = payload, socket)
-      when is_map(entry) do
+  defp handle_event("cards", %{"type" => "card_identified", "entry" => entry} = payload, socket)
+       when is_map(entry) do
     entry = Map.put(entry, "byPlayerName", socket.assigns.participant.player_name)
     {:reply, update_cards(socket, %{payload | "entry" => entry}), socket}
   end
 
   # Any seated player may remove any entry to correct a misidentification; the
   # broadcast records who did it.
-  def handle_in("cards", payload, socket) do
+  defp handle_event("cards", payload, socket) do
     {:reply, update_cards(socket, payload), socket}
   end
 
-  def handle_in("signal", %{"target" => target, "signal" => signal}, socket)
-      when is_binary(target) and is_map(signal) do
+  defp handle_event("signal", %{"target" => target, "signal" => signal}, socket)
+       when is_binary(target) and is_map(signal) do
     cond do
       not uuid?(target) ->
         {:reply, {:error, %{reason: "invalid signal"}}, socket}
@@ -155,10 +180,10 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     end
   end
 
-  def handle_in("signal", _payload, socket),
+  defp handle_event("signal", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid signal"}}, socket}
 
-  def handle_in("choose_deck", %{"deck_id" => deck_id}, socket) when is_integer(deck_id) do
+  defp handle_event("choose_deck", %{"deck_id" => deck_id}, socket) when is_integer(deck_id) do
     participant = socket.assigns.participant
 
     case Games.get_deck(deck_id) do
@@ -175,12 +200,12 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     end
   end
 
-  def handle_in("choose_deck", _payload, socket),
+  defp handle_event("choose_deck", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid deck"}}, socket}
 
   # Ephemeral state a player publishes about their own seat, carried by presence.
-  def handle_in("reveal", %{"target" => target} = payload, socket)
-      when map_size(payload) == 1 and (is_binary(target) or is_nil(target)) do
+  defp handle_event("reveal", %{"target" => target} = payload, socket)
+       when map_size(payload) == 1 and (is_binary(target) or is_nil(target)) do
     if is_nil(target) or
          (target != socket.assigns.participant.peer_id and
             Map.has_key?(Presence.list(socket), target)) do
@@ -190,12 +215,12 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     end
   end
 
-  def handle_in("reveal", _payload, socket),
+  defp handle_event("reveal", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid reveal"}}, socket}
 
   # Ephemeral table state a player publishes about their own seat: life total and
   # whether their camera is off. It rides on presence like the deck.
-  def handle_in("update_status", payload, socket) when is_map(payload) do
+  defp handle_event("update_status", payload, socket) when is_map(payload) do
     case status_changes(payload) do
       {:ok, changes} ->
         changes = eliminate_at_zero(changes, socket.assigns.participant)
@@ -218,25 +243,25 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     end
   end
 
-  def handle_in("update_status", _payload, socket),
+  defp handle_event("update_status", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid status"}}, socket}
 
-  def handle_in("take_monarch", payload, socket) when payload == %{} do
+  defp handle_event("take_monarch", payload, socket) when payload == %{} do
     :ok = WebcamTableState.take_monarch(socket.assigns.room_id, socket.assigns.participant)
     {:reply, :ok, socket}
   end
 
-  def handle_in("take_monarch", _payload, socket),
+  defp handle_event("take_monarch", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid monarch claim"}}, socket}
 
   # Any seated player may eliminate/restore a present seat. The target channel
   # owns its presence update, so subsequent life/camera updates cannot overwrite it.
-  def handle_in(
-        "set_eliminated",
-        %{"peer_id" => peer_id, "eliminated" => eliminated} = payload,
-        socket
-      )
-      when map_size(payload) == 2 and is_binary(peer_id) and is_boolean(eliminated) do
+  defp handle_event(
+         "set_eliminated",
+         %{"peer_id" => peer_id, "eliminated" => eliminated} = payload,
+         socket
+       )
+       when map_size(payload) == 2 and is_binary(peer_id) and is_boolean(eliminated) do
     if (socket.assigns.owner? or peer_id == socket.assigns.participant.peer_id) and
          Enum.any?(
            WebcamTableState.snapshot(socket.assigns.room_id).seats,
@@ -251,13 +276,13 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     end
   end
 
-  def handle_in("set_eliminated", _payload, socket),
+  defp handle_event("set_eliminated", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid elimination"}}, socket}
 
   # Seat order is shared so every browser records the same turn order. The
   # proposed order must name exactly the peers present at that moment.
-  def handle_in(event, %{"peer_ids" => peer_ids}, socket)
-      when event in ["seat_order", "arrange_seats"] and is_list(peer_ids) do
+  defp handle_event(event, %{"peer_ids" => peer_ids}, socket)
+       when event in ["seat_order", "arrange_seats"] and is_list(peer_ids) do
     state = WebcamTableState.snapshot(socket.assigns.room_id)
 
     present =
@@ -277,20 +302,24 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     end
   end
 
-  def handle_in(event, _payload, socket) when event in ["seat_order", "arrange_seats"],
+  defp handle_event(event, _payload, socket) when event in ["seat_order", "arrange_seats"],
     do: {:reply, {:error, %{reason: "invalid seat order"}}, socket}
 
-  def handle_in("set_mode", %{"mode" => mode} = payload, socket)
-      when map_size(payload) == 1 and mode in ["commander", "two_headed_giant", "five_star"] do
+  defp handle_event("set_mode", %{"mode" => mode} = payload, socket)
+       when map_size(payload) == 1 and mode in ["commander", "two_headed_giant", "five_star"] do
     {:reply, WebcamTableState.mode(socket.assigns.room_id, mode), socket}
   end
 
-  def handle_in("set_mode", _payload, socket),
+  defp handle_event("set_mode", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid game mode"}}, socket}
 
-  def handle_in("adjust_team_life", %{"team_index" => team, "delta" => delta} = payload, socket)
-      when map_size(payload) == 2 and is_integer(team) and team >= 0 and is_integer(delta) and
-             delta in -1998..1998 do
+  defp handle_event(
+         "adjust_team_life",
+         %{"team_index" => team, "delta" => delta} = payload,
+         socket
+       )
+       when map_size(payload) == 2 and is_integer(team) and team >= 0 and is_integer(delta) and
+              delta in -1998..1998 do
     {:reply,
      WebcamTableState.adjust_team_life(
        socket.assigns.room_id,
@@ -300,75 +329,86 @@ defmodule TheGatheringWeb.WebcamTableChannel do
      ), socket}
   end
 
-  def handle_in("adjust_team_life", _payload, socket),
+  defp handle_event("adjust_team_life", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid team life adjustment"}}, socket}
 
   # An explicit `randomize` overrides the room's auto-randomize setting for this start.
-  def handle_in("start_game", payload, socket) when payload == %{} do
+  defp handle_event("start_game", payload, socket) when payload == %{} do
     {:reply, WebcamTableState.start_game(socket.assigns.room_id), socket}
   end
 
-  def handle_in("start_game", %{"randomize" => randomize} = payload, socket)
-      when map_size(payload) == 1 and is_boolean(randomize) do
+  defp handle_event("start_game", %{"randomize" => randomize} = payload, socket)
+       when map_size(payload) == 1 and is_boolean(randomize) do
     {:reply, WebcamTableState.start_game(socket.assigns.room_id, randomize), socket}
   end
 
-  def handle_in("start_game", _payload, socket),
+  defp handle_event("start_game", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid start"}}, socket}
 
-  def handle_in("turn_settings", %{"auto_randomize" => enabled} = payload, socket)
-      when map_size(payload) == 1 and is_boolean(enabled) do
+  defp handle_event("turn_settings", %{"auto_randomize" => enabled} = payload, socket)
+       when map_size(payload) == 1 and is_boolean(enabled) do
     {:reply, WebcamTableState.turn_settings(socket.assigns.room_id, enabled), socket}
   end
 
-  def handle_in("turn_settings", _payload, socket),
+  defp handle_event("turn_settings", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid turn settings"}}, socket}
 
-  def handle_in("pass_turn", %{"revision" => revision} = payload, socket)
-      when map_size(payload) == 1 and is_integer(revision) and revision >= 0 do
+  defp handle_event("pass_turn", %{"revision" => revision} = payload, socket)
+       when map_size(payload) == 1 and is_integer(revision) and revision >= 0 do
     {:reply, WebcamTableState.pass_turn(socket.assigns.room_id, revision), socket}
   end
 
-  def handle_in("pass_turn", _payload, socket),
+  defp handle_event("pass_turn", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid pass turn"}}, socket}
 
-  def handle_in("adjust_turn", %{"player_id" => player_id, "delta" => delta} = payload, socket)
-      when map_size(payload) == 2 and is_integer(player_id) and delta in [-1, 1] do
+  defp handle_event(
+         "adjust_turn",
+         %{"player_id" => player_id, "delta" => delta} = payload,
+         socket
+       )
+       when map_size(payload) == 2 and is_integer(player_id) and delta in [-1, 1] do
     {:reply, WebcamTableState.adjust_turn(socket.assigns.room_id, player_id, delta), socket}
   end
 
-  def handle_in("adjust_turn", _payload, socket),
+  defp handle_event("adjust_turn", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid turn adjustment"}}, socket}
 
-  def handle_in("timer", %{"action" => action} = payload, socket)
-      when map_size(payload) == 1 and action in ["pause", "resume"] do
+  defp handle_event("timer", %{"action" => action} = payload, socket)
+       when map_size(payload) == 1 and action in ["pause", "resume"] do
     timer = WebcamTableState.timer(socket.assigns.room_id, action)
     {:reply, {:ok, timer}, socket}
   end
 
-  def handle_in("timer", _payload, socket),
+  defp handle_event("timer", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid timer action"}}, socket}
 
-  def handle_in("timer_sync", payload, socket) when payload == %{} do
+  defp handle_event("timer_sync", payload, socket) when payload == %{} do
     {:reply, {:ok, WebcamTableState.snapshot(socket.assigns.room_id).timer}, socket}
   end
 
-  def handle_in("timer_sync", _payload, socket),
+  defp handle_event("timer_sync", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid timer sync"}}, socket}
 
-  def handle_in("roll", %{"kind" => "dice", "sides" => sides} = payload, socket)
-      when map_size(payload) == 2 and is_integer(sides) and sides in 2..1000 do
+  defp handle_event("roll", %{"kind" => "dice", "sides" => sides} = payload, socket)
+       when map_size(payload) == 2 and is_integer(sides) and sides in 2..1000 do
     broadcast_roll(socket, %{kind: "dice", sides: sides, result: :rand.uniform(sides)})
     {:reply, :ok, socket}
   end
 
-  def handle_in("roll", %{"kind" => "coin"} = payload, socket) when map_size(payload) == 1 do
+  defp handle_event("roll", %{"kind" => "coin"} = payload, socket) when map_size(payload) == 1 do
     broadcast_roll(socket, %{kind: "coin", result: Enum.random(["Heads", "Tails"])})
     {:reply, :ok, socket}
   end
 
-  def handle_in("roll", _payload, socket),
+  defp handle_event("roll", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid roll (dice must have 2–1000 sides)"}}, socket}
+
+  defp join_rate_limit(user_id) do
+    case ChannelRateLimit.join(user_id) do
+      :ok -> :ok
+      {:error, :rate_limited} -> {:error, "rate limited"}
+    end
+  end
 
   defp update_cards(socket, payload),
     do: WebcamTableState.cards(socket.assigns.room_id, payload, socket.assigns.participant)
