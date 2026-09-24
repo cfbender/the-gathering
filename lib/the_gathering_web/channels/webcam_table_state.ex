@@ -48,7 +48,7 @@ defmodule TheGatheringWeb.WebcamTableState do
   def take_monarch(room, participant),
     do: GenServer.call(__MODULE__, {:monarch, room, participant})
 
-  def cards(room, payload), do: GenServer.call(__MODULE__, {:cards, room, payload})
+  def cards(room, payload, actor), do: GenServer.call(__MODULE__, {:cards, room, payload, actor})
 
   def new_timer, do: %{started_at: nil, paused_at: nil, paused_ms: 0}
 
@@ -133,14 +133,20 @@ defmodule TheGatheringWeb.WebcamTableState do
     {:reply, snapshot_entry(Map.fetch!(state.rooms, room)), state}
   end
 
-  def handle_call({:cards, room, payload}, _from, state) do
+  def handle_call({:cards, room, payload, actor}, _from, state) do
     entry = Map.fetch!(state.rooms, room)
 
     case Cards.update(entry.cards, payload, Map.values(entry.all_seats)) do
       {:ok, cards} ->
         entry = %{entry | cards: cards}
         Session.save(room, entry)
-        Endpoint.broadcast!("webcam_table:#{room}", "identified_cards", %{entries: cards})
+
+        Endpoint.broadcast!("webcam_table:#{room}", "identified_cards", %{
+          entries: cards,
+          type: payload["type"],
+          by: Map.take(actor, [:peer_id, :player_name])
+        })
+
         {:reply, :ok, put_in(state, [:rooms, room], entry)}
 
       :error ->

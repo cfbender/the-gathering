@@ -115,12 +115,21 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   def handle_in("cards", %{"type" => "cards_cleared", "ownerPeerId" => owner} = payload, socket) do
     if owner == socket.assigns.participant.peer_id,
-      do: {:reply, WebcamTableState.cards(socket.assigns.room_id, payload), socket},
+      do: {:reply, update_cards(socket, payload), socket},
       else: {:reply, {:error, %{reason: "only the board owner can clear its cards"}}, socket}
   end
 
+  # Attribution is always the sender's seat; a client-supplied name is ignored.
+  def handle_in("cards", %{"type" => "card_identified", "entry" => entry} = payload, socket)
+      when is_map(entry) do
+    entry = Map.put(entry, "byPlayerName", socket.assigns.participant.player_name)
+    {:reply, update_cards(socket, %{payload | "entry" => entry}), socket}
+  end
+
+  # Any seated player may remove any entry to correct a misidentification; the
+  # broadcast records who did it.
   def handle_in("cards", payload, socket) do
-    {:reply, WebcamTableState.cards(socket.assigns.room_id, payload), socket}
+    {:reply, update_cards(socket, payload), socket}
   end
 
   def handle_in("signal", %{"target" => target, "signal" => signal}, socket)
@@ -348,6 +357,9 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   def handle_in("roll", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid roll (dice must have 2–1000 sides)"}}, socket}
+
+  defp update_cards(socket, payload),
+    do: WebcamTableState.cards(socket.assigns.room_id, payload, socket.assigns.participant)
 
   defp put_reveal(socket, target) do
     participant = %{socket.assigns.participant | reveal_to: target}
