@@ -72,6 +72,15 @@ status for each source. Results, including source errors, are cached in memory f
 five minutes. The user's player page links these decks, and the new-game form can
 resolve one into a new deck with a quick pick.
 
+### Appearance
+
+**Settings → Appearance** picks a color palette (Claret, Nord, Catppuccin, Tokyo Night,
+Gruvbox, Everforest, Kanagawa, Night Owl, Dracula, Rosé Pine, Solarized, or Monochrome) and a surface style (Liquid glass or
+Classic). Both are saved on the user account through `PATCH /api/session/appearance`
+(`{"user": {"palette": "...", "theme_style": "glass" | "classic"}}`), returned in user
+JSON, and rendered onto `<html>` by the SPA shell so the first paint already matches on
+any device. Light/dark mode stays a per-device preference on the navigation toggle.
+
 The integrations use the upstream services' public interfaces:
 
 - Moxfield: `GET https://api2.moxfield.com/v3/decks/all/:id`. The request sends a

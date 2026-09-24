@@ -86,6 +86,9 @@ defmodule TheGathering.Accounts do
     end
   end
 
+  def update_appearance(user, attrs),
+    do: user |> User.appearance_changeset(attrs) |> Repo.update()
+
   def sudo_mode?(user, minutes \\ -20)
 
   def sudo_mode?(%User{authenticated_at: authenticated_at}, minutes)

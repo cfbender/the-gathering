@@ -80,6 +80,7 @@ defmodule TheGatheringWeb.Router do
     pipe_through [:api, :require_authenticated_user]
 
     patch "/session/user", SessionController, :update_profile
+    patch "/session/appearance", SessionController, :update_appearance
     get "/session/remote-decks", RemoteDeckController, :index
     post "/session/remote-decks/sync", RemoteDeckController, :sync
 

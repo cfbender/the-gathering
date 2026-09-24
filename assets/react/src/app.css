@@ -1,4 +1,5 @@
 @import "tailwindcss" source(none);
+@import "./palettes.css";
 @source "./";
 @source "../../../lib/the_gathering_web/controllers";
 
@@ -9,7 +10,8 @@
 /* Claret palette, shared with manavault and based on the claret.nvim colorscheme:
    claret primary, grove-green secondary, brass accent on warm neutral bases.
    Dark follows prefers-color-scheme; the SPA shell script and ThemeProvider
-   set data-theme explicitly from the stored preference. */
+   set data-theme explicitly from the stored preference. Other palettes (Nord,
+   Catppuccin, ...) override these tokens per mode in palettes.css. */
 @plugin "daisyui/theme" {
   name: "dark";
   default: false;

@@ -5,6 +5,13 @@ defmodule TheGathering.Accounts.User do
   alias TheGathering.Decklists.Destination
 
   @roles ~w(admin member)
+  # Appearance ids must match PALETTES/ThemeStyle in assets/react/src/lib/theme.tsx
+  # and the palette blocks in assets/react/src/palettes.css.
+  @palettes ~w(
+    claret nord catppuccin tokyonight gruvbox everforest kanagawa
+    nightowl dracula rosepine solarized monochrome
+  )
+  @theme_styles ~w(glass classic)
 
   schema "users" do
     field :username, :string
@@ -18,6 +25,8 @@ defmodule TheGathering.Accounts.User do
     field :manavault_url, :string
     field :manavault_api_key, TheGathering.Accounts.EncryptedString, redact: true
     field :role, :string, default: "member"
+    field :palette, :string, default: "claret"
+    field :theme_style, :string, default: "glass"
     field :disabled_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
 
@@ -92,6 +101,18 @@ defmodule TheGathering.Accounts.User do
       message: "must be a username, not a URL"
     )
     |> normalize_manavault_origin()
+  end
+
+  @doc "Palette ids a user may pick; Claret is the default."
+  def palettes, do: @palettes
+
+  @doc "Updates the user's color palette and surface style, which follow them across devices."
+  def appearance_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:palette, :theme_style])
+    |> validate_required([:palette, :theme_style])
+    |> validate_inclusion(:palette, @palettes)
+    |> validate_inclusion(:theme_style, @theme_styles)
   end
 
   def password_changeset(user, attrs, opts \\ []) do

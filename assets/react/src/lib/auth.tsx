@@ -2,6 +2,7 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 import type { QueryClient } from "@tanstack/react-query"
 import { redirect } from "@tanstack/react-router"
 import { ApiError, api } from "@/lib/api"
+import type { Palette, ThemeStyle } from "@/lib/theme"
 
 export interface User {
   id: number
@@ -16,6 +17,8 @@ export interface User {
   has_password: boolean
   role: "admin" | "member"
   disabled: boolean
+  palette: Palette
+  theme_style: ThemeStyle
   inserted_at: string
 }
 
