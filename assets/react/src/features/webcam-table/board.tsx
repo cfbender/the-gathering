@@ -93,6 +93,7 @@ export function capturePoint(event: MouseEvent<HTMLElement>, flipped = false) {
 
 export function ActiveBoard({
   participant,
+  unattackable = false,
   monarch,
   stream,
   local,
@@ -107,6 +108,7 @@ export function ActiveBoard({
   lifeControl,
 }: {
   participant: TableParticipant
+  unattackable?: boolean
   monarch?: boolean
   stream?: MediaStream
   local: boolean
@@ -158,6 +160,11 @@ export function ActiveBoard({
         </span>
       </button>
       {participant.eliminated && <EliminatedOverlay />}
+      {unattackable && (
+        <span className="pointer-events-none absolute bottom-10 left-2 rounded bg-base-100/95 px-2 py-1 text-xs text-warning">
+          Can't attack yet
+        </span>
+      )}
       {currentTurn && !participant.eliminated && <CurrentTurnBadge />}
       {lifeControl}
       {monarch && (
@@ -191,6 +198,7 @@ export function ActiveBoard({
 
 export function CameraTile({
   participant,
+  unattackable = false,
   monarch,
   stream,
   local,
@@ -204,6 +212,7 @@ export function CameraTile({
   lifeControl,
 }: {
   participant: TableParticipant
+  unattackable?: boolean
   monarch?: boolean
   stream?: MediaStream
   local: boolean
@@ -254,6 +263,11 @@ export function CameraTile({
         )}
       </button>
       {participant.eliminated && <EliminatedOverlay compact />}
+      {unattackable && (
+        <span className="pointer-events-none absolute top-7 right-1 max-w-[calc(100%-4.5rem)] rounded bg-base-100/95 px-1.5 py-1 text-[0.6rem] leading-tight font-semibold text-warning">
+          Can't attack yet
+        </span>
+      )}
       {currentTurn && !participant.eliminated && <CurrentTurnBadge compact />}
       {lifeControl}
       {monarch && (

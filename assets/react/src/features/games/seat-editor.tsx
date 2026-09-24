@@ -7,6 +7,7 @@ interface SeatEditorProps {
   index: number
   seatCount: number
   winner: boolean
+  team?: boolean
   onChooseWinner: () => void
   onMove: (direction: -1 | 1) => void
   onRemove: () => void
@@ -19,6 +20,7 @@ export function SeatEditor({
   index,
   seatCount,
   winner,
+  team = false,
   onChooseWinner,
   onMove,
   onRemove,
@@ -33,9 +35,11 @@ export function SeatEditor({
         </span>
         <label className="flex flex-1 items-center gap-2 font-semibold">
           <input
-            type="radio"
+            type={team ? "checkbox" : "radio"}
             name="winner"
-            className="radio radio-success radio-sm"
+            className={
+              team ? "checkbox checkbox-success checkbox-sm" : "radio radio-success radio-sm"
+            }
             checked={winner}
             onChange={onChooseWinner}
             aria-label={`${seat.playerName || `Seat ${index + 1}`} won`}

@@ -1,7 +1,16 @@
 import type { TableParticipant } from "./use-webcam-room"
 import { activeTurnOrder } from "./table-events"
+import type { GameFormat } from "@/features/games/game-format"
+import { teams } from "./game-modes"
 
-export function suggestedWinner(participants: TableParticipant[]): string {
+export function suggestedWinner(
+  participants: TableParticipant[],
+  mode: GameFormat = "commander",
+): string {
+  if (mode === "two_headed_giant") {
+    const remaining = teams(participants).filter((team) => team.some((seat) => !seat.eliminated))
+    return participants.length >= 4 && remaining.length === 1 ? remaining[0]![0]!.peer_id : ""
+  }
   const remaining = activeTurnOrder(participants)
   return participants.length >= 2 && remaining.length === 1 ? remaining[0]!.peer_id : ""
 }
@@ -15,9 +24,20 @@ interface ResultDetails {
   notes: string
 }
 
-export function buildGamePayload(participants: TableParticipant[], details: ResultDetails) {
+export function buildGamePayload(
+  participants: TableParticipant[],
+  details: ResultDetails,
+  mode: GameFormat = "commander",
+) {
+  const winners =
+    mode === "two_headed_giant"
+      ? (teams(participants)
+          .find((team) => team[0]?.peer_id === details.winner)
+          ?.map((seat) => seat.peer_id) ?? [])
+      : [details.winner]
   return {
     game: {
+      format: mode,
       played_at: details.playedAt.toISOString(),
       duration_minutes: details.duration ? Number(details.duration) : null,
       turns: details.turns ? Number(details.turns) : null,
@@ -30,7 +50,7 @@ export function buildGamePayload(participants: TableParticipant[], details: Resu
         result:
           details.winner === "draw"
             ? ("draw" as const)
-            : details.winner === participant.peer_id
+            : winners.includes(participant.peer_id)
               ? ("win" as const)
               : ("loss" as const),
       })),

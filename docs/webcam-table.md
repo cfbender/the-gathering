@@ -9,6 +9,23 @@ and ends the game with a result form that records through `Games.create_game/2`.
 indistinguishable from a manually logged game, so existing history and statistics need no
 special cases.
 
+The owner selects a game mode before starting. Commander is the default. Two-Headed Giant
+Commander requires an even roster of at least four: adjacent seats form teams, randomization
+shuffles whole pairs, each team starts at 60 shared life, and turns/counts/timing are shared.
+Use the lobby's seat arrows to arrange teammates. Life reaching zero does not automatically
+eliminate anyone; eliminating or restoring a player applies to their whole team. Counters and
+commanders remain individual. The result picker records both teammates as winners.
+
+Five Star requires exactly five seats. Each seated viewer sees “Can't attack yet” on their
+original previous/next neighbours until both non-adjacent opponents are eliminated. These are
+advisory badges, not enforced attacks or alliances. Spectators see no restrictions. Seat order
+is fixed after starting either new mode, including across reconnects.
+
+Recorded games store `format` (`commander`, `two_headed_giant`, or `five_star`), also selectable
+in the manual game form. Existing games and imports default to Commander. Run `mix ecto.migrate`
+when upgrading to apply the `add_format_to_games` migration. Room snapshot version 2 stores mode
+and team life; version 1 snapshots continue loading as Commander.
+
 Card clicks assist the room rather than define its durable record. A click on any board fetches
 a native-resolution crop from the camera owner's browser, runs the card recognizer in the
 clicking browser, and shows five numbered candidates plus a gallery search; confirming one posts

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { Plus } from "lucide-react"
-import type { FormEvent } from "react"
+import { useState, type FormEvent } from "react"
+import { GAME_FORMATS, isGameFormat, type GameFormat } from "./game-format"
 import { DeckFormFields } from "@/features/decks/deck-form-fields"
 import {
   blankSeat,
@@ -90,6 +91,7 @@ export function GameForm({ game, discordDraft }: GameFormProps) {
 }
 
 function GameFormDraft({ game, discordDraft }: GameFormProps) {
+  const [format, setFormat] = useState<GameFormat>(game?.format ?? "commander")
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const playersQuery = useQuery({ queryKey: ["players"], queryFn: getPlayers })
@@ -115,7 +117,7 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const results = resultsForSeats(seats, winnerSeatId)
+      const results = resultsForSeats(seats, winnerSeatId, format)
       const payloadSeats = []
       const knownPlayers = [...(playersQuery.data ?? [])]
       const knownDecks = [...(decksQuery.data ?? [])]
@@ -160,6 +162,7 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
 
       const payload = {
         game: {
+          format,
           played_at: new Date(playedAt).toISOString(),
           turns: turns ? Number(turns) : null,
           duration_minutes: duration ? Number(duration) : null,
@@ -210,6 +213,34 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
             </button>
           </div>
 
+          {!discordDraft && (
+            <div className="form-control">
+              <span className="label-text mb-1 text-sm font-medium">Format</span>
+              <Select
+                value={format}
+                onValueChange={(value) => {
+                  if (isGameFormat(value)) setFormat(value)
+                }}
+              >
+                <SelectTrigger aria-label="Format">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {GAME_FORMATS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {format === "two_headed_giant" && (
+                <p className="mt-2 text-xs text-base-content/60">
+                  Adjacent seats form teams (1 + 2, 3 + 4). Choosing a winner selects both
+                  teammates.
+                </p>
+              )}
+            </div>
+          )}
           <datalist id="player-names">
             {playersQuery.data?.map((player) => (
               <option key={player.id} value={player.name} />
@@ -228,7 +259,8 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
                   seat={seat}
                   index={index}
                   seatCount={seats.length}
-                  winner={winnerSeatId === seat.draftId}
+                  team={format === "two_headed_giant"}
+                  winner={resultsForSeats(seats, winnerSeatId, format)[index] === "win"}
                   onChooseWinner={() => setWinnerSeatId(seat.draftId)}
                   onMove={(direction) => setSeats((value) => moveSeat(value, index, direction))}
                   onRemove={() => {

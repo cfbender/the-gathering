@@ -47,6 +47,7 @@ const archivedDeck: DeckSummary = {
 function gameFixture(): Game {
   return {
     id: 44,
+    format: "commander",
     played_at: "2026-09-19T18:00:00Z",
     duration_minutes: 75,
     turns: 9,
@@ -145,6 +146,7 @@ async function submitPayload(fetch: ReturnType<typeof vi.fn>) {
   )
   expect(call).toBeTruthy()
   return JSON.parse(String(call?.[1]?.body)).game as {
+    format: Game["format"]
     notes: string | null
     win_condition: string | null
     turns: number | null
@@ -168,6 +170,21 @@ afterEach(() => {
 })
 
 describe("GameForm submissions", () => {
+  it("defaults to Commander and records both adjacent teammates when selecting 2HG", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    })
+    const { fetch } = renderGame()
+    const select = screen.getByRole("combobox", { name: "Format" })
+    expect(select.textContent).toContain("Commander")
+    fireEvent.click(select)
+    fireEvent.click(await screen.findByRole("option", { name: "2HG" }))
+    const payload = await submitPayload(fetch)
+    expect(payload.format).toBe("two_headed_giant")
+    expect(payload.seats.map((seat) => seat.result)).toEqual(["win", "win", "loss"])
+  })
+
   it("keeps the winner attached to the same seat after moving and removing seats", async () => {
     const { fetch } = renderGame()
 

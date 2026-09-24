@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import type { DeckSummary } from "@/features/decks/decks"
+import type { GameFormat } from "./game-format"
 
 export interface PlayerSummary {
   id: number
@@ -37,6 +38,7 @@ export interface Seat {
 
 export interface Game {
   id: number
+  format: GameFormat
   played_at: string
   duration_minutes: number | null
   turns: number | null

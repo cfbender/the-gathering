@@ -8,8 +8,12 @@ import { activeTurnOrder } from "./table-events"
 import { formatTurnTime, turnDisplay, type TurnState } from "./turns"
 import { useTimerElapsed } from "./use-timer-elapsed"
 import type { TableParticipant } from "./use-webcam-room"
+import type { GameFormat } from "@/features/games/game-format"
+import { turnId, unattackableSeats } from "./game-modes"
 
 export interface SeatOrderTableProps {
+  mode?: GameFormat
+  onMoveSeat?: (peerId: string, delta: -1 | 1) => void
   readOnly?: boolean
   participants: TableParticipant[]
   localParticipant: TableParticipant
@@ -22,6 +26,8 @@ export interface SeatOrderTableProps {
 }
 
 export function SeatOrderTable({
+  mode = "commander",
+  onMoveSeat,
   readOnly = false,
   participants,
   localParticipant,
@@ -54,6 +60,8 @@ export function SeatOrderTable({
   const positions = new Map(
     activeTurnOrder(displayed).map((seat, index) => [seat.peer_id, index + 1]),
   )
+  const protectedSeats =
+    mode === "five_star" ? unattackableSeats(participants, localParticipant.player_id) : []
 
   return (
     <table
@@ -70,9 +78,11 @@ export function SeatOrderTable({
         </tr>
       </thead>
       <tbody>
-        {displayed.map((seat) => {
-          const active = seat.player_id === turns.active_player_id && !seat.eliminated
-          const display = turnDisplay(turns, seat.player_id, elapsed)
+        {displayed.map((seat, index) => {
+          const active =
+            turnId(participants, seat.player_id, mode) === turns.active_player_id &&
+            !seat.eliminated
+          const display = turnDisplay(turns, seat.player_id, elapsed, participants, mode)
           const deck = decks.find((candidate) => candidate.id === seat.deck_id)
           const commander = deck ? commanderNames(deck) : seat.deck_name
           return (
@@ -101,7 +111,9 @@ export function SeatOrderTable({
                   </span>
                 </span>
                 <span className="block text-[0.6rem] text-white/45" title={commander}>
-                  {seat.life} life
+                  {mode === "two_headed_giant"
+                    ? `Team ${Math.floor(participants.indexOf(seat) / 2) + 1}`
+                    : `${seat.life} life`}
                   {commander && (
                     <>
                       {" · "}
@@ -113,6 +125,31 @@ export function SeatOrderTable({
                     </>
                   )}
                 </span>
+                {protectedSeats.includes(seat.peer_id) && (
+                  <span className="block text-[0.6rem] text-warning">Can't attack yet</span>
+                )}
+                {!readOnly && timer?.state.started_at == null && onMoveSeat && (
+                  <span className="flex gap-1">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs"
+                      aria-label={`Move ${seat.player_name} up`}
+                      disabled={index === 0}
+                      onClick={() => onMoveSeat(seat.peer_id, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs"
+                      aria-label={`Move ${seat.player_name} down`}
+                      disabled={index === participants.length - 1}
+                      onClick={() => onMoveSeat(seat.peer_id, 1)}
+                    >
+                      ↓
+                    </button>
+                  </span>
+                )}
                 {!readOnly && (
                   <button
                     type="button"

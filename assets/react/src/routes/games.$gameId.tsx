@@ -9,6 +9,7 @@ import { CardArtBackground } from "@/components/card-art-background"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { useCurrentUser } from "@/lib/auth"
+import { formatLabel } from "@/features/games/game-format"
 
 export const Route = createFileRoute("/games/$gameId")({ component: GameDetailPage })
 
@@ -40,6 +41,9 @@ function GameDetailPage() {
           )
         }
       >
+        {game.format !== "commander" && (
+          <span className="badge badge-outline mt-3">{formatLabel(game.format)}</span>
+        )}
         {(game.turns || game.duration_minutes) && (
           <p className="text-base-content/60 mt-3 flex gap-4 text-sm">
             {game.turns && <span>{game.turns} turns</span>}

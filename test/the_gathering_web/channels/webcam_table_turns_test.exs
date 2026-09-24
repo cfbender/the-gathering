@@ -56,5 +56,26 @@ defmodule TheGatheringWeb.WebcamTableTurnsTest do
     assert WebcamTableTurns.adjust(%{turns | counts: %{1 => 999}}, 1, 1).counts == %{1 => 999}
   end
 
+  test "2HG groups before filtering, accounts once per team and skips eliminated teams" do
+    mode = "two_headed_giant"
+    seats = [seat(8), seat(3), seat(17, true), seat(5, true), seat(2), seat(11)]
+    turns = WebcamTableTurns.reconcile(WebcamTableTurns.new(), seats, 0, mode)
+    assert turns.active_player_id == 8
+    assert WebcamTableTurns.next_player(seats, 3, mode) == 2
+    turns = WebcamTableTurns.pass(turns, seats, 7000, mode)
+    assert turns.counts == %{8 => 1, 2 => 1}
+    assert turns.elapsed_ms == %{8 => 7000}
+    turns = WebcamTableTurns.pass(turns, seats, 19_000, mode)
+    assert turns.active_player_id == 8
+    assert turns.elapsed_ms == %{8 => 7000, 2 => 12_000}
+    assert WebcamTableTurns.turn_id(seats, 11, mode) == 2
+
+    assert WebcamTableTurns.adjust(turns, WebcamTableTurns.turn_id(seats, 3, mode), 1).counts ==
+             %{8 => 3, 2 => 1}
+
+    all_out = Enum.map(seats, &%{&1 | eliminated: true})
+    assert WebcamTableTurns.reconcile(turns, all_out, 21_000, mode).active_player_id == nil
+  end
+
   defp seat(id, eliminated \\ false), do: %{player_id: id, eliminated: eliminated}
 end

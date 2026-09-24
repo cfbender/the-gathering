@@ -16,6 +16,15 @@ defmodule TheGatheringWeb.WebcamTableState do
 
   def snapshot(room), do: GenServer.call(__MODULE__, {:snapshot, room})
   def order(room, peers), do: GenServer.call(__MODULE__, {:order, room, peers, true})
+  def arrange(room, peers), do: GenServer.call(__MODULE__, {:arrange, room, peers})
+  def mode(room, mode), do: GenServer.call(__MODULE__, {:mode, room, mode})
+
+  def adjust_team_life(room, player_id, team, delta),
+    do: GenServer.call(__MODULE__, {:team_life, room, player_id, team, delta})
+
+  def eliminate(room, peer_id, eliminated),
+    do: GenServer.call(__MODULE__, {:eliminate, room, peer_id, eliminated})
+
   def timer(room, action), do: GenServer.call(__MODULE__, {:timer, room, action})
   def start_game(room), do: GenServer.call(__MODULE__, {:start_game, room})
 
@@ -140,6 +149,8 @@ defmodule TheGatheringWeb.WebcamTableState do
     entry = Map.fetch!(state.rooms, room)
 
     if match?({^pid, _ref}, entry.connections[participant.player_id]) do
+      participant = %{participant | eliminated: entry.all_seats[participant.player_id].eliminated}
+
       seats =
         if participant.eliminated,
           do: Map.put(entry.eliminated_seats, participant.player_id, participant),
@@ -198,6 +209,90 @@ defmodule TheGatheringWeb.WebcamTableState do
     {:reply, :ok, put_in(state, [:rooms, room], entry)}
   end
 
+  def handle_call({:arrange, room, peers}, _from, state) do
+    entry = Map.fetch!(state.rooms, room)
+
+    if is_nil(entry.timer.started_at) do
+      entry = %{entry | peer_ids: peers}
+      Session.save(room, entry)
+      broadcast_state(room, entry)
+      {:reply, :ok, put_in(state, [:rooms, room], entry)}
+    else
+      {:reply, {:error, %{reason: "seat order is fixed after start"}}, state}
+    end
+  end
+
+  def handle_call({:mode, room, mode}, _from, state) do
+    entry = Map.fetch!(state.rooms, room)
+
+    if is_nil(entry.timer.started_at) do
+      entry = %{entry | mode: mode, team_life: %{}}
+      Session.save(room, entry)
+      broadcast_state(room, entry)
+      {:reply, :ok, put_in(state, [:rooms, room], entry)}
+    else
+      {:reply, {:error, %{reason: "game mode is fixed after start"}}, state}
+    end
+  end
+
+  def handle_call({:team_life, room, player_id, team_index, delta}, _from, state) do
+    entry = Map.fetch!(state.rooms, room)
+    team = entry |> ordered_seats() |> Enum.chunk_every(2) |> Enum.at(team_index, [])
+
+    if entry.mode == "two_headed_giant" and Map.has_key?(entry.team_life, team_index) and
+         (entry.owner_id == player_id or Enum.any?(team, &(&1.player_id == player_id))) do
+      life = entry.team_life[team_index] |> Kernel.+(delta) |> max(-999) |> min(999)
+      entry = put_in(entry, [:team_life, team_index], life)
+      Session.save(room, entry)
+      broadcast_state(room, entry)
+      {:reply, :ok, put_in(state, [:rooms, room], entry)}
+    else
+      {:reply,
+       {:error, %{reason: "only teammates or the owner can change a started team's life"}}, state}
+    end
+  end
+
+  def handle_call({:eliminate, room, peer_id, eliminated}, _from, state) do
+    entry = Map.fetch!(state.rooms, room)
+    seat = Enum.find(Map.values(entry.all_seats), &(&1.peer_id == peer_id))
+
+    targets =
+      if entry.mode == "two_headed_giant",
+        do: WebcamTableTurns.team(ordered_seats(entry), seat.player_id),
+        else: [seat]
+
+    entry =
+      Enum.reduce(targets, entry, fn seat, entry ->
+        seat = %{seat | eliminated: eliminated}
+
+        case entry.connections[seat.player_id] do
+          {pid, _ref} -> send(pid, {:seat_eliminated, eliminated})
+          nil -> :ok
+        end
+
+        eliminated_seats =
+          if eliminated,
+            do: Map.put(entry.eliminated_seats, seat.player_id, seat),
+            else: Map.delete(entry.eliminated_seats, seat.player_id)
+
+        %{
+          entry
+          | all_seats: Map.put(entry.all_seats, seat.player_id, seat),
+            eliminated_seats: eliminated_seats
+        }
+      end)
+
+    entry = reconcile_turn(entry)
+    Session.save(room, entry)
+
+    Endpoint.broadcast!("webcam_table:#{room}", "eliminated_seats", %{
+      participants: Map.values(entry.eliminated_seats)
+    })
+
+    broadcast_state(room, entry)
+    {:reply, :ok, put_in(state, [:rooms, room], entry)}
+  end
+
   def handle_call({:timer, room, action}, _from, state) do
     entry = Map.fetch!(state.rooms, room)
     entry = %{entry | timer: update_timer(entry.timer, action, System.system_time(:millisecond))}
@@ -215,8 +310,29 @@ defmodule TheGatheringWeb.WebcamTableState do
       |> Enum.reject(&Map.get(&1, :departed, false))
       |> Enum.map(& &1.peer_id)
 
-    peers = if entry.auto_randomize, do: Enum.shuffle(peers), else: peers
-    handle_call({:order, room, peers, entry.auto_randomize}, from, state)
+    cond do
+      not is_nil(entry.timer.started_at) ->
+        {:reply, :ok, state}
+
+      entry.mode == "two_headed_giant" and (length(peers) < 4 or rem(length(peers), 2) != 0) ->
+        {:reply,
+         {:error, %{reason: "Two-Headed Giant requires an even number of players (at least 4)"}},
+         state}
+
+      entry.mode == "five_star" and length(peers) != 5 ->
+        {:reply, {:error, %{reason: "Five Star requires exactly 5 players"}}, state}
+
+      true ->
+        peers = shuffle(peers, entry)
+
+        life =
+          if entry.mode == "two_headed_giant",
+            do: Map.new(0..(div(length(peers), 2) - 1), &{&1, 60}),
+            else: %{}
+
+        state = put_in(state, [:rooms, room, :team_life], life)
+        handle_call({:order, room, peers, entry.auto_randomize}, from, state)
+    end
   end
 
   def handle_call({:turn_settings, room, enabled}, _from, state) do
@@ -234,7 +350,8 @@ defmodule TheGatheringWeb.WebcamTableState do
         WebcamTableTurns.pass(
           entry.turns,
           ordered_seats(entry),
-          elapsed(entry.timer, System.system_time(:millisecond))
+          elapsed(entry.timer, System.system_time(:millisecond)),
+          entry.mode
         )
 
       entry = %{entry | turns: turns}
@@ -250,6 +367,7 @@ defmodule TheGatheringWeb.WebcamTableState do
     entry = Map.fetch!(state.rooms, room)
 
     if Map.has_key?(entry.all_seats, player_id) do
+      player_id = WebcamTableTurns.turn_id(ordered_seats(entry), player_id, entry.mode)
       entry = %{entry | turns: WebcamTableTurns.adjust(entry.turns, player_id, delta)}
       Session.save(room, entry)
       broadcast_state(room, entry)
@@ -296,6 +414,8 @@ defmodule TheGatheringWeb.WebcamTableState do
       cards: entry.cards,
       eliminated_seats: Map.values(entry.eliminated_seats),
       turns: entry.turns,
+      mode: entry.mode,
+      team_life: entry.team_life,
       auto_randomize: entry.auto_randomize
     }
   end
@@ -318,6 +438,8 @@ defmodule TheGatheringWeb.WebcamTableState do
           eliminated_seats: %{},
           all_seats: %{},
           turns: WebcamTableTurns.new(),
+          mode: "commander",
+          team_life: %{},
           auto_randomize: true,
           monarch: nil,
           monarch_revision: 0,
@@ -398,6 +520,13 @@ defmodule TheGatheringWeb.WebcamTableState do
     |> Enum.sort_by(&{Map.get(positions, &1.peer_id, 999), &1.joined_at, &1.peer_id})
   end
 
+  defp shuffle(peers, %{auto_randomize: false}), do: peers
+
+  defp shuffle(peers, %{mode: "two_headed_giant"}),
+    do: peers |> Enum.chunk_every(2) |> Enum.shuffle() |> List.flatten()
+
+  defp shuffle(peers, _entry), do: Enum.shuffle(peers)
+
   defp reconcile_turn(%{timer: %{started_at: nil}} = entry), do: entry
 
   defp reconcile_turn(entry) do
@@ -405,7 +534,8 @@ defmodule TheGatheringWeb.WebcamTableState do
       WebcamTableTurns.reconcile(
         entry.turns,
         ordered_seats(entry),
-        elapsed(entry.timer, System.system_time(:millisecond))
+        elapsed(entry.timer, System.system_time(:millisecond)),
+        entry.mode
       )
 
     %{entry | turns: turns}

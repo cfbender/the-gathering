@@ -61,6 +61,7 @@ describe("canManageDeck", () => {
 
 const game = (created_by_user_id: number | null, playerUserIds: (number | null)[]): Game => ({
   id: 10,
+  format: "commander",
   played_at: "2026-09-20T12:00:00Z",
   duration_minutes: null,
   turns: null,
