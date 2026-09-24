@@ -9,6 +9,8 @@ defmodule TheGathering.WebcamTables.Session do
 
   alias TheGathering.Repo
 
+  @version 2
+
   @primary_key {:id, :string, autogenerate: false}
   schema "webcam_table_sessions" do
     field :snapshot, :binary
@@ -16,16 +18,13 @@ defmodule TheGathering.WebcamTables.Session do
   end
 
   def load(id) do
-    case Repo.get(__MODULE__, id) do
-      %__MODULE__{snapshot: data, expires_at: expires} ->
-        if DateTime.after?(expires, DateTime.utc_now()) do
-          %{"version" => version, "state" => entry} = Jason.decode!(data)
-          true = version in [1, 2]
-          restore(entry)
-        end
-
-      nil ->
-        nil
+    with %__MODULE__{snapshot: data, expires_at: expires} <- Repo.get(__MODULE__, id),
+         true <- DateTime.after?(expires, DateTime.utc_now()),
+         %{"version" => @version, "state" => entry} <- Jason.decode!(data) do
+      restore(entry)
+    else
+      # Missing, expired, or an older snapshot format: start a fresh table.
+      _other -> nil
     end
   end
 
@@ -33,7 +32,7 @@ defmodule TheGathering.WebcamTables.Session do
     Repo.insert!(
       %__MODULE__{
         id: id,
-        snapshot: Jason.encode!(%{version: 2, state: entry}),
+        snapshot: Jason.encode!(%{version: @version, state: entry}),
         expires_at: DateTime.add(DateTime.utc_now(), 7, :day)
       },
       on_conflict: {:replace, [:snapshot, :expires_at]},
@@ -63,8 +62,8 @@ defmodule TheGathering.WebcamTables.Session do
       peer_ids: data["peer_ids"],
       owner_id: data["owner_id"],
       auto_randomize: data["auto_randomize"],
-      mode: data["mode"] || "commander",
-      team_life: player_keys(data["team_life"] || %{}),
+      mode: data["mode"],
+      team_life: player_keys(data["team_life"]),
       monarch: data["monarch"] && fields(data["monarch"], [:peer_id, :player_name]),
       monarch_revision: data["monarch_revision"],
       cards: data["cards"],
