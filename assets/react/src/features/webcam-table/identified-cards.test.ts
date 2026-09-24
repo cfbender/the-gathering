@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
+  applyCardCommand,
   clearBoardCards,
-  gameJustStarted,
   mergeIdentifiedCards,
   sameCard,
 } from "./identified-cards"
@@ -71,14 +71,17 @@ describe("identified cards", () => {
     expect(clearBoardCards([theirs], "alice")).toEqual([theirs])
   })
 
-  it("detects the game start only on the lobby-to-started transition", () => {
-    const lobby = { started_at: null, paused_at: null, paused_ms: 0, server_now: 1 }
-    const started = { ...lobby, started_at: 1 }
-    expect(gameJustStarted(lobby, started)).toBe(true)
-    // A late joiner's first sample is already started: its synced cards must survive.
-    expect(gameJustStarted(null, started)).toBe(false)
-    expect(gameJustStarted(undefined, started)).toBe(false)
-    expect(gameJustStarted(started, { ...started, paused_at: 5 })).toBe(false)
-    expect(gameJustStarted(lobby, lobby)).toBe(false)
+  it("overlays pending commands on the server's list", () => {
+    const mine = entry("mine")
+    const theirs = entry("theirs", "Counterspell", "bob")
+    const added = entry("added", "Island", "alice", 30)
+    expect(applyCardCommand([mine], { type: "card_identified", entry: added })).toEqual([
+      mine,
+      added,
+    ])
+    expect(applyCardCommand([mine, theirs], { type: "card_removed", id: "mine" })).toEqual([theirs])
+    expect(applyCardCommand([mine, theirs], { type: "cards_cleared", ownerPeerId: "bob" })).toEqual(
+      [mine],
+    )
   })
 })
