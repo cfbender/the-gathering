@@ -16,6 +16,8 @@ defmodule TheGatheringWeb.API.UserJSON do
       manavault_url: user.manavault_url,
       has_manavault_api_key: not is_nil(user.manavault_api_key),
       has_password: not is_nil(user.hashed_password),
+      palette: user.palette,
+      theme_style: user.theme_style,
       role: user.role,
       disabled: not is_nil(user.disabled_at),
       inserted_at: user.inserted_at

@@ -151,6 +151,45 @@ defmodule TheGatheringWeb.API.AuthControllerTest do
     assert is_nil(Accounts.get_user(user.id).manavault_api_key)
   end
 
+  test "saves the palette and surface style on the account", %{conn: conn} do
+    user = create_user("owner", "admin")
+    conn = log_in_user(conn, user)
+
+    assert %{"data" => %{"palette" => "claret", "theme_style" => "glass"}} =
+             conn |> get(~p"/api/session") |> json_response(200)
+
+    conn =
+      patch(conn, ~p"/api/session/appearance", %{
+        user: %{palette: "gruvbox", theme_style: "classic"}
+      })
+
+    assert %{"data" => %{"palette" => "gruvbox", "theme_style" => "classic"}} =
+             json_response(conn, 200)
+
+    assert %{palette: "gruvbox", theme_style: "classic"} = Accounts.get_user(user.id)
+
+    # Fields not sent keep their saved values.
+    conn = patch(recycle(conn), ~p"/api/session/appearance", %{user: %{palette: "nord"}})
+
+    assert %{"data" => %{"palette" => "nord", "theme_style" => "classic"}} =
+             json_response(conn, 200)
+  end
+
+  test "rejects unknown appearance values and anonymous updates", %{conn: conn} do
+    anonymous = patch(conn, ~p"/api/session/appearance", %{user: %{palette: "nord"}})
+    assert json_response(anonymous, 401)
+
+    conn =
+      conn
+      |> log_in_user(create_user("owner", "admin"))
+      |> patch(~p"/api/session/appearance", %{
+        user: %{palette: "vaporwave", theme_style: "frosted"}
+      })
+
+    assert %{"errors" => %{"palette" => ["is invalid"], "theme_style" => ["is invalid"]}} =
+             json_response(conn, 422)
+  end
+
   test "rejects invalid deck source values", %{conn: conn} do
     user = create_user("owner", "admin")
 

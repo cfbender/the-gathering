@@ -59,6 +59,14 @@ defmodule TheGatheringWeb.API.SessionController do
 
   def update_profile(_conn, _params), do: {:error, :bad_request}
 
+  def update_appearance(conn, %{"user" => attrs}) do
+    with {:ok, user} <- Accounts.update_appearance(conn.assigns.current_scope.user, attrs) do
+      conn |> put_view(UserJSON) |> render(:show, user: user)
+    end
+  end
+
+  def update_appearance(_conn, _params), do: {:error, :bad_request}
+
   def update_password(conn, %{"password" => _password} = params) do
     with {:ok, {user, expired_tokens}} <-
            Accounts.update_user_password(

@@ -1,5 +1,5 @@
 defmodule TheGatheringWeb.AppControllerTest do
-  use TheGatheringWeb.ConnCase, async: true
+  use TheGatheringWeb.ConnCase, async: false
 
   test "GET / serves the SPA shell with a CSRF token and the React entrypoint", %{conn: conn} do
     conn = get(conn, ~p"/")
@@ -9,6 +9,21 @@ defmodule TheGatheringWeb.AppControllerTest do
     assert html =~ ~r/<meta name="csrf-token" content="[^"]+"/
     assert html =~ "assets/react/src/main.tsx"
     assert get_resp_header(conn, "cache-control") == ["no-cache, no-store, must-revalidate"]
+  end
+
+  test "signed-in users get their saved appearance on <html> for the first paint", %{conn: conn} do
+    anonymous = conn |> get(~p"/") |> html_response(200)
+    assert anonymous =~ ~s(<html lang="en">)
+
+    {:ok, user} =
+      TheGathering.Accounts.update_appearance(TheGathering.AccountsFixtures.user_fixture(), %{
+        palette: "kanagawa",
+        theme_style: "classic"
+      })
+
+    html = conn |> log_in_user(user) |> get(~p"/") |> html_response(200)
+
+    assert html =~ ~s(<html lang="en" data-palette="kanagawa" data-theme-style="classic">)
   end
 
   test "client-side routes fall through to the SPA shell", %{conn: conn} do

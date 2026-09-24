@@ -23,6 +23,8 @@ function user(hasPassword: boolean): User {
     has_password: hasPassword,
     role: "admin",
     disabled: false,
+    palette: "claret",
+    theme_style: "glass",
     inserted_at: "2026-09-20T00:00:00Z",
   }
 }

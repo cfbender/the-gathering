@@ -14,7 +14,7 @@ defmodule TheGatheringWeb.AppController do
   defp shell_html(conn) do
     """
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="en"#{appearance_attrs(conn.assigns[:current_scope])}>
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -34,9 +34,19 @@ defmodule TheGatheringWeb.AppController do
             try { stored = localStorage.getItem(key) } catch {}
             const system = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
             document.documentElement.dataset.theme = stored === "light" || stored === "dark" ? stored : system
-            let style = null
-            try { style = localStorage.getItem("the-gathering:theme-style") } catch {}
-            document.documentElement.dataset.themeStyle = style === "classic" ? "classic" : "glass"
+            // Signed-in users get their saved palette and style from the server
+            // (attributes on <html>); anonymous visitors fall back to this device.
+            const root = document.documentElement
+            if (!root.dataset.themeStyle) {
+              let style = null
+              try { style = localStorage.getItem("the-gathering:theme-style") } catch {}
+              root.dataset.themeStyle = style === "classic" ? "classic" : "glass"
+            }
+            if (!root.dataset.palette) {
+              let palette = null
+              try { palette = localStorage.getItem("the-gathering:palette") } catch {}
+              root.dataset.palette = palette || "claret"
+            }
           })()
         </script>
         #{ViteAssets.tags(conn)}
@@ -47,6 +57,12 @@ defmodule TheGatheringWeb.AppController do
     </html>
     """
   end
+
+  defp appearance_attrs(%{user: %{palette: palette, theme_style: theme_style}}) do
+    ~s( data-palette="#{Plug.HTML.html_escape(palette)}" data-theme-style="#{Plug.HTML.html_escape(theme_style)}")
+  end
+
+  defp appearance_attrs(_scope), do: ""
 
   # Lets the SPA label links to the configured self-hosted ManaVault (see `lib/decklists.ts`).
   defp manavault_meta do

@@ -16,6 +16,8 @@ const user = {
   has_password: true,
   role: "member",
   disabled: false,
+  palette: "claret",
+  theme_style: "glass",
   inserted_at: "2026-09-20T12:00:00Z",
 }
 
