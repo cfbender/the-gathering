@@ -40,6 +40,17 @@ defmodule TheGathering.DataCase do
   def setup_sandbox(tags) do
     pid = Sandbox.start_owner!(TheGathering.Repo, shared: not tags[:async])
     on_exit(fn -> Sandbox.stop_owner(pid) end)
+
+    # Webcam table rooms outlive their connections and write through the shared
+    # sandbox, so stop them before it closes (on_exit runs in reverse order).
+    unless tags[:async], do: on_exit(&stop_webcam_table_rooms/0)
+  end
+
+  defp stop_webcam_table_rooms do
+    supervisor = TheGathering.WebcamTables.RoomSupervisor
+
+    for {_id, pid, _type, _modules} <- DynamicSupervisor.which_children(supervisor),
+        do: DynamicSupervisor.terminate_child(supervisor, pid)
   end
 
   @doc """

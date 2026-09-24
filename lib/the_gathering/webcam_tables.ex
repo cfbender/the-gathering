@@ -6,8 +6,9 @@ defmodule TheGathering.WebcamTables do
   Each room runs as its own `TheGathering.WebcamTables.Room` process, started
   on first join under `TheGathering.WebcamTables.RoomSupervisor` and
   registered by room id in `TheGathering.WebcamTables.Registry`. Rooms persist
-  every change to `TheGathering.WebcamTables.Session` and stop when their last
-  connection exits; `TheGathering.WebcamTables.Pruner` deletes expired sessions.
+  every change to `TheGathering.WebcamTables.Session` and keep running with no
+  connections; `TheGathering.WebcamTables.Pruner` closes rooms that stay empty
+  and idle for 30 minutes and deletes expired sessions.
 
   Mutations must be called from the joined connection process: the room
   monitors it, identifies the seat's current connection by it, and messages
@@ -32,8 +33,8 @@ defmodule TheGathering.WebcamTables do
     try do
       GenServer.call(pid, {:join, participant})
     catch
-      # The room stopped as its last connection left, just before this join
-      # reached it. The registry forgets it once it has exited, so start anew.
+      # The room closed as idle just before this join reached it. The registry
+      # forgets it once it has exited, so start anew.
       :exit, {reason, _call} when reason in [:normal, :noproc] and attempts > 1 ->
         Process.demonitor(ref, [:flush])
         join(room, participant, attempts - 1)
@@ -48,6 +49,31 @@ defmodule TheGathering.WebcamTables do
   end
 
   def snapshot(room), do: call(room, :snapshot)
+
+  @doc "Running rooms, connected or not, as `%{id: id, opened_at: ms_since_epoch}`."
+  def rooms do
+    TheGathering.WebcamTables.Registry
+    |> Registry.select([{{:"$1", :_, :"$2"}, [], [{{:"$1", :"$2"}}]}])
+    |> Enum.map(fn {id, opened_at} -> %{id: id, opened_at: opened_at} end)
+  end
+
+  @doc """
+  Closes every room with no connections and no activity for `idle_ms`,
+  deleting its saved session. Returns the closed room ids.
+  """
+  def close_idle_rooms(idle_ms) do
+    TheGathering.WebcamTables.Registry
+    |> Registry.select([{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+    |> Enum.filter(fn {_id, pid} ->
+      try do
+        Room.close_if_idle(pid, idle_ms) == :closed
+      catch
+        # The room crashed or stopped since the registry listed it.
+        :exit, _reason -> false
+      end
+    end)
+    |> Enum.map(fn {id, _pid} -> id end)
+  end
 
   @doc "Whether `pid` is `player_id`'s current connection."
   def current?(room, player_id, pid), do: call(room, {:current?, player_id, pid})

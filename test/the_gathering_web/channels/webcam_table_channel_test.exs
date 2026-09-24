@@ -811,7 +811,7 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
              22
   end
 
-  test "a last-seat disconnect stops the room and rejoining restores the entire mid-game snapshot",
+  test "a room outlives its last seat, and rejoining restores the entire mid-game snapshot",
        %{
          socket: original,
          room_id: room,
@@ -850,11 +850,10 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
 
     assert_reply push(original, "cards", %{"type" => "card_identified", "entry" => card}), :ok
     before = WebcamTables.snapshot(room)
-    room_ref = Process.monitor(room_pid(room))
+    pid = room_pid(room)
     disconnect(original)
-    # The room process stops with its last connection; the session survives it.
-    assert_receive {:DOWN, ^room_ref, :process, _, :normal}
-    assert room_pid(room) == nil
+    # The room keeps running with no connections.
+    assert room_pid(room) == pid
     rejoined = rejoin(room, player, @after_restart)
     after_restart = WebcamTables.snapshot(room)
     assert Map.drop(after_restart.timer, [:server_now]) == Map.drop(before.timer, [:server_now])
@@ -898,6 +897,30 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert rejoin(room, player, @peer_a).assigns.participant.life == 21
   end
 
+  test "an empty room is closed and its session deleted only once idle", %{
+    socket: socket,
+    room_id: room,
+    player: player
+  } do
+    assert_reply push(socket, "update_status", %{"life" => 3}), :ok
+
+    # Connected rooms are never closed, however long they sit idle.
+    assert WebcamTables.close_idle_rooms(0) == []
+    assert room in Enum.map(WebcamTables.rooms(), & &1.id)
+
+    disconnect(socket)
+    pid = room_pid(room)
+    assert WebcamTables.close_idle_rooms(:timer.minutes(30)) == []
+    assert room_pid(room) == pid
+
+    ref = Process.monitor(pid)
+    assert WebcamTables.close_idle_rooms(0) == [room]
+    assert_receive {:DOWN, ^ref, :process, _, :normal}
+    refute room in Enum.map(WebcamTables.rooms(), & &1.id)
+    assert Repo.get(Session, room) == nil
+    assert rejoin(room, player, @fresh).assigns.participant.life == 40
+  end
+
   test "expired disconnected sessions are pruned instead of resurrected", %{
     socket: socket,
     room_id: room,
@@ -906,6 +929,9 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     alias TheGathering.WebcamTables.Session
     assert_reply push(socket, "update_status", %{"life" => 3}), :ok
     disconnect(socket)
+    # A restart forgets running rooms, so the next join loads the saved session.
+    :ok =
+      DynamicSupervisor.terminate_child(TheGathering.WebcamTables.RoomSupervisor, room_pid(room))
 
     Repo.update_all(from(s in Session, where: s.id == ^room),
       set: [expires_at: DateTime.add(DateTime.utc_now(), -1, :second)]
@@ -1109,7 +1135,6 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
   defp room_pid(room), do: GenServer.whereis(Room.via(room))
 
   # Waits until the room has handled earlier messages, such as a channel's DOWN.
-  # The room may stop meanwhile if that was its last connection.
   defp sync_room(room) do
     if pid = room_pid(room) do
       try do
