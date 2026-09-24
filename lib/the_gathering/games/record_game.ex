@@ -5,7 +5,7 @@ defmodule TheGathering.Games.RecordGame do
   import Ecto.Query
 
   alias TheGathering.Accounts.User
-  alias TheGathering.Games.{Deck, Game}
+  alias TheGathering.Games.{Deck, Game, GamePlayer}
   alias TheGathering.Repo
 
   def create(attrs, created_by_user_id \\ nil) do
@@ -41,13 +41,64 @@ defmodule TheGathering.Games.RecordGame do
   end
 
   def update(%Game{} = game, attrs) do
-    game
-    |> Repo.preload(:seats)
-    |> Game.changeset(attrs)
-    |> validate_deck_ownership()
-    |> Repo.update()
-    |> preload_game_ok()
+    Repo.transaction(fn ->
+      game
+      |> park_seats(attrs)
+      |> Game.changeset(attrs)
+      |> validate_deck_ownership()
+      |> Repo.update()
+      |> preload_game_ok()
+      |> case do
+        {:ok, game} -> game
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
   end
+
+  # Ecto updates retained seats one row at a time, so swapping two seat numbers
+  # would trip the (game_id, seat) unique index halfway through. When the payload
+  # claims a seat number another row currently holds, move every existing row to
+  # a negative seat first; rows the payload keeps are re-numbered by the
+  # changeset, the rest are deleted. Payloads that keep seat numbers where they
+  # are leave the rows untouched.
+  defp park_seats(game, attrs) do
+    game = Repo.preload(game, :seats)
+
+    if seats_collide?(game.seats, value(attrs, :seats)) do
+      from(seat in GamePlayer, where: seat.game_id == ^game.id, update: [set: [seat: -seat.seat]])
+      |> Repo.update_all([])
+
+      Repo.preload(game, :seats, force: true)
+    else
+      game
+    end
+  end
+
+  defp seats_collide?(current, requested) when is_list(requested) do
+    held = Map.new(current, &{&1.seat, &1.id})
+
+    Enum.any?(requested, fn
+      seat when is_map(seat) ->
+        case Map.fetch(held, to_integer(value(seat, :seat))) do
+          {:ok, id} -> id != to_integer(value(seat, :id))
+          :error -> false
+        end
+
+      _other ->
+        false
+    end)
+  end
+
+  defp seats_collide?(_current, _requested), do: false
+
+  defp to_integer(param) when is_binary(param) do
+    case Integer.parse(param) do
+      {number, ""} -> number
+      _ -> param
+    end
+  end
+
+  defp to_integer(param), do: param
 
   defp insert(attrs, created_by_user_id, source \\ nil, external_id \\ nil) do
     result =
