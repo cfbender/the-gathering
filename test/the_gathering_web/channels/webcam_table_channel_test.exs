@@ -1074,6 +1074,69 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     })
   end
 
+  describe "rate limits" do
+    defp put_rate_limits(overrides) do
+      previous = Application.fetch_env!(:the_gathering, TheGatheringWeb.RateLimit)
+
+      Application.put_env(
+        :the_gathering,
+        TheGatheringWeb.RateLimit,
+        Keyword.merge(previous, overrides)
+      )
+
+      on_exit(fn -> Application.put_env(:the_gathering, TheGatheringWeb.RateLimit, previous) end)
+    end
+
+    test "each connection's events are limited, with signals budgeted separately", %{
+      socket: alice,
+      room_id: room
+    } do
+      put_rate_limits(
+        webcam_table_events: [capacity: 3, refill_per_second: 0],
+        webcam_table_signals: [capacity: 2, refill_per_second: 0]
+      )
+
+      bob = join_player(room, @peer_b, "Bob")
+
+      for life <- 39..37//-1,
+          do: assert_reply(push(bob, "update_status", %{"life" => life}), :ok)
+
+      assert_reply push(bob, "update_status", %{"life" => 1}), :error, %{reason: "rate limited"}
+      assert_reply push(bob, "roll", %{"kind" => "coin"}), :error, %{reason: "rate limited"}
+      assert Enum.find(WebcamTableState.snapshot(room).seats, &(&1.peer_id == @peer_b)).life == 37
+
+      for _ <- 1..2 do
+        push(bob, "signal", %{"target" => @peer_a, "signal" => %{"candidate" => "ice"}})
+        assert_broadcast "signal", %{from: @peer_b}
+      end
+
+      assert_reply push(bob, "signal", %{"target" => @peer_a, "signal" => %{}}), :error, %{
+        reason: "rate limited"
+      }
+
+      # Alice joined under the default limits and keeps her own budget.
+      assert_reply push(alice, "update_status", %{"life" => 12}), :ok
+    end
+
+    test "joins are limited per user so rejoining cannot reset the budget", %{room_id: room} do
+      put_rate_limits(webcam_table_joins: [limit: 1, scale: :timer.minutes(1)])
+      {user, player} = linked_player("Bob")
+      # SQLite reuses rolled-back user IDs, so clear any earlier test's count.
+      TheGathering.RateLimiter.set({:webcam_table_joins, user.id}, :timer.minutes(1), 0)
+      params = %{"peer_id" => @peer_b, "player_id" => player.id}
+      socket = socket(UserSocket, nil, %{user: user})
+
+      assert {:ok, _reply, joined} =
+               subscribe_and_join(socket, WebcamTableChannel, "webcam_table:#{room}", params)
+
+      Process.unlink(joined.channel_pid)
+      leave(joined)
+
+      assert {:error, %{reason: "rate limited"}} =
+               subscribe_and_join(socket, WebcamTableChannel, "webcam_table:#{room}", params)
+    end
+  end
+
   describe "identified cards" do
     defp card_entry(owner, overrides \\ %{}) do
       Map.merge(

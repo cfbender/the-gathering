@@ -26,7 +26,14 @@ config :the_gathering, TheGathering.Repo,
 config :the_gathering, TheGatheringWeb.RateLimit,
   credentials: [limit: 10, scale: :timer.minutes(5)],
   corrections: [limit: 30, scale: :timer.minutes(1)],
-  sudo: [limit: 5, global_limit: 100, scale: :timer.minutes(5)]
+  sudo: [limit: 5, global_limit: 100, scale: :timer.minutes(5)],
+  # Webcam table channels (see TheGatheringWeb.ChannelRateLimit). Every life
+  # tap is one event and one SQLite write, so allow bursts of rapid clicking
+  # while capping the sustained rate. Signals burst when a seat connects to
+  # every peer at once (offer, answer and a dozen ICE candidates per peer).
+  webcam_table_events: [capacity: 60, refill_per_second: 20],
+  webcam_table_signals: [capacity: 300, refill_per_second: 50],
+  webcam_table_joins: [limit: 30, scale: :timer.minutes(1)]
 
 # Configure the endpoint
 config :the_gathering, TheGatheringWeb.Endpoint,
