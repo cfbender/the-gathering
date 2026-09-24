@@ -196,9 +196,16 @@ losses, but their seat positions, game length, turn counts, and MVP cards are le
 Administrators can disable and re-enable accounts, or permanently delete an account. Disabling an
 account signs it out on every device; re-enabling it does not revive those sessions, so the user
 must sign in again. Administrators can also sign an account out everywhere without changing whether
-it is enabled. Deleting an account revokes its sessions and unlinks its player while preserving the
-player, decks, and game history. A returning Discord member can register again and reclaim the player
-linked to the same Discord identity.
+it is enabled. Deleting an account requires its linked player to have zero games and permanently
+removes the account, sessions, player, and unused decks together. Games recorded by the account for
+other players are preserved. Disable accounts with game history instead.
+
+**Admin → Player identities** lists players (including archived players), their Discord IDs, and
+linked accounts. Search by player name, Discord ID, or username, then unlink an incorrect identity
+before merging players. Unlinking detaches both the Discord identity and account from the player,
+preserving the player's games and decks. It does not delete the account or change its Discord login;
+a future sign-in or import may create a separate player. Use **Admin → Users** to link the account
+to the correct player. Identity management requires recent administrator authentication.
 
 Sessions use random tokens stored in the `users_tokens` table, following Phoenix's generated-auth
 design. Signing out ends only the current device's session. Changing the administrator password

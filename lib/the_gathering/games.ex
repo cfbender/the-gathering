@@ -51,6 +51,33 @@ defmodule TheGathering.Games do
 
   def get_player(id), do: Repo.get(Player, id)
 
+  def list_player_identities(opts \\ %{}) do
+    page = positive_integer(value(opts, :page), 1)
+    per_page = value(opts, :per_page) |> positive_integer(50) |> min(100)
+    search = opts |> value(:search, "") |> String.trim() |> String.downcase(:ascii)
+
+    query =
+      from player in Player,
+        left_join: user in assoc(player, :user),
+        where:
+          fragment("instr(lower(?), ?) > 0", player.name, ^search) or
+            fragment("instr(?, ?) > 0", player.discord_id, ^search) or
+            fragment("instr(lower(?), ?) > 0", user.username, ^search),
+        order_by: [asc: fragment("lower(?)", player.name), asc: player.id],
+        preload: [user: user]
+
+    total = Repo.aggregate(query, :count)
+    players = query |> limit(^per_page) |> offset(^((page - 1) * per_page)) |> Repo.all()
+
+    {players,
+     %{page: page, per_page: per_page, total: total, total_pages: max(ceil(total / per_page), 1)}}
+  end
+
+  @doc "Detaches a player's identity without changing the account's Discord login or game history."
+  def unlink_player_identity(%Player{} = player) do
+    player |> change(discord_id: nil, user_id: nil) |> Repo.update()
+  end
+
   def create_player(attrs, user_id \\ nil) do
     discord_id = value(attrs, :discord_id)
 

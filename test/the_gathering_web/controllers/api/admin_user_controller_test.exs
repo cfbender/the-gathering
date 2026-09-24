@@ -10,7 +10,7 @@ defmodule TheGatheringWeb.API.AdminUserControllerTest do
   alias TheGathering.Games.{Game, Player}
   alias TheGathering.Repo
 
-  test "DELETE removes the account and tokens while preserving and unlinking game history", %{
+  test "DELETE refuses a player with games without changing their account or history", %{
     conn: conn
   } do
     admin = AccountsFixtures.admin_fixture()
@@ -42,24 +42,65 @@ defmodule TheGatheringWeb.API.AdminUserControllerTest do
 
     conn = conn |> log_in_user(admin) |> delete(~p"/api/admin/users/#{user.id}")
 
-    assert response(conn, 204)
-    refute Repo.get(User, user.id)
-    refute Accounts.get_user_by_session_token(target_token)
-    refute Repo.exists?(from token in UserToken, where: token.user_id == ^user.id)
+    assert json_response(conn, 422) == %{
+             "errors" => %{"player" => ["must have zero games before deleting this user"]}
+           }
 
-    assert %Player{user_id: nil, discord_id: "100000000000000101"} =
-             preserved_player = Repo.get!(Player, player.id)
+    assert Repo.get(User, user.id)
+    assert Accounts.get_user_by_session_token(target_token)
+    assert Repo.exists?(from token in UserToken, where: token.user_id == ^user.id)
 
-    assert Repo.get!(Game, game.id).created_by_user_id == nil
-    assert Games.get_deck!(deck.id).player_id == preserved_player.id
+    assert Repo.get!(Player, player.id).user_id == user.id
+    assert Repo.get!(Player, player.id).discord_id == user.discord_id
+
+    assert Repo.get!(Game, game.id).created_by_user_id == user.id
+    assert Games.get_deck!(deck.id).player_id == player.id
     assert Enum.map(Games.get_game!(game.id).seats, & &1.player_id) == [player.id, opponent.id]
+  end
 
-    assert {:ok, registered_again} =
-             Accounts.sign_in_with_discord(discord_claims("100000000000000101"))
+  test "DELETE removes a zero-game player, their decks, account and sessions", %{conn: conn} do
+    admin = AccountsFixtures.admin_fixture()
+    {:ok, _settings} = Accounts.update_settings(%{"registration_enabled" => true})
+    user = discord_user("delete-empty-player")
+    player = Repo.get_by!(Player, user_id: user.id)
 
-    refute registered_again.id == user.id
-    assert Repo.get!(Player, player.id).user_id == registered_again.id
-    assert Repo.get!(Player, player.id).discord_id == registered_again.discord_id
+    {:ok, deck} =
+      Games.create_deck(%{player_id: player.id, name: "Unused", commander_name: "Alela"})
+
+    {:ok, other} = Games.create_player(%{name: "Unrelated", discord_id: "keep-this-identity"})
+    target_token = Accounts.generate_user_session_token(user)
+
+    assert conn |> log_in_user(admin) |> delete(~p"/api/admin/users/#{user.id}") |> response(204)
+    refute Accounts.get_user(user.id)
+    refute Games.get_player(player.id)
+    refute Games.get_deck(deck.id)
+    refute Accounts.get_user_by_session_token(target_token)
+    assert Games.get_player(other.id).discord_id == "keep-this-identity"
+  end
+
+  test "DELETE allows an account without a player and preserves games they recorded", %{
+    conn: conn
+  } do
+    admin = AccountsFixtures.admin_fixture()
+    user = AccountsFixtures.user_fixture()
+    {:ok, one} = Games.create_player(%{name: "One"})
+    {:ok, two} = Games.create_player(%{name: "Two"})
+
+    {:ok, game} =
+      Games.create_game(
+        %{
+          played_at: ~U[2026-09-20 18:00:00Z],
+          seats: [
+            %{player_id: one.id, seat: 1, result: "win"},
+            %{player_id: two.id, seat: 2, result: "loss"}
+          ]
+        },
+        user.id
+      )
+
+    assert conn |> log_in_user(admin) |> delete(~p"/api/admin/users/#{user.id}") |> response(204)
+    assert Games.get_game(game.id).created_by_user_id == nil
+    assert length(Games.get_game!(game.id).seats) == 2
   end
 
   test "an administrator cannot delete their own account", %{conn: conn} do

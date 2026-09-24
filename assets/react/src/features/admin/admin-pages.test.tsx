@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import { AdminUsersPage } from "./admin-pages"
 
@@ -25,6 +25,33 @@ afterEach(() => {
 })
 
 describe("admin users", () => {
+  it("explains deletion and shows the zero-game restriction without removing the account", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        const deleting = init.method === "DELETE"
+        const body = deleting
+          ? { errors: { player: ["must have zero games before deleting this user"] } }
+          : { data: url === "/api/admin/users" ? [user] : [] }
+        return new Response(JSON.stringify(body), {
+          status: deleting ? 422 : 200,
+          headers: { "content-type": "application/json" },
+        })
+      }),
+    )
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <AdminUsersPage />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByRole("button", { name: "Delete user" }))
+    const dialog = screen.getByRole("alertdialog")
+    expect(within(dialog).getByText(/linked player must have zero games/)).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete user" }))
+    expect(await screen.findByText("must have zero games before deleting this user")).toBeTruthy()
+    expect(screen.getByRole("heading", { name: "Member" })).toBeTruthy()
+  })
+
   it("signs the selected user out everywhere", async () => {
     const fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url

@@ -150,6 +150,8 @@ defmodule TheGatheringWeb.Router do
     resources "/users", AdminUserController, only: [:index, :update, :delete]
     delete "/users/:id/sessions", AdminUserController, :revoke_sessions
     put "/users/:id/player", AdminUserController, :link_player
+    get "/players", AdminPlayerController, :index
+    delete "/players/:id/identity", AdminPlayerController, :unlink_identity
     get "/settings", AdminSettingsController, :show
     patch "/settings", AdminSettingsController, :update
     get "/registration-invite", AdminRegistrationInviteController, :show
