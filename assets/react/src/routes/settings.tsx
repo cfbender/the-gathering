@@ -5,6 +5,7 @@ import { KeyRound, Library, UserRound } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
 import { AppearanceSection } from "@/components/appearance-section"
 import { SudoPrompt } from "@/components/sudo-prompt"
+import { invalidateGameRelated } from "@/features/games/games"
 import { api } from "@/lib/api"
 import { errorMessage, requireUser, useCurrentUser } from "@/lib/auth"
 import type { User } from "@/lib/auth"
@@ -41,6 +42,8 @@ function SettingsPage() {
     onSuccess: (updated) => {
       queryClient.setQueryData(["session"], updated)
       void queryClient.invalidateQueries({ queryKey: ["remote-decks"] })
+      // A display name change also renames the user's linked player.
+      void invalidateGameRelated(queryClient)
     },
   })
   const password = useMutation({

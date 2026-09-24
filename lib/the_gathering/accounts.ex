@@ -73,7 +73,18 @@ defmodule TheGathering.Accounts do
   def get_user_by_username(username), do: Repo.get_by(User, username: String.downcase(username))
   def list_users, do: Repo.all(from u in User, order_by: [asc: u.username])
 
-  def update_profile(user, attrs), do: user |> User.profile_changeset(attrs) |> Repo.update()
+  def update_profile(user, attrs) do
+    changeset = User.profile_changeset(user, attrs)
+
+    Multi.new()
+    |> Multi.update(:user, changeset)
+    |> rename_linked_player(changeset)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{user: updated}} -> {:ok, updated}
+      {:error, _operation, failed_changeset, _changes} -> {:error, failed_changeset}
+    end
+  end
 
   def sudo_mode?(user, minutes \\ -20)
 
@@ -126,6 +137,7 @@ defmodule TheGathering.Accounts do
     Multi.new()
     |> Multi.run(:last_admin, fn repo, _changes -> ensure_enabled_admin(repo, user, changeset) end)
     |> Multi.update(:user, changeset)
+    |> rename_linked_player(changeset)
     |> maybe_revoke_disabled_sessions(user, changeset)
     |> Repo.transaction()
     |> case do
@@ -242,6 +254,38 @@ defmodule TheGathering.Accounts do
   end
 
   defp authorize_user_deletion(_repo, _user, _actor), do: {:ok, :authorized}
+
+  # Games, stats, and Discord show a player's `name`, so a new display name has to
+  # reach the linked player or the edit is invisible outside the account menu.
+  defp rename_linked_player(multi, user_changeset) do
+    case Ecto.Changeset.get_change(user_changeset, :display_name) do
+      nil ->
+        multi
+
+      display_name ->
+        Multi.run(multi, :player, fn repo, %{user: user} ->
+          repo
+          |> rename_player(repo.get_by(Player, user_id: user.id), display_name)
+          |> player_name_result(user_changeset)
+        end)
+    end
+  end
+
+  defp rename_player(_repo, nil, _name), do: {:ok, nil}
+
+  defp rename_player(repo, %Player{} = player, name),
+    do: player |> Player.changeset(%{name: name}) |> repo.update()
+
+  defp player_name_result({:ok, player}, _user_changeset), do: {:ok, player}
+
+  defp player_name_result({:error, _player_changeset}, user_changeset),
+    do:
+      {:error,
+       Ecto.Changeset.add_error(
+         user_changeset,
+         :display_name,
+         "is already used by another player"
+       )}
 
   defp maybe_revoke_disabled_sessions(multi, user, changeset) do
     becoming_disabled? =
