@@ -575,7 +575,6 @@ export function useWebcamRoom(
         })
         socket.connect()
         const room = socket.channel(`webcam_table:${roomId}`, () => ({
-          protocol: 2,
           peer_id: peerIdRef.current,
           player_id: playerId,
           deck_id: deckId,
