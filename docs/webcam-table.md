@@ -12,8 +12,8 @@ special cases.
 The owner selects a game mode before starting. Commander is the default. Two-Headed Giant
 Commander requires an even roster of at least four: adjacent seats form teams, randomization
 shuffles whole pairs, each team starts at 60 shared life, and turns/counts/timing are shared.
-Use the lobby's seat arrows to arrange teammates. Life reaching zero does not automatically
-eliminate anyone; eliminating or restoring a player applies to their whole team. Counters and
+Use the lobby's seat arrows to arrange teammates. Shared life reaching zero eliminates the whole
+team; eliminating or restoring a player also applies to their whole team. Counters and
 commanders remain individual. The result picker records both teammates as winners.
 
 Five Star requires exactly five seats. Each seated viewer sees “Can't attack yet” on their
@@ -334,7 +334,9 @@ Counter changes and monarch transfers are added to every connected browser's Log
 The room owner can mark a present seat eliminated or undo it in the turn-order table.
 `set_eliminated` validates a present peer ID and a boolean; the target channel merges it into
 its own presence so later life/camera updates cannot overwrite elimination. Players may also
-publish their own `eliminated` through `update_status`. Out seats stay visible with dimmed video,
+publish their own `eliminated` through `update_status`. In every format, a life update that
+reaches zero or below marks the seat eliminated automatically; gaining life back does not restore
+it, so a player is brought back only through an explicit restore. Out seats stay visible with dimmed video,
 an Eliminated badge, and a struck-through name. They receive no order number; only eligible seats
 are numbered, while the recording order still includes everyone. Eliminating
 the current player advances the turn to the next eligible seat; disconnecting does not. If none remain there is no active

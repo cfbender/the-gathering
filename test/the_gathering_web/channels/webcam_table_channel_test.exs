@@ -505,6 +505,31 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert meta.eliminated == false
   end
 
+  test "reaching zero life eliminates the seat; regaining life does not restore it", %{
+    socket: socket,
+    room_id: room_id
+  } do
+    assert_reply push(socket, "update_status", %{"life" => 1}), :ok
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+    assert %{eliminated: false, life: 1} = meta
+    refute_broadcast "eliminated_seats", %{}
+
+    assert_reply push(socket, "update_status", %{"life" => 0}), :ok
+    assert_broadcast "eliminated_seats", %{participants: [%{peer_id: "peer-a", eliminated: true}]}
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+    assert %{eliminated: true, life: 0} = meta
+
+    assert_reply push(socket, "update_status", %{"life" => 5}), :ok
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+    assert %{eliminated: true, life: 5} = meta
+
+    # An explicit restore in the same update wins over the zero-life rule.
+    assert_reply push(socket, "update_status", %{"life" => -3, "eliminated" => false}), :ok
+    assert_broadcast "eliminated_seats", %{participants: []}
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", "peer-a")
+    assert %{eliminated: false, life: -3} = meta
+  end
+
   test "only the owner or the seat itself can eliminate and restore a player", %{
     socket: socket,
     room_id: room_id
@@ -848,7 +873,31 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert WebcamTableState.snapshot(room).team_life[1] == 999
     assert_reply push(owner, "adjust_team_life", %{"team_index" => 1, "delta" => -1998}), :ok
     assert WebcamTableState.snapshot(room).team_life[1] == -999
-    assert Enum.all?(WebcamTableState.snapshot(room).seats, &(not &1.eliminated))
+
+    # Zero shared life knocks out the whole team, but only that team.
+    assert_broadcast "eliminated_seats", %{participants: knocked_out}
+    assert knocked_out |> Enum.map(& &1.peer_id) |> Enum.sort() == ["peer-c", "peer-d"]
+
+    assert Enum.all?(
+             WebcamTableState.snapshot(room).seats,
+             &(&1.eliminated == &1.peer_id in ["peer-c", "peer-d"])
+           )
+
+    # Gaining life back does not restore; the owner restores the team explicitly.
+    assert_reply push(owner, "adjust_team_life", %{"team_index" => 1, "delta" => 1000}), :ok
+    assert WebcamTableState.snapshot(room).eliminated_seats |> length() == 2
+
+    assert_reply push(owner, "set_eliminated", %{"peer_id" => "peer-c", "eliminated" => false}),
+                 :ok
+
+    assert WebcamTableState.snapshot(room).eliminated_seats == []
+    assert_reply push(owner, "adjust_team_life", %{"team_index" => 1, "delta" => -1000}), :ok
+    assert WebcamTableState.snapshot(room).team_life[1] == -999
+
+    assert_reply push(owner, "set_eliminated", %{"peer_id" => "peer-d", "eliminated" => false}),
+                 :ok
+
+    assert WebcamTableState.snapshot(room).eliminated_seats == []
 
     for payload <- [
           %{"team_index" => -1, "delta" => 1},

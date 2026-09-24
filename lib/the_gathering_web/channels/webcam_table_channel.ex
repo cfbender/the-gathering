@@ -177,6 +177,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   def handle_in("update_status", payload, socket) when is_map(payload) do
     case status_changes(payload) do
       {:ok, changes} ->
+        changes = eliminate_at_zero(changes, socket.assigns.participant)
         participant = Map.merge(socket.assigns.participant, changes)
         {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
         WebcamTableState.remember_seat(socket.assigns.room_id, participant)
@@ -394,6 +395,14 @@ defmodule TheGatheringWeb.WebcamTableChannel do
         {:halt, :error}
     end)
   end
+
+  # Dropping to zero life knocks a player out in every format. Restoring is
+  # deliberately manual, so gaining life back does not silently un-eliminate.
+  defp eliminate_at_zero(%{life: life} = changes, %{eliminated: false})
+       when life <= 0 and not is_map_key(changes, :eliminated),
+       do: Map.put(changes, :eliminated, true)
+
+  defp eliminate_at_zero(changes, _participant), do: changes
 
   defp valid_counts?(counts) when is_map(counts) and map_size(counts) <= 100 do
     Enum.all?(counts, fn {name, count} ->
