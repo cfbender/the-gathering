@@ -32,7 +32,6 @@ it("animates new shuffle events once, never replaying on tab remount (even mid-a
     shuffleVersion: 0,
     turns: EMPTY_TURNS,
     timer: null,
-    onSetEliminated: vi.fn(),
     onAdjustTurn: vi.fn(),
   }
   let view = render(<SeatOrderTable {...props} />)
@@ -77,7 +76,6 @@ function seats() {
     shuffleVersion: 0,
     turns: EMPTY_TURNS,
     timer: null,
-    onSetEliminated: vi.fn(),
     onAdjustTurn: vi.fn(),
     onMoveSeat: vi.fn(),
   }

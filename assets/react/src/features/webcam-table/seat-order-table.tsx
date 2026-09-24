@@ -22,7 +22,6 @@ export interface SeatOrderTableProps {
   shuffleVersion: number
   turns: TurnState
   timer: TimerSample | null
-  onSetEliminated: (peerId: string, eliminated: boolean) => void
   onAdjustTurn: (playerId: number, delta: -1 | 1) => void
 }
 
@@ -36,7 +35,6 @@ export function SeatOrderTable({
   shuffleVersion,
   turns,
   timer,
-  onSetEliminated,
   onAdjustTurn,
 }: SeatOrderTableProps) {
   const [step, setStep] = useState(0)
@@ -136,19 +134,6 @@ export function SeatOrderTable({
                 </span>
                 {protectedSeats.includes(seat.peer_id) && (
                   <span className="block text-[0.6rem] text-warning">Can't attack yet</span>
-                )}
-                {!readOnly && (
-                  <button
-                    type="button"
-                    className="mt-1 rounded border border-white/15 px-1 py-0.5 text-[0.6rem] hover:bg-white/10 disabled:opacity-50"
-                    aria-pressed={seat.eliminated}
-                    aria-label={`Eliminated: ${seat.player_name}`}
-                    disabled={seat.departed}
-                    title={seat.departed ? "Rejoin to restore this player" : "Toggle elimination"}
-                    onClick={() => onSetEliminated(seat.peer_id, !seat.eliminated)}
-                  >
-                    {seat.eliminated ? "Out · Undo" : "Eliminate"}
-                  </button>
                 )}
               </td>
               {canReorder && onMoveSeat && (
