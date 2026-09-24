@@ -8,6 +8,9 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   @starting_life 40
   @life_range -999..999
+  # SDP offers with many candidates run 10–20 KB; anything far larger is abuse,
+  # since every signal fans out to the whole room.
+  @max_signal_bytes 65_536
 
   intercept ["presence_diff"]
 
@@ -134,13 +137,22 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   def handle_in("signal", %{"target" => target, "signal" => signal}, socket)
       when is_binary(target) and is_map(signal) do
-    broadcast_from!(socket, "signal", %{
-      target: target,
-      from: socket.assigns.participant.peer_id,
-      signal: signal
-    })
+    cond do
+      not uuid?(target) ->
+        {:reply, {:error, %{reason: "invalid signal"}}, socket}
 
-    {:noreply, socket}
+      byte_size(Jason.encode!(signal)) > @max_signal_bytes ->
+        {:reply, {:error, %{reason: "signal too large"}}, socket}
+
+      true ->
+        broadcast_from!(socket, "signal", %{
+          target: target,
+          from: socket.assigns.participant.peer_id,
+          signal: signal
+        })
+
+        {:noreply, socket}
+    end
   end
 
   def handle_in("signal", _payload, socket),
@@ -441,8 +453,11 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   defp valid_damage?(_damage), do: false
 
   defp participant(%{"peer_id" => peer_id, "player_id" => player_id} = params, user_id)
-       when is_binary(peer_id) and byte_size(peer_id) > 0 and is_integer(player_id) do
-    case Games.get_player(player_id) do
+       when is_integer(player_id) do
+    case uuid?(peer_id) && Games.get_player(player_id) do
+      false ->
+        {:error, "invalid peer id"}
+
       %{user_id: ^user_id} = player ->
         participant = %{
           peer_id: peer_id,
@@ -468,6 +483,9 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   end
 
   defp participant(_params, _user_id), do: {:error, "account is not linked to a player"}
+
+  # Clients generate peer IDs with crypto.randomUUID(); accept only that canonical form.
+  defp uuid?(value), do: is_binary(value) and match?({:ok, ^value}, Ecto.UUID.cast(value))
 
   defp valid_room_id?(room_id) do
     match?({:ok, _binary}, Ecto.UUID.dump(room_id))
