@@ -897,6 +897,56 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert rejoin(room, player, @peer_a).assigns.participant.life == 21
   end
 
+  @tag :capture_log
+  test "the shared log records seat changes and rolls, and survives reloads and room crashes", %{
+    socket: original,
+    room_id: room,
+    player: player
+  } do
+    assert_push "table_log", %{entries: [%{id: 1, text: "Alice joined the table"}]}
+    assert_reply push(original, "update_status", %{"life" => 37}), :ok
+    assert_broadcast "log_entry", %{id: 2, text: "Alice: 40 → 37 life"}
+    assert_reply push(original, "update_status", %{"life" => 35}), :ok
+    assert_broadcast "log_entry", %{id: 2, text: "Alice: 40 → 35 life", count: 2}
+    assert_reply push(original, "roll", %{"kind" => "coin"}), :ok
+    assert_broadcast "log_entry", %{id: 3, text: "Alice flipped a coin: " <> _}
+
+    # A reload within the grace period logs neither a leave nor a join.
+    disconnect(original)
+    reloaded = rejoin(room, player, @new_peer)
+    assert_push "table_log", %{entries: entries}
+
+    assert Enum.map(entries, & &1.text) |> tl() == [
+             "Alice: 40 → 35 life",
+             "Alice joined the table"
+           ]
+
+    Process.unlink(reloaded.channel_pid)
+    channel_ref = Process.monitor(reloaded.channel_pid)
+    Process.exit(room_pid(room), :kill)
+    assert_receive {:DOWN, ^channel_ref, :process, _, {:room_down, :killed}}
+
+    rejoin(room, player, @after_restart)
+    assert_push "table_log", %{entries: [%{text: "Alice joined the table"} | restored]}
+    assert restored == entries
+  end
+
+  test "a seat that stays away past the grace period is logged as leaving", %{room_id: room} do
+    bob = join_player(room, @peer_b, "Bob")
+    bob_id = bob.assigns.participant.player_id
+    disconnect(bob)
+    %{departing: %{^bob_id => {"Bob", token}}} = :sys.get_state(room_pid(room))
+
+    # A stale timer from an earlier disconnect is ignored.
+    send(room_pid(room), {:departed, bob_id, make_ref()})
+    sync_room(room)
+    refute_broadcast "log_entry", %{text: "Bob left the table"}
+
+    send(room_pid(room), {:departed, bob_id, token})
+    assert_broadcast "log_entry", %{text: "Bob left the table"}
+    assert %{text: "Bob left the table"} = hd(WebcamTables.log(room))
+  end
+
   test "an empty room is closed and its session deleted only once idle", %{
     socket: socket,
     room_id: room,

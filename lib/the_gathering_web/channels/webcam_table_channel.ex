@@ -51,6 +51,9 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     push(socket, "table_state", state)
     push(socket, "presence_state", Presence.list(socket))
     push(socket, "monarch_state", state.monarch)
+
+    # Sent once per join rather than in every table_state broadcast; new entries follow as log_entry.
+    push(socket, "table_log", %{entries: WebcamTables.log(socket.assigns.room_id)})
     {:noreply, assign(socket, :participant, participant)}
   end
 
@@ -408,20 +411,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     assign(socket, :participant, participant)
   end
 
-  defp broadcast_roll(socket, roll) do
-    participant = socket.assigns.participant
-
-    broadcast!(
-      socket,
-      "roll",
-      Map.merge(roll, %{
-        id: Ecto.UUID.generate(),
-        actor: participant.peer_id,
-        player_name: participant.player_name,
-        at: System.system_time(:millisecond)
-      })
-    )
-  end
+  defp broadcast_roll(socket, roll),
+    do: WebcamTables.roll(socket.assigns.room_id, socket.assigns.participant, roll)
 
   defp status_changes(payload) do
     Enum.reduce_while(payload, {:ok, %{}}, fn

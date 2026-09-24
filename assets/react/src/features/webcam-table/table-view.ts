@@ -59,8 +59,10 @@ export function useTableView({
     room.spectating || room.participants.some((participant) => participant.peer_id === room.peerId)
       ? room.participants
       : [localParticipant, ...room.participants]
+  // A pinned board overrides following the turn without changing the saved view mode.
   const activeParticipant =
     (preferences.followTurn &&
+      !board.pinned &&
       seated.find((participant) => participant.player_id === room.turns.active_player_id)) ||
     seated.find((participant) => participant.peer_id === board.selectedPeerId) ||
     (room.spectating && seated[0]) ||
@@ -79,10 +81,7 @@ export function useTableView({
     protectedSeats:
       room.mode === "five_star" && !room.spectating ? unattackableSeats(seated, playerId) : [],
     boardPinned: board.pinned,
-    selectBoard: (peerId) => {
-      preferences.update({ followTurn: false })
-      board.select(peerId)
-    },
+    selectBoard: board.select,
     toggleBoardPin: board.togglePin,
     toggleCamera,
     openReveal,
@@ -104,11 +103,7 @@ export function isFlipped(view: TableView, participant: TableParticipant) {
 }
 
 export function isPinned(view: TableView, participant: TableParticipant) {
-  return (
-    !view.preferences.followTurn &&
-    view.boardPinned &&
-    participant.peer_id === view.activeParticipant.peer_id
-  )
+  return view.boardPinned && participant.peer_id === view.activeParticipant.peer_id
 }
 
 export function togglePin(view: TableView, participant: TableParticipant) {

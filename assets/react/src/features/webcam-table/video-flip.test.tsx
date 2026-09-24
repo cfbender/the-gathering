@@ -5,7 +5,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test"
 import { EMPTY_COUNTERS } from "./seat-counters"
 import { WebcamTablePage } from "./webcam-table-page"
 
-const remote = vi.hoisted(() => ({ peerId: "first-connection", requestCapture: vi.fn() }))
+const remote = vi.hoisted(() => ({
+  peerId: "first-connection",
+  requestCapture: vi.fn(),
+  activePlayerId: null as number | null,
+}))
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
 }))
@@ -19,6 +23,7 @@ vi.mock("./use-webcam-room", async (importOriginal) => {
       return {
         ...room,
         requestCapture: remote.requestCapture,
+        turns: { ...room.turns, active_player_id: remote.activePlayerId },
         localStream: stream,
         streams: { [remote.peerId]: stream, "other-player": stream },
         participants: [
@@ -40,6 +45,7 @@ vi.mock("./use-webcam-room", async (importOriginal) => {
 beforeEach(() => {
   localStorage.clear()
   remote.peerId = "first-connection"
+  remote.activePlayerId = null
   remote.requestCapture.mockClear()
   vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 503 }))
 })
@@ -138,4 +144,23 @@ it("maps inspection clicks back to the unflipped source, including letterbox edg
   expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 1, false)
   fireEvent.click(board, { clientX: 100, clientY: 420 })
   expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0, false)
+})
+
+it("pins a selected board over follow-turn without overwriting the saved view mode", () => {
+  localStorage.setItem("the-gathering:table-preferences:1", JSON.stringify({ followTurn: true }))
+  remote.activePlayerId = 73
+  renderTable()
+  expect(screen.getByRole("button", { name: "Inspect Mara's board" })).toBeTruthy()
+
+  fireEvent.click(screen.getByRole("button", { name: "Show Theo's board" }))
+  expect(screen.getByRole("button", { name: "Inspect Theo's board" })).toBeTruthy()
+  expect(JSON.parse(localStorage.getItem("the-gathering:table-preferences:1")!)).toMatchObject({
+    followTurn: true,
+  })
+
+  fireEvent.click(screen.getByRole("button", { name: "Pinned" }))
+  expect(screen.getByRole("button", { name: "Inspect Mara's board" })).toBeTruthy()
+  cleanup()
+  renderTable()
+  expect(screen.getByRole("button", { name: "Inspect Mara's board" })).toBeTruthy()
 })

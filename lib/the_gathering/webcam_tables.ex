@@ -1,7 +1,7 @@
 defmodule TheGathering.WebcamTables do
   @moduledoc """
   Webcam tables: live rooms where remote players share cameras, life totals,
-  turns, a shared clock and identified cards.
+  turns, a shared clock, identified cards and a shared table log.
 
   Each room runs as its own `TheGathering.WebcamTables.Room` process, started
   on first join under `TheGathering.WebcamTables.RoomSupervisor` and
@@ -49,6 +49,12 @@ defmodule TheGathering.WebcamTables do
   end
 
   def snapshot(room), do: call(room, :snapshot)
+
+  @doc "The shared table log, newest first."
+  def log(room), do: call(room, :log)
+
+  @doc "Records and broadcasts `participant`'s dice or coin `roll` (`kind`, `result`, `sides`)."
+  def roll(room, participant, roll), do: call(room, {:roll, participant, roll})
 
   @doc "Running rooms, connected or not, as `%{id: id, opened_at: ms_since_epoch}`."
   def rooms do

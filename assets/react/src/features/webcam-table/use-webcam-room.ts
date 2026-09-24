@@ -47,8 +47,8 @@ export function useWebcamRoom(
       peers.setIceServers(iceServers)
       camera.startPlaceholder()
     },
-    bind(room, presence) {
-      game.bindChannel(room, presence)
+    bind(room) {
+      game.bindChannel(room)
       cards.bindChannel(room)
     },
     onPresence(everyone) {

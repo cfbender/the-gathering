@@ -73,6 +73,8 @@ defmodule TheGathering.WebcamTables.Session do
       monarch: data["monarch"] && fields(data["monarch"], [:peer_id, :player_name]),
       monarch_revision: data["monarch_revision"],
       cards: data["cards"],
+      # Snapshots saved before the shared log existed restore with an empty one.
+      log: Enum.map(data["log"] || [], &restore_log_entry/1),
       all_seats: restore_seats(data["all_seats"]),
       eliminated_seats: restore_seats(data["eliminated_seats"]),
       turns: %{
@@ -105,6 +107,17 @@ defmodule TheGathering.WebcamTables.Session do
        ])}
     end)
   end
+
+  defp restore_log_entry(data) do
+    entry = fields(data, [:id, :at, :text, :actor, :kind, :count])
+
+    entry
+    |> maybe_put(:life, data["life"] && fields(data["life"], [:name, :from, :to]))
+    |> maybe_put(:roll, data["roll"] && fields(data["roll"], [:prefix, :results]))
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp player_keys(values),
     do: Map.new(values, fn {id, value} -> {String.to_integer(id), value} end)

@@ -122,8 +122,8 @@ export function TableSettings({
             ]}
           />
           <p className="text-[0.65rem] text-base-content/60">
-            The camera rail sits on the opposite side on desktop. Selecting a board stops following
-            turns.
+            The camera rail sits on the opposite side on desktop. Selecting a board pins it over the
+            active turn until you unpin it.
           </p>
           <Choice
             label="Theme style"
