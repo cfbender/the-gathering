@@ -1,166 +1,28 @@
-import { useQueryClient } from "@tanstack/react-query"
-import { Channel, Presence, Socket } from "phoenix"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { api } from "@/lib/api"
-import type { GameFormat } from "@/features/games/game-format"
-import { openCamera } from "./camera"
-import { parseDataMessage, type CaptureRequest, type CaptureResponse } from "./data-messages"
-import { applyCardCommand, sameCard, type CardCommand } from "./identified-cards"
-import { canViewBoard, videoEncoding, type PublisherQuality } from "./media-policy"
-import type { GameTimerState, TimerSample } from "./game-timer"
-import type { GalleryArt } from "./recognition/pipeline"
-import { sharesCorrections } from "./use-correction-upload"
-import {
-  EMPTY_COUNTERS,
-  changeCounter,
-  describeCounterChanges,
-  type Counter,
-  type SeatCounters,
-} from "./seat-counters"
-import {
-  appendTableEvent,
-  describeParticipantChange,
-  describeParticipantLeft,
-  orderBySeats,
-  retainEliminatedSeats,
-  type TableEvent,
-  type TableEventContent,
-} from "./table-events"
-import { describeRoll, type RollRequest, type TableRoll } from "./table-rolls"
-import { EMPTY_TURNS, type TurnState } from "./turns"
+import { useState } from "react"
+import type { PublisherQuality } from "./media-policy"
+import { useRoomLink } from "./room-link"
+import type { IdentifiedCard } from "./room-types"
+import { useBoardCards } from "./use-board-cards"
+import { useCardCapture } from "./use-card-capture"
+import { useLocalCamera } from "./use-local-camera"
+import { usePeerConnections } from "./use-peer-connections"
+import { useRoomChannel } from "./use-room-channel"
+import { useTableGameState } from "./use-table-game-state"
 
+export type {
+  BoardCard,
+  CapturedCard,
+  IdentifiedCard,
+  SeatStatus,
+  TableParticipant,
+} from "./room-types"
 export type { TableEvent } from "./table-events"
+export { CAPTURE_TIMEOUT_MS } from "./use-card-capture"
+export { describeConnection } from "./use-peer-connections"
+export { STARTING_LIFE } from "./use-table-game-state"
 
-export interface TableParticipant extends SeatCounters {
-  peer_id: string
-  player_id: number
-  player_name: string
-  life: number
-  /** Server clock (ms) when the seat was taken; default seat order is join order. */
-  joined_at: number
-  camera_off: boolean
-  reveal_to?: string | null
-  eliminated: boolean
-  spectator?: boolean
-  /** Retained result seat after an eliminated player disconnects. */
-  departed?: boolean
-  deck_id?: number
-  deck_name?: string
-}
-
-/** Status a player publishes about their own seat; mirrors the channel's `update_status`. */
-export type SeatStatus = Partial<
-  Pick<TableParticipant, "life" | "camera_off" | "eliminated"> & SeatCounters
->
-
-interface Monarch {
-  peer_id: string
-  player_name: string
-}
-
-interface MonarchEvent {
-  holder: Monarch | null
-  revision: number
-}
-
-interface TableConfig {
-  ice_servers: RTCIceServer[]
-  max_players: number
-  minimum_height: number
-  socket_token: string
-}
-
-export interface CapturedCard {
-  peerId: string
-  playerId: number
-  /** JPEG data URL of the native crop around the click. */
-  image: string
-  nativeWidth: number
-  nativeHeight: number
-  /** Side of the square crop in native pixels (640 unless the camera is smaller). */
-  cropSize: number
-  /** The click in crop pixels; the crop is clamped to the frame so it is not always centred. */
-  clickX: number
-  clickY: number
-  /** Camera owner's consent to share corrections, carried with the crop. */
-  shareCorrections: boolean
-  /** Shift+click: the clicker wants to see and choose among the candidates even when the
-   * recognizer is sure. A plain click logs a clear answer silently. */
-  inspect: boolean
-  /** Keep reveal captures private even if identification finishes after the reveal ends. */
-  private: boolean
-}
-
-/** A card a seat named on someone's board, recognized or picked by hand. */
-export type IdentifiedCard = Pick<GalleryArt, "id" | "name" | "set" | "collector_number">
-
-/** One entry in the shared per-board list of identified cards. The server owns the list: it
- * validates every change and broadcasts the whole list, including to seats that join later. */
-export interface BoardCard {
-  id: string
-  ownerPeerId: string
-  byPlayerName: string
-  card: IdentifiedCard
-  /** Clicker's clock (ms); only used to order the list. */
-  at: number
-}
-
-type Signal = { description: RTCSessionDescriptionInit } | { candidate: RTCIceCandidateInit }
-
-interface PeerState {
-  connection: RTCPeerConnection
-  videoSender: RTCRtpSender
-  videoTrack: MediaStreamTrack
-  mediaUpdate: Promise<void>
-  /** Offer/answer/candidate steps run one at a time, in arrival order. */
-  negotiation: Promise<void>
-  channel?: RTCDataChannel
-  stream?: MediaStream
-  candidates: RTCIceCandidateInit[]
-  /** ICE was already restarted once after a failure; a second failure is reported, not retried. */
-  restarted: boolean
-}
-
-/** What a remote seat's tile should say while there is no video from it yet. */
-export function describeConnection(state: RTCPeerConnectionState | undefined): string {
-  switch (state) {
-    case "failed":
-      return "Couldn't connect"
-    case "disconnected":
-      return "Reconnecting…"
-    case "closed":
-      return "Left"
-    default:
-      return "Connecting…"
-  }
-}
-
-const CROP_SIZE = 640
-/** How long a clicker waits for a remote camera's crop before giving up on it. */
-export const CAPTURE_TIMEOUT_MS = 8000
-export const STARTING_LIFE = 40
-
-function captureCrop(video: HTMLVideoElement, x: number, y: number) {
-  const width = video.videoWidth
-  const height = video.videoHeight
-  const size = Math.min(CROP_SIZE, width, height)
-  const left = Math.max(0, Math.min(width - size, Math.round(x * width - size / 2)))
-  const top = Math.max(0, Math.min(height - size, Math.round(y * height - size / 2)))
-  const canvas = document.createElement("canvas")
-  canvas.width = size
-  canvas.height = size
-  canvas.getContext("2d")?.drawImage(video, left, top, size, size, 0, 0, size, size)
-  return {
-    image: canvas.toDataURL("image/jpeg", 0.82),
-    nativeWidth: width,
-    nativeHeight: height,
-    cropSize: size,
-    clickX: x * width - left,
-    clickY: y * height - top,
-    shareCorrections: sharesCorrections(),
-  }
-}
-
+/** One seat at a webcam table: wires the local camera, the peer mesh, card captures, the
+ * server's card list, and game state to the room channel, and exposes them as one object. */
 export function useWebcamRoom(
   roomId: string,
   playerId: number,
@@ -169,1035 +31,119 @@ export function useWebcamRoom(
   quality: PublisherQuality = "auto",
   cameraEnabled = true,
 ) {
-  const queryClient = useQueryClient()
-  const deviceIdRef = useRef(deviceId)
-  const qualityRef = useRef(quality)
-  const cameraRequest = useRef(0)
-  const cameraChangingRef = useRef(false)
-  const [cameraChanging, setCameraChanging] = useState(false)
-  const [cameraError, setCameraError] = useState<string | null>(null)
-  const peerIdRef = useRef(crypto.randomUUID())
-  const localVideoRef = useRef<HTMLVideoElement | null>(null)
-  const localStreamRef = useRef<MediaStream | null>(null)
-  const channelRef = useRef<Channel | null>(null)
-  const peersRef = useRef(new Map<string, PeerState>())
-  const participantsRef = useRef<TableParticipant[]>([])
-  const pendingCaptures = useRef(
-    new Map<string, { targetPeerId: string; inspect: boolean; timeout: number }>(),
-  )
-  const eventIdRef = useRef(0)
-  const [participants, setParticipants] = useState<TableParticipant[]>([])
-  const [eliminatedSeats, setEliminatedSeats] = useState<TableParticipant[]>([])
-  const [seatOrder, setSeatOrder] = useState<string[]>([])
-  const [shuffleVersion, setShuffleVersion] = useState(0)
-  const [timer, setTimer] = useState<TimerSample | null>(null)
-  const [turns, setTurns] = useState<TurnState>(EMPTY_TURNS)
-  const [mode, setModeState] = useState<GameFormat>("commander")
-  const [teamLife, setTeamLife] = useState<Record<number, number>>({})
-  const [spectating, setSpectating] = useState(false)
-  const spectatorRef = useRef(false)
-  const [ownerId, setOwnerId] = useState<number | null>(null)
-  const [roll, setRoll] = useState<TableRoll | null>(null)
-  const [events, setEvents] = useState<TableEvent[]>([])
-  const [streams, setStreams] = useState<Record<string, MediaStream>>({})
-  const [connectionStates, setConnectionStates] = useState<Record<string, RTCPeerConnectionState>>(
-    {},
-  )
-  const [iceServers, setIceServers] = useState<RTCIceServer[]>([])
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null)
-  const cameraOffRef = useRef(!cameraEnabled)
-  const [cameraOff, setCameraOff] = useState(!cameraEnabled)
-  const revealToRef = useRef<string | null>(null)
-  const [revealTo, setRevealTo] = useState<string | null>(null)
-  const [revealBusy, setRevealBusy] = useState(false)
-  // Your own life is tracked locally so rapid ± clicks compound before presence
-  // echoes the new total back; presence stays the source for everyone else.
-  const lifeRef = useRef(STARTING_LIFE)
-  const [life, setLifeState] = useState(STARTING_LIFE)
-  const countersRef = useRef(EMPTY_COUNTERS)
-  const [counters, setCounters] = useState(EMPTY_COUNTERS)
-  const [monarch, setMonarch] = useState<Monarch | null>(null)
-  const [capture, setCapture] = useState<CapturedCard | null>(null)
-  const cardsRef = useRef<BoardCard[]>([])
-  const serverCardsRef = useRef<BoardCard[]>([])
-  const pendingCardsRef = useRef(new Map<number, CardCommand>())
-  const cardCommandRef = useRef(0)
-  const [identifiedCards, setIdentifiedCards] = useState<BoardCard[]>([])
+  const link = useRoomLink()
   const [status, setStatus] = useState("Opening 1080p camera…")
   const [error, setError] = useState<string | null>(null)
+  const camera = useLocalCamera(link, deviceId, cameraEnabled)
+  const peers = usePeerConnections(link, camera, quality, setError)
+  const captures = useCardCapture(link, playerId, camera, peers, setStatus)
+  const cards = useBoardCards(link)
+  const game = useTableGameState(link, playerId, setError)
 
-  const log = useCallback((lines: (string | TableEventContent)[]) => {
-    if (lines.length === 0) return
-    const at = new Date()
-    const entries = lines.map((line) => ({
-      ...(typeof line === "string" ? { text: line } : line),
-      id: (eventIdRef.current += 1),
-      at,
-    }))
-    setEvents((current) => entries.reduce(appendTableEvent, current))
-  }, [])
-
-  useEffect(() => {
-    if (!roll) return
-    const timeout = window.setTimeout(() => setRoll(null), 5000)
-    return () => window.clearTimeout(timeout)
-  }, [roll])
-
-  const chooseDeck = useCallback((chosenDeckId: number) => {
-    channelRef.current?.push("choose_deck", { deck_id: chosenDeckId })
-  }, [])
-
-  const updateStatus = useCallback((changes: SeatStatus) => {
-    channelRef.current?.push("update_status", changes)
-  }, [])
-
-  // Disable private clones synchronously, then detach senders. Never disable the shared
-  // native track to hide just one peer: the target and native crop RPC still need it.
-  const syncVideo = useCallback(() => {
-    const updates = [...peersRef.current].map(([id, peer]) => {
-      const visible =
-        !spectatorRef.current && canViewBoard(peerIdRef.current, id, revealToRef.current)
-      peer.videoTrack.enabled = visible && !!localStreamRef.current?.getVideoTracks()[0]?.enabled
-      peer.mediaUpdate = peer.mediaUpdate
-        .catch(() => {})
-        .then(async () => {
-          if (peer.connection.connectionState === "closed") return
-          const allowed =
-            !spectatorRef.current && canViewBoard(peerIdRef.current, id, revealToRef.current)
-          await peer.videoSender.replaceTrack(allowed ? peer.videoTrack : null)
-          const parameters = peer.videoSender.getParameters()
-          if (parameters.encodings?.length) {
-            const encoding = videoEncoding(
-              participantsRef.current.length,
-              qualityRef.current,
-              localStreamRef.current?.getVideoTracks()[0]?.getSettings().height,
-            )
-            parameters.encodings = parameters.encodings.map((current) => ({
-              ...current,
-              ...encoding,
-            }))
-            await peer.videoSender.setParameters(parameters)
-          }
-        })
-      return peer.mediaUpdate
-    })
-    return Promise.all(updates)
-  }, [])
-
-  const refreshVideo = useCallback(() => {
-    void syncVideo().catch(() =>
-      setError("Could not update video senders. Hidden cameras remain blocked."),
-    )
-  }, [syncVideo])
-
-  useEffect(() => {
-    qualityRef.current = quality
-    refreshVideo()
-  }, [quality, refreshVideo])
-
-  const getPeerStats = useCallback(async () => {
-    return Promise.all(
-      [...peersRef.current].map(async ([id, peer]) => ({
-        id,
-        report: await peer.connection.getStats(),
-      })),
-    )
-  }, [])
-
-  async function changeCamera(nextDeviceId: string): Promise<boolean> {
-    if (spectatorRef.current || cameraChangingRef.current || !localStreamRef.current) return false
-    cameraChangingRef.current = true
-    setCameraChanging(true)
-    setCameraError(null)
-    const request = ++cameraRequest.current
-    try {
-      const media = await openCamera(nextDeviceId).catch((reason: unknown) => {
-        if (
-          nextDeviceId &&
-          reason instanceof DOMException &&
-          ["NotFoundError", "OverconstrainedError"].includes(reason.name)
-        ) {
-          setCameraError("Saved camera is unavailable; using the system default.")
-          return openCamera("")
-        }
-        throw reason
-      })
-      if (request !== cameraRequest.current) {
-        media.getTracks().forEach((track) => track.stop())
-        return false
-      }
-      const previous = localStreamRef.current
-      const track = media.getVideoTracks()[0]!
-      track.enabled = previous?.getVideoTracks()[0]?.enabled ?? false
-      localStreamRef.current = media
-      setLocalStream(media)
-      if (localVideoRef.current) {
-        // Assigning srcObject pauses the element; left paused, the hidden capture video
-        // would freeze on the camera's first frame and every crop would repeat it.
-        localVideoRef.current.srcObject = media
-        void localVideoRef.current.play().catch(() => {})
-      }
-      // Stop old clones before replacing, including clones detached by a private reveal.
-      // syncVideo rechecks current consent inside each sender's serialized update.
-      for (const [id, peer] of peersRef.current) {
-        peer.videoTrack.stop()
-        peer.videoTrack = track.clone()
-        peer.videoTrack.enabled =
-          track.enabled && canViewBoard(peerIdRef.current, id, revealToRef.current)
-      }
-      previous?.getTracks().forEach((oldTrack) => oldTrack.stop())
-      deviceIdRef.current = nextDeviceId
-      await syncVideo().catch(() => {
-        setCameraError(
-          "Camera changed, but a peer's video could not be updated. Try switching again.",
-        )
-      })
-      return true
-    } catch (reason) {
-      setCameraError(reason instanceof Error ? reason.message : "Could not switch camera")
-      return false
-    } finally {
-      cameraChangingRef.current = false
-      setCameraChanging(false)
-    }
-  }
-
-  /** Shows the server's list with this seat's unanswered commands applied on top. */
-  const showCards = useCallback(() => {
-    cardsRef.current = [...pendingCardsRef.current.values()].reduce(
-      applyCardCommand,
-      serverCardsRef.current,
-    )
-    setIdentifiedCards(cardsRef.current)
-  }, [])
-
-  const receiveCards = useCallback(
-    (entries: BoardCard[]) => {
-      serverCardsRef.current = entries
-      showCards()
+  const { spectating } = useRoomChannel(link, roomId, playerId, deckId, {
+    setStatus,
+    setError,
+    onConfig(iceServers) {
+      peers.setIceServers(iceServers)
+      camera.startPlaceholder()
     },
-    [showCards],
-  )
-
-  /** Sends a card change to the server and shows it until the server answers. The server
-   * broadcasts its list before replying, so an accepted change never flickers; a rejected or
-   * timed-out change falls back to the server's list. */
-  const sendCardCommand = useCallback(
-    (command: CardCommand) => {
-      const channel = channelRef.current
-      if (spectatorRef.current || !channel) return
-      const id = (cardCommandRef.current += 1)
-      pendingCardsRef.current.set(id, command)
-      showCards()
-      const settle = () => {
-        pendingCardsRef.current.delete(id)
-        showCards()
-      }
-      channel
-        .push("cards", command)
-        .receive("ok", settle)
-        .receive("error", settle)
-        .receive("timeout", settle)
+    bind(room, presence) {
+      game.bindChannel(room, presence)
+      cards.bindChannel(room)
     },
-    [showCards],
-  )
-
-  const liveStatus = useCallback(
-    () =>
-      spectatorRef.current
-        ? "Spectating — this game has already started"
-        : "Live — click any board to inspect a card",
-    [],
-  )
-
-  /** Forgets outstanding crop requests to one peer (or all of them). */
-  const cancelCaptures = useCallback(
-    (peerId: string | null, announce = true) => {
-      let cancelled = false
-      for (const [requestId, pending] of pendingCaptures.current) {
-        if (peerId !== null && pending.targetPeerId !== peerId) continue
-        window.clearTimeout(pending.timeout)
-        pendingCaptures.current.delete(requestId)
-        cancelled = true
-      }
-      if (cancelled && announce) setStatus(liveStatus())
+    onPresence(everyone) {
+      game.receivePresence(everyone)
+      peers.syncPeers(everyone)
     },
-    [liveStatus],
-  )
-
-  const answerCaptureRequest = useCallback((fromPeerId: string, message: CaptureRequest) => {
-    const channel = peersRef.current.get(fromPeerId)?.channel
-    if (
-      !localVideoRef.current ||
-      channel?.readyState !== "open" ||
-      !canViewBoard(peerIdRef.current, fromPeerId, revealToRef.current) ||
-      !localStreamRef.current?.getVideoTracks()[0]?.enabled
-    )
-      return
-    const response: CaptureResponse = {
-      type: "capture_response",
-      requestId: message.requestId,
-      private: !!revealToRef.current,
-      ...captureCrop(localVideoRef.current, message.x, message.y),
-    }
-    try {
-      channel.send(JSON.stringify(response))
-    } catch {
-      // The channel closed or the crop exceeded its message limit; the clicker times out.
-    }
-  }, [])
-
-  const receiveCapture = useCallback(
-    (fromPeerId: string, message: CaptureResponse) => {
-      const pending = pendingCaptures.current.get(message.requestId)
-      if (pending?.targetPeerId !== fromPeerId) return
-      window.clearTimeout(pending.timeout)
-      pendingCaptures.current.delete(message.requestId)
-      setStatus(liveStatus())
-      const owner = participantsRef.current.find((item) => item.peer_id === fromPeerId)
-      if (
-        !owner ||
-        owner.camera_off ||
-        !canViewBoard(fromPeerId, peerIdRef.current, owner.reveal_to)
-      )
-        return
-      const { type: _type, requestId: _requestId, ...crop } = message
-      setCapture({
-        peerId: fromPeerId,
-        playerId: owner.player_id,
-        inspect: pending.inspect,
-        ...crop,
-      })
+    onSignal: peers.receiveSignal,
+    onJoined(participant) {
+      game.hydrate(participant)
+      if (participant) peers.restoreReveal(participant.reveal_to ?? null)
+      game.syncTimer()
+      if (!link.spectator) {
+        game.updateStatus({ camera_off: camera.isOff() })
+        camera.startCamera(peers.replaceSourceTrack)
+      }
+      peers.refreshVideo()
     },
-    [liveStatus],
-  )
-
-  /** Data channels carry only the crop RPC; anything malformed or unexpected is dropped. */
-  const handleData = useCallback(
-    (fromPeerId: string, event: MessageEvent<unknown>) => {
-      const message = parseDataMessage(event.data)
-      if (message?.type === "capture_request") answerCaptureRequest(fromPeerId, message)
-      else if (message?.type === "capture_response") receiveCapture(fromPeerId, message)
+    onChannelError() {
+      captures.cancelAll()
+      peers.reset()
     },
-    [answerCaptureRequest, receiveCapture],
-  )
-
-  useEffect(() => {
-    let disposed = false
-    let socket: Socket | null = null
-    let presence: Presence | null = null
-    let monarchRevision = -1
-    let cameraStarted = false
-
-    function syncMonarch({ holder, revision }: MonarchEvent) {
-      if (revision < monarchRevision) return
-      monarchRevision = revision
-      setMonarch(holder)
-    }
-
-    let timerSync: number | undefined
-
-    let lastTimer: GameTimerState | null = null
-
-    function receiveTimer(state: GameTimerState) {
-      lastTimer = state
-      setTimer({ state, receivedAt: performance.now() })
-    }
-
-    function attachDataChannel(peerId: string, dataChannel: RTCDataChannel) {
-      const peer = peersRef.current.get(peerId)
-      if (!peer) return
-      peer.channel = dataChannel
-      dataChannel.onmessage = (event) => handleData(peerId, event)
-    }
-
-    function sendSignal(target: string, signal: Signal) {
-      channelRef.current?.push("signal", { target, signal })
-    }
-
-    /** Queues one signaling step behind the peer's previous ones. A step must check `current()`
-     * after every await: the peer can leave or the channel can rejoin while it waits. Errors on
-     * a live connection are logged; errors after it was replaced or closed are expected. */
-    function negotiate(
-      remotePeerId: string,
-      peer: PeerState,
-      step: (current: () => boolean) => Promise<void>,
-    ) {
-      const current = () =>
-        !disposed &&
-        peersRef.current.get(remotePeerId) === peer &&
-        peer.connection.signalingState !== "closed"
-      peer.negotiation = peer.negotiation.then(async () => {
-        if (!current()) return
-        try {
-          await step(current)
-        } catch (reason) {
-          if (current()) console.warn(`WebRTC negotiation with ${remotePeerId} failed`, reason)
-        }
-      })
-    }
-
-    function sendOffer(remotePeerId: string, peer: PeerState) {
-      negotiate(remotePeerId, peer, async (current) => {
-        const description = await peer.connection.createOffer()
-        if (!current()) return
-        await peer.connection.setLocalDescription(description)
-        if (current()) sendSignal(remotePeerId, { description })
-      })
-    }
-
-    function receiveSignal(remotePeerId: string, peer: PeerState, signal: Signal) {
-      negotiate(remotePeerId, peer, async (current) => {
-        const { connection } = peer
-        if ("candidate" in signal) {
-          if (connection.remoteDescription) await connection.addIceCandidate(signal.candidate)
-          else peer.candidates.push(signal.candidate)
-          return
-        }
-        await connection.setRemoteDescription(signal.description)
-        for (const candidate of peer.candidates.splice(0)) {
-          if (!current()) return
-          await connection.addIceCandidate(candidate)
-        }
-        if (signal.description.type !== "offer" || !current()) return
-        const answer = await connection.createAnswer()
-        if (!current()) return
-        await connection.setLocalDescription(answer)
-        if (current()) sendSignal(remotePeerId, { description: answer })
-      })
-    }
-
-    function createPeer(remotePeerId: string, config: TableConfig) {
-      const existing = peersRef.current.get(remotePeerId)
-      if (existing) return existing
-      const connection = new RTCPeerConnection({ iceServers: config.ice_servers })
-      const media = localStreamRef.current as MediaStream
-      const videoTrack = media.getVideoTracks()[0]!.clone()
-      const visible =
-        !spectatorRef.current && canViewBoard(peerIdRef.current, remotePeerId, revealToRef.current)
-      videoTrack.enabled = visible && media.getVideoTracks()[0]!.enabled
-      // addTrack lets an incoming offer reuse this transceiver on the answering side.
-      const videoSender = connection.addTrack(videoTrack, media)
-      const peer: PeerState = {
-        connection,
-        videoSender,
-        videoTrack,
-        mediaUpdate: visible ? Promise.resolve() : videoSender.replaceTrack(null),
-        negotiation: Promise.resolve(),
-        candidates: [],
-        restarted: false,
-      }
-      peersRef.current.set(remotePeerId, peer)
-      connection.onicecandidate = ({ candidate }) => {
-        if (candidate) sendSignal(remotePeerId, { candidate: candidate.toJSON() })
-      }
-      connection.ontrack = ({ streams: incoming }) => {
-        const stream = incoming[0]
-        if (!stream) return
-        peer.stream = stream
-        setStreams((current) => ({ ...current, [remotePeerId]: stream }))
-      }
-      connection.ondatachannel = ({ channel: incoming }) =>
-        attachDataChannel(remotePeerId, incoming)
-      connection.onconnectionstatechange = () => {
-        const state = connection.connectionState
-        if (state === "connected") refreshVideo()
-        setConnectionStates((current) => ({ ...current, [remotePeerId]: state }))
-        if (state === "failed" || state === "closed") {
-          setStreams((current) => {
-            const next = { ...current }
-            delete next[remotePeerId]
-            return next
-          })
-        }
-        // One ICE restart covers a transient path loss; the side that made the first offer
-        // makes the new one. If the networks simply cannot reach each other (no TURN), the
-        // second failure stays on screen so the seat knows why.
-        if (state === "failed" && !peer.restarted && peerIdRef.current < remotePeerId) {
-          peer.restarted = true
-          connection.restartIce()
-          sendOffer(remotePeerId, peer)
-        }
-      }
-      return peer
-    }
-
-    async function run() {
-      try {
-        const config = await api<{ data: TableConfig }>("/api/webcam-table/config").then(
-          (body) => body.data,
-        )
-        setIceServers(config.ice_servers)
-        // Negotiate a video sender before admission, without asking spectators for
-        // camera permission. A seated client's real camera replaces this track.
-        const placeholder = document.createElement("canvas")
-        placeholder.width = 1920
-        placeholder.height = 1080
-        placeholder.getContext("2d")?.fillRect(0, 0, 1920, 1080)
-        const media = placeholder.captureStream(1)
-        if (disposed) return media.getTracks().forEach((track) => track.stop())
-        media.getVideoTracks().forEach((track) => {
-          track.enabled = !cameraOffRef.current
-        })
-        localStreamRef.current = media
-        setLocalStream(media)
-        const captureVideo = document.createElement("video")
-        captureVideo.muted = true
-        captureVideo.playsInline = true
-        captureVideo.srcObject = media
-        void captureVideo.play().catch(() => {})
-        localVideoRef.current = captureVideo
-
-        socket = new Socket("/socket", { params: () => ({ token: config.socket_token }) })
-        socket.onError(() => {
-          setStatus("Reconnecting… Your game is saved.")
-          // Socket tokens expire after a day; refresh from the still-authenticated
-          // cookie session so the next automatic retry does not reuse an expired token.
-          void api<{ data: TableConfig }>("/api/webcam-table/config")
-            .then(({ data }) => {
-              config.socket_token = data.socket_token
-            })
-            .catch(() => {})
-        })
-        socket.connect()
-        const room = socket.channel(`webcam_table:${roomId}`, () => ({
-          peer_id: peerIdRef.current,
-          player_id: playerId,
-          deck_id: deckId,
-        }))
-        channelRef.current = room
-        presence = new Presence(room)
-        presence.onJoin((_id, current, joined) => {
-          const previous = current?.metas[0] as TableParticipant | undefined
-          const next = joined.metas[0] as TableParticipant | undefined
-          if (next) log(describeParticipantChange(previous, next))
-          if (previous && next)
-            log(describeCounterChanges(previous, next, next.player_name, participantsRef.current))
-        })
-        presence.onLeave((_id, current, left) => {
-          const participant = left.metas[0] as TableParticipant | undefined
-          if (participant && current.metas.length === 0) log([describeParticipantLeft(participant)])
-        })
-        room.on(
-          "seat_order",
-          ({ peer_ids, shuffled }: { peer_ids: string[]; shuffled: boolean }) => {
-            setSeatOrder(peer_ids)
-            if (shuffled) setShuffleVersion((version) => version + 1)
-            log([
-              shuffled
-                ? "Seat order randomized"
-                : lastTimer?.started_at == null
-                  ? "Game started in seat order"
-                  : "Seat order changed",
-            ])
-          },
-        )
-        room.on("monarch_state", syncMonarch)
-        room.on("monarch", (event: MonarchEvent) => {
-          syncMonarch(event)
-          const { holder } = event
-          log([holder ? `${holder.player_name} took the monarch` : "The monarch left the table"])
-        })
-        room.on("deck_selected", () => {
-          void queryClient.invalidateQueries({ queryKey: ["decks"] })
-        })
-        room.on("seat_replaced", () => {
-          setError("This seat is now open in another tab. Close this tab to keep playing there.")
-          room.leave()
-          socket?.disconnect()
-        })
-        room.onError(() => {
-          // A channel retry is a new media generation. Reusing its peer ID can
-          // leave one browser offering to an old connection after Presence resets.
-          peerIdRef.current = crypto.randomUUID()
-          for (const peer of peersRef.current.values()) {
-            peer.connection.onconnectionstatechange = null
-            peer.videoTrack.stop()
-            peer.connection.close()
-          }
-          peersRef.current.clear()
-          cancelCaptures(null, false)
-          setStreams({})
-          setConnectionStates({})
-          setStatus("Reconnecting… Your game is saved.")
-        })
-        // The server starts every game with empty boards and says so in table_state.
-        room.on("identified_cards", ({ entries }: { entries: BoardCard[] }) =>
-          receiveCards(entries),
-        )
-        room.on(
-          "table_state",
-          ({
-            timer: state,
-            peer_ids,
-            eliminated_seats,
-            turns: turnState,
-            mode: gameMode = "commander",
-            team_life = {},
-            seats,
-            owner_id,
-            monarch: savedMonarch,
-            cards,
-          }: {
-            timer: GameTimerState
-            peer_ids: string[]
-            eliminated_seats: TableParticipant[]
-            turns: TurnState
-            mode?: GameFormat
-            team_life?: Record<number, number>
-            seats?: TableParticipant[]
-            owner_id?: number
-            monarch?: MonarchEvent
-            cards?: BoardCard[]
-          }) => {
-            receiveTimer(state)
-            setSeatOrder(peer_ids)
-            setEliminatedSeats(seats ?? eliminated_seats)
-            setTurns(turnState)
-            setModeState(gameMode)
-            setTeamLife(team_life)
-            if (owner_id !== undefined) setOwnerId(owner_id)
-            if (savedMonarch) syncMonarch(savedMonarch)
-            if (cards) receiveCards(cards)
-          },
-        )
-        room.on(
-          "eliminated_seats",
-          ({ participants: eliminated }: { participants: TableParticipant[] }) =>
-            setEliminatedSeats(eliminated),
-        )
-        room.on("timer_state", receiveTimer)
-        room.on("roll", (result: TableRoll) => {
-          setRoll(result)
-          const prefix =
-            result.kind === "dice"
-              ? `${result.player_name} rolled a d${result.sides}: `
-              : `${result.player_name} flipped a coin: `
-          log([
-            {
-              text: describeRoll(result),
-              actor: result.actor,
-              kind: result.kind === "dice" ? `dice:${result.sides}` : "coin",
-              roll: { prefix, results: [result.result] },
-            },
-          ])
-        })
-        // Re-anchor to server time so wall-clock changes and browser clock drift cannot accumulate.
-        const syncTimer = () => {
-          if (room.state !== "joined") return
-          const sentAt = performance.now()
-          room.push("timer_sync", {}).receive("ok", (state: GameTimerState) => {
-            if (disposed) return
-            setTimer({ state, receivedAt: (sentAt + performance.now()) / 2 })
-          })
-        }
-        timerSync = window.setInterval(syncTimer, 15_000)
-        presence.onSync(() => {
-          const next = presence?.list((_id, value) => value.metas[0] as TableParticipant) ?? []
-          const seats = next.filter((participant) => !participant.spectator)
-          participantsRef.current = seats
-          setParticipants(seats)
-          const activeIds = new Set(next.map((item) => item.peer_id))
-          if (revealToRef.current && !activeIds.has(revealToRef.current)) {
-            revealToRef.current = null
-            setRevealTo(null)
-          }
-          peersRef.current.forEach((peer, id) => {
-            if (!activeIds.has(id)) {
-              cancelCaptures(id)
-              peer.videoTrack.stop()
-              peer.connection.close()
-              peersRef.current.delete(id)
-              setConnectionStates((current) => {
-                const rest = { ...current }
-                delete rest[id]
-                return rest
-              })
-            }
-          })
-          for (const participant of next) {
-            const remoteId = participant.peer_id
-            if (spectatorRef.current && participant.spectator) continue
-            if (remoteId === peerIdRef.current || peersRef.current.has(remoteId)) continue
-            const peer = createPeer(remoteId, config)
-            if (peerIdRef.current < remoteId) {
-              const dataChannel = peer.connection.createDataChannel("table")
-              attachDataChannel(remoteId, dataChannel)
-              sendOffer(remoteId, peer)
-            }
-          }
-          refreshVideo()
-        })
-        room.on(
-          "signal",
-          ({ target, from, signal }: { target: string; from: string; signal: Signal }) => {
-            if (target !== peerIdRef.current) return
-            receiveSignal(from, createPeer(from, config), signal)
-          },
-        )
-        room
-          .join()
-          .receive("ok", ({ participant }: { participant?: TableParticipant }) => {
-            monarchRevision = -1
-            setError(null)
-            spectatorRef.current = participant?.spectator ?? false
-            setSpectating(spectatorRef.current)
-            if (participant) {
-              lifeRef.current = participant.life
-              setLifeState(participant.life)
-              const restored = {
-                poison: participant.poison,
-                rad: participant.rad,
-                commander_casts: participant.commander_casts,
-                commander_damage: participant.commander_damage,
-              }
-              countersRef.current = restored
-              setCounters(restored)
-              revealToRef.current = participant.reveal_to ?? null
-              setRevealTo(revealToRef.current)
-            }
-            setStatus(liveStatus())
-            syncTimer()
-            if (!spectatorRef.current) {
-              room.push("update_status", { camera_off: cameraOffRef.current })
-              if (!cameraStarted) {
-                cameraStarted = true
-                void changeCamera(deviceIdRef.current)
-              }
-            }
-            refreshVideo()
-          })
-          .receive("error", ({ reason }: { reason: string }) => setError(reason))
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Could not start the webcam table")
-      }
-    }
-
-    void run()
-    return () => {
-      disposed = true
-      cameraRequest.current += 1
-      window.clearInterval(timerSync)
-      cancelCaptures(null, false)
-      channelRef.current?.leave()
-      socket?.disconnect()
-      peersRef.current.forEach((peer) => {
-        peer.videoTrack.stop()
-        peer.connection.close()
-      })
-      peersRef.current.clear()
-      localStreamRef.current?.getTracks().forEach((track) => track.stop())
-    }
-  }, [
-    cancelCaptures,
-    deckId,
-    handleData,
-    liveStatus,
-    log,
-    playerId,
-    queryClient,
-    receiveCards,
-    refreshVideo,
-    roomId,
-  ])
-
-  async function changeReveal(target: string | null) {
-    if (revealBusy || !channelRef.current) return
-    setRevealBusy(true)
-    revealToRef.current = target
-    setRevealTo(target)
-    try {
-      await syncVideo()
-      await new Promise<void>((resolve, reject) => {
-        channelRef
-          .current!.push("reveal", { target })
-          .receive("ok", () => resolve())
-          .receive("error", () =>
-            reject(
-              new Error("Reveal target is no longer seated. End reveal to restore your camera."),
-            ),
-          )
-          .receive("timeout", () =>
-            reject(new Error("Reveal could not be confirmed. End reveal before trying again.")),
-          )
-      })
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not update reveal")
-    } finally {
-      setRevealBusy(false)
-    }
-  }
-
-  function changeLife(delta: number) {
-    if (spectatorRef.current || channelRef.current?.state !== "joined") return
-    if (mode === "two_headed_giant") {
-      const index = seatedParticipants.findIndex((seat) => seat.player_id === playerId)
-      if (index >= 0) adjustTeamLife(Math.floor(index / 2), delta)
-      return
-    }
-    const next = Math.max(-999, Math.min(999, lifeRef.current + delta))
-    lifeRef.current = next
-    setLifeState(next)
-    updateStatus({ life: next })
-  }
-
-  function adjustCounter(counter: Counter, delta: number) {
-    if (spectatorRef.current || channelRef.current?.state !== "joined") return
-    const next = changeCounter(countersRef.current, counter, delta)
-    countersRef.current = next
-    setCounters(next)
-    updateStatus(next)
-  }
-
-  function takeMonarch() {
-    channelRef.current?.push("take_monarch", {})
-  }
+    onDispose() {
+      peers.closeAll()
+      camera.stop()
+    },
+  })
 
   function toggleCamera() {
-    const next = !cameraOffRef.current
-    cameraOffRef.current = next
-    localStreamRef.current?.getVideoTracks().forEach((track) => {
-      track.enabled = !next
-    })
-    refreshVideo()
-    setCameraOff(next)
-    updateStatus({ camera_off: next })
+    const off = camera.toggleCamera()
+    peers.refreshVideo()
+    game.updateStatus({ camera_off: off })
   }
 
-  /** Owner starts the match, either keeping the arranged order or shuffling it. */
-  function startGame(randomize: boolean) {
-    channelRef.current
-      ?.push("start_game", { randomize })
-      .receive("ok", () => setError(null))
-      .receive("error", ({ reason }: { reason: string }) => setError(reason))
-  }
-
-  const passTurn = useCallback(() => {
-    channelRef.current
-      ?.push("pass_turn", { revision: turns.revision })
-      .receive("error", ({ reason }: { reason: string }) => setError(reason))
-  }, [turns.revision])
-
-  function adjustTurn(playerId: number, delta: -1 | 1) {
-    channelRef.current
-      ?.push("adjust_turn", { player_id: playerId, delta })
-      .receive("error", ({ reason }: { reason: string }) => setError(reason))
-  }
-
-  function setMode(mode: GameFormat) {
-    channelRef.current
-      ?.push("set_mode", { mode })
-      .receive("ok", () => setError(null))
-      .receive("error", ({ reason }: { reason: string }) => setError(reason))
-  }
-
-  function adjustTeamLife(teamIndex: number, delta: number) {
-    channelRef.current
-      ?.push("adjust_team_life", { team_index: teamIndex, delta })
-      .receive("error", ({ reason }: { reason: string }) => setError(reason))
-  }
-
-  /**
-   * Owner swaps a seat with its neighbour. Before the match starts this only
-   * rearranges; once started (Commander only) the server re-seats mid-game.
-   */
-  function moveSeat(peerId: string, delta: -1 | 1) {
-    const peers = seatedParticipants.map((seat) => seat.peer_id)
-    const index = peers.indexOf(peerId)
-    const other = index + delta
-    if (index < 0 || other < 0 || other >= peers.length) return
-    ;[peers[index], peers[other]] = [peers[other]!, peers[index]!]
-    channelRef.current
-      ?.push(timer?.state.started_at == null ? "arrange_seats" : "seat_order", { peer_ids: peers })
-      .receive("error", ({ reason }: { reason: string }) => setError(reason))
-  }
-
-  function changeTimer(action: "pause" | "resume"): Promise<GameTimerState | null> {
-    return new Promise((resolve) => {
-      const channel = channelRef.current
-      if (channel?.state !== "joined") {
-        setError("Reconnect to the table before changing the timer")
-        resolve(null)
-        return
-      }
-      channel
-        .push("timer", { action })
-        .receive("ok", (state: GameTimerState) => {
-          setTimer({ state, receivedAt: performance.now() })
-          resolve(state)
-        })
-        .receive("error", ({ reason }: { reason: string }) => {
-          setError(reason)
-          resolve(null)
-        })
-        .receive("timeout", () => {
-          setError("Timer request timed out; try again")
-          resolve(null)
-        })
-    })
-  }
-
-  function setEliminated(peerId: string, eliminated: boolean) {
-    channelRef.current
-      ?.push("set_eliminated", { peer_id: peerId, eliminated })
-      .receive("error", ({ reason }: { reason: string }) => setError(reason))
-      .receive("timeout", () => setError("Elimination request timed out; try again"))
-  }
-
-  function rollDice(request: RollRequest) {
-    channelRef.current
-      ?.push("roll", request)
-      .receive("error", ({ reason }: { reason: string }) => setError(reason))
-      .receive("timeout", () =>
-        setError("Roll request timed out; check the table log before retrying"),
-      )
-  }
-
-  function requestCapture(targetPeerId: string, x: number, y: number, inspect = false) {
-    const owner = participantsRef.current.find((item) => item.peer_id === targetPeerId)
-    if (
-      !owner ||
-      owner.camera_off ||
-      !canViewBoard(targetPeerId, peerIdRef.current, owner.reveal_to)
-    )
-      return
-    if (targetPeerId === peerIdRef.current && localVideoRef.current) {
-      const result = captureCrop(localVideoRef.current, x, y)
-      setCapture({
-        peerId: targetPeerId,
-        playerId,
-        inspect,
-        private: !!revealToRef.current,
-        ...result,
-      })
-      return
-    }
-    const channel = peersRef.current.get(targetPeerId)?.channel
-    if (channel?.readyState !== "open") {
-      setStatus(`${owner.player_name}'s camera is still connecting; click again in a moment`)
-      return
-    }
-    const requestId = crypto.randomUUID()
-    const timeout = window.setTimeout(() => {
-      if (!pendingCaptures.current.delete(requestId)) return
-      setStatus(`${owner.player_name}'s camera did not send a crop; click the card again`)
-    }, CAPTURE_TIMEOUT_MS)
-    pendingCaptures.current.set(requestId, { targetPeerId, inspect, timeout })
-    const request: CaptureRequest = { type: "capture_request", requestId, x, y }
-    try {
-      channel.send(JSON.stringify(request))
-    } catch {
-      cancelCaptures(targetPeerId, false)
-      setStatus(`Could not reach ${owner.player_name}'s camera; click again in a moment`)
-      return
-    }
-    setStatus("Requesting native camera crop…")
-  }
-
-  /** Names a card on `ownerPeerId`'s board: added to that board's card list here and at
-   * every other seat. The capture stays current so the clicker can still say "wrong card" and
-   * pick again from the same crop; the page dismisses it when it is done with the result. */
+  /** Names a card on `ownerPeerId`'s board: added to that board's card list at every seat.
+   * The capture stays current so the clicker can still say "wrong card" and pick again from
+   * the same crop; the page dismisses it when it is done with the result. */
   function announceCard(ownerPeerId: string, byPlayerName: string, card: IdentifiedCard) {
-    const existing = cardsRef.current.find(
-      (entry) => entry.ownerPeerId === ownerPeerId && sameCard(entry.card, card),
-    )
-    if (existing) return existing
-    const entry: BoardCard = {
-      id: crypto.randomUUID(),
-      ownerPeerId,
-      byPlayerName,
-      card,
-      at: Date.now(),
-    }
-    // Identifying a private hand must not publish its card names to the table's shared tray.
-    const owner = participantsRef.current.find((item) => item.peer_id === ownerPeerId)
-    if (
-      owner?.reveal_to ||
-      (ownerPeerId === peerIdRef.current && revealToRef.current) ||
-      (capture?.peerId === ownerPeerId && capture.private)
-    )
-      return entry
-    sendCardCommand({ type: "card_identified", entry })
-    return entry
+    const owner = link.participants.find((item) => item.peer_id === ownerPeerId)
+    const hidden =
+      !!owner?.reveal_to ||
+      (ownerPeerId === link.peerId && !!peers.revealTarget()) ||
+      (captures.capture?.peerId === ownerPeerId && captures.capture.private)
+    return cards.announceCard(ownerPeerId, byPlayerName, card, !hidden)
   }
-
-  /** Takes a misidentified card off its board's list at every seat. */
-  function removeCard(id: string) {
-    sendCardCommand({ type: "card_removed", id })
-  }
-
-  /** Empties the local seat's own board at every seat; other boards are not ours to clear. */
-  function clearOwnCards() {
-    sendCardCommand({ type: "cards_cleared", ownerPeerId: peerIdRef.current })
-  }
-
-  /** Participants in shared seat order; the End game form records seats in this order. */
-  const seatedParticipants = useMemo(
-    () =>
-      orderBySeats(retainEliminatedSeats(participants, eliminatedSeats), seatOrder).map(
-        (liveParticipant) => {
-          // Durable table state owns elimination, including offline teammates.
-          const saved = eliminatedSeats.find((seat) => seat.player_id === liveParticipant.player_id)
-          const participant = saved
-            ? { ...liveParticipant, eliminated: saved.eliminated }
-            : liveParticipant
-          return participant.peer_id === peerIdRef.current
-            ? { ...participant, life, ...counters }
-            : participant
-        },
-      ),
-    [counters, life, participants, eliminatedSeats, seatOrder],
-  )
 
   return {
     spectating,
-    isOwner: ownerId === playerId,
-    peerId: peerIdRef.current,
-    participants: seatedParticipants,
-    setEliminated,
-    shuffleVersion,
-    timer,
-    turns,
-    mode,
-    setMode,
-    teamLife,
-    adjustTeamLife,
-    moveSeat,
-    passTurn,
-    adjustTurn,
-    roll,
-    changeTimer,
-    rollDice,
-    events,
-    streams,
-    connectionStates,
-    iceServers,
-    localStream,
-    changeCamera,
-    cameraChanging,
-    cameraError,
-    getPeerStats,
-    cameraOff,
-    revealTo,
-    revealBusy,
-    changeReveal,
-    capture,
-    identifiedCards,
+    isOwner: game.isOwner,
+    peerId: link.peerId,
+    participants: game.participants,
+    setEliminated: game.setEliminated,
+    shuffleVersion: game.shuffleVersion,
+    timer: game.timer,
+    turns: game.turns,
+    mode: game.mode,
+    setMode: game.setMode,
+    teamLife: game.teamLife,
+    adjustTeamLife: game.adjustTeamLife,
+    moveSeat: game.moveSeat,
+    passTurn: game.passTurn,
+    adjustTurn: game.adjustTurn,
+    roll: game.roll,
+    changeTimer: game.changeTimer,
+    rollDice: game.rollDice,
+    events: game.events,
+    streams: peers.streams,
+    connectionStates: peers.connectionStates,
+    iceServers: peers.iceServers,
+    localStream: camera.localStream,
+    changeCamera: (nextDeviceId: string) =>
+      camera.changeCamera(nextDeviceId, peers.replaceSourceTrack),
+    cameraChanging: camera.cameraChanging,
+    cameraError: camera.cameraError,
+    getPeerStats: peers.getPeerStats,
+    cameraOff: camera.cameraOff,
+    revealTo: peers.revealTo,
+    revealBusy: peers.revealBusy,
+    changeReveal: peers.changeReveal,
+    capture: captures.capture,
+    identifiedCards: cards.identifiedCards,
     status,
     error,
-    requestCapture,
+    requestCapture: captures.requestCapture,
     announceCard,
-    removeCard,
-    clearOwnCards,
-    chooseDeck,
-    life,
-    changeLife,
-    counters,
-    adjustCounter,
-    monarch,
-    takeMonarch,
+    removeCard: cards.removeCard,
+    clearOwnCards: cards.clearOwnCards,
+    chooseDeck: game.chooseDeck,
+    life: game.life,
+    changeLife: game.changeLife,
+    counters: game.counters,
+    adjustCounter: game.adjustCounter,
+    monarch: game.monarch,
+    takeMonarch: game.takeMonarch,
     toggleCamera,
-    startGame,
-    dismissCapture: () => setCapture(null),
+    startGame: game.startGame,
+    dismissCapture: captures.dismissCapture,
   }
 }
