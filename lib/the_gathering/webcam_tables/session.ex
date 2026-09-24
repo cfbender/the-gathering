@@ -33,7 +33,7 @@ defmodule TheGathering.WebcamTables.Session do
     Repo.insert!(
       %__MODULE__{
         id: id,
-        snapshot: Jason.encode!(%{version: 2, state: Map.drop(entry, [:connections])}),
+        snapshot: Jason.encode!(%{version: 2, state: entry}),
         expires_at: DateTime.add(DateTime.utc_now(), 7, :day)
       },
       on_conflict: {:replace, [:snapshot, :expires_at]},

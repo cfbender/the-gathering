@@ -325,7 +325,7 @@ from separate commanders is never combined for the threshold. The server accepts
 deltas and restore from the server on rejoin and full page reload.
 
 **Take the monarch** claims the crown for your own seat. `take_monarch` has an empty payload;
-`WebcamTableState` serializes claims and broadcasts one `monarch` holder, never per-seat flags.
+The room process serializes claims and broadcasts one `monarch` holder, never per-seat flags.
 Late joiners receive `monarch_state`; server revisions prevent stale snapshots from replacing
 newer claims. A crown appears on the holder's tile and active board and survives disconnects
 and server restarts along with the rest of the room snapshot.
@@ -344,7 +344,7 @@ are numbered, while the recording order still includes everyone. Eliminating
 the current player advances the turn to the next eligible seat; disconnecting does not. If none remain there is no active
 turn; restoring a player starts their next turn. Counts and accumulated time are kept.
 
-Eliminated seats are retained in `WebcamTableState` and shared through `eliminated_seats`, so
+Eliminated seats are retained in the room state and shared through `eliminated_seats`, so
 leaving does not drop them from the result or from a late joiner's view. Rejoining as the same
 player takes back the retained position and elimination flag. A departed seat must rejoin before
 it can be restored. All seats survive the last disconnect in the durable snapshot. The End game form
@@ -381,7 +381,7 @@ not pass while typing, using a control, holding a modifier, repeating a key, com
 while a card picker/dialog is open. It shares the guarded registry and enable preference in
 `table-hotkeys.tsx` with the other table shortcuts.
 
-`WebcamTableState` serializes the shared timer, turns and order on the single application server.
+Each room process serializes its shared timer, turns and order.
 The first valid `seat_order` starts it. Only the room owner can send `timer` with `pause` or `resume`;
 only the server writes `started_at`, `paused_at`, and accumulated `paused_ms`. The timer bar
 above the active board's name bar derives elapsed time excluding pauses. Browsers interpolate
@@ -438,10 +438,16 @@ can still save or share what they saw; this feature cannot revoke frames already
   merges `update_status`/`set_eliminated` into presence, validates `seat_order`/`timer`/`timer_sync`,
   `start_game`/`turn_settings`/`pass_turn`/`adjust_turn`, and generates
   and broadcasts validated `roll` results.
-- `TheGatheringWeb.WebcamTableState` owns serialized admission and game state, backed by
-  `TheGathering.WebcamTables.Session` snapshots (covered by `webcam_table_channel_test.exs`).
-- `TheGatheringWeb.WebcamTableTurns` owns pure turn advancement, elimination skipping, counts and
-  accumulated-time accounting (`webcam_table_turns_test.exs`).
+- `TheGathering.WebcamTables` is the context API for admission and game state. Each room is a
+  `WebcamTables.Room` process (one per room, started on first join under
+  `WebcamTables.RoomSupervisor`, registered in `WebcamTables.Registry`) that loads its
+  `WebcamTables.Session` snapshot on start, saves every change before broadcasting it, and stops
+  when its last connection leaves. A crashing room only disconnects its own channels, which rejoin
+  from the saved snapshot. `WebcamTables.Pruner` deletes expired sessions hourly; running rooms
+  refresh their own expiry (covered by `webcam_table_channel_test.exs`).
+- `TheGathering.WebcamTables.Turns` owns pure turn advancement, elimination skipping, counts and
+  accumulated-time accounting, and `WebcamTables.Timer` the pause-aware game clock
+  (`test/the_gathering/webcam_tables/`).
 - `TheGatheringWeb.Presence` owns ephemeral room membership and seat status.
 - `WebcamTableConfigController` exposes authenticated ICE configuration.
 - `features/webcam-table/use-webcam-room.ts` owns camera, mesh, signaling, native crop RPC,

@@ -3,8 +3,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   use TheGatheringWeb, :channel
 
-  alias TheGathering.Games
-  alias TheGatheringWeb.{ChannelRateLimit, Presence, WebcamTableRooms, WebcamTableState}
+  alias TheGathering.{Games, WebcamTables}
+  alias TheGatheringWeb.{ChannelRateLimit, Presence, WebcamTableRooms}
 
   @starting_life 40
   @life_range -999..999
@@ -19,13 +19,14 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     with :ok <- join_rate_limit(socket.assigns.user.id),
          true <- valid_room_id?(room_id),
          {:ok, participant} <- participant(params, socket.assigns.user.id),
-         {:ok, state, participant} <- WebcamTableState.join(room_id, self(), participant) do
+         {:ok, state, participant, room_monitor} <- WebcamTables.join(room_id, participant) do
       send(self(), :after_join)
 
       {:ok, %{participant: participant, table_state: state},
        socket
        |> assign(:participant, participant)
        |> assign(:room_id, room_id)
+       |> assign(:room_monitor, room_monitor)
        |> assign(:rate_limits, %{
          events: ChannelRateLimit.new(:webcam_table_events),
          signals: ChannelRateLimit.new(:webcam_table_signals)
@@ -46,7 +47,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     unless participant.spectator,
       do: WebcamTableRooms.track_seat(socket.assigns.room_id, participant)
 
-    state = WebcamTableState.snapshot(socket.assigns.room_id)
+    state = WebcamTables.snapshot(socket.assigns.room_id)
     push(socket, "table_state", state)
     push(socket, "presence_state", Presence.list(socket))
     push(socket, "monarch_state", state.monarch)
@@ -68,6 +69,14 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     push(socket, "monarch_state", event)
     {:noreply, socket}
   end
+
+  # The room crashed. Stopping abnormally sends the client phx_error, so it
+  # rejoins a fresh room process restored from the saved session.
+  def handle_info(
+        {:DOWN, ref, :process, _pid, reason},
+        %{assigns: %{room_monitor: ref}} = socket
+      ),
+      do: {:stop, {:room_down, reason}, socket}
 
   @impl true
   def handle_out("presence_diff", diff, socket) do
@@ -192,7 +201,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
         {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
         # Peers may have cached the deck list before this deck was created or edited.
         broadcast!(socket, "deck_selected", %{deck_id: deck.id})
-        WebcamTableState.remember_seat(socket.assigns.room_id, participant)
+        WebcamTables.remember_seat(socket.assigns.room_id, participant)
         {:reply, :ok, assign(socket, :participant, participant)}
 
       _other ->
@@ -226,11 +235,11 @@ defmodule TheGatheringWeb.WebcamTableChannel do
         changes = eliminate_at_zero(changes, socket.assigns.participant)
         participant = Map.merge(socket.assigns.participant, changes)
         {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
-        WebcamTableState.remember_seat(socket.assigns.room_id, participant)
+        WebcamTables.remember_seat(socket.assigns.room_id, participant)
 
         if Map.has_key?(changes, :eliminated),
           do:
-            WebcamTableState.eliminate(
+            WebcamTables.eliminate(
               socket.assigns.room_id,
               participant.peer_id,
               changes.eliminated
@@ -247,7 +256,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     do: {:reply, {:error, %{reason: "invalid status"}}, socket}
 
   defp handle_event("take_monarch", payload, socket) when payload == %{} do
-    :ok = WebcamTableState.take_monarch(socket.assigns.room_id, socket.assigns.participant)
+    :ok = WebcamTables.take_monarch(socket.assigns.room_id, socket.assigns.participant)
     {:reply, :ok, socket}
   end
 
@@ -264,11 +273,11 @@ defmodule TheGatheringWeb.WebcamTableChannel do
        when map_size(payload) == 2 and is_binary(peer_id) and is_boolean(eliminated) do
     if (socket.assigns.owner? or peer_id == socket.assigns.participant.peer_id) and
          Enum.any?(
-           WebcamTableState.snapshot(socket.assigns.room_id).seats,
+           WebcamTables.snapshot(socket.assigns.room_id).seats,
            &(&1.peer_id == peer_id)
          ) and
          Map.has_key?(Presence.list(socket), peer_id) do
-      WebcamTableState.eliminate(socket.assigns.room_id, peer_id, eliminated)
+      WebcamTables.eliminate(socket.assigns.room_id, peer_id, eliminated)
 
       {:reply, :ok, socket}
     else
@@ -283,7 +292,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   # proposed order must name exactly the peers present at that moment.
   defp handle_event(event, %{"peer_ids" => peer_ids}, socket)
        when event in ["seat_order", "arrange_seats"] and is_list(peer_ids) do
-    state = WebcamTableState.snapshot(socket.assigns.room_id)
+    state = WebcamTables.snapshot(socket.assigns.room_id)
 
     present =
       state.seats
@@ -293,8 +302,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     if Enum.all?(peer_ids, &is_binary/1) and Enum.sort(peer_ids) == present do
       reply =
         if event == "arrange_seats" or state.mode != "commander",
-          do: WebcamTableState.arrange(socket.assigns.room_id, peer_ids),
-          else: WebcamTableState.order(socket.assigns.room_id, peer_ids)
+          do: WebcamTables.arrange(socket.assigns.room_id, peer_ids),
+          else: WebcamTables.order(socket.assigns.room_id, peer_ids)
 
       {:reply, reply, socket}
     else
@@ -307,7 +316,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   defp handle_event("set_mode", %{"mode" => mode} = payload, socket)
        when map_size(payload) == 1 and mode in ["commander", "two_headed_giant", "five_star"] do
-    {:reply, WebcamTableState.mode(socket.assigns.room_id, mode), socket}
+    {:reply, WebcamTables.mode(socket.assigns.room_id, mode), socket}
   end
 
   defp handle_event("set_mode", _payload, socket),
@@ -321,7 +330,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
        when map_size(payload) == 2 and is_integer(team) and team >= 0 and is_integer(delta) and
               delta in -1998..1998 do
     {:reply,
-     WebcamTableState.adjust_team_life(
+     WebcamTables.adjust_team_life(
        socket.assigns.room_id,
        socket.assigns.participant.player_id,
        team,
@@ -334,12 +343,12 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   # An explicit `randomize` overrides the room's auto-randomize setting for this start.
   defp handle_event("start_game", payload, socket) when payload == %{} do
-    {:reply, WebcamTableState.start_game(socket.assigns.room_id), socket}
+    {:reply, WebcamTables.start_game(socket.assigns.room_id), socket}
   end
 
   defp handle_event("start_game", %{"randomize" => randomize} = payload, socket)
        when map_size(payload) == 1 and is_boolean(randomize) do
-    {:reply, WebcamTableState.start_game(socket.assigns.room_id, randomize), socket}
+    {:reply, WebcamTables.start_game(socket.assigns.room_id, randomize), socket}
   end
 
   defp handle_event("start_game", _payload, socket),
@@ -347,7 +356,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   defp handle_event("turn_settings", %{"auto_randomize" => enabled} = payload, socket)
        when map_size(payload) == 1 and is_boolean(enabled) do
-    {:reply, WebcamTableState.turn_settings(socket.assigns.room_id, enabled), socket}
+    {:reply, WebcamTables.turn_settings(socket.assigns.room_id, enabled), socket}
   end
 
   defp handle_event("turn_settings", _payload, socket),
@@ -355,7 +364,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   defp handle_event("pass_turn", %{"revision" => revision} = payload, socket)
        when map_size(payload) == 1 and is_integer(revision) and revision >= 0 do
-    {:reply, WebcamTableState.pass_turn(socket.assigns.room_id, revision), socket}
+    {:reply, WebcamTables.pass_turn(socket.assigns.room_id, revision), socket}
   end
 
   defp handle_event("pass_turn", _payload, socket),
@@ -367,7 +376,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
          socket
        )
        when map_size(payload) == 2 and is_integer(player_id) and delta in [-1, 1] do
-    {:reply, WebcamTableState.adjust_turn(socket.assigns.room_id, player_id, delta), socket}
+    {:reply, WebcamTables.adjust_turn(socket.assigns.room_id, player_id, delta), socket}
   end
 
   defp handle_event("adjust_turn", _payload, socket),
@@ -375,7 +384,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   defp handle_event("timer", %{"action" => action} = payload, socket)
        when map_size(payload) == 1 and action in ["pause", "resume"] do
-    timer = WebcamTableState.timer(socket.assigns.room_id, action)
+    timer = WebcamTables.timer(socket.assigns.room_id, action)
     {:reply, {:ok, timer}, socket}
   end
 
@@ -383,7 +392,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     do: {:reply, {:error, %{reason: "invalid timer action"}}, socket}
 
   defp handle_event("timer_sync", payload, socket) when payload == %{} do
-    {:reply, {:ok, WebcamTableState.snapshot(socket.assigns.room_id).timer}, socket}
+    {:reply, {:ok, WebcamTables.snapshot(socket.assigns.room_id).timer}, socket}
   end
 
   defp handle_event("timer_sync", _payload, socket),
@@ -411,12 +420,12 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   end
 
   defp update_cards(socket, payload),
-    do: WebcamTableState.cards(socket.assigns.room_id, payload, socket.assigns.participant)
+    do: WebcamTables.cards(socket.assigns.room_id, payload, socket.assigns.participant)
 
   defp put_reveal(socket, target) do
     participant = %{socket.assigns.participant | reveal_to: target}
     {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
-    WebcamTableState.remember_seat(socket.assigns.room_id, participant)
+    WebcamTables.remember_seat(socket.assigns.room_id, participant)
     assign(socket, :participant, participant)
   end
 
