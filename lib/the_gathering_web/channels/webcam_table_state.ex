@@ -6,8 +6,8 @@ defmodule TheGatheringWeb.WebcamTableState do
   """
   use GenServer
 
-  alias TheGathering.WebcamTables.{Cards, Session}
-  alias TheGatheringWeb.{Endpoint, WebcamTableTurns}
+  alias TheGathering.WebcamTables.{Cards, Session, Timer, Turns}
+  alias TheGatheringWeb.Endpoint
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -49,27 +49,6 @@ defmodule TheGatheringWeb.WebcamTableState do
     do: GenServer.call(__MODULE__, {:monarch, room, participant})
 
   def cards(room, payload, actor), do: GenServer.call(__MODULE__, {:cards, room, payload, actor})
-
-  def new_timer, do: %{started_at: nil, paused_at: nil, paused_ms: 0}
-
-  def elapsed(%{started_at: nil}, _now), do: 0
-
-  def elapsed(timer, now),
-    do: max(0, (timer.paused_at || now) - timer.started_at - timer.paused_ms)
-
-  # Repeated actions are idempotent; randomizing again never resets or resumes.
-  def update_timer(%{started_at: nil} = timer, "start", now),
-    do: %{timer | started_at: now}
-
-  def update_timer(%{started_at: nil} = timer, _action, _now), do: timer
-
-  def update_timer(%{paused_at: nil} = timer, "pause", now),
-    do: %{timer | paused_at: now}
-
-  def update_timer(%{paused_at: paused} = timer, "resume", now) when not is_nil(paused),
-    do: %{timer | paused_at: nil, paused_ms: timer.paused_ms + now - paused}
-
-  def update_timer(timer, _action, _now), do: timer
 
   @impl true
   def init(_opts) do
@@ -188,7 +167,7 @@ defmodule TheGatheringWeb.WebcamTableState do
 
   def handle_call({:order, room, peers, shuffled}, _from, state) do
     entry = Map.fetch!(state.rooms, room)
-    timer = update_timer(entry.timer, "start", System.system_time(:millisecond))
+    timer = Timer.update(entry.timer, "start", System.system_time(:millisecond))
     # Keep departed eliminated seats in their recorded positions when live seats reshuffle.
     departed =
       entry.eliminated_seats
@@ -274,7 +253,7 @@ defmodule TheGatheringWeb.WebcamTableState do
 
     targets =
       if entry.mode == "two_headed_giant",
-        do: WebcamTableTurns.team(ordered_seats(entry), seat.player_id),
+        do: Turns.team(ordered_seats(entry), seat.player_id),
         else: [seat]
 
     entry = eliminate_seats(room, entry, targets, eliminated)
@@ -285,7 +264,7 @@ defmodule TheGatheringWeb.WebcamTableState do
 
   def handle_call({:timer, room, action}, _from, state) do
     entry = Map.fetch!(state.rooms, room)
-    entry = %{entry | timer: update_timer(entry.timer, action, System.system_time(:millisecond))}
+    entry = %{entry | timer: Timer.update(entry.timer, action, System.system_time(:millisecond))}
     Session.save(room, entry)
     snapshot = broadcast_timer(room, entry)
     {:reply, snapshot, put_in(state, [:rooms, room], entry)}
@@ -333,10 +312,10 @@ defmodule TheGatheringWeb.WebcamTableState do
 
     if entry.turns.revision == revision and not is_nil(entry.turns.active_player_id) do
       turns =
-        WebcamTableTurns.pass(
+        Turns.pass(
           entry.turns,
           ordered_seats(entry),
-          elapsed(entry.timer, System.system_time(:millisecond)),
+          Timer.elapsed(entry.timer, System.system_time(:millisecond)),
           entry.mode
         )
 
@@ -353,8 +332,8 @@ defmodule TheGatheringWeb.WebcamTableState do
     entry = Map.fetch!(state.rooms, room)
 
     if Map.has_key?(entry.all_seats, player_id) do
-      player_id = WebcamTableTurns.turn_id(ordered_seats(entry), player_id, entry.mode)
-      entry = %{entry | turns: WebcamTableTurns.adjust(entry.turns, player_id, delta)}
+      player_id = Turns.turn_id(ordered_seats(entry), player_id, entry.mode)
+      entry = %{entry | turns: Turns.adjust(entry.turns, player_id, delta)}
       Session.save(room, entry)
       broadcast_state(room, entry)
       {:reply, :ok, put_in(state, [:rooms, room], entry)}
@@ -419,11 +398,11 @@ defmodule TheGatheringWeb.WebcamTableState do
     entry =
       Session.load(room) ||
         %{
-          timer: new_timer(),
+          timer: Timer.new(),
           peer_ids: [],
           eliminated_seats: %{},
           all_seats: %{},
-          turns: WebcamTableTurns.new(),
+          turns: Turns.new(),
           mode: "commander",
           team_life: %{},
           auto_randomize: true,
@@ -558,10 +537,10 @@ defmodule TheGatheringWeb.WebcamTableState do
 
   defp reconcile_turn(entry) do
     turns =
-      WebcamTableTurns.reconcile(
+      Turns.reconcile(
         entry.turns,
         ordered_seats(entry),
-        elapsed(entry.timer, System.system_time(:millisecond)),
+        Timer.elapsed(entry.timer, System.system_time(:millisecond)),
         entry.mode
       )
 
