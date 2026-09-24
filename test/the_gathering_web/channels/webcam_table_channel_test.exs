@@ -38,7 +38,7 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
   test "socket connection uses the tracked cookie session" do
     user = AccountsFixtures.user_fixture()
     session_token = Accounts.generate_user_session_token(user)
-    token = Phoenix.Token.sign(TheGatheringWeb.Endpoint, "webcam table socket", session_token)
+    token = UserSocket.token(TheGatheringWeb.Endpoint, session_token)
     socket = socket(UserSocket, nil, %{})
 
     assert {:ok, connected} = UserSocket.connect(%{"token" => token}, socket, %{})
@@ -46,6 +46,35 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert connected.assigns.user.id == user.id
     assert UserSocket.id(connected) == "users_sessions:#{Base.url_encode64(session_token)}"
     assert :error = UserSocket.connect(%{"token" => "invalid"}, socket, %{})
+
+    # Logging out deletes the session token, so its socket token stops working.
+    Accounts.delete_user_session_token(session_token)
+    assert :error = UserSocket.connect(%{"token" => token}, socket, %{})
+  end
+
+  test "socket tokens are encrypted, and tampered or merely signed tokens are rejected" do
+    user = AccountsFixtures.user_fixture()
+    session_token = Accounts.generate_user_session_token(user)
+    token = UserSocket.token(TheGatheringWeb.Endpoint, session_token)
+    socket = socket(UserSocket, nil, %{})
+
+    refute token =~ Base.url_encode64(session_token, padding: false)
+    refute token =~ Base.encode64(session_token, padding: false)
+
+    # Flip a middle character; trailing base64 characters can sit in padding bits.
+    middle = token |> String.length() |> div(2)
+    middle = Enum.find(middle..String.length(token), &(String.at(token, &1) not in [".", "-", "_"]))
+    flipped = if String.at(token, middle) == "A", do: "B", else: "A"
+
+    for tampered <- [
+          String.slice(token, 0, middle) <> flipped <> String.slice(token, (middle + 1)..-1//1),
+          String.slice(token, 0, middle),
+          Phoenix.Token.sign(TheGatheringWeb.Endpoint, "webcam table socket", session_token)
+        ] do
+      assert :error = UserSocket.connect(%{"token" => tampered}, socket, %{})
+    end
+
+    assert :error = UserSocket.connect(%{"token" => 123}, socket, %{})
   end
 
   setup do

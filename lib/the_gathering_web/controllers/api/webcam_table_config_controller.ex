@@ -2,14 +2,13 @@ defmodule TheGatheringWeb.API.WebcamTableConfigController do
   use TheGatheringWeb, :controller
 
   alias TheGathering.CloudflareTurn
+  alias TheGatheringWeb.UserSocket
 
   plug TheGatheringWeb.RateLimit, bucket: :turn_credentials
 
-  @token_salt "webcam table socket"
-
   def show(conn, _params) do
     config = Application.get_env(:the_gathering, :webcam_table, [])
-    socket_token = Phoenix.Token.sign(conn, @token_salt, get_session(conn, :user_token))
+    socket_token = UserSocket.token(conn, get_session(conn, :user_token))
 
     conn
     |> put_resp_header("cache-control", "private, no-store")
