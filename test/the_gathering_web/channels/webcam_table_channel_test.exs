@@ -320,7 +320,7 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     user = AccountsFixtures.user_fixture()
     socket = socket(UserSocket, @peer_b, %{user: user})
 
-    assert {:error, %{reason: "room is full or invalid"}} =
+    assert {:error, %{reason: "invalid room"}} =
              subscribe_and_join(socket, WebcamTableChannel, "webcam_table:not-a-uuid", %{
                "peer_id" => @peer_b,
                "player_id" => player.id

@@ -34,7 +34,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
        |> assign(:owner?, state.owner_id == participant.player_id)
        |> assign(:protocol, Map.get(params, "protocol", 1))}
     else
-      false -> {:error, %{reason: "room is full or invalid"}}
+      # Only an invalid room id fails `valid_room_id?/1`; a full room is reported by the room.
+      false -> {:error, %{reason: "invalid room"}}
       {:error, reason} -> {:error, %{reason: reason}}
     end
   end
@@ -63,11 +64,6 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     participant = %{socket.assigns.participant | eliminated: eliminated}
     {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
     {:noreply, assign(socket, :participant, participant)}
-  end
-
-  def handle_info({:monarch_state, event}, socket) do
-    push(socket, "monarch_state", event)
-    {:noreply, socket}
   end
 
   # The room crashed. Stopping abnormally sends the client phx_error, so it
@@ -263,8 +259,9 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   defp handle_event("take_monarch", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid monarch claim"}}, socket}
 
-  # Any seated player may eliminate/restore a present seat. The target channel
-  # owns its presence update, so subsequent life/camera updates cannot overwrite it.
+  # The room owner may eliminate/restore any present seat; other players only
+  # their own. The target channel owns its presence update, so subsequent
+  # life/camera updates cannot overwrite it.
   defp handle_event(
          "set_eliminated",
          %{"peer_id" => peer_id, "eliminated" => eliminated} = payload,
