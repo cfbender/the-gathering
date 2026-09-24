@@ -123,6 +123,9 @@ export function installFakeMedia() {
   const placeholder = fakeMedia()
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue()
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null)
+  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+    "data:image/jpeg;base64,/9j/4AAQ",
+  )
   Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", {
     configurable: true,
     value: () => placeholder.media,

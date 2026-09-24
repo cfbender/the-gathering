@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import type { GameFormat } from "@/features/games/game-format"
 import { openCamera } from "./camera"
+import { parseDataMessage, type CaptureRequest, type CaptureResponse } from "./data-messages"
 import { applyCardCommand, sameCard, type CardCommand } from "./identified-cards"
 import { canViewBoard, videoEncoding, type PublisherQuality } from "./media-policy"
 import type { GameTimerState, TimerSample } from "./game-timer"
@@ -81,8 +82,8 @@ export interface CapturedCard {
   /** The click in crop pixels; the crop is clamped to the frame so it is not always centred. */
   clickX: number
   clickY: number
-  /** Camera owner's consent, carried with the crop; absent older peers do not opt in. */
-  shareCorrections?: boolean
+  /** Camera owner's consent to share corrections, carried with the crop. */
+  shareCorrections: boolean
   /** Shift+click: the clicker wants to see and choose among the candidates even when the
    * recognizer is sure. A plain click logs a clear answer silently. */
   inspect: boolean
@@ -105,21 +106,6 @@ export interface BoardCard {
 }
 
 type Signal = { description: RTCSessionDescriptionInit } | { candidate: RTCIceCandidateInit }
-
-type DataMessage =
-  | { type: "capture_request"; requestId: string; x: number; y: number }
-  | {
-      type: "capture_response"
-      requestId: string
-      image: string
-      nativeWidth: number
-      nativeHeight: number
-      cropSize: number
-      clickX: number
-      clickY: number
-      private: boolean
-      shareCorrections?: boolean
-    }
 
 interface PeerState {
   connection: RTCPeerConnection
@@ -148,6 +134,8 @@ export function describeConnection(state: RTCPeerConnectionState | undefined): s
 }
 
 const CROP_SIZE = 640
+/** How long a clicker waits for a remote camera's crop before giving up on it. */
+export const CAPTURE_TIMEOUT_MS = 8000
 export const STARTING_LIFE = 40
 
 function captureCrop(video: HTMLVideoElement, x: number, y: number) {
@@ -192,7 +180,9 @@ export function useWebcamRoom(
   const channelRef = useRef<Channel | null>(null)
   const peersRef = useRef(new Map<string, PeerState>())
   const participantsRef = useRef<TableParticipant[]>([])
-  const pendingCaptures = useRef(new Map<string, { targetPeerId: string; inspect: boolean }>())
+  const pendingCaptures = useRef(
+    new Map<string, { targetPeerId: string; inspect: boolean; timeout: number }>(),
+  )
   const eventIdRef = useRef(0)
   const [participants, setParticipants] = useState<TableParticipant[]>([])
   const [eliminatedSeats, setEliminatedSeats] = useState<TableParticipant[]>([])
@@ -410,41 +400,85 @@ export function useWebcamRoom(
     [showCards],
   )
 
-  const handleData = useCallback((fromPeerId: string, event: MessageEvent<string>) => {
-    const message = JSON.parse(event.data) as DataMessage
-    if (message.type === "capture_request" && localVideoRef.current) {
-      if (
-        !canViewBoard(peerIdRef.current, fromPeerId, revealToRef.current) ||
-        !localStreamRef.current?.getVideoTracks()[0]?.enabled
-      )
-        return
-      const result = captureCrop(localVideoRef.current, message.x, message.y)
-      peersRef.current.get(fromPeerId)?.channel?.send(
-        JSON.stringify({
-          type: "capture_response",
-          requestId: message.requestId,
-          private: !!revealToRef.current,
-          ...result,
-        }),
-      )
-    } else if (message.type === "capture_response") {
-      const pending = pendingCaptures.current.get(message.requestId)
-      pendingCaptures.current.delete(message.requestId)
-      const owner = participantsRef.current.find((item) => item.peer_id === fromPeerId)
-      if (
-        owner &&
-        pending?.targetPeerId === fromPeerId &&
-        canViewBoard(fromPeerId, peerIdRef.current, owner.reveal_to) &&
-        !owner.camera_off
-      )
-        setCapture({
-          peerId: fromPeerId,
-          playerId: owner.player_id,
-          inspect: pending.inspect,
-          ...message,
-        })
+  const liveStatus = useCallback(
+    () =>
+      spectatorRef.current
+        ? "Spectating — this game has already started"
+        : "Live — click any board to inspect a card",
+    [],
+  )
+
+  /** Forgets outstanding crop requests to one peer (or all of them). */
+  const cancelCaptures = useCallback(
+    (peerId: string | null, announce = true) => {
+      let cancelled = false
+      for (const [requestId, pending] of pendingCaptures.current) {
+        if (peerId !== null && pending.targetPeerId !== peerId) continue
+        window.clearTimeout(pending.timeout)
+        pendingCaptures.current.delete(requestId)
+        cancelled = true
+      }
+      if (cancelled && announce) setStatus(liveStatus())
+    },
+    [liveStatus],
+  )
+
+  const answerCaptureRequest = useCallback((fromPeerId: string, message: CaptureRequest) => {
+    const channel = peersRef.current.get(fromPeerId)?.channel
+    if (
+      !localVideoRef.current ||
+      channel?.readyState !== "open" ||
+      !canViewBoard(peerIdRef.current, fromPeerId, revealToRef.current) ||
+      !localStreamRef.current?.getVideoTracks()[0]?.enabled
+    )
+      return
+    const response: CaptureResponse = {
+      type: "capture_response",
+      requestId: message.requestId,
+      private: !!revealToRef.current,
+      ...captureCrop(localVideoRef.current, message.x, message.y),
+    }
+    try {
+      channel.send(JSON.stringify(response))
+    } catch {
+      // The channel closed or the crop exceeded its message limit; the clicker times out.
     }
   }, [])
+
+  const receiveCapture = useCallback(
+    (fromPeerId: string, message: CaptureResponse) => {
+      const pending = pendingCaptures.current.get(message.requestId)
+      if (pending?.targetPeerId !== fromPeerId) return
+      window.clearTimeout(pending.timeout)
+      pendingCaptures.current.delete(message.requestId)
+      setStatus(liveStatus())
+      const owner = participantsRef.current.find((item) => item.peer_id === fromPeerId)
+      if (
+        !owner ||
+        owner.camera_off ||
+        !canViewBoard(fromPeerId, peerIdRef.current, owner.reveal_to)
+      )
+        return
+      const { type: _type, requestId: _requestId, ...crop } = message
+      setCapture({
+        peerId: fromPeerId,
+        playerId: owner.player_id,
+        inspect: pending.inspect,
+        ...crop,
+      })
+    },
+    [liveStatus],
+  )
+
+  /** Data channels carry only the crop RPC; anything malformed or unexpected is dropped. */
+  const handleData = useCallback(
+    (fromPeerId: string, event: MessageEvent<unknown>) => {
+      const message = parseDataMessage(event.data)
+      if (message?.type === "capture_request") answerCaptureRequest(fromPeerId, message)
+      else if (message?.type === "capture_response") receiveCapture(fromPeerId, message)
+    },
+    [answerCaptureRequest, receiveCapture],
+  )
 
   useEffect(() => {
     let disposed = false
@@ -630,6 +664,7 @@ export function useWebcamRoom(
             peer.connection.close()
           }
           peersRef.current.clear()
+          cancelCaptures(null, false)
           setStreams({})
           setConnectionStates({})
           setStatus("Reconnecting… Your game is saved.")
@@ -717,6 +752,7 @@ export function useWebcamRoom(
           }
           peersRef.current.forEach((peer, id) => {
             if (!activeIds.has(id)) {
+              cancelCaptures(id)
               peer.videoTrack.stop()
               peer.connection.close()
               peersRef.current.delete(id)
@@ -786,11 +822,7 @@ export function useWebcamRoom(
               revealToRef.current = participant.reveal_to ?? null
               setRevealTo(revealToRef.current)
             }
-            setStatus(
-              spectatorRef.current
-                ? "Spectating — this game has already started"
-                : "Live — click any board to inspect a card",
-            )
+            setStatus(liveStatus())
             syncTimer()
             if (!spectatorRef.current) {
               room.push("update_status", { camera_off: cameraOffRef.current })
@@ -812,6 +844,7 @@ export function useWebcamRoom(
       disposed = true
       cameraRequest.current += 1
       window.clearInterval(timerSync)
+      cancelCaptures(null, false)
       channelRef.current?.leave()
       socket?.disconnect()
       peersRef.current.forEach((peer) => {
@@ -821,7 +854,18 @@ export function useWebcamRoom(
       peersRef.current.clear()
       localStreamRef.current?.getTracks().forEach((track) => track.stop())
     }
-  }, [deckId, handleData, log, playerId, queryClient, receiveCards, refreshVideo, roomId])
+  }, [
+    cancelCaptures,
+    deckId,
+    handleData,
+    liveStatus,
+    log,
+    playerId,
+    queryClient,
+    receiveCards,
+    refreshVideo,
+    roomId,
+  ])
 
   async function changeReveal(target: string | null) {
     if (revealBusy || !channelRef.current) return
@@ -994,11 +1038,25 @@ export function useWebcamRoom(
       })
       return
     }
+    const channel = peersRef.current.get(targetPeerId)?.channel
+    if (channel?.readyState !== "open") {
+      setStatus(`${owner.player_name}'s camera is still connecting; click again in a moment`)
+      return
+    }
     const requestId = crypto.randomUUID()
-    pendingCaptures.current.set(requestId, { targetPeerId, inspect })
-    peersRef.current
-      .get(targetPeerId)
-      ?.channel?.send(JSON.stringify({ type: "capture_request", requestId, x, y }))
+    const timeout = window.setTimeout(() => {
+      if (!pendingCaptures.current.delete(requestId)) return
+      setStatus(`${owner.player_name}'s camera did not send a crop; click the card again`)
+    }, CAPTURE_TIMEOUT_MS)
+    pendingCaptures.current.set(requestId, { targetPeerId, inspect, timeout })
+    const request: CaptureRequest = { type: "capture_request", requestId, x, y }
+    try {
+      channel.send(JSON.stringify(request))
+    } catch {
+      cancelCaptures(targetPeerId, false)
+      setStatus(`Could not reach ${owner.player_name}'s camera; click again in a moment`)
+      return
+    }
     setStatus("Requesting native camera crop…")
   }
 

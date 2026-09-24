@@ -30,6 +30,7 @@ vi.mock("./use-webcam-room", async (importOriginal) => {
           clickY: 320,
           inspect: true,
           private: false,
+          shareCorrections: false,
         }),
         [room.peerId],
       )

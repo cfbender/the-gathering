@@ -11,7 +11,12 @@ import {
   installFakeWebRtc,
   serveTableConfig,
 } from "./test-support/fake-webrtc"
-import { useWebcamRoom, type BoardCard, type TableParticipant } from "./use-webcam-room"
+import {
+  CAPTURE_TIMEOUT_MS,
+  useWebcamRoom,
+  type BoardCard,
+  type TableParticipant,
+} from "./use-webcam-room"
 
 const camera = vi.hoisted(() => ({ open: vi.fn() }))
 vi.mock("phoenix", () => import("./test-support/fake-phoenix"))
@@ -25,6 +30,7 @@ beforeEach(() => {
   serveTableConfig()
 })
 afterEach(() => {
+  vi.useRealTimers()
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
@@ -238,4 +244,99 @@ it("ignores card messages from peers and never sends cards over data channels", 
     result.current.clearOwnCards()
   })
   expect(channel.sent).toEqual([])
+})
+
+const theo = { ...saved, player_id: 9, player_name: "Theo", peer_id: "zz-remote" }
+
+/** Seats Cody (this hook) and Theo, whose higher peer ID makes this side open the channel. */
+async function roomWithTheo() {
+  const view = await joinedRoom()
+  const self = { ...saved, peer_id: view.result.current.peerId }
+  act(() => wire.presence!.sync([self, theo]))
+  const channel = FakePeerConnection.instances[0]!.channels[0]!
+  return { ...view, self, channel }
+}
+
+const crop = {
+  type: "capture_response",
+  image: "data:image/jpeg;base64,/9j/4AAQ",
+  nativeWidth: 1920,
+  nativeHeight: 1080,
+  cropSize: 640,
+  clickX: 320,
+  clickY: 320,
+  private: false,
+  shareCorrections: true,
+}
+
+it("drops malformed or unexpected data-channel messages without throwing", async () => {
+  const { result, channel } = await roomWithTheo()
+  act(() => {
+    channel.deliver("{not json")
+    channel.deliver(new ArrayBuffer(8))
+    channel.deliver(JSON.stringify({ type: "capture_request", requestId: "r", x: 4, y: 0.5 }))
+    channel.deliver(JSON.stringify({ ...crop, requestId: "never-requested" }))
+  })
+  expect(channel.sent).toEqual([])
+  expect(result.current.capture).toBeNull()
+
+  act(() =>
+    channel.deliver(JSON.stringify({ type: "capture_request", requestId: "r", x: 0.5, y: 0.5 })),
+  )
+  expect(channel.messages()).toEqual([
+    expect.objectContaining({ type: "capture_response", requestId: "r", private: false }),
+  ])
+})
+
+it("accepts only the requested peer's well-formed crop and restores the live status", async () => {
+  const { result, channel } = await roomWithTheo()
+  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5, true))
+  expect(result.current.status).toBe("Requesting native camera crop…")
+  const { requestId } = channel.messages()[0]!
+  act(() => channel.deliver(JSON.stringify({ ...crop, requestId, image: "data:text/html,hi" })))
+  expect(result.current.capture).toBeNull()
+  act(() => channel.deliver(JSON.stringify({ ...crop, requestId, extra: "dropped" })))
+  expect(result.current.capture).toEqual({
+    peerId: theo.peer_id,
+    playerId: 9,
+    inspect: true,
+    image: crop.image,
+    nativeWidth: 1920,
+    nativeHeight: 1080,
+    cropSize: 640,
+    clickX: 320,
+    clickY: 320,
+    private: false,
+    shareCorrections: true,
+  })
+  expect(result.current.status).toMatch(/^Live/)
+})
+
+it("times out a crop request that a silent peer never answers", async () => {
+  const { result, channel } = await roomWithTheo()
+  vi.useFakeTimers()
+  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5))
+  const { requestId } = channel.messages()[0]!
+  act(() => {
+    vi.advanceTimersByTime(CAPTURE_TIMEOUT_MS)
+  })
+  expect(result.current.status).toBe("Theo's camera did not send a crop; click the card again")
+  act(() => channel.deliver(JSON.stringify({ ...crop, requestId })))
+  expect(result.current.capture).toBeNull()
+})
+
+it("cancels pending crops when their peer leaves or the room unmounts", async () => {
+  const { result, self, unmount } = await roomWithTheo()
+  vi.useFakeTimers()
+  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5))
+  expect(vi.getTimerCount()).toBe(1)
+  act(() => wire.presence!.sync([self]))
+  expect(vi.getTimerCount()).toBe(0)
+  expect(result.current.status).toMatch(/^Live/)
+
+  act(() => wire.presence!.sync([self, theo]))
+  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5))
+  expect(vi.getTimerCount()).toBe(1)
+  unmount()
+  expect(vi.getTimerCount()).toBe(0)
 })
