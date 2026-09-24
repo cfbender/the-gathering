@@ -1,11 +1,12 @@
 import { Eye, Keyboard, ScanSearch, Video, Volume2 } from "lucide-react"
 import { useState, type ReactNode } from "react"
+import { Button } from "@/components/ui/button"
 import { useTheme } from "@/lib/theme"
 import { useCameraDevices, videoHealth } from "./camera"
 import { isPublisherQuality } from "./media-policy"
 import { PanelSection } from "./panel-section"
 import type { RecognizerState } from "./recognition/use-recognizer"
-import { describeRecognizer } from "./side-panel"
+import { describeRecognizer } from "./side-panel-labels"
 import type { useTablePreferences } from "./table-preferences"
 import { CorrectionPreference, type useCorrectionUpload } from "./use-correction-upload"
 import type { useWebcamRoom } from "./use-webcam-room"
@@ -92,9 +93,9 @@ export function TableSettings({
     >
       <PanelSection title="Keyboard shortcuts" icon={Keyboard}>
         <div className="grid gap-3">
-          <button type="button" className="btn btn-sm btn-outline w-full text-xs" onClick={onHelp}>
+          <Button type="button" variant="outline" size="sm" className="w-full" onClick={onHelp}>
             Keyboard shortcut help <kbd className="kbd kbd-xs">?</kbd>
-          </button>
+          </Button>
           <Toggle checked={preferences.hotkeys} onChange={preferences.setHotkeys}>
             Enable keyboard shortcuts
           </Toggle>
@@ -133,13 +134,15 @@ export function TableSettings({
               { value: "classic", label: "Classic" },
             ]}
           />
-          <button
+          <Button
             type="button"
-            className="btn btn-sm btn-outline w-full text-xs"
+            variant="outline"
+            size="sm"
+            className="w-full"
             onClick={preferences.resetWidths}
           >
             Reset rail widths
-          </button>
+          </Button>
         </div>
       </PanelSection>
       <PanelSection title="Camera" icon={Video}>
@@ -203,13 +206,15 @@ export function TableSettings({
             Lower if your video appears choppy. Takes effect immediately; card scans keep the native
             camera resolution.
           </p>
-          <button
+          <Button
             type="button"
-            className="btn btn-sm btn-outline w-full text-xs"
+            variant="outline"
+            size="sm"
+            className="w-full"
             onClick={() => setHealth(videoHealth(room.localStream))}
           >
             Check video health
-          </button>
+          </Button>
           {health && (
             <p role="status" className="break-words text-[0.65rem] text-base-content/80">
               {health}

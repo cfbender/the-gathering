@@ -1,4 +1,5 @@
 import { Pause, Play, Timer } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/cn"
 import { formatElapsed, type TimerSample } from "./game-timer"
 import { useTimerElapsed } from "./use-timer-elapsed"
@@ -37,13 +38,15 @@ export function TimerToggle({
   const paused = sample?.state.paused_at != null
   if (!started) return null
   return (
-    <button
+    <Button
       type="button"
-      className="btn btn-ghost btn-sm w-full text-xs"
+      variant="ghost"
+      size="sm"
+      className="w-full"
       onClick={() => onChange(paused ? "resume" : "pause")}
     >
       {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
       {paused ? "Resume timer" : "Pause timer"}
-    </button>
+    </Button>
   )
 }

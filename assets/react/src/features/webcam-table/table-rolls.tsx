@@ -1,5 +1,6 @@
 import { Dice5 } from "lucide-react"
 import { useState } from "react"
+import { Button } from "@/components/ui/button"
 import { PanelSection } from "./panel-section"
 
 export type RollRequest = { kind: "dice"; sides: number } | { kind: "coin" }
@@ -23,22 +24,19 @@ export function TableRolls({ onRoll }: { onRoll: (request: RollRequest) => void 
     <PanelSection title="Dice & coins" icon={Dice5}>
       <div className="grid grid-cols-3 gap-1.5">
         {[6, 20].map((size) => (
-          <button
+          <Button
             key={size}
             type="button"
-            className="btn btn-outline btn-sm"
+            variant="outline"
+            size="sm"
             onClick={() => onRoll({ kind: "dice", sides: size })}
           >
             d{size}
-          </button>
+          </Button>
         ))}
-        <button
-          type="button"
-          className="btn btn-outline btn-sm text-xs"
-          onClick={() => onRoll({ kind: "coin" })}
-        >
+        <Button type="button" variant="outline" size="sm" onClick={() => onRoll({ kind: "coin" })}>
           Flip coin
-        </button>
+        </Button>
       </div>
       <form
         className="mt-2 flex items-end gap-2"
@@ -60,7 +58,9 @@ export function TableRolls({ onRoll }: { onRoll: (request: RollRequest) => void 
             onChange={(event) => setSides(event.target.value)}
           />
         </label>
-        <button className="btn btn-sm btn-outline">Roll</button>
+        <Button type="submit" variant="outline" size="sm">
+          Roll
+        </Button>
       </form>
     </PanelSection>
   )
