@@ -241,8 +241,8 @@ always large, everyone else is small, and controls live in a collapsible column.
 - **Side panel** (right): a narrow icon strip (Table, Decks, Cards, Log, Settings) plus a collapse chevron and shortcut help. The
   Table tab holds the Setup section (elapsed-time badge and players count in the header, Invite
   players copies the room URL, Select your commander, a turn-order table with #/Player/Turn/Time
-  (life and commander under the name), then before the match an auto-randomize toggle and the
-  primary Start match / Randomize and start button, and after it Pass turn and Pause/Resume
+  (life and commander under the name, and up/down arrows for the owner), then before the match
+  the primary Start match button beside Randomize, and after it Pass turn and Pause/Resume
   timer; Reveal hand to…, the red End game button, Leave table), dice/coin controls, and collapsed Identify
   cards and Connection sections. Decks lists your commanders; Log shows the table event log. Collapsing the
   panel leaves only the icon strip so the board grows.
@@ -350,14 +350,19 @@ suggests the only non-eliminated player as winner (when at least two players too
 others defaulting to losses in recorded seat order. The result remains editable; choosing Draw
 explicitly records the whole table as draws, as required by the existing game schema.
 
-Default turn order is join order (`joined_at`, then peer id) so every browser agrees.
-"Randomize and start" sends `start_game`; the server shuffles the present peers unless the shared
-`turn_settings` option `auto_randomize` is false. With that option off the button reads "Start
-match" and preserves join order. Subsequent randomizations push `seat_order`; the channel verifies
-the list names exactly the retained seated peers (never spectators), then broadcasts it. Rows shuffle visibly for about one
-second before settling into that order (instant with reduced motion, no animation for an ordered
-start). The End game form numbers seats in that order and records them the same way. Randomizing
-again reorders seats but **never resets or resumes the timer or changes the current turn**.
+Default turn order is join order (`joined_at`, then peer id) so every browser agrees. Before the
+match the owner can move any seat with the up/down arrows in the turn-order table (`arrange_seats`),
+then either **Start match** (`start_game {randomize: false}`, keeps the shown order) or
+**Randomize** (`start_game {randomize: true}`, shuffles the present peers — whole pairs in
+Two-Headed Giant — then starts). A bare `start_game {}` still falls back to the shared
+`turn_settings` option `auto_randomize`, which older clients may set. After the start the arrows
+stay available in Commander only and push `seat_order`; Two-Headed Giant and Five Star lock their
+order at start because team life and turns are keyed by seat position. The channel verifies each
+list names exactly the retained seated peers (never spectators), then broadcasts it. Rows shuffle
+visibly for about one second before settling into a randomized order (instant with reduced motion,
+no animation for an ordered start or a manual move). The End game form numbers seats in that order
+and records them the same way. Reordering mid-game **never resets or resumes the timer or changes
+the current turn**.
 
 Any seat can use **Pass turn** or **Space**. Turns advance in the shared order, skip eliminated seats and
 wrap around. Temporarily disconnected seats keep their turns. TURN counts increment when a turn starts, including the first

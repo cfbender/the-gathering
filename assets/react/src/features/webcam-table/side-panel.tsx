@@ -7,6 +7,7 @@ import {
   DoorOpen,
   Gamepad2,
   Layers,
+  Play,
   ScanSearch,
   ScrollText,
   Settings,
@@ -71,12 +72,10 @@ interface Props extends CardsTabProps {
   onInvite: () => void
   inviteCopied: boolean
   onChooseDeck: (deckId: number) => void
-  onRandomizeSeats: () => void
+  onStartGame: (randomize: boolean) => void
   shuffleVersion: number
   turns: TurnState
   timer: TimerSample | null
-  autoRandomize: boolean
-  onAutoRandomize: (enabled: boolean) => void
   onPassTurn: () => void
   onAdjustTurn: (playerId: number, delta: -1 | 1) => void
   onRoll: (request: RollRequest) => void
@@ -172,10 +171,11 @@ function TableTab(props: Props) {
     onInvite,
     inviteCopied,
     onChooseDeck,
-    onRandomizeSeats,
+    onStartGame,
     onEndGame,
   } = props
   const started = props.timer?.state.started_at != null
+  const enoughSeats = participants.filter((participant) => !participant.departed).length >= 2
   const selectedDeck = playerDecks.find((deck) => deck.id === local.deck_id)
 
   if (props.spectating)
@@ -255,8 +255,9 @@ function TableTab(props: Props) {
           readOnly={props.isOwner === false}
         />
         <p className="text-base-content/50 mt-1 text-[0.65rem]">
-          Out players skip turns but keep their recorded seat. The room owner controls turn order;
-          players can also eliminate or restore their own seat.
+          Out players skip turns but keep their recorded seat. The room owner reorders seats with
+          the arrows{props.mode !== "commander" ? " until the match starts" : ""}; players can also
+          eliminate or restore their own seat.
         </p>
 
         <div className="mt-3 grid gap-1.5">
@@ -285,24 +286,30 @@ function TableTab(props: Props) {
                   eliminated.
                 </p>
               )}
-              <label className="text-base-content/60 mb-1 flex items-center justify-between gap-2 text-[0.65rem]">
-                Auto-randomize order on start
-                <input
-                  type="checkbox"
-                  className="toggle toggle-xs toggle-primary"
-                  checked={props.autoRandomize}
-                  onChange={(event) => props.onAutoRandomize(event.target.checked)}
-                />
-              </label>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm w-full text-xs"
-                onClick={onRandomizeSeats}
-                disabled={participants.filter((participant) => !participant.departed).length < 2}
-              >
-                <Shuffle className="size-3.5" />{" "}
-                {props.autoRandomize ? "Randomize and start" : "Start match"}
-              </button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm text-xs"
+                  onClick={() => onStartGame(false)}
+                  disabled={!enoughSeats}
+                  title="Start with the turn order shown above"
+                >
+                  <Play className="size-3.5" /> Start match
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm text-xs"
+                  onClick={() => onStartGame(true)}
+                  disabled={!enoughSeats}
+                  title={
+                    props.mode === "two_headed_giant"
+                      ? "Shuffle the teams, then start"
+                      : "Shuffle the turn order, then start"
+                  }
+                >
+                  <Shuffle className="size-3.5" /> Randomize
+                </button>
+              </div>
             </>
           )}
           {started && (

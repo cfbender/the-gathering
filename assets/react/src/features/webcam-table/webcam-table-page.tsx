@@ -724,12 +724,10 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           setInviteCopied(true)
         }}
         onChooseDeck={room.chooseDeck}
-        onRandomizeSeats={room.randomizeSeats}
+        onStartGame={room.startGame}
         shuffleVersion={room.shuffleVersion}
         turns={room.turns}
         timer={room.timer}
-        autoRandomize={room.autoRandomize}
-        onAutoRandomize={room.setAutoRandomize}
         onPassTurn={room.passTurn}
         onAdjustTurn={room.adjustTurn}
         onRoll={room.rollDice}
