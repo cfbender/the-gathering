@@ -3,6 +3,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test"
 import { EMPTY_TURNS } from "./turns"
+import { TOKEN_REFRESH_INTERVAL_MS } from "./use-room-channel"
 import { wire } from "./test-support/fake-phoenix"
 import {
   FakePeerConnection,
@@ -115,6 +116,28 @@ it("hydrates before editing and reconnects without republishing default life or 
   expect(wire.socketParams().token).toBe("fresh-token")
 })
 
+it("refreshes the socket token at most once per interval while reconnect attempts keep failing", async () => {
+  let now = 1_000_000
+  vi.spyOn(Date, "now").mockImplementation(() => now)
+  await joinedRoom()
+  expect(fetch).toHaveBeenCalledTimes(1)
+
+  act(() => wire.socketError())
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+
+  // phoenix.js retries every few seconds during an outage; those attempts reuse the fresh token.
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    now += 2_000
+    act(() => wire.socketError())
+  }
+  await act(async () => {})
+  expect(fetch).toHaveBeenCalledTimes(2)
+
+  now += TOKEN_REFRESH_INTERVAL_MS
+  act(() => wire.socketError())
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3))
+})
+
 it("hydrates team state and routes life shortcuts to the viewer's team without changing personal counters", async () => {
   const { result } = await joinedRoom()
   const seats = [12, 19, 3, 7].map((id) => ({ ...saved, player_id: id, peer_id: `peer-${id}` }))
@@ -190,7 +213,9 @@ it("shows the server's card list, overlaying only changes the server has not ans
   act(() => {
     entry = result.current.announceCard(result.current.peerId, "Cody", bolt)
   })
-  expect(wire.sent("cards").at(-1)?.payload).toEqual({ type: "card_identified", entry })
+  // The server stamps the identifier from the sender's seat; only the local overlay names it.
+  const { byPlayerName: _stamped, ...pushed } = entry
+  expect(wire.sent("cards").at(-1)?.payload).toEqual({ type: "card_identified", entry: pushed })
   expect(result.current.identifiedCards).toEqual([theirs, entry])
   act(() => wire.sent("cards").at(-1)!.push.reply("error", { reason: "invalid cards" }))
   expect(result.current.identifiedCards).toEqual([theirs])
