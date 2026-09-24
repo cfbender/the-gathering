@@ -493,8 +493,7 @@ function UserCard({ user, players }: { user: User; players: PlayerSummary[] }) {
     mutationFn: () => api<void>(`/api/admin/users/${user.id}`, { method: "DELETE" }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
-      void queryClient.invalidateQueries({ queryKey: ["players"] })
-      void queryClient.invalidateQueries({ queryKey: ["games"] })
+      void invalidateGameRelated(queryClient)
     },
   })
   const revokeSessions = useMutation({
@@ -574,7 +573,9 @@ function UserCard({ user, players }: { user: User; players: PlayerSummary[] }) {
         </div>
         {mutationError && !isSudoRequired(mutationError) && (
           <div className="alert alert-error py-2 text-sm">
-            {errorMessage(mutationError, "role") ?? errorMessage(mutationError)}
+            {errorMessage(mutationError, "player") ??
+              errorMessage(mutationError, "role") ??
+              errorMessage(mutationError)}
           </div>
         )}
         <SudoPrompt
@@ -625,9 +626,9 @@ function UserCard({ user, players }: { user: User; players: PlayerSummary[] }) {
         destructive
         onConfirm={() => deleteUser.mutate()}
       >
-        Their account and sessions will be permanently deleted. Games and their player record,
-        including decks and game history, will be kept, and the player will be unlinked from the
-        account.
+        Their account, sessions, linked player, and unused decks will be permanently deleted. The
+        linked player must have zero games. If they have game history, disable the account instead.
+        Games they recorded for other players will be kept.
       </ConfirmDialog>
     </div>
   )

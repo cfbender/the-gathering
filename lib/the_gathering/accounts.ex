@@ -13,7 +13,7 @@ defmodule TheGathering.Accounts do
     UserToken
   }
 
-  alias TheGathering.Games.Player
+  alias TheGathering.Games.{Deck, GamePlayer, Player}
   alias TheGathering.Repo
 
   def registration_status do
@@ -139,15 +139,34 @@ defmodule TheGathering.Accounts do
   end
 
   def delete_user(%User{} = user, %User{} = actor) do
+    players = from player in Player, where: player.user_id == ^user.id
+    player_ids = from player in players, select: player.id
+    decks = from deck in Deck, where: deck.player_id in subquery(player_ids)
+    deck_ids = from deck in decks, select: deck.id
+
     Multi.new()
     |> Multi.run(:authorization, fn repo, _changes ->
       authorize_user_deletion(repo, user, actor)
     end)
-    |> Multi.update_all(
-      :players,
-      from(player in Player, where: player.user_id == ^user.id),
-      set: [user_id: nil]
-    )
+    |> Multi.run(:game_history, fn repo, _changes ->
+      references =
+        from seat in GamePlayer,
+          where:
+            seat.player_id in subquery(player_ids) or
+              seat.eliminated_by_player_id in subquery(player_ids) or
+              seat.deck_id in subquery(deck_ids)
+
+      if repo.exists?(references) do
+        {:error,
+         user
+         |> Ecto.Changeset.change()
+         |> Ecto.Changeset.add_error(:player, "must have zero games before deleting this user")}
+      else
+        {:ok, :empty}
+      end
+    end)
+    |> Multi.delete_all(:decks, decks)
+    |> Multi.delete_all(:players, players)
     |> Multi.update_all(
       :games,
       from(game in TheGathering.Games.Game, where: game.created_by_user_id == ^user.id),
