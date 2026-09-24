@@ -2,12 +2,13 @@ defmodule TheGathering.WebcamTables.Room do
   @moduledoc """
   One webcam table's serialized admission and durable game state.
 
-  Each room is its own process, registered by room id, so a busy or crashing
-  room cannot stall or reset another. It loads the saved `Session` on start and
-  stops when its last connection exits; the session stays recoverable by id
-  until it expires. Presence describes connections, not seats: disconnects
-  never change turns or erase a game. Every mutation is saved before it is
-  broadcast and acknowledged, and broadcasts preserve update order.
+  Each room is its own process, registered by room id (with the time it opened
+  as the registry value), so a busy or crashing room cannot stall or reset
+  another. It loads the saved `Session` on start and keeps running after its
+  last connection exits, until `close_if_idle/2` finds it empty and idle; then
+  it deletes its session and stops. Presence describes connections, not seats:
+  disconnects never change turns or erase a game. Every mutation is saved
+  before it is broadcast and acknowledged, and broadcasts preserve update order.
 
   Connection processes receive `:seat_replaced` when a newer connection takes
   their seat and `{:seat_eliminated, boolean}` when their seat is knocked out
@@ -23,15 +24,33 @@ defmodule TheGathering.WebcamTables.Room do
   # Keeps an idle but connected room (a long pause) from expiring.
   @refresh_interval :timer.hours(1)
 
-  def start_link(id), do: GenServer.start_link(__MODULE__, id, name: via(id))
+  def start_link(id) do
+    name = {:via, Registry, {TheGathering.WebcamTables.Registry, id, now()}}
+    GenServer.start_link(__MODULE__, id, name: name)
+  end
 
   def via(id), do: {:via, Registry, {TheGathering.WebcamTables.Registry, id}}
+
+  @doc """
+  Deletes the room's session and stops it if no one is connected and nothing
+  has happened for `idle_ms`. Returns `:closed` or `:open`.
+  """
+  def close_if_idle(pid, idle_ms), do: GenServer.call(pid, {:close_if_idle, idle_ms})
 
   @impl true
   def init(id) do
     Process.send_after(self(), :refresh, @refresh_interval)
+
     # `entry` stays nil for a brand-new room until its first join names the owner.
-    {:ok, %{id: id, entry: Session.load(id), connections: %{}, monitors: %{}}}
+    # `active_at` is the last join, saved change or disconnect.
+    {:ok,
+     %{
+       id: id,
+       entry: Session.load(id),
+       connections: %{},
+       monitors: %{},
+       active_at: now()
+     }}
   end
 
   @impl true
@@ -41,10 +60,10 @@ defmodule TheGathering.WebcamTables.Room do
 
     cond do
       duplicate_peer?(entry, participant) ->
-        reply_or_stop({:error, "peer id is already in use"}, state)
+        {:reply, {:error, "peer id is already in use"}, state}
 
       lobby_full?(entry, previous) ->
-        reply_or_stop({:error, "room is full"}, state)
+        {:reply, {:error, "room is full"}, state}
 
       true ->
         spectator? = is_nil(previous) and not is_nil(entry.timer.started_at)
@@ -63,6 +82,15 @@ defmodule TheGathering.WebcamTables.Room do
     do: {:reply, match?({^pid, _ref}, state.connections[player_id]), state}
 
   def handle_call(:snapshot, _from, state), do: {:reply, snapshot(state.entry), state}
+
+  def handle_call({:close_if_idle, idle_ms}, _from, state) do
+    if map_size(state.connections) == 0 and now() - state.active_at >= idle_ms do
+      :ok = Session.delete(state.id)
+      {:stop, :normal, :closed, state}
+    else
+      {:reply, :open, state}
+    end
+  end
 
   def handle_call({:monarch, participant}, _from, %{entry: entry} = state) do
     holder = Map.take(participant, [:peer_id, :player_name])
@@ -242,15 +270,13 @@ defmodule TheGathering.WebcamTables.Room do
         {:noreply, state}
 
       {player_id, monitors} ->
-        state = %{
-          state
-          | monitors: monitors,
-            connections: Map.delete(state.connections, player_id)
-        }
-
-        if map_size(state.connections) == 0,
-          do: {:stop, :normal, state},
-          else: {:noreply, state}
+        {:noreply,
+         %{
+           state
+           | monitors: monitors,
+             connections: Map.delete(state.connections, player_id),
+             active_at: now()
+         }}
     end
   end
 
@@ -264,18 +290,11 @@ defmodule TheGathering.WebcamTables.Room do
       {event, payload} -> broadcast!(state.id, event, payload)
     end)
 
-    %{state | entry: entry}
+    %{state | entry: entry, active_at: now()}
   end
 
   defp broadcast!(id, event, payload),
     do: Endpoint.broadcast!("webcam_table:#{id}", event, payload)
-
-  # A rejected join may leave a freshly started room without connections.
-  defp reply_or_stop(reply, state) do
-    if map_size(state.connections) == 0,
-      do: {:stop, :normal, reply, state},
-      else: {:reply, reply, state}
-  end
 
   # Sets the seat order and starts the clock (idempotently). Shared by the
   # initial start and mid-game Commander reorders.

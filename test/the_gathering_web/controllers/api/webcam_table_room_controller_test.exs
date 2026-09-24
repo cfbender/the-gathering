@@ -2,7 +2,7 @@ defmodule TheGatheringWeb.API.WebcamTableRoomControllerTest do
   use TheGatheringWeb.ConnCase, async: false
   import Phoenix.ChannelTest
 
-  alias TheGathering.{AccountsFixtures, Games}
+  alias TheGathering.{AccountsFixtures, Games, WebcamTables}
   alias TheGatheringWeb.{UserSocket, WebcamTableChannel}
 
   @endpoint TheGatheringWeb.Endpoint
@@ -45,7 +45,7 @@ defmodule TheGatheringWeb.API.WebcamTableRoomControllerTest do
            ]
   end
 
-  test "drops a room once its last seat leaves", %{conn: conn} do
+  test "keeps an empty room listed until it is closed as idle", %{conn: conn} do
     room_id = Ecto.UUID.generate()
     {socket, _player} = seat(room_id, @peer_a, "Alice")
     @endpoint.subscribe("webcam_tables")
@@ -57,6 +57,10 @@ defmodule TheGatheringWeb.API.WebcamTableRoomControllerTest do
     close(socket)
     await_leave(@peer_a)
 
+    assert %{"data" => [%{"id" => ^room_id, "players" => [], "full" => false}]} =
+             conn |> get(~p"/api/webcam-table/rooms") |> json_response(200)
+
+    assert WebcamTables.close_idle_rooms(0) == [room_id]
     assert %{"data" => []} = conn |> get(~p"/api/webcam-table/rooms") |> json_response(200)
   end
 

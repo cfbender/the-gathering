@@ -29,6 +29,9 @@ config :logger, level: :warning
 # Tests invoke catalog sync explicitly with local fixtures.
 config :the_gathering, :catalog_sync_enabled, false
 
+# Tests close idle webcam tables explicitly; a background sweep would race the sandbox.
+config :the_gathering, :webcam_table_pruning_enabled, false
+
 # Every ConnTest request shares 127.0.0.1, so keep the shared bucket effectively
 # unlimited; the rate limit tests lower it for their own addresses.
 config :the_gathering, TheGatheringWeb.RateLimit,

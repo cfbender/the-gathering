@@ -161,10 +161,13 @@ turn counts/times, timer and identified card lists survive reloads and server re
 the client-side event log are not stored. Immediate writes avoid a debounce data-loss window;
 this remains a single-server design, not a distributed room coordinator.
 
-Snapshots expire seven days after their last write. An hourly sweep refreshes connected rooms and
-deletes expired snapshots; joins also reject expired snapshots. Empty rooms leave memory but keep
-their snapshot. Finished games use the same idle expiration policy; recording a result does not
-delete the room. An expired UUID opens a fresh lobby.
+Rooms keep running after their last seat leaves. `TheGathering.WebcamTables.Pruner` runs every
+minute: it closes rooms that have had no connections and no activity (joins, saved changes or
+disconnects) for 30 minutes, deleting their snapshots, and deletes snapshots that have expired.
+Snapshots expire seven days after their last write; running rooms refresh theirs hourly, so expiry
+only matters for sessions left behind by a server restart. Joins reject expired snapshots.
+Finished games use the same idle policy; recording a result does not delete the room. A closed or
+expired UUID opens a fresh lobby.
 
 The authenticated player ID owns the seat, not the transient peer ID or Presence entry. A newer
 connection takes over the same seat, stops the old channel, and remaps order, monarch and cards.
@@ -189,13 +192,14 @@ refuses frames over 128 KB. Every channel event spends a token from a per-connec
 joins and TURN credential requests (`GET /api/webcam-table/config`) are limited per account.
 Limits live under `config :the_gathering, TheGatheringWeb.RateLimit`.
 
-The Games page still finds live tables without the URL: every seated channel process also
-tracks itself on one lobby presence topic (`TheGatheringWeb.WebcamTableRooms`), and
-`GET /api/webcam-table/rooms` groups that topic by room (players in join order, `full` at ten
-seats). `PlayActions` (`features/webcam-table/play-actions.tsx`) polls it every 15 s: with no
-live table the header shows **Play**; with one it shows **Join** naming the seated players plus
-a smaller **New table**; with several, Join becomes a menu of tables. A room vanishes from this
-live list when its last seat leaves, but remains recoverable through its saved URL.
+The Games page still finds open tables without the URL: `GET /api/webcam-table/rooms`
+(`TheGatheringWeb.WebcamTableRooms`) lists every running room, and every seated channel process
+also tracks itself on one lobby presence topic that supplies each room's connected players (join
+order, `full` at ten seats). `PlayActions` (`features/webcam-table/play-actions.tsx`) polls it
+every 15 s: with no open table the header shows **Play**; with one it shows **Join** naming the
+seated players (or "Empty table") plus a smaller **New table**; with several, Join becomes a menu
+of tables. An empty room stays listed until the pruner closes it; after a server restart, rooms
+reappear once someone opens their saved URL.
 
 ## Table view layout
 

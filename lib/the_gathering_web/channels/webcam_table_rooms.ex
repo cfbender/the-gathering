@@ -1,12 +1,14 @@
 defmodule TheGatheringWeb.WebcamTableRooms do
   @moduledoc """
-  Which webcam tables are live right now.
+  Which webcam tables are open right now.
 
-  Presence supplies the live lobby listing, not admission or durable game state.
-  Empty rooms disappear from this listing but remain recoverable by UUID for the
-  session retention period. Spectators do not appear as seats in the lobby.
+  Every running room is listed, including empty ones, until
+  `TheGathering.WebcamTables.Pruner` closes it after 30 idle minutes. Presence
+  supplies each room's connected seats, not admission or durable game state.
+  Spectators do not appear as seats in the lobby.
   """
 
+  alias TheGathering.WebcamTables
   alias TheGatheringWeb.Presence
 
   @lobby_topic "webcam_tables"
@@ -22,18 +24,25 @@ defmodule TheGatheringWeb.WebcamTableRooms do
     })
   end
 
-  @doc "Live rooms, oldest first, each with its seated players in join order."
+  @doc "Open rooms, oldest first, each with its connected seated players in join order."
   def active_rooms do
-    @lobby_topic
-    |> Presence.list()
-    |> Enum.flat_map(fn {_peer_id, %{metas: metas}} -> metas end)
-    |> Enum.group_by(& &1.room_id)
-    |> Enum.map(fn {room_id, seats} ->
-      seats = seats |> Enum.uniq_by(& &1.player_id) |> Enum.sort_by(& &1.joined_at)
+    seats =
+      @lobby_topic
+      |> Presence.list()
+      |> Enum.flat_map(fn {_peer_id, %{metas: metas}} -> metas end)
+      |> Enum.group_by(& &1.room_id)
+
+    WebcamTables.rooms()
+    |> Enum.map(fn room ->
+      seats =
+        seats
+        |> Map.get(room.id, [])
+        |> Enum.uniq_by(& &1.player_id)
+        |> Enum.sort_by(& &1.joined_at)
 
       %{
-        id: room_id,
-        started_at: seats |> Enum.map(& &1.joined_at) |> Enum.min(),
+        id: room.id,
+        started_at: room.opened_at,
         full: length(seats) >= @max_players,
         players: Enum.map(seats, &%{id: &1.player_id, name: &1.player_name})
       }

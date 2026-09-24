@@ -1,6 +1,7 @@
 defmodule TheGathering.WebcamTables.Session do
   @moduledoc """
-  Versioned server-owned snapshots, retained for seven days after last activity.
+  Versioned server-owned snapshots, retained for seven days after last activity
+  or until their room closes as idle.
   JSON decoding uses explicit field lists, never dynamically created atoms.
   Writes finish before an action is acknowledged, including rapid life changes.
   """
@@ -39,6 +40,11 @@ defmodule TheGathering.WebcamTables.Session do
       conflict_target: :id
     )
 
+    :ok
+  end
+
+  def delete(id) do
+    Repo.delete_all(from session in __MODULE__, where: session.id == ^id)
     :ok
   end
 

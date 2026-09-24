@@ -11,6 +11,10 @@ function table(...names: string[]): ActiveTable {
 }
 
 describe("tablePlayerNames", () => {
+  it("labels a table no one is seated at", () => {
+    expect(tablePlayerNames(table())).toBe("Empty table")
+  })
+
   it("names one player plainly", () => {
     expect(tablePlayerNames(table("Theo"))).toBe("Theo")
   })
