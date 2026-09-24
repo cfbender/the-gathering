@@ -164,6 +164,15 @@ it("keeps the hidden capture video playing after the camera replaces the placeho
   await waitFor(() => expect(playedSources).toContain(media))
 })
 
+it("joins with only the seat identity; the server no longer negotiates a protocol version", async () => {
+  const { result } = await joinedRoom()
+  expect(wire.channel!.params()).toEqual({
+    peer_id: result.current.peerId,
+    player_id: 7,
+    deck_id: null,
+  })
+})
+
 it("shows the server's card list, overlaying only changes the server has not answered", async () => {
   const { result } = await joinedRoom()
   const theirs = boardCard("theirs", "remote", "Counterspell")
