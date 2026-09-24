@@ -1021,6 +1021,104 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     })
   end
 
+  describe "identified cards" do
+    defp card_entry(owner, overrides \\ %{}) do
+      Map.merge(
+        %{
+          "id" => Ecto.UUID.generate(),
+          "ownerPeerId" => owner,
+          "at" => 123,
+          "card" => %{"id" => "art-1", "name" => "Forest", "set" => "lea"}
+        },
+        overrides
+      )
+    end
+
+    test "attribution is stamped from the sender's seat, never the payload", %{
+      socket: alice,
+      room_id: room
+    } do
+      bob = join_player(room, "peer-b", "Bob")
+      spoofed = card_entry("peer-a", %{"byPlayerName" => "Alice"})
+
+      assert_reply push(bob, "cards", %{"type" => "card_identified", "entry" => spoofed}), :ok
+
+      assert_broadcast "identified_cards", %{
+        entries: [%{"byPlayerName" => "Bob"}],
+        type: "card_identified",
+        by: %{peer_id: "peer-b", player_name: "Bob"}
+      }
+
+      assert [%{"byPlayerName" => "Bob"}] = WebcamTableState.snapshot(room).cards
+
+      # The name is optional on the wire.
+      unnamed =
+        card_entry("peer-b", %{"card" => %{"id" => "a", "name" => "Island", "set" => "x"}})
+
+      assert_reply push(alice, "cards", %{"type" => "card_identified", "entry" => unnamed}), :ok
+
+      assert [%{"byPlayerName" => "Bob"}, %{"byPlayerName" => "Alice"}] =
+               WebcamTableState.snapshot(room).cards
+    end
+
+    test "any seat may remove an entry and the broadcast names the remover", %{
+      socket: alice,
+      room_id: room
+    } do
+      bob = join_player(room, "peer-b", "Bob")
+      entry = card_entry("peer-a")
+      assert_reply push(alice, "cards", %{"type" => "card_identified", "entry" => entry}), :ok
+      assert_reply push(bob, "cards", %{"type" => "card_removed", "id" => entry["id"]}), :ok
+
+      assert_broadcast "identified_cards", %{
+        entries: [],
+        type: "card_removed",
+        by: %{peer_id: "peer-b", player_name: "Bob"}
+      }
+
+      assert WebcamTableState.snapshot(room).cards == []
+    end
+
+    test "only the board owner can clear its cards", %{socket: alice, room_id: room} do
+      bob = join_player(room, "peer-b", "Bob")
+      entry = card_entry("peer-a")
+      assert_reply push(alice, "cards", %{"type" => "card_identified", "entry" => entry}), :ok
+
+      assert_reply push(bob, "cards", %{"type" => "cards_cleared", "ownerPeerId" => "peer-a"}),
+                   :error,
+                   %{reason: "only the board owner can clear its cards"}
+
+      assert length(WebcamTableState.snapshot(room).cards) == 1
+
+      assert_reply push(alice, "cards", %{"type" => "cards_cleared", "ownerPeerId" => "peer-a"}),
+                   :ok
+
+      assert WebcamTableState.snapshot(room).cards == []
+    end
+
+    test "spectators cannot identify, remove or clear cards", %{socket: alice, room_id: room} do
+      entry = card_entry("peer-a")
+      # Starting the game makes later arrivals spectators (and clears lobby cards).
+      assert_reply push(alice, "seat_order", %{"peer_ids" => ["peer-a"]}), :ok
+      assert_reply push(alice, "cards", %{"type" => "card_identified", "entry" => entry}), :ok
+      spectator = join_player(room, "peer-b", "Bob")
+      assert spectator.assigns.participant.spectator
+
+      for payload <- [
+            %{"type" => "card_identified", "entry" => card_entry("peer-a")},
+            %{"type" => "card_removed", "id" => entry["id"]},
+            %{"type" => "cards_cleared", "ownerPeerId" => "peer-b"}
+          ] do
+        assert_reply push(spectator, "cards", payload), :error, %{
+          reason: "spectators cannot change the game"
+        }
+      end
+
+      assert [%{"id" => id}] = WebcamTableState.snapshot(room).cards
+      assert id == entry["id"]
+    end
+  end
+
   test "rejects a player not linked to the authenticated account", %{
     player: player,
     room_id: room_id
