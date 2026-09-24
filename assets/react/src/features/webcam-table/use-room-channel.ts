@@ -5,6 +5,10 @@ import { liveStatus, type RoomLink } from "./room-link"
 import type { TableParticipant } from "./room-types"
 import type { Signal } from "./use-peer-connections"
 
+/** Minimum gap between socket-token refreshes while reconnecting. The config endpoint allows
+ * 20 requests per 5 minutes per account, and the page-load fetch is not counted here. */
+export const TOKEN_REFRESH_INTERVAL_MS = 30_000
+
 interface TableConfig {
   ice_servers: RTCIceServer[]
   max_players: number
@@ -57,15 +61,28 @@ export function useRoomChannel(
         on().onConfig(config.ice_servers)
 
         socket = new Socket("/socket", { params: () => ({ token: config.socket_token }) })
+        let refreshing = false
+        let refreshedAt: number | null = null
         socket.onError(() => {
           on().setStatus("Reconnecting… Your game is saved.")
           // Socket tokens expire after a day; refresh from the still-authenticated
           // cookie session so the next automatic retry does not reuse an expired token.
+          // phoenix.js retries every few seconds while the server is away, and the config
+          // endpoint is rate-limited (it mints TURN credentials), so refresh at most once
+          // per interval instead of on every failed attempt.
+          const now = Date.now()
+          if (refreshing || (refreshedAt !== null && now - refreshedAt < TOKEN_REFRESH_INTERVAL_MS))
+            return
+          refreshing = true
+          refreshedAt = now
           void api<{ data: TableConfig }>("/api/webcam-table/config")
             .then(({ data }) => {
               config.socket_token = data.socket_token
             })
             .catch(() => {})
+            .finally(() => {
+              refreshing = false
+            })
         })
         socket.connect()
         const room = socket.channel(`webcam_table:${roomId}`, () => ({

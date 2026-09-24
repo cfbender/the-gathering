@@ -4,6 +4,14 @@ import { applyCardCommand, sameCard, type CardCommand } from "./identified-cards
 import type { RoomLink } from "./room-link"
 import type { BoardCard, IdentifiedCard } from "./room-types"
 
+/** The server stamps who identified a card from the sender's seat, so the local overlay keeps
+ * `byPlayerName` for display but the push leaves it out. */
+function wirePayload(command: CardCommand) {
+  if (command.type !== "card_identified") return command
+  const { byPlayerName: _stampedByServer, ...entry } = command.entry
+  return { ...command, entry }
+}
+
 /** The table's identified cards. The server owns the list and broadcasts all of it on every
  * change (and starts every game empty); this seat's own changes show immediately and stay
  * overlaid only until the server answers the push that carries them. */
@@ -44,7 +52,7 @@ export function useBoardCards(link: RoomLink) {
         show()
       }
       channel
-        .push("cards", command)
+        .push("cards", wirePayload(command))
         .receive("ok", settle)
         .receive("error", settle)
         .receive("timeout", settle)
