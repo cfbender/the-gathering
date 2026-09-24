@@ -18,6 +18,7 @@ defmodule TheGatheringWeb.API.GameJSON do
       win_condition: game.win_condition,
       notes: game.notes,
       source: game.source,
+      format: game.format,
       external_id: game.external_id,
       created_by_user_id: game.created_by_user_id,
       seats: game.seats |> Enum.sort_by(& &1.seat) |> Enum.map(&seat(&1, card_art))
@@ -48,6 +49,7 @@ defmodule TheGatheringWeb.API.GameJSON do
     %{
       id: seat.game.id,
       played_at: seat.game.played_at,
+      format: seat.game.format,
       result: seat.result,
       deck: association(seat.deck, &DeckJSON.summary(&1, card_art))
     }

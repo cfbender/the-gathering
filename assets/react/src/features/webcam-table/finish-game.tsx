@@ -15,8 +15,11 @@ import { cn } from "@/lib/cn"
 import { buildGamePayload, suggestedWinner } from "./game-result"
 import { durationMinutes, type GameTimerState } from "./game-timer"
 import type { TableParticipant } from "./use-webcam-room"
+import type { GameFormat } from "@/features/games/game-format"
+import { teams } from "./game-modes"
 
 interface Props {
+  mode?: GameFormat
   /** Seated players in turn order; seats are recorded 1..n in this order. */
   participants: TableParticipant[]
   playedAt: Date
@@ -25,10 +28,28 @@ interface Props {
 }
 
 /** End game → result form → POST /api/games, so the table lands in normal history. */
-export function FinishGame({ participants, playedAt, timer, onOpenChange }: Props) {
+export function FinishGame({
+  participants,
+  playedAt,
+  timer,
+  onOpenChange,
+  mode = "commander",
+}: Props) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [winner, setWinner] = useState(() => suggestedWinner(participants))
+  const [winner, setWinner] = useState(() => suggestedWinner(participants, mode))
+  const choices =
+    mode === "two_headed_giant"
+      ? teams(participants).map((team, index) => ({
+          ...team[0]!,
+          player_name: `Team ${index + 1}: ${team.map((seat) => seat.player_name).join(" + ")}`,
+          deck_name: team
+            .map((seat) => seat.deck_name)
+            .filter(Boolean)
+            .join(" / "),
+          eliminated: team.every((seat) => seat.eliminated),
+        }))
+      : participants
   const [duration, setDuration] = useState(() => durationMinutes(timer))
   const [turns, setTurns] = useState("")
   const [winCondition, setWinCondition] = useState("")
@@ -38,14 +59,18 @@ export function FinishGame({ participants, playedAt, timer, onOpenChange }: Prop
       api<{ data: Game }>("/api/games", {
         method: "POST",
         body: JSON.stringify(
-          buildGamePayload(participants, {
-            playedAt,
-            winner,
-            duration,
-            turns,
-            winCondition,
-            notes,
-          }),
+          buildGamePayload(
+            participants,
+            {
+              playedAt,
+              winner,
+              duration,
+              turns,
+              winCondition,
+              notes,
+            },
+            mode,
+          ),
         ),
       }).then((body) => body.data),
     onSuccess: async (game) => {
@@ -83,7 +108,7 @@ export function FinishGame({ participants, playedAt, timer, onOpenChange }: Prop
               aria-label="Winner"
               className="grid gap-2 sm:grid-cols-2"
             >
-              {participants.map((participant, index) => (
+              {choices.map((participant, index) => (
                 <ToggleGroupItem
                   key={participant.peer_id}
                   value={participant.peer_id}
@@ -115,8 +140,9 @@ export function FinishGame({ participants, playedAt, timer, onOpenChange }: Prop
           </fieldset>
           {participants.some((participant) => participant.eliminated) && (
             <p className="text-base-content/60 text-xs md:col-span-2">
-              The last player still in suggests the winner; everyone else records a loss. You can
-              correct the winner or choose a draw for the whole table.
+              The last {mode === "two_headed_giant" ? "team" : "player"} still in suggests the
+              winner; everyone else records a loss. You can correct the winner or choose a draw for
+              the whole table.
             </p>
           )}
           <label className="form-control">

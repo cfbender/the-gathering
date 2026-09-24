@@ -1,4 +1,6 @@
 import type { TableParticipant } from "./use-webcam-room"
+import type { GameFormat } from "@/features/games/game-format"
+import { teams, turnId } from "./game-modes"
 
 export interface TurnState {
   active_player_id: number | null
@@ -20,14 +22,30 @@ export const EMPTY_TURNS: TurnState = {
 export function nextActiveSeat(
   seats: TableParticipant[],
   activeId: number | null,
+  mode: GameFormat = "commander",
 ): TableParticipant | undefined {
+  if (mode === "two_headed_giant") {
+    activeId = turnId(seats, activeId, mode)
+    seats = teams(seats).map((team) => ({
+      ...team[0]!,
+      eliminated: team.every((seat) => seat.eliminated || seat.departed),
+      departed: false,
+    }))
+  }
   const start = seats.findIndex((seat) => seat.player_id === activeId) + 1
   return [...seats.slice(start), ...seats.slice(0, start)].find(
     (seat) => !seat.eliminated && !seat.departed,
   )
 }
 
-export function turnDisplay(turns: TurnState, playerId: number, gameElapsed: number) {
+export function turnDisplay(
+  turns: TurnState,
+  playerId: number,
+  gameElapsed: number,
+  seats: TableParticipant[] = [],
+  mode: GameFormat = "commander",
+) {
+  playerId = turnId(seats, playerId, mode) ?? playerId
   const running =
     turns.active_player_id === playerId ? Math.max(0, gameElapsed - turns.started_elapsed_ms) : 0
   return {

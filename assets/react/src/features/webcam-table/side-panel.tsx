@@ -32,10 +32,20 @@ import { TableRolls, type RollRequest } from "./table-rolls"
 import { TimerBadge, TimerToggle } from "./table-timer"
 import { nextActiveSeat, type TurnState } from "./turns"
 import type { TableEvent, TableParticipant } from "./use-webcam-room"
+import {
+  GAME_FORMATS,
+  isGameFormat,
+  formatLabel,
+  type GameFormat,
+} from "@/features/games/game-format"
+import { Choice } from "./table-settings"
 
 export type PanelTab = "table" | "decks" | "cards" | "log" | "settings"
 
 interface Props extends CardsTabProps {
+  mode?: GameFormat
+  onModeChange?: (mode: GameFormat) => void
+  onMoveSeat?: (peerId: string, delta: -1 | 1) => void
   spectating?: boolean
   isOwner?: boolean
   left?: boolean
@@ -232,6 +242,8 @@ function TableTab(props: Props) {
           Turn order
         </h3>
         <SeatOrderTable
+          mode={props.mode}
+          onMoveSeat={props.onMoveSeat}
           participants={participants}
           localParticipant={local}
           decks={decks}
@@ -248,8 +260,31 @@ function TableTab(props: Props) {
         </p>
 
         <div className="mt-3 grid gap-1.5">
+          {(started || props.isOwner === false) && (
+            <p className="text-xs text-base-content/70">{formatLabel(props.mode ?? "commander")}</p>
+          )}
           {!started && props.isOwner !== false && (
             <>
+              <Choice
+                label="Game mode"
+                value={props.mode ?? "commander"}
+                options={GAME_FORMATS}
+                onChange={(value) => {
+                  if (isGameFormat(value)) props.onModeChange?.(value)
+                }}
+              />
+              {props.mode === "two_headed_giant" && (
+                <p className="text-[0.65rem] text-base-content/60">
+                  Two-Headed Giant Commander · 60 shared life. Adjacent seats form teams; move
+                  players above to pair them. Randomization keeps pairs together.
+                </p>
+              )}
+              {props.mode === "five_star" && (
+                <p className="text-[0.65rem] text-base-content/60">
+                  Exactly 5 players. Neighbours can't be attacked until your other two opponents are
+                  eliminated.
+                </p>
+              )}
               <label className="text-base-content/60 mb-1 flex items-center justify-between gap-2 text-[0.65rem]">
                 Auto-randomize order on start
                 <input
@@ -276,7 +311,7 @@ function TableTab(props: Props) {
               className="btn btn-outline btn-sm w-full text-xs"
               onClick={props.onPassTurn}
               disabled={props.turns.active_player_id === null}
-              title={`Next: ${nextActiveSeat(participants, props.turns.active_player_id)?.player_name ?? "No eligible players"}`}
+              title={`Next: ${nextActiveSeat(participants, props.turns.active_player_id, props.mode)?.player_name ?? "No eligible players"}`}
             >
               Pass turn <kbd className="kbd kbd-xs">Space</kbd>
             </button>

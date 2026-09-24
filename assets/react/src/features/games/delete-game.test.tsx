@@ -9,6 +9,7 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }))
 
 const game = {
   id: 42,
+  format: "commander",
   played_at: "2026-09-19T18:00:00Z",
   duration_minutes: null,
   turns: null,

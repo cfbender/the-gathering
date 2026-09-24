@@ -3,6 +3,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test"
 import { useWebcamRoom, type TableParticipant } from "./use-webcam-room"
+import { EMPTY_TURNS } from "./turns"
 
 const wire = vi.hoisted(() => ({
   joined: null as null | ((reply: { participant: TableParticipant }) => void),
@@ -128,6 +129,32 @@ it("hydrates before editing and reconnects without republishing default life or 
   expect(wire.camera).toHaveBeenCalledOnce()
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
   expect(wire.params().token).toBe("fresh-token")
+})
+
+it("hydrates team state and routes life shortcuts to the viewer's team without changing personal counters", async () => {
+  const { result } = renderRoom()
+  await waitFor(() => expect(wire.joined).not.toBeNull())
+  await act(async () => wire.joined?.({ participant: saved }))
+  const seats = [12, 19, 3, 7].map((id) => ({ ...saved, player_id: id, peer_id: `peer-${id}` }))
+  act(() =>
+    wire.events.get("table_state")?.({
+      timer: { started_at: 1000, paused_at: null, paused_ms: 0, server_now: 1000 },
+      peer_ids: seats.map((seat) => seat.peer_id),
+      seats,
+      eliminated_seats: [],
+      turns: EMPTY_TURNS,
+      auto_randomize: false,
+      owner_id: 12,
+      mode: "two_headed_giant",
+      team_life: { 0: 56, 1: 61 },
+    }),
+  )
+  expect(result.current.mode).toBe("two_headed_giant")
+  expect(result.current.teamLife).toEqual({ 0: 56, 1: 61 })
+  act(() => result.current.changeLife(-10))
+  expect(wire.push).toHaveBeenLastCalledWith("adjust_team_life", { team_index: 1, delta: -10 })
+  expect(result.current.life).toBe(23)
+  expect(result.current.counters.poison).toBe(6)
 })
 
 it("late spectators never request a camera or publish life/counters", async () => {

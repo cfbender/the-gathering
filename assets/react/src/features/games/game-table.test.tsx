@@ -47,6 +47,7 @@ function seat(id: number, name: string, result: Seat["result"]): Seat {
 
 const game: Game = {
   id: 42,
+  format: "commander",
   played_at: "2026-09-19T18:00:00Z",
   duration_minutes: 83,
   turns: 7,
@@ -70,6 +71,21 @@ async function renderTable(games: Game[]) {
 afterEach(cleanup)
 
 describe("GameTable", () => {
+  it("labels Five Star and shows both winners for 2HG", async () => {
+    await renderTable([
+      { ...game, format: "five_star" },
+      {
+        ...game,
+        id: 43,
+        format: "two_headed_giant",
+        seats: [seat(1, "Alice", "win"), seat(2, "Bob", "win"), seat(3, "Cara", "loss")],
+      },
+    ])
+    expect(screen.getByText("Five Star")).toBeTruthy()
+    expect(screen.getByText("2HG")).toBeTruthy()
+    expect(screen.getByRole("cell", { name: /Winner:.*Alice \+ Bob/ })).toBeTruthy()
+  })
+
   it("keeps seat order, marks the actual winner, and links each date to its game", async () => {
     await renderTable([game])
     expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual([

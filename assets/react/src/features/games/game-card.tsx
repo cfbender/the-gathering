@@ -3,6 +3,7 @@ import { Trophy, UsersRound } from "lucide-react"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { formatDate, winConditionLabel, type Game, type Seat } from "./games"
+import { formatLabel } from "./game-format"
 
 function TablePlayer({ seat }: { seat: Seat }) {
   return (
@@ -39,8 +40,9 @@ function TablePlayer({ seat }: { seat: Seat }) {
 }
 
 export function GameCard({ game }: { game: Game }) {
-  const winner = game.seats.find((seat) => seat.result === "win")
-  const table = winner ? game.seats.filter((seat) => seat.id !== winner.id) : game.seats
+  const winners = game.seats.filter((seat) => seat.result === "win")
+  const winner = winners[0]
+  const table = winner ? game.seats.filter((seat) => seat.result !== "win") : game.seats
 
   return (
     <Link
@@ -51,6 +53,9 @@ export function GameCard({ game }: { game: Game }) {
       <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-4">
         <h2 className="text-sm font-bold">
           <time dateTime={game.played_at}>{formatDate(game.played_at)}</time>
+          {game.format && game.format !== "commander" && (
+            <span className="badge badge-sm ml-2">{formatLabel(game.format)}</span>
+          )}
         </h2>
         <span className="text-base-content/65 flex items-center gap-1.5 text-xs">
           <UsersRound aria-hidden="true" className="size-3.5" />
@@ -92,14 +97,19 @@ export function GameCard({ game }: { game: Game }) {
           </p>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <p className="min-w-0 text-3xl leading-tight font-bold break-words">
-              {winner.player.name}
+              {winners.map((seat) => seat.player.name).join(" + ")}
             </p>
             {winner.deck && (
               <ColorIdentity colors={winner.deck.color_identity} className="text-sm" />
             )}
           </div>
           <p className="mt-1 text-sm break-words">
-            {winner.deck ? <DeckCommanders deck={winner.deck} /> : "Unknown commander"}
+            {winners.map((seat, index) => (
+              <span key={seat.id}>
+                {index > 0 && " / "}
+                {seat.deck ? <DeckCommanders deck={seat.deck} /> : "Unknown commander"}
+              </span>
+            ))}
           </p>
           <p className="mt-1 text-xs break-words text-white/75">
             {winner.deck?.name ?? "Unknown deck"}

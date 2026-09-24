@@ -11,6 +11,7 @@ defmodule TheGathering.Games.Game do
     field :win_condition, :string
     field :notes, :string
     field :source, :string, default: "manual"
+    field :format, :string, default: "commander"
     field :external_id, :string
     field :portable_id, Ecto.UUID, autogenerate: true
 
@@ -27,9 +28,11 @@ defmodule TheGathering.Games.Game do
       :duration_minutes,
       :turns,
       :win_condition,
+      :format,
       :notes
     ])
-    |> validate_required([:played_at, :source])
+    |> validate_required([:played_at, :source, :format])
+    |> validate_inclusion(:format, ~w(commander two_headed_giant five_star))
     |> validate_inclusion(:source, ~w(manual csv mythic_track discord))
     |> validate_inclusion(:win_condition, WinCondition.keys())
     |> validate_number(:duration_minutes, greater_than: 0)
@@ -57,7 +60,11 @@ defmodule TheGathering.Games.Game do
     player_ids = Enum.map(seats, & &1.player_id)
     seat_numbers = Enum.map(seats, & &1.seat)
     winners = Enum.count(seats, &(&1.result == "win"))
-    winner_and_losses = winners == 1 and Enum.all?(seats, &(&1.result in ~w(win loss)))
+    {required_winners, result_error} = winner_rule(get_field(changeset, :format))
+
+    winner_and_losses =
+      winners == required_winners and Enum.all?(seats, &(&1.result in ~w(win loss)))
+
     all_draw = seats != [] and Enum.all?(seats, &(&1.result == "draw"))
 
     changeset
@@ -79,7 +86,10 @@ defmodule TheGathering.Games.Game do
     |> then(fn changeset ->
       if winner_and_losses or all_draw,
         do: changeset,
-        else: add_error(changeset, :seats, "must have exactly one winner or all draws")
+        else: add_error(changeset, :seats, result_error)
     end)
   end
+
+  defp winner_rule("two_headed_giant"), do: {2, "must have exactly two winners or all draws"}
+  defp winner_rule(_format), do: {1, "must have exactly one winner or all draws"}
 end

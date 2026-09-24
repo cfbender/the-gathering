@@ -19,7 +19,8 @@ defmodule TheGathering.WebcamTables.Session do
     case Repo.get(__MODULE__, id) do
       %__MODULE__{snapshot: data, expires_at: expires} ->
         if DateTime.after?(expires, DateTime.utc_now()) do
-          %{"version" => 1, "state" => entry} = Jason.decode!(data)
+          %{"version" => version, "state" => entry} = Jason.decode!(data)
+          true = version in [1, 2]
           restore(entry)
         end
 
@@ -32,7 +33,7 @@ defmodule TheGathering.WebcamTables.Session do
     Repo.insert!(
       %__MODULE__{
         id: id,
-        snapshot: Jason.encode!(%{version: 1, state: Map.drop(entry, [:connections])}),
+        snapshot: Jason.encode!(%{version: 2, state: Map.drop(entry, [:connections])}),
         expires_at: DateTime.add(DateTime.utc_now(), 7, :day)
       },
       on_conflict: {:replace, [:snapshot, :expires_at]},
@@ -62,6 +63,8 @@ defmodule TheGathering.WebcamTables.Session do
       peer_ids: data["peer_ids"],
       owner_id: data["owner_id"],
       auto_randomize: data["auto_randomize"],
+      mode: data["mode"] || "commander",
+      team_life: player_keys(data["team_life"] || %{}),
       monarch: data["monarch"] && fields(data["monarch"], [:peer_id, :player_name]),
       monarch_revision: data["monarch_revision"],
       cards: data["cards"],

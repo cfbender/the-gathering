@@ -2,6 +2,7 @@ import type { SelectedCard } from "@/lib/cards"
 import { cardSnapshot } from "@/lib/cards"
 import { useState } from "react"
 import type { Game } from "@/features/games/games"
+import type { GameFormat } from "./game-format"
 
 export interface DraftSeat {
   draftId: string
@@ -60,9 +61,22 @@ export function moveSeat(seats: DraftSeat[], index: number, direction: -1 | 1) {
   return next
 }
 
-export function resultsForSeats(seats: DraftSeat[], winnerSeatId: string | null) {
-  return seats.map((seat) =>
-    winnerSeatId === null ? "draw" : seat.draftId === winnerSeatId ? "win" : "loss",
+export function resultsForSeats(
+  seats: DraftSeat[],
+  winnerSeatId: string | null,
+  format: GameFormat = "commander",
+) {
+  const winnerIndex = seats.findIndex((seat) => seat.draftId === winnerSeatId)
+  return seats.map((seat, index) =>
+    winnerSeatId === null
+      ? "draw"
+      : (
+            format === "two_headed_giant"
+              ? winnerIndex >= 0 && Math.floor(index / 2) === Math.floor(winnerIndex / 2)
+              : seat.draftId === winnerSeatId
+          )
+        ? "win"
+        : "loss",
   ) as Array<"draw" | "win" | "loss">
 }
 

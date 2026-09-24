@@ -3,6 +3,7 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
   import Phoenix.ChannelTest
 
   alias TheGathering.{Accounts, AccountsFixtures, Games}
+  alias TheGathering.WebcamTables.Session
 
   alias TheGatheringWeb.{
     Presence,
@@ -785,6 +786,140 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert Session.load(room) == nil
     assert {1, nil} = Session.prune()
     assert rejoin(room, player, "fresh").assigns.participant.life == 40
+  end
+
+  test "mode is owner-only, validates roster, and freezes order after start", %{
+    socket: owner,
+    room_id: room
+  } do
+    other = join_seat(room, "peer-b")
+    assert_reply push(other, "set_mode", %{"mode" => "five_star"}), :error
+    assert_reply push(owner, "set_mode", %{"mode" => "invalid"}), :error
+    assert_reply push(owner, "set_mode", %{"mode" => "five_star"}), :ok
+
+    assert_reply push(owner, "start_game", %{}), :error, %{
+      reason: "Five Star requires exactly 5 players"
+    }
+
+    for peer <- ["peer-c", "peer-d"], do: join_seat(room, peer)
+    assert_reply push(owner, "start_game", %{}), :error
+    join_seat(room, "peer-e")
+    peers = ["peer-e", "peer-a", "peer-c", "peer-b", "peer-d"]
+    assert_reply push(other, "arrange_seats", %{"peer_ids" => peers}), :error
+    assert_reply push(owner, "arrange_seats", %{"peer_ids" => peers}), :ok
+    assert WebcamTableState.snapshot(room).timer.started_at == nil
+    assert_reply push(owner, "turn_settings", %{"auto_randomize" => false}), :ok
+    assert_reply push(owner, "start_game", %{}), :ok
+    assert WebcamTableState.snapshot(room).peer_ids == peers
+    assert_reply push(owner, "set_mode", %{"mode" => "commander"}), :error
+    assert_reply push(owner, "seat_order", %{"peer_ids" => Enum.reverse(peers)}), :error
+    assert_reply push(owner, "arrange_seats", %{"peer_ids" => Enum.reverse(peers)}), :error
+    assert WebcamTableState.snapshot(room).peer_ids == peers
+    spectator = join_seat(room, "spectator")
+    assert_reply push(spectator, "set_mode", %{"mode" => "commander"}), :error
+  end
+
+  test "2HG validates teams, serializes shared life and eliminates offline teammates", %{
+    socket: owner,
+    room_id: room,
+    player: alice
+  } do
+    mate = join_seat(room, "peer-b")
+    assert_reply push(owner, "set_mode", %{"mode" => "two_headed_giant"}), :ok
+    assert_reply push(owner, "start_game", %{}), :error
+    rival = join_seat(room, "peer-c")
+    assert_reply push(owner, "start_game", %{}), :error
+    join_seat(room, "peer-d")
+
+    assert_reply push(owner, "arrange_seats", %{
+                   "peer_ids" => ["peer-a", "peer-b", "peer-c", "peer-d"]
+                 }),
+                 :ok
+
+    assert_reply push(owner, "turn_settings", %{"auto_randomize" => false}), :ok
+    assert_reply push(owner, "adjust_team_life", %{"team_index" => 0, "delta" => 1}), :error
+    assert_reply push(owner, "start_game", %{}), :ok
+    assert WebcamTableState.snapshot(room).team_life == %{0 => 60, 1 => 60}
+    assert_reply push(mate, "adjust_team_life", %{"team_index" => 0, "delta" => -7}), :ok
+    assert_reply push(owner, "adjust_team_life", %{"team_index" => 0, "delta" => 2}), :ok
+    assert WebcamTableState.snapshot(room).team_life[0] == 55
+    assert_reply push(rival, "adjust_team_life", %{"team_index" => 0, "delta" => -1}), :error
+    assert_reply push(owner, "adjust_team_life", %{"team_index" => 1, "delta" => 1998}), :ok
+    assert WebcamTableState.snapshot(room).team_life[1] == 999
+    assert_reply push(owner, "adjust_team_life", %{"team_index" => 1, "delta" => -1998}), :ok
+    assert WebcamTableState.snapshot(room).team_life[1] == -999
+    assert Enum.all?(WebcamTableState.snapshot(room).seats, &(not &1.eliminated))
+
+    for payload <- [
+          %{"team_index" => -1, "delta" => 1},
+          %{"team_index" => 9, "delta" => 1},
+          %{"team_index" => 0, "delta" => 1.5}
+        ] do
+      assert_reply push(owner, "adjust_team_life", payload), :error
+    end
+
+    assert_reply push(owner, "adjust_turn", %{
+                   "player_id" => mate.assigns.participant.player_id,
+                   "delta" => 1
+                 }),
+                 :ok
+
+    assert WebcamTableState.snapshot(room).turns.counts == %{alice.id => 2}
+    assert_reply push(mate, "pass_turn", %{"revision" => 1}), :ok
+
+    assert WebcamTableState.snapshot(room).turns.active_player_id ==
+             rival.assigns.participant.player_id
+
+    disconnect(mate)
+
+    assert_reply push(owner, "set_eliminated", %{"peer_id" => "peer-a", "eliminated" => true}),
+                 :ok
+
+    assert WebcamTableState.snapshot(room).eliminated_seats
+           |> Enum.map(& &1.peer_id)
+           |> Enum.sort() == ["peer-a", "peer-b"]
+
+    assert_reply push(owner, "update_status", %{"life" => 25}), :ok
+    restored = rejoin(room, Games.get_player(mate.assigns.participant.player_id), "mate-returned")
+    assert restored.assigns.participant.eliminated
+    assert_reply push(restored, "update_status", %{"eliminated" => false}), :ok
+    assert WebcamTableState.snapshot(room).eliminated_seats == []
+    assert_reply push(owner, "start_game", %{}), :ok
+    assert WebcamTableState.snapshot(room).team_life == %{0 => 55, 1 => -999}
+    saved = Session.load(room)
+    assert saved.mode == "two_headed_giant"
+    assert saved.team_life == %{0 => 55, 1 => -999}
+    assert saved.turns == WebcamTableState.snapshot(room).turns
+  end
+
+  test "2HG randomizes whole pairs, and legacy snapshots restore as Commander", %{
+    socket: owner,
+    room_id: room
+  } do
+    alias TheGathering.WebcamTables.Session
+    for peer <- ["peer-b", "peer-c", "peer-d", "peer-e"], do: join_seat(room, peer)
+    assert_reply push(owner, "set_mode", %{"mode" => "two_headed_giant"}), :ok
+    assert_reply push(owner, "start_game", %{}), :error
+    join_seat(room, "peer-f")
+    peers = ["peer-d", "peer-a", "peer-f", "peer-b", "peer-e", "peer-c"]
+    assert_reply push(owner, "arrange_seats", %{"peer_ids" => peers}), :ok
+    assert_reply push(owner, "start_game", %{}), :ok
+
+    assert Enum.sort(Enum.chunk_every(WebcamTableState.snapshot(room).peer_ids, 2)) ==
+             Enum.sort(Enum.chunk_every(peers, 2))
+
+    persisted = Repo.get!(Session, room)
+    decoded = Jason.decode!(persisted.snapshot)
+
+    legacy = %{
+      decoded
+      | "version" => 1,
+        "state" => Map.drop(decoded["state"], ["mode", "team_life"])
+    }
+
+    persisted |> Ecto.Changeset.change(snapshot: Jason.encode!(legacy)) |> Repo.update!()
+    assert Session.load(room).mode == "commander"
+    assert Session.load(room).team_life == %{}
   end
 
   defp disconnect(socket) do

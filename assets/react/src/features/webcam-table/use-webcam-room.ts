@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Channel, Presence, Socket } from "phoenix"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "@/lib/api"
+import type { GameFormat } from "@/features/games/game-format"
 import { openCamera } from "./camera"
 import {
   clearBoardCards,
@@ -212,6 +213,8 @@ export function useWebcamRoom(
   const [timer, setTimer] = useState<TimerSample | null>(null)
   const [turns, setTurns] = useState<TurnState>(EMPTY_TURNS)
   const [autoRandomize, setAutoRandomizeState] = useState(true)
+  const [mode, setModeState] = useState<GameFormat>("commander")
+  const [teamLife, setTeamLife] = useState<Record<number, number>>({})
   const [spectating, setSpectating] = useState(false)
   const spectatorRef = useRef(false)
   const [ownerId, setOwnerId] = useState<number | null>(null)
@@ -659,6 +662,8 @@ export function useWebcamRoom(
             eliminated_seats,
             turns: turnState,
             auto_randomize,
+            mode: gameMode = "commander",
+            team_life = {},
             seats,
             owner_id,
             monarch: savedMonarch,
@@ -669,6 +674,8 @@ export function useWebcamRoom(
             eliminated_seats: TableParticipant[]
             turns: TurnState
             auto_randomize: boolean
+            mode?: GameFormat
+            team_life?: Record<number, number>
             seats?: TableParticipant[]
             owner_id?: number
             monarch?: MonarchEvent
@@ -679,6 +686,8 @@ export function useWebcamRoom(
             setEliminatedSeats(seats ?? eliminated_seats)
             setTurns(turnState)
             setAutoRandomizeState(auto_randomize)
+            setModeState(gameMode)
+            setTeamLife(team_life)
             if (owner_id !== undefined) setOwnerId(owner_id)
             if (savedMonarch) syncMonarch(savedMonarch)
             if (cards) {
@@ -865,6 +874,11 @@ export function useWebcamRoom(
 
   function changeLife(delta: number) {
     if (spectatorRef.current || channelRef.current?.state !== "joined") return
+    if (mode === "two_headed_giant") {
+      const index = seatedParticipants.findIndex((seat) => seat.player_id === playerId)
+      if (index >= 0) adjustTeamLife(Math.floor(index / 2), delta)
+      return
+    }
     const next = Math.max(-999, Math.min(999, lifeRef.current + delta))
     lifeRef.current = next
     setLifeState(next)
@@ -901,6 +915,7 @@ export function useWebcamRoom(
         timer?.state.started_at == null ? "start_game" : "seat_order",
         timer?.state.started_at == null ? {} : { peer_ids: shuffleSeats(current) },
       )
+      .receive("ok", () => setError(null))
       .receive("error", ({ reason }: { reason: string }) => setError(reason))
   }
 
@@ -919,6 +934,30 @@ export function useWebcamRoom(
   function setAutoRandomize(enabled: boolean) {
     channelRef.current
       ?.push("turn_settings", { auto_randomize: enabled })
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+  }
+
+  function setMode(mode: GameFormat) {
+    channelRef.current
+      ?.push("set_mode", { mode })
+      .receive("ok", () => setError(null))
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+  }
+
+  function adjustTeamLife(teamIndex: number, delta: number) {
+    channelRef.current
+      ?.push("adjust_team_life", { team_index: teamIndex, delta })
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+  }
+
+  function moveSeat(peerId: string, delta: -1 | 1) {
+    const peers = seatedParticipants.map((seat) => seat.peer_id)
+    const index = peers.indexOf(peerId)
+    const other = index + delta
+    if (index < 0 || other < 0 || other >= peers.length) return
+    ;[peers[index], peers[other]] = [peers[other]!, peers[index]!]
+    channelRef.current
+      ?.push("arrange_seats", { peer_ids: peers })
       .receive("error", ({ reason }: { reason: string }) => setError(reason))
   }
 
@@ -1034,10 +1073,16 @@ export function useWebcamRoom(
   const seatedParticipants = useMemo(
     () =>
       orderBySeats(retainEliminatedSeats(participants, eliminatedSeats), seatOrder).map(
-        (participant) =>
-          participant.peer_id === peerIdRef.current
+        (liveParticipant) => {
+          // Durable table state owns elimination, including offline teammates.
+          const saved = eliminatedSeats.find((seat) => seat.player_id === liveParticipant.player_id)
+          const participant = saved
+            ? { ...liveParticipant, eliminated: saved.eliminated }
+            : liveParticipant
+          return participant.peer_id === peerIdRef.current
             ? { ...participant, life, ...counters }
-            : participant,
+            : participant
+        },
       ),
     [counters, life, participants, eliminatedSeats, seatOrder],
   )
@@ -1052,6 +1097,11 @@ export function useWebcamRoom(
     timer,
     turns,
     autoRandomize,
+    mode,
+    setMode,
+    teamLife,
+    adjustTeamLife,
+    moveSeat,
     setAutoRandomize,
     passTurn,
     adjustTurn,

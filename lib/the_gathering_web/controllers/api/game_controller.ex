@@ -6,7 +6,7 @@ defmodule TheGatheringWeb.API.GameController do
 
   action_fallback TheGatheringWeb.API.FallbackController
 
-  @member_attrs ~w(played_at duration_minutes turns win_condition notes seats)
+  @member_attrs ~w(played_at duration_minutes turns win_condition notes seats format)
 
   def index(conn, params) do
     {games, pagination} = Games.list_games(params)

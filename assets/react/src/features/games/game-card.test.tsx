@@ -43,9 +43,14 @@ function seat(id: number, name: string, result: Seat["result"]): Seat {
   }
 }
 
-async function renderCard(seats: Seat[], winCondition: Game["win_condition"] = null) {
+async function renderCard(
+  seats: Seat[],
+  winCondition: Game["win_condition"] = null,
+  format: Game["format"] = "commander",
+) {
   const game: Game = {
     id: 42,
+    format,
     played_at: "2026-09-19T18:00:00Z",
     duration_minutes: null,
     turns: null,
@@ -67,6 +72,19 @@ async function renderCard(seats: Seat[], winCondition: Game["win_condition"] = n
 afterEach(cleanup)
 
 describe("GameCard", () => {
+  it("labels 2HG and features both winners rather than listing a teammate as a loser", async () => {
+    await renderCard(
+      [seat(1, "Alice", "win"), seat(2, "Bob", "win"), seat(3, "Cara", "loss")],
+      null,
+      "two_headed_giant",
+    )
+    expect(screen.getByText("2HG")).toBeTruthy()
+    expect(screen.getByText("Alice + Bob")).toBeTruthy()
+    const others = within(screen.getByRole("list", { name: "Other players" }))
+    expect(others.queryByText("Bob")).toBeNull()
+    expect(others.getByText("Cara")).toBeTruthy()
+  })
+
   it("features the winning seat, not the first seat, without repeating it in the other players", async () => {
     const link = await renderCard([
       seat(1, "Alice", "loss"),

@@ -80,6 +80,7 @@ describe("buildGamePayload", () => {
 
     expect(payload).toEqual({
       game: {
+        format: "commander",
         played_at: "2026-09-22T19:30:00.000Z",
         duration_minutes: 73,
         turns: 11,

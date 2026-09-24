@@ -6,6 +6,7 @@ import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/cn"
 import { formatDate, type Game, type Seat } from "./games"
+import { formatLabel } from "./game-format"
 
 function PlayerPortrait({ seat }: { seat: Seat }) {
   const winner = seat.result === "win"
@@ -109,6 +110,9 @@ export function GameTable({ games }: { games: Game[] }) {
                       className="link link-hover text-primary focus-visible:outline-primary inline-block py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-4"
                     >
                       <time dateTime={game.played_at}>{formatDate(game.played_at)}</time>
+                      {game.format && game.format !== "commander" && (
+                        <span className="badge badge-sm ml-2">{formatLabel(game.format)}</span>
+                      )}
                       <span className="sr-only"> · Game {game.id}</span>
                     </Link>
                   </th>
@@ -128,7 +132,10 @@ export function GameTable({ games }: { games: Game[] }) {
                         {winner ? (
                           <>
                             <span className="sr-only">Winner: </span>
-                            {winner.player.name}
+                            {game.seats
+                              .filter((seat) => seat.result === "win")
+                              .map((seat) => seat.player.name)
+                              .join(" + ")}
                           </>
                         ) : (
                           "Draw"

@@ -28,6 +28,34 @@ defmodule TheGathering.GamesTest do
     )
   end
 
+  test "formats retain their winner cardinality and imports default to commander" do
+    players = Enum.map(1..4, &player("Player #{&1}"))
+    attrs = game_attrs(players)
+
+    two_winners =
+      update_in(attrs.seats, fn seats ->
+        List.update_at(seats, 1, &Map.put(&1, :result, "win"))
+      end)
+
+    assert {:error, invalid} = Games.create_game(Map.put(attrs, :format, "two_headed_giant"))
+    assert "must have exactly two winners or all draws" in errors_on(invalid).seats
+    assert {:ok, game} = Games.create_game(Map.put(two_winners, :format, "two_headed_giant"))
+    assert game.format == "two_headed_giant"
+    assert Enum.count(game.seats, &(&1.result == "win")) == 2
+
+    for format <- ["commander", "five_star"] do
+      assert {:error, invalid} = Games.create_game(Map.put(two_winners, :format, format))
+      assert "must have exactly one winner or all draws" in errors_on(invalid).seats
+    end
+
+    assert {:ok, game} = Games.create_game(attrs)
+    assert game.format == "commander"
+    assert {:error, invalid} = Games.create_game(Map.put(attrs, :format, "invalid"))
+    assert errors_on(invalid).format == ["is invalid"]
+    draws = update_in(attrs.seats, &Enum.map(&1, fn seat -> %{seat | result: "draw"} end))
+    assert {:ok, _} = Games.create_game(Map.put(draws, :format, "two_headed_giant"))
+  end
+
   test "enforces the two-to-ten seat bounds at both edges" do
     players = Enum.map(1..11, &player("Player #{&1}"))
 

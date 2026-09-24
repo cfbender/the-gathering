@@ -58,6 +58,31 @@ defmodule TheGatheringWeb.API.GameControllerTest do
     %{alice: alice, bob: bob, deck: deck}
   end
 
+  test "accepts and exposes format for a two-winner game", %{conn: conn, alice: alice, bob: bob} do
+    others =
+      Enum.map(["Cara", "Drew"], fn name ->
+        {:ok, player} = Games.create_player(%{name: name})
+        player
+      end)
+
+    seats =
+      [alice, bob | others]
+      |> Enum.with_index(1)
+      |> Enum.map(fn {player, index} ->
+        %{player_id: player.id, seat: index, result: if(index <= 2, do: "win", else: "loss")}
+      end)
+
+    created =
+      conn
+      |> post(~p"/api/games", %{
+        game: %{played_at: "2026-09-19T18:30:00Z", format: "two_headed_giant", seats: seats}
+      })
+      |> json_response(201)
+
+    assert created["data"]["format"] == "two_headed_giant"
+    assert Enum.count(created["data"]["seats"], &(&1["result"] == "win")) == 2
+  end
+
   test "POST /api/games creates nested seats and returns the documented shape", %{
     conn: conn,
     user: user,

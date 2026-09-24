@@ -41,6 +41,7 @@ import {
   type TableParticipant,
 } from "./use-webcam-room"
 import { MAX_PLAYERS } from "./rooms"
+import { teams, turnId, unattackableSeats } from "./game-modes"
 
 interface Props {
   roomId: string
@@ -159,7 +160,11 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     room.toggleCamera()
   }
   const videoStats = useVideoStats(preferences.stats, room.getPeerStats)
-  useTurnSound(preferences.turnSound, room.turns.active_player_id, playerId)
+  useTurnSound(
+    preferences.turnSound,
+    room.turns.active_player_id,
+    turnId(room.participants, playerId, room.mode) ?? playerId,
+  )
   // Presence has synced once any seat is listed, i.e. the channel join succeeded.
   const { recognizer, recognition } = useRecognition(room.capture, room.participants.length > 0)
   const corrections = useCorrectionUpload()
@@ -199,6 +204,14 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     seated.find((participant) => participant.peer_id === board.selectedPeerId) ||
     (room.spectating && seated[0]) ||
     localParticipant
+  const groups = room.mode === "two_headed_giant" ? teams(seated) : seated.map((seat) => [seat])
+  const activeGroup = groups.find((group) => group.includes(activeParticipant)) ?? [
+    activeParticipant,
+  ]
+  const protectedSeats =
+    room.mode === "five_star" && !room.spectating ? unattackableSeats(seated, playerId) : []
+  const isCurrentTurn = (participant: TableParticipant) =>
+    turnId(seated, participant.player_id, room.mode) === room.turns.active_player_id
   const selectBoard = (peerId: string) => {
     preferences.update({ followTurn: false })
     board.select(peerId)
@@ -385,15 +398,18 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     />
   )
 
-  const lifeControlFor = (participant: TableParticipant, size: "board" | "tile") => (
-    <LifeControl
-      life={participant.life}
-      local={participant.peer_id === room.peerId}
-      size={size}
-      counters={(onOpenChange) => countersFor(participant, onOpenChange)}
-      onChangeLife={room.changeLife}
-    />
-  )
+  const lifeControlFor = (participant: TableParticipant, size: "board" | "tile") =>
+    room.mode === "two_headed_giant" ? (
+      <div className="absolute top-2 left-2 w-14">{countersFor(participant, () => {})}</div>
+    ) : (
+      <LifeControl
+        life={participant.life}
+        local={participant.peer_id === room.peerId}
+        size={size}
+        counters={(onOpenChange) => countersFor(participant, onOpenChange)}
+        onChangeLife={room.changeLife}
+      />
+    )
   const isPinned = (participant: TableParticipant) =>
     !preferences.followTurn && board.pinned && participant.peer_id === activeParticipant.peer_id
   const togglePinFor = (participant: TableParticipant) => {
@@ -419,6 +435,32 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     />
   )
 
+  const teamHeader = (group: TableParticipant[]) => {
+    const index = groups.indexOf(group)
+    return (
+      <div
+        className="relative flex h-20 items-center justify-end border-b border-primary/30 bg-base-200 px-3 text-xs text-base-content"
+        aria-label={`Team ${index + 1} shared life`}
+      >
+        <LifeControl
+          life={room.teamLife[index] ?? 60}
+          size="tile"
+          local={
+            room.timer?.state.started_at != null &&
+            !room.spectating &&
+            (room.isOwner || group.some((seat) => seat.player_id === playerId))
+          }
+          counters={() => null}
+          onChangeLife={(delta) => room.adjustTeamLife(index, delta)}
+        />
+        <span className="text-right">
+          <strong className="block">Team {index + 1}</strong>
+          <span className="text-base-content/60">Shared life</span>
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div
       className={cn(
@@ -441,33 +483,45 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         )}
         aria-label="Player cameras"
       >
-        {seated.map((participant) => (
+        {groups.map((group) => (
           <div
-            key={participant.peer_id}
-            className="w-60 shrink-0 overflow-hidden rounded-sm lg:w-auto"
+            key={group[0]!.peer_id}
+            className={cn(
+              "w-60 shrink-0 lg:w-auto",
+              room.mode === "two_headed_giant" &&
+                "overflow-hidden rounded-lg border border-primary/40",
+            )}
           >
-            <div className="relative">
-              <CameraTile
-                participant={participant}
-                monarch={room.monarch?.peer_id === participant.peer_id}
-                {...revealFor(participant)}
-                local={participant.peer_id === room.peerId}
-                flipped={isFlipped(participant)}
-                active={participant.peer_id === activeParticipant.peer_id}
-                currentTurn={participant.player_id === room.turns.active_player_id}
-                connectionState={room.connectionStates[participant.peer_id]}
-                stream={streamFor(participant, room.peerId, room.localStream, room.streams)}
-                onActivate={() => selectBoard(participant.peer_id)}
-                lifeControl={lifeControlFor(participant, "tile")}
-              />
-              {preferences.stats && (
-                <VideoStatsOverlay
-                  stats={videoStats[participant.peer_id]}
-                  localStream={participant.peer_id === room.peerId ? room.localStream : undefined}
-                />
-              )}
-            </div>
-            {seatBarFor(participant, "tile")}
+            {room.mode === "two_headed_giant" && teamHeader(group)}
+            {group.map((participant) => (
+              <div key={participant.peer_id} className="overflow-hidden rounded-sm">
+                <div className="relative">
+                  <CameraTile
+                    participant={participant}
+                    unattackable={protectedSeats.includes(participant.peer_id)}
+                    monarch={room.monarch?.peer_id === participant.peer_id}
+                    {...revealFor(participant)}
+                    local={participant.peer_id === room.peerId}
+                    flipped={isFlipped(participant)}
+                    active={participant.peer_id === activeParticipant.peer_id}
+                    currentTurn={isCurrentTurn(participant)}
+                    connectionState={room.connectionStates[participant.peer_id]}
+                    stream={streamFor(participant, room.peerId, room.localStream, room.streams)}
+                    onActivate={() => selectBoard(participant.peer_id)}
+                    lifeControl={lifeControlFor(participant, "tile")}
+                  />
+                  {preferences.stats && (
+                    <VideoStatsOverlay
+                      stats={videoStats[participant.peer_id]}
+                      localStream={
+                        participant.peer_id === room.peerId ? room.localStream : undefined
+                      }
+                    />
+                  )}
+                </div>
+                {seatBarFor(participant, "tile")}
+              </div>
+            ))}
           </div>
         ))}
         {Array.from(
@@ -516,38 +570,52 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
             {describeRoll(room.roll)}
           </div>
         )}
-        <div className="relative min-h-0 flex-1">
-          <ActiveBoard
-            participant={activeParticipant}
-            monarch={room.monarch?.peer_id === activeParticipant.peer_id}
-            {...revealFor(activeParticipant)}
-            local={activeParticipant.peer_id === room.peerId}
-            flipped={isFlipped(activeParticipant)}
-            currentTurn={activeParticipant.player_id === room.turns.active_player_id}
-            connectionState={room.connectionStates[activeParticipant.peer_id]}
-            stream={streamFor(activeParticipant, room.peerId, room.localStream, room.streams)}
-            lifeControl={lifeControlFor(activeParticipant, "board")}
-            pinned={isPinned(activeParticipant)}
-            onTogglePin={() => togglePinFor(activeParticipant)}
-            onInspect={(event) => {
-              const point = capturePoint(event, isFlipped(activeParticipant))
-              if (point)
-                room.requestCapture(activeParticipant.peer_id, point.x, point.y, event.shiftKey)
-            }}
-          />
-          <BoardCardTray
-            participant={activeParticipant}
-            cards={room.identifiedCards}
-            onPreview={(entry) =>
-              setPreview({ kind: "entry", entry, shown: entry.card, correctable: false })
-            }
-            onRemove={room.removeCard}
-            onClear={
-              activeParticipant.peer_id === localParticipant.peer_id
-                ? room.clearOwnCards
-                : undefined
-            }
-          />
+        {room.mode === "two_headed_giant" && teamHeader(activeGroup)}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {activeGroup.map((activeParticipant) => (
+            <div key={activeParticipant.peer_id} className="flex min-h-0 flex-1 flex-col">
+              <div className="relative min-h-0 flex-1">
+                <ActiveBoard
+                  participant={activeParticipant}
+                  unattackable={protectedSeats.includes(activeParticipant.peer_id)}
+                  monarch={room.monarch?.peer_id === activeParticipant.peer_id}
+                  {...revealFor(activeParticipant)}
+                  local={activeParticipant.peer_id === room.peerId}
+                  flipped={isFlipped(activeParticipant)}
+                  currentTurn={isCurrentTurn(activeParticipant)}
+                  connectionState={room.connectionStates[activeParticipant.peer_id]}
+                  stream={streamFor(activeParticipant, room.peerId, room.localStream, room.streams)}
+                  lifeControl={lifeControlFor(activeParticipant, "board")}
+                  pinned={isPinned(activeParticipant)}
+                  onTogglePin={() => togglePinFor(activeParticipant)}
+                  onInspect={(event) => {
+                    const point = capturePoint(event, isFlipped(activeParticipant))
+                    if (point)
+                      room.requestCapture(
+                        activeParticipant.peer_id,
+                        point.x,
+                        point.y,
+                        event.shiftKey,
+                      )
+                  }}
+                />
+                <BoardCardTray
+                  participant={activeParticipant}
+                  cards={room.identifiedCards}
+                  onPreview={(entry) =>
+                    setPreview({ kind: "entry", entry, shown: entry.card, correctable: false })
+                  }
+                  onRemove={room.removeCard}
+                  onClear={
+                    activeParticipant.peer_id === localParticipant.peer_id
+                      ? room.clearOwnCards
+                      : undefined
+                  }
+                />
+              </div>
+              {seatBarFor(activeParticipant, "board")}
+            </div>
+          ))}
           {room.capture && recognition.status === "identifying" && !pickerOpen && !preview && (
             <p
               role="status"
@@ -595,7 +663,6 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           )}
           {preview?.kind === "art" && <CardPreview card={preview.card} onClose={closePreview} />}
         </div>
-        {seatBarFor(activeParticipant, "board")}
       </section>
 
       {panelOpen ? (
@@ -610,6 +677,9 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       )}
 
       <SidePanel
+        mode={room.mode}
+        onModeChange={room.setMode}
+        onMoveSeat={room.moveSeat}
         spectating={room.spectating}
         isOwner={room.isOwner}
         left={preferences.panelLeft}
@@ -700,6 +770,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
 
       {finishOpen && resultTimer && (
         <FinishGame
+          mode={room.mode}
           participants={room.participants}
           playedAt={
             resultTimer.started_at === null ? playedAt.current : new Date(resultTimer.started_at)
