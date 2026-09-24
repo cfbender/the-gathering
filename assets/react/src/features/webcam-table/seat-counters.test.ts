@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import {
-  EMPTY_COUNTERS,
-  changeCounter,
-  commanderNames,
-  counterWarning,
-  describeCounterChanges,
-} from "./seat-counters"
+import { EMPTY_COUNTERS, changeCounter, commanderNames, counterWarning } from "./seat-counters"
 
 describe("seat counters", () => {
   it("resolves both commanders, including backgrounds, from a selected deck", () => {
@@ -45,25 +39,5 @@ describe("seat counters", () => {
     ).toBe(true)
     expect(counterWarning({ ...state, poison: 9 })).toBe(false)
     expect(counterWarning({ ...state, poison: 10 })).toBe(true)
-  })
-
-  it("logs tax amounts and damage sources, including corrections to zero", () => {
-    const state = {
-      poison: 10,
-      rad: 3,
-      commander_casts: { Tymna: 2 },
-      commander_damage: { "2": { Kangee: 21 } },
-    }
-    const players = [{ player_id: 2, player_name: "Bob" }]
-    expect(describeCounterChanges(EMPTY_COUNTERS, state, "Alice", players)).toEqual([
-      "Alice poison: 0 → 10",
-      "Alice rad: 0 → 3",
-      "Alice Tymna commander tax: 0 → 4",
-      "Alice damage from Bob's Kangee: 0 → 21",
-    ])
-    expect(describeCounterChanges(state, state, "Alice", players)).toEqual([])
-    expect(describeCounterChanges(state, EMPTY_COUNTERS, "Alice", players)).toContain(
-      "Alice damage from Bob's Kangee: 21 → 0",
-    )
   })
 })

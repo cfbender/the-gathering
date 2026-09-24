@@ -157,8 +157,8 @@ Games page Play / Join button ────▶ /table/:roomId
 Rooms are UUID-addressed and durable in SQLite's `webcam_table_sessions`. The serialized state
 server loads a room lazily on join and commits a versioned server-owned snapshot before acknowledging
 each mutation. Seats, life/counters/damage, selected commanders, elimination, monarch, order,
-turn counts/times, timer and identified card lists survive reloads and server restarts. Media and
-the client-side event log are not stored. Immediate writes avoid a debounce data-loss window;
+turn counts/times, timer, identified card lists and the table log survive reloads and server
+restarts. Media is not stored. Immediate writes avoid a debounce data-loss window;
 this remains a single-server design, not a distributed room coordinator.
 
 Rooms keep running after their last seat leaves. `TheGathering.WebcamTables.Pruner` runs every
@@ -271,7 +271,7 @@ always large, everyone else is small, and controls live in a collapsible column.
   retains `1`–`5` and `/` gallery search. Escape closes overlays even with shortcuts disabled.
 - **Settings** stacks collapsible Keyboard shortcuts, View, Camera, Sound and Card scan sections.
   View switches between selected/pinned boards and following the active turn; manually selecting
-  or cycling a board stops following. Left/Right swaps the side panel and camera rail on desktop;
+  or cycling a board pins it over the active turn until unpinned, without changing the saved view. Left/Right swaps the side panel and camera rail on desktop;
   narrow layouts keep cameras above and controls below. Glass/Classic uses the existing global
   theme-style preference. Camera lists available devices, remembers the choice and enabled state,
   and replaces outgoing tracks on existing peer connections without leaving the room. Camera-off state and
@@ -285,7 +285,7 @@ always large, everyone else is small, and controls live in a collapsible column.
   Turn sound is an opt-in WebAudio tone, unlocked by interaction, on transitions to your turn.
   Card scan contains recognition bundle status/version and the existing corrections-sharing
   opt-out (`the-gathering:share-card-corrections`). Other table preferences use the per-player
-  browser key above; sound, stats and follow-turn start off. There is no microphone, hand-count
+  browser key above; sound starts on, stats and follow-turn start off. There is no microphone, hand-count
   or token-copy binding because those features do not exist here.
 - The `/table/*` routes force the dark theme (`TableShell` in `routes/__root.tsx` swaps
   `data-theme` on mount and restores the user's choice on unmount) so portalled popovers and
@@ -336,7 +336,7 @@ The room process serializes claims and broadcasts one `monarch` holder, never pe
 Late joiners receive `monarch_state`; server revisions prevent stale snapshots from replacing
 newer claims. A crown appears on the holder's tile and active board and survives disconnects
 and server restarts along with the rest of the room snapshot.
-Counter changes and monarch transfers are added to every connected browser's Log.
+Counter changes and monarch transfers are added to the shared Log.
 
 Once the match has started, the room owner can eliminate or restore any present seat, and each
 player their own, from the ⋯ seat menu on the video tile or board bar; nothing is eliminable in
@@ -407,11 +407,15 @@ event validates the request, generates the result on the server, stamps it with 
 seat's name/id and server time, then broadcasts to everyone. Results appear in a five-second
 overlay and in the Log. Clients cannot supply a result or impersonate the roller.
 
-The Log tab is client-side only: it is derived from presence joins/leaves/changes and the
-`seat_order` and `roll` broadcasts, capped at 200 lines, and not persisted or replayed on join.
-Consecutive events of the same kind and actor within two seconds coalesce: life keeps the first
-and final totals, dice/coins retain every result, and deck/camera changes show the latest state
-with a count. Different actors, event kinds, and intervening entries break the group.
+The Log tab is owned by the room (`TheGathering.WebcamTables.Log`): the room process writes
+entries for joins and leaves, deck/life/camera/counter changes, eliminations, the monarch, seat
+order and rolls, keeps the newest 200 in the saved snapshot, and broadcasts each new or merged
+entry as `log_entry`. Every (re)join receives the whole log as `table_log`, so all seats see the
+same history and a reload restores it. A reload or reconnect within ten seconds logs neither a
+leave nor a join. Consecutive events of the same kind and actor within two seconds coalesce
+(merged entries keep their id): life keeps the first and final totals, dice/coins retain every
+result, and deck/camera changes show the latest state with a count. Different actors, event
+kinds, and intervening entries break the group.
 
 Audio is not part of the webcam table: no microphone is captured and there are no mute
 controls. Players use their usual voice app alongside the table.

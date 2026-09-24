@@ -17,12 +17,14 @@ defmodule TheGathering.WebcamTables.Room do
   """
   use GenServer, restart: :temporary
 
-  alias TheGathering.WebcamTables.{Cards, Session, Timer, Turns}
+  alias TheGathering.WebcamTables.{Cards, Log, Session, Timer, Turns}
   alias TheGatheringWeb.Endpoint
 
   @max_seats 10
   # Keeps an idle but connected room (a long pause) from expiring.
   @refresh_interval :timer.hours(1)
+  # A reload drops and rejoins within this window; only a longer absence is a leave.
+  @departure_grace_ms 10_000
 
   def start_link(id) do
     name = {:via, Registry, {TheGathering.WebcamTables.Registry, id, now()}}
@@ -42,13 +44,15 @@ defmodule TheGathering.WebcamTables.Room do
     Process.send_after(self(), :refresh, @refresh_interval)
 
     # `entry` stays nil for a brand-new room until its first join names the owner.
-    # `active_at` is the last join, saved change or disconnect.
+    # `active_at` is the last join, saved change or disconnect. `departing` holds
+    # players whose last connection dropped within the grace period.
     {:ok,
      %{
        id: id,
        entry: Session.load(id),
        connections: %{},
        monitors: %{},
+       departing: %{},
        active_at: now()
      }}
   end
@@ -66,15 +70,7 @@ defmodule TheGathering.WebcamTables.Room do
         {:reply, {:error, "room is full"}, state}
 
       true ->
-        spectator? = is_nil(previous) and not is_nil(entry.timer.started_at)
-
-        participant =
-          if previous, do: %{previous | peer_id: participant.peer_id}, else: participant
-
-        participant = Map.put(participant, :spectator, spectator?)
-        state = replace_connection(state, pid, participant.player_id)
-        entry = if spectator?, do: entry, else: restore_seat(entry, previous, participant)
-        {:reply, {:ok, snapshot(entry), participant}, commit(state, entry)}
+        admit(state, entry, previous, participant, pid)
     end
   end
 
@@ -82,6 +78,21 @@ defmodule TheGathering.WebcamTables.Room do
     do: {:reply, match?({^pid, _ref}, state.connections[player_id]), state}
 
   def handle_call(:snapshot, _from, state), do: {:reply, snapshot(state.entry), state}
+
+  def handle_call(:log, _from, state), do: {:reply, state.entry.log, state}
+
+  def handle_call({:roll, participant, roll}, _from, state) do
+    roll =
+      Map.merge(roll, %{
+        id: Ecto.UUID.generate(),
+        actor: participant.peer_id,
+        player_name: participant.player_name,
+        at: now()
+      })
+
+    entry = log(state.entry, [Log.roll(roll)])
+    {:reply, :ok, commit(state, entry, [{"roll", roll}])}
+  end
 
   def handle_call({:close_if_idle, idle_ms}, _from, state) do
     if map_size(state.connections) == 0 and now() - state.active_at >= idle_ms do
@@ -99,6 +110,7 @@ defmodule TheGathering.WebcamTables.Room do
       {:reply, :ok, state}
     else
       entry = %{entry | monarch: holder, monarch_revision: entry.monarch_revision + 1}
+      entry = log(entry, [Log.monarch(holder)])
       event = %{holder: holder, revision: entry.monarch_revision}
       {:reply, :ok, commit(state, entry, [{"monarch", event}])}
     end
@@ -124,7 +136,8 @@ defmodule TheGathering.WebcamTables.Room do
   # updates cannot overwrite the reloaded seat.
   def handle_call({:remember_seat, participant}, {pid, _tag}, %{entry: entry} = state) do
     if match?({^pid, _ref}, state.connections[participant.player_id]) do
-      participant = %{participant | eliminated: entry.all_seats[participant.player_id].eliminated}
+      previous = entry.all_seats[participant.player_id]
+      participant = %{participant | eliminated: previous.eliminated}
       eliminated_seats = put_eliminated(entry.eliminated_seats, participant)
 
       events =
@@ -138,6 +151,8 @@ defmodule TheGathering.WebcamTables.Room do
           | eliminated_seats: eliminated_seats,
             all_seats: Map.put(entry.all_seats, participant.player_id, participant)
         })
+
+      entry = log(entry, Log.seat_changes(previous, participant, Map.values(entry.all_seats)))
 
       {:reply, :ok, commit(state, entry, events)}
     else
@@ -269,28 +284,58 @@ defmodule TheGathering.WebcamTables.Room do
       {nil, _monitors} ->
         {:noreply, state}
 
-      {player_id, monitors} ->
+      {{player_id, name}, monitors} ->
+        token = make_ref()
+        Process.send_after(self(), {:departed, player_id, token}, @departure_grace_ms)
+
         {:noreply,
          %{
            state
            | monitors: monitors,
              connections: Map.delete(state.connections, player_id),
+             departing: Map.put(state.departing, player_id, {name, token}),
              active_at: now()
          }}
     end
   end
 
+  # Stale tokens belong to an earlier disconnect the player already returned from.
+  def handle_info({:departed, player_id, token}, state) do
+    case Map.pop(state.departing, player_id) do
+      {{name, ^token}, departing} ->
+        state = %{state | departing: departing}
+        {:noreply, commit(state, log(state.entry, [Log.left(name)]), [])}
+
+      _stale ->
+        {:noreply, state}
+    end
+  end
+
   # Saves before broadcasting, so everything clients see is recoverable.
-  # `broadcasts` are `:table_state` (the full snapshot) or `{event, payload}`.
+  # `broadcasts` are `:table_state` (the full snapshot) or `{event, payload}`;
+  # new and merged log entries follow as `log_entry` events.
   defp commit(state, entry, broadcasts \\ [:table_state]) do
     :ok = Session.save(state.id, entry)
+    log_entries = new_log_entries(state.entry && state.entry.log, entry.log)
 
-    Enum.each(broadcasts, fn
+    Enum.each(broadcasts ++ Enum.map(log_entries, &{"log_entry", &1}), fn
       :table_state -> broadcast!(state.id, "table_state", snapshot(entry))
       {event, payload} -> broadcast!(state.id, event, payload)
     end)
 
     %{state | entry: entry, active_at: now()}
+  end
+
+  defp log(entry, contents),
+    do: %{entry | log: Enum.reduce(contents, entry.log, &Log.append(&2, &1, now()))}
+
+  # Entries newer than the old head, plus the head itself if a merge changed it.
+  defp new_log_entries(old, new) do
+    head = List.first(old || [])
+
+    new
+    |> Enum.take_while(&(is_nil(head) or &1.id > head.id or (&1.id == head.id and &1 != head)))
+    |> Enum.reverse()
   end
 
   defp broadcast!(id, event, payload),
@@ -315,9 +360,11 @@ defmodule TheGathering.WebcamTables.Room do
       Enum.reject(peers, &is_nil/1) ++ remaining ++ Enum.reject(departed, &(&1 in entry.peer_ids))
 
     # Cards identified in the lobby do not carry into the game.
-    cards = if is_nil(entry.timer.started_at), do: [], else: entry.cards
+    started? = not is_nil(entry.timer.started_at)
+    cards = if started?, do: entry.cards, else: []
     timer = Timer.update(entry.timer, "start", now())
     entry = reconcile_turn(%{entry | timer: timer, peer_ids: peers, cards: cards})
+    entry = log(entry, [Log.seat_order(shuffled, started?)])
 
     commit(state, entry, [
       {"seat_order", %{peer_ids: peers, shuffled: shuffled}},
@@ -360,6 +407,7 @@ defmodule TheGathering.WebcamTables.Room do
       monarch: nil,
       monarch_revision: 0,
       cards: [],
+      log: [],
       owner_id: owner_id
     }
   end
@@ -375,8 +423,33 @@ defmodule TheGathering.WebcamTables.Room do
 
   defp lobby_full?(_entry, _previous), do: false
 
-  # One live connection per player: a reload replaces the older tab.
-  defp replace_connection(state, pid, player_id) do
+  # Seats the participant (a returning player gets their saved seat back; late
+  # arrivals spectate) with `pid` as its connection.
+  defp admit(state, entry, previous, participant, pid) do
+    spectator? = is_nil(previous) and not is_nil(entry.timer.started_at)
+    participant = if previous, do: %{previous | peer_id: participant.peer_id}, else: participant
+    participant = Map.put(participant, :spectator, spectator?)
+
+    # A reload replaces a live tab or returns within the grace period: not news.
+    returning? =
+      Map.has_key?(state.connections, participant.player_id) or
+        Map.has_key?(state.departing, participant.player_id)
+
+    state =
+      replace_connection(
+        %{state | departing: Map.delete(state.departing, participant.player_id)},
+        pid,
+        participant
+      )
+
+    entry = if spectator?, do: entry, else: restore_seat(entry, previous, participant)
+    entry = if returning?, do: entry, else: log(entry, [Log.joined(participant.player_name)])
+    {:reply, {:ok, snapshot(entry), participant}, commit(state, entry)}
+  end
+
+  # One live connection per player: a reload replaces the older tab. Monitors
+  # remember the player's name so a later leave can be logged.
+  defp replace_connection(state, pid, %{player_id: player_id, player_name: name}) do
     monitors =
       case state.connections[player_id] do
         nil ->
@@ -393,7 +466,7 @@ defmodule TheGathering.WebcamTables.Room do
     %{
       state
       | connections: Map.put(state.connections, player_id, {pid, ref}),
-        monitors: Map.put(monitors, ref, player_id)
+        monitors: Map.put(monitors, ref, {player_id, name})
     }
   end
 
@@ -452,6 +525,11 @@ defmodule TheGathering.WebcamTables.Room do
   defp eliminate_seats(state, entry, seats, eliminated) do
     entry =
       Enum.reduce(seats, entry, fn seat, entry ->
+        entry =
+          if seat.eliminated == eliminated,
+            do: entry,
+            else: log(entry, [Log.elimination(seat, eliminated)])
+
         seat = %{seat | eliminated: eliminated}
 
         case state.connections[seat.player_id] do

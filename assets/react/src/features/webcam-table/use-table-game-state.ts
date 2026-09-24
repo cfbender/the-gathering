@@ -1,26 +1,20 @@
 import { useQueryClient } from "@tanstack/react-query"
-import type { Channel, Presence } from "phoenix"
+import type { Channel } from "phoenix"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { GameFormat } from "@/features/games/game-format"
 import type { GameTimerState, TimerSample } from "./game-timer"
 import type { RoomLink } from "./room-link"
 import type { BoardCard, Monarch, SeatStatus, TableParticipant } from "./room-types"
+import { EMPTY_COUNTERS, changeCounter, type Counter } from "./seat-counters"
 import {
-  EMPTY_COUNTERS,
-  changeCounter,
-  describeCounterChanges,
-  type Counter,
-} from "./seat-counters"
-import {
-  appendTableEvent,
-  describeParticipantChange,
-  describeParticipantLeft,
   orderBySeats,
   retainEliminatedSeats,
+  receiveTableEvent,
+  toTableEvent,
   type TableEvent,
-  type TableEventContent,
+  type TableLogEntry,
 } from "./table-events"
-import { describeRoll, type RollRequest, type TableRoll } from "./table-rolls"
+import type { RollRequest, TableRoll } from "./table-rolls"
 import { EMPTY_TURNS, type TurnState } from "./turns"
 
 export const STARTING_LIFE = 40
@@ -54,9 +48,7 @@ export function useTableGameState(
   setError: (error: string | null) => void,
 ) {
   const queryClient = useQueryClient()
-  const eventIdRef = useRef(0)
   const monarchRevisionRef = useRef(-1)
-  const lastTimerRef = useRef<GameTimerState | null>(null)
   const [events, setEvents] = useState<TableEvent[]>([])
   const [participants, setParticipants] = useState<TableParticipant[]>([])
   const [eliminatedSeats, setEliminatedSeats] = useState<TableParticipant[]>([])
@@ -76,17 +68,6 @@ export function useTableGameState(
   const countersRef = useRef(EMPTY_COUNTERS)
   const [counters, setCounters] = useState(EMPTY_COUNTERS)
 
-  const log = useCallback((lines: (string | TableEventContent)[]) => {
-    if (lines.length === 0) return
-    const at = new Date()
-    const entries = lines.map((line) => ({
-      ...(typeof line === "string" ? { text: line } : line),
-      id: (eventIdRef.current += 1),
-      at,
-    }))
-    setEvents((current) => entries.reduce(appendTableEvent, current))
-  }, [])
-
   useEffect(() => {
     if (!roll) return
     const timeout = window.setTimeout(() => setRoll(null), 5000)
@@ -100,7 +81,6 @@ export function useTableGameState(
   }, [])
 
   const receiveTimer = useCallback((state: GameTimerState) => {
-    lastTimerRef.current = state
     setTimer({ state, receivedAt: performance.now() })
   }, [])
 
@@ -121,35 +101,20 @@ export function useTableGameState(
   }, [syncTimer])
 
   const bindChannel = useCallback(
-    (room: Channel, presence: Presence) => {
-      presence.onJoin((_id, current, joined) => {
-        const previous = current?.metas[0] as TableParticipant | undefined
-        const next = joined.metas[0] as TableParticipant | undefined
-        if (next) log(describeParticipantChange(previous, next))
-        if (previous && next)
-          log(describeCounterChanges(previous, next, next.player_name, link.participants))
-      })
-      presence.onLeave((_id, current, left) => {
-        const participant = left.metas[0] as TableParticipant | undefined
-        if (participant && current.metas.length === 0) log([describeParticipantLeft(participant)])
-      })
+    (room: Channel) => {
+      // The server owns the log: the full history on every (re)join, then each new or merged entry.
+      room.on("table_log", ({ entries }: { entries: TableLogEntry[] }) =>
+        setEvents(entries.map(toTableEvent)),
+      )
+      room.on("log_entry", (entry: TableLogEntry) =>
+        setEvents((current) => receiveTableEvent(current, toTableEvent(entry))),
+      )
       room.on("seat_order", ({ peer_ids, shuffled }: { peer_ids: string[]; shuffled: boolean }) => {
         setSeatOrder(peer_ids)
         if (shuffled) setShuffleVersion((version) => version + 1)
-        log([
-          shuffled
-            ? "Seat order randomized"
-            : lastTimerRef.current?.started_at == null
-              ? "Game started in seat order"
-              : "Seat order changed",
-        ])
       })
       room.on("monarch_state", syncMonarch)
-      room.on("monarch", (event: MonarchEvent) => {
-        syncMonarch(event)
-        const { holder } = event
-        log([holder ? `${holder.player_name} took the monarch` : "The monarch left the table"])
-      })
+      room.on("monarch", syncMonarch)
       room.on("deck_selected", () => {
         void queryClient.invalidateQueries({ queryKey: ["decks"] })
       })
@@ -169,23 +134,9 @@ export function useTableGameState(
           setEliminatedSeats(eliminated),
       )
       room.on("timer_state", receiveTimer)
-      room.on("roll", (result: TableRoll) => {
-        setRoll(result)
-        const prefix =
-          result.kind === "dice"
-            ? `${result.player_name} rolled a d${result.sides}: `
-            : `${result.player_name} flipped a coin: `
-        log([
-          {
-            text: describeRoll(result),
-            actor: result.actor,
-            kind: result.kind === "dice" ? `dice:${result.sides}` : "coin",
-            roll: { prefix, results: [result.result] },
-          },
-        ])
-      })
+      room.on("roll", setRoll)
     },
-    [link, log, queryClient, receiveTimer, syncMonarch],
+    [queryClient, receiveTimer, syncMonarch],
   )
 
   /** Everyone present, from presence; spectators do not take seats. */

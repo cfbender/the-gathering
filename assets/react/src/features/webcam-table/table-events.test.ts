@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
   activeTurnOrder,
-  appendTableEvent,
-  describeParticipantChange,
-  describeParticipantLeft,
   orderBySeats,
+  receiveTableEvent,
   retainEliminatedSeats,
   shuffleSeats,
+  toTableEvent,
   type TableEvent,
 } from "./table-events"
 import type { TableParticipant } from "./use-webcam-room"
@@ -24,47 +23,6 @@ function seat(overrides: Partial<TableParticipant> & { peer_id: string }): Table
     ...overrides,
   }
 }
-
-describe("describeParticipantChange", () => {
-  it("announces a brand-new seat", () => {
-    expect(describeParticipantChange(undefined, seat({ peer_id: "a" }))).toEqual([
-      { text: "Alice joined the table" },
-    ])
-  })
-
-  it("lists every changed fact and nothing else", () => {
-    const before = seat({ peer_id: "a" })
-    const after = seat({ peer_id: "a", life: 37, deck_id: 4, deck_name: "Birds", camera_off: true })
-
-    expect(describeParticipantChange(before, after).map((event) => event.text)).toEqual([
-      "Alice chose Birds",
-      "Alice: 40 → 37 life",
-      "Alice turned their camera off",
-    ])
-    expect(describeParticipantChange(after, after)).toEqual([])
-    expect(describeParticipantLeft(after)).toBe("Alice left the table")
-  })
-
-  it("logs elimination and restoration without inventing a life change", () => {
-    const before = seat({ peer_id: "a" })
-    const out = { ...before, eliminated: true }
-    expect(describeParticipantChange(before, out).map((event) => event.text)).toEqual([
-      "Alice was eliminated",
-    ])
-    expect(describeParticipantChange(out, before).map((event) => event.text)).toEqual([
-      "Alice was restored to the game",
-    ])
-    const changes = [
-      describeParticipantChange(before, out)[0]!,
-      describeParticipantChange(out, before)[0]!,
-    ]
-    expect(
-      changes
-        .map((change, id) => ({ ...change, id, at: new Date(id) }))
-        .reduce(appendTableEvent, [] as TableEvent[]),
-    ).toHaveLength(2)
-  })
-})
 
 describe("eliminated seats", () => {
   const alice = seat({ peer_id: "a", player_id: 1, eliminated: true })
@@ -90,69 +48,28 @@ describe("eliminated seats", () => {
   })
 })
 
-describe("appendTableEvent", () => {
-  const life = (from: number, to: number, at: number, actor = "a"): TableEvent => ({
-    id: at,
-    at: new Date(at),
-    text: `Alice: ${from} → ${to} life`,
-    actor,
-    kind: "life",
-    life: { name: "Alice", from, to },
+describe("receiveTableEvent", () => {
+  const entry = (id: number, text: string, count?: number): TableEvent =>
+    toTableEvent({ id, at: id * 1000, text, count })
+
+  it("prepends new server entries and replaces a merged head in place", () => {
+    const joined = entry(1, "Alice joined the table")
+    let events = receiveTableEvent([joined], entry(2, "Alice: 40 → 39 life"))
+    events = receiveTableEvent(events, entry(2, "Alice: 40 → 37 life", 3))
+    expect(events.map((event) => [event.text, event.count])).toEqual([
+      ["Alice: 40 → 37 life", 3],
+      ["Alice joined the table", undefined],
+    ])
+    expect(events[0]!.at).toEqual(new Date(2000))
   })
 
-  it("coalesces rapid changes from the original total through the final total", () => {
-    const events = [life(40, 39, 1000), life(39, 38, 1500), life(38, 37, 2000)].reduce(
-      appendTableEvent,
-      [] as TableEvent[],
-    )
-    expect(events).toHaveLength(1)
-    expect(events[0]).toMatchObject({ id: 1000, text: "Alice: 40 → 37 life", count: 3 })
-  })
-
-  it("merges at the window boundary but not beyond it or backwards in time", () => {
-    expect(appendTableEvent([life(40, 39, 1000)], life(39, 35, 3000))).toHaveLength(1)
-    expect(appendTableEvent([life(40, 39, 1000)], life(39, 35, 3001))).toHaveLength(2)
-    expect(appendTableEvent([life(40, 39, 1000)], life(39, 35, 999))).toHaveLength(2)
-  })
-
-  it("does not cross an actor, kind, or intervening event", () => {
-    const first = life(40, 39, 1000)
-    const other = life(40, 38, 1100, "b")
-    const changedKind = { ...other, actor: "a", kind: "camera", life: undefined }
-    for (const between of [
-      other,
-      changedKind,
-      { id: 1100, at: new Date(1100), text: "Seat order randomized" },
-    ]) {
-      const events = [first, between, life(39, 37, 1200)].reduce(
-        appendTableEvent,
-        [] as TableEvent[],
-      )
-      expect(events).toHaveLength(3)
-    }
-  })
-
-  it("preserves every dice result and caps history without mutating it", () => {
-    const prefix = "Alice rolled a d20: "
-    const makeRoll = (result: number, at: number): TableEvent => ({
-      id: at,
-      at: new Date(at),
-      actor: "a",
-      kind: "dice:20",
-      text: prefix + result,
-      roll: { prefix, results: [result] },
-    })
-    const first = makeRoll(17, 1000)
-    const result = appendTableEvent([first], makeRoll(3, 1200))
-    expect(result[0]?.text).toBe("Alice rolled a d20: 17, 3")
-    expect(first.roll?.results).toEqual([17])
-    const history = Array.from({ length: 200 }, (_, id) => ({
-      id,
-      at: new Date(id),
-      text: "Joined",
-    }))
-    expect(appendTableEvent(history, first)).toHaveLength(200)
-    expect(history).toHaveLength(200)
+  it("keeps a snapshot entry once when its broadcast arrives too, and caps history", () => {
+    const events = [entry(2, "b"), entry(1, "a")]
+    expect(receiveTableEvent(events, entry(1, "a"))).toEqual(events)
+    const full = Array.from({ length: 200 }, (_, index) => entry(200 - index, `line ${index}`))
+    const next = receiveTableEvent(full, entry(201, "newest"))
+    expect(next).toHaveLength(200)
+    expect(next[0]!.text).toBe("newest")
   })
 })
 
