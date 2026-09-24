@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { describeIceServers } from "./side-panel"
+import { describeIceServers } from "./side-panel-labels"
 import { describeConnection } from "./use-webcam-room"
 
 describe("describeConnection", () => {
