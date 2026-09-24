@@ -27,6 +27,8 @@ export class FakeDataChannel {
 
 export class FakePeerConnection {
   static instances: FakePeerConnection[] = []
+  /** Lets a test script a connection's behaviour as soon as the room creates it. */
+  static onCreate: ((connection: FakePeerConnection) => void) | null = null
 
   connectionState: RTCPeerConnectionState = "new"
   signalingState: RTCSignalingState = "stable"
@@ -51,6 +53,7 @@ export class FakePeerConnection {
 
   constructor(readonly config: RTCConfiguration) {
     FakePeerConnection.instances.push(this)
+    FakePeerConnection.onCreate?.(this)
   }
 
   addTrack() {
@@ -92,6 +95,7 @@ export class FakePeerConnection {
 
 export function installFakeWebRtc() {
   FakePeerConnection.instances = []
+  FakePeerConnection.onCreate = null
   vi.stubGlobal("RTCPeerConnection", FakePeerConnection)
 }
 

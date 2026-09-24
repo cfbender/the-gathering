@@ -112,6 +112,8 @@ interface PeerState {
   videoSender: RTCRtpSender
   videoTrack: MediaStreamTrack
   mediaUpdate: Promise<void>
+  /** Offer/answer/candidate steps run one at a time, in arrival order. */
+  negotiation: Promise<void>
   channel?: RTCDataChannel
   stream?: MediaStream
   candidates: RTCIceCandidateInit[]
@@ -513,6 +515,58 @@ export function useWebcamRoom(
       channelRef.current?.push("signal", { target, signal })
     }
 
+    /** Queues one signaling step behind the peer's previous ones. A step must check `current()`
+     * after every await: the peer can leave or the channel can rejoin while it waits. Errors on
+     * a live connection are logged; errors after it was replaced or closed are expected. */
+    function negotiate(
+      remotePeerId: string,
+      peer: PeerState,
+      step: (current: () => boolean) => Promise<void>,
+    ) {
+      const current = () =>
+        !disposed &&
+        peersRef.current.get(remotePeerId) === peer &&
+        peer.connection.signalingState !== "closed"
+      peer.negotiation = peer.negotiation.then(async () => {
+        if (!current()) return
+        try {
+          await step(current)
+        } catch (reason) {
+          if (current()) console.warn(`WebRTC negotiation with ${remotePeerId} failed`, reason)
+        }
+      })
+    }
+
+    function sendOffer(remotePeerId: string, peer: PeerState) {
+      negotiate(remotePeerId, peer, async (current) => {
+        const description = await peer.connection.createOffer()
+        if (!current()) return
+        await peer.connection.setLocalDescription(description)
+        if (current()) sendSignal(remotePeerId, { description })
+      })
+    }
+
+    function receiveSignal(remotePeerId: string, peer: PeerState, signal: Signal) {
+      negotiate(remotePeerId, peer, async (current) => {
+        const { connection } = peer
+        if ("candidate" in signal) {
+          if (connection.remoteDescription) await connection.addIceCandidate(signal.candidate)
+          else peer.candidates.push(signal.candidate)
+          return
+        }
+        await connection.setRemoteDescription(signal.description)
+        for (const candidate of peer.candidates.splice(0)) {
+          if (!current()) return
+          await connection.addIceCandidate(candidate)
+        }
+        if (signal.description.type !== "offer" || !current()) return
+        const answer = await connection.createAnswer()
+        if (!current()) return
+        await connection.setLocalDescription(answer)
+        if (current()) sendSignal(remotePeerId, { description: answer })
+      })
+    }
+
     function createPeer(remotePeerId: string, config: TableConfig) {
       const existing = peersRef.current.get(remotePeerId)
       if (existing) return existing
@@ -529,6 +583,7 @@ export function useWebcamRoom(
         videoSender,
         videoTrack,
         mediaUpdate: visible ? Promise.resolve() : videoSender.replaceTrack(null),
+        negotiation: Promise.resolve(),
         candidates: [],
         restarted: false,
       }
@@ -561,10 +616,7 @@ export function useWebcamRoom(
         if (state === "failed" && !peer.restarted && peerIdRef.current < remotePeerId) {
           peer.restarted = true
           connection.restartIce()
-          void connection.createOffer().then(async (offer) => {
-            await connection.setLocalDescription(offer)
-            sendSignal(remotePeerId, { description: offer })
-          })
+          sendOffer(remotePeerId, peer)
         }
       }
       return peer
@@ -771,34 +823,16 @@ export function useWebcamRoom(
             if (peerIdRef.current < remoteId) {
               const dataChannel = peer.connection.createDataChannel("table")
               attachDataChannel(remoteId, dataChannel)
-              void peer.connection.createOffer().then(async (offer) => {
-                await peer.connection.setLocalDescription(offer)
-                sendSignal(remoteId, { description: offer })
-              })
+              sendOffer(remoteId, peer)
             }
           }
           refreshVideo()
         })
         room.on(
           "signal",
-          async ({ target, from, signal }: { target: string; from: string; signal: Signal }) => {
+          ({ target, from, signal }: { target: string; from: string; signal: Signal }) => {
             if (target !== peerIdRef.current) return
-            const peer = createPeer(from, config)
-            if ("description" in signal) {
-              await peer.connection.setRemoteDescription(signal.description)
-              for (const candidate of peer.candidates.splice(0)) {
-                await peer.connection.addIceCandidate(candidate)
-              }
-              if (signal.description.type === "offer") {
-                const answer = await peer.connection.createAnswer()
-                await peer.connection.setLocalDescription(answer)
-                sendSignal(from, { description: answer })
-              }
-            } else if (peer.connection.remoteDescription) {
-              await peer.connection.addIceCandidate(signal.candidate)
-            } else {
-              peer.candidates.push(signal.candidate)
-            }
+            receiveSignal(from, createPeer(from, config), signal)
           },
         )
         room

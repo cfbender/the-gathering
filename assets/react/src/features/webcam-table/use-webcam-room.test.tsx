@@ -340,3 +340,65 @@ it("cancels pending crops when their peer leaves or the room unmounts", async ()
   unmount()
   expect(vi.getTimerCount()).toBe(0)
 })
+
+it("logs failed negotiation steps instead of leaving unhandled rejections", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+  FakePeerConnection.onCreate = (connection) => {
+    connection.createOffer.mockRejectedValue(new DOMException("no codecs", "OperationError"))
+    connection.setRemoteDescription.mockRejectedValue(
+      new DOMException("bad sdp", "InvalidStateError"),
+    )
+  }
+  const { result } = await roomWithTheo()
+  await waitFor(() =>
+    expect(warn).toHaveBeenCalledWith(
+      "WebRTC negotiation with zz-remote failed",
+      expect.anything(),
+    ),
+  )
+
+  // An offer from a lower peer ID: its failure is logged and later steps still run in order.
+  const target = result.current.peerId
+  act(() => {
+    wire.channel!.emit("signal", {
+      target,
+      from: "00-remote",
+      signal: { description: { type: "offer", sdp: "o" } },
+    })
+    wire.channel!.emit("signal", {
+      target,
+      from: "00-remote",
+      signal: { candidate: { candidate: "c" } },
+    })
+  })
+  await waitFor(() =>
+    expect(warn).toHaveBeenCalledWith(
+      "WebRTC negotiation with 00-remote failed",
+      expect.anything(),
+    ),
+  )
+  const answering = FakePeerConnection.instances[1]!
+  expect(answering.createAnswer).not.toHaveBeenCalled()
+  expect(wire.sent("signal")).toEqual([])
+})
+
+it("abandons an offer when its peer leaves mid-negotiation", async () => {
+  let resolveOffer!: (offer: RTCSessionDescriptionInit) => void
+  FakePeerConnection.onCreate = (connection) => {
+    connection.createOffer.mockReturnValue(
+      new Promise((resolve) => {
+        resolveOffer = resolve
+      }),
+    )
+  }
+  const { self } = await roomWithTheo()
+  const connection = FakePeerConnection.instances[0]!
+  await waitFor(() => expect(connection.createOffer).toHaveBeenCalled())
+  act(() => wire.presence!.sync([self]))
+  await act(async () => {
+    resolveOffer({ type: "offer", sdp: "late" })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+  expect(connection.setLocalDescription).not.toHaveBeenCalled()
+  expect(wire.sent("signal")).toEqual([])
+})
