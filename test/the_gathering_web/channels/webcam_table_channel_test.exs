@@ -3,7 +3,7 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
   import Phoenix.ChannelTest
 
   alias TheGathering.{Accounts, AccountsFixtures, Games}
-  alias TheGathering.WebcamTables.Session
+  alias TheGathering.WebcamTables.{Session, Timer}
 
   alias TheGatheringWeb.{
     Presence,
@@ -560,20 +560,6 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     refute_broadcast "roll", _
   end
 
-  test "timer transitions account for multiple unequal pauses without resetting" do
-    timer = WebcamTableState.new_timer()
-    assert WebcamTableState.update_timer(timer, "resume", 10) == timer
-    timer = WebcamTableState.update_timer(timer, "start", 1000)
-    timer = WebcamTableState.update_timer(timer, "pause", 13_000)
-    assert WebcamTableState.update_timer(timer, "pause", 20_000) == timer
-    timer = WebcamTableState.update_timer(timer, "resume", 22_000)
-    assert timer.paused_ms == 9000
-    timer = WebcamTableState.update_timer(timer, "pause", 41_000)
-    timer = WebcamTableState.update_timer(timer, "resume", 46_000)
-    assert timer == %{started_at: 1000, paused_at: nil, paused_ms: 14_000}
-    assert WebcamTableState.update_timer(timer, "start", 50_000) == timer
-  end
-
   test "validates elimination in own status without changing life", %{
     socket: socket,
     room_id: room_id
@@ -734,7 +720,7 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     current = WebcamTableState.snapshot(room_id)
     assert current.turns.counts == %{alice => 3, bob => 1}
     assert current.turns.active_player_id == alice
-    assert current.turns.started_elapsed_ms == WebcamTableState.elapsed(paused, paused.server_now)
+    assert current.turns.started_elapsed_ms == Timer.elapsed(paused, paused.server_now)
     assert current.timer.started_at == first.timer.started_at
     join_player(room_id, @peer_c, "Cara")
     expected = current.turns

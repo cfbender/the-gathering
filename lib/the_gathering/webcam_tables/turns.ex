@@ -1,4 +1,4 @@
-defmodule TheGatheringWeb.WebcamTableTurns do
+defmodule TheGathering.WebcamTables.Turns do
   @moduledoc """
   Pure turn accounting. Times are measured against the shared game's elapsed
   milliseconds, so pauses freeze a turn without a second set of pause bookkeeping.
