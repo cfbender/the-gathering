@@ -77,6 +77,7 @@ defmodule TheGathering.Accounts.User do
       :manavault_url,
       :manavault_api_key
     ])
+    |> update_change(:display_name, &String.trim/1)
     |> normalize_deck_sources()
     |> validate_required([:display_name])
     |> validate_length(:display_name, min: 1, max: 80)
@@ -104,6 +105,7 @@ defmodule TheGathering.Accounts.User do
     user
     |> cast(attrs, [:username, :display_name, :role, :disabled_at])
     |> normalize_username()
+    |> update_change(:display_name, &String.trim/1)
     |> validate_account_fields()
     |> unique_constraint(:username)
   end

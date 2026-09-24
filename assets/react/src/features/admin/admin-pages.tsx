@@ -487,7 +487,11 @@ function UserCard({ user, players }: { user: User; players: PlayerSummary[] }) {
         method: "PATCH",
         body: JSON.stringify({ user: attrs }),
       }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["admin", "users"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin"] })
+      // A display name change also renames the user's linked player.
+      void invalidateGameRelated(queryClient)
+    },
   })
   const deleteUser = useMutation({
     mutationFn: () => api<void>(`/api/admin/users/${user.id}`, { method: "DELETE" }),

@@ -89,6 +89,43 @@ defmodule TheGathering.AccountsTest do
     assert Accounts.get_user_by_session_token(fresh_token)
   end
 
+  describe "display name changes" do
+    test "a profile edit renames the linked player" do
+      user = AccountsFixtures.user_fixture(%{"display_name" => "cody_discord"})
+      {:ok, player} = Games.create_player(%{name: "cody_discord"}, user.id)
+
+      assert {:ok, updated} = Accounts.update_profile(user, %{"display_name" => "  Cody  "})
+      assert updated.display_name == "Cody"
+      assert Repo.reload!(player).name == "Cody"
+    end
+
+    test "an admin edit renames the linked player" do
+      user = AccountsFixtures.user_fixture(%{"display_name" => "member"})
+      {:ok, player} = Games.create_player(%{name: "member"}, user.id)
+
+      assert {:ok, _updated} = Accounts.update_user(user, %{"display_name" => "Member Name"})
+      assert Repo.reload!(player).name == "Member Name"
+    end
+
+    test "a name held by another player is rejected without saving either record" do
+      user = AccountsFixtures.user_fixture(%{"display_name" => "member"})
+      {:ok, player} = Games.create_player(%{name: "member"}, user.id)
+      {:ok, _other} = Games.create_player(%{name: "Taken"})
+
+      assert {:error, changeset} = Accounts.update_profile(user, %{"display_name" => "taken"})
+      assert "is already used by another player" in errors_on(changeset).display_name
+      assert Repo.reload!(user).display_name == "member"
+      assert Repo.reload!(player).name == "member"
+    end
+
+    test "users without a linked player can still change their display name" do
+      user = AccountsFixtures.user_fixture()
+
+      assert {:ok, %{display_name: "Solo"}} =
+               Accounts.update_profile(user, %{"display_name" => "Solo"})
+    end
+  end
+
   test "revoking all sessions deletes only the target user's tokens" do
     target = AccountsFixtures.user_fixture()
     other_user = AccountsFixtures.user_fixture()
