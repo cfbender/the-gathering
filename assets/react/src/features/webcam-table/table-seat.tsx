@@ -1,8 +1,19 @@
+import { CameraTile } from "./board"
 import { LifeControl } from "./life-control"
 import type { TableParticipant } from "./room-types"
 import { SeatBar } from "./seat-bar"
 import { SeatCounterControls } from "./seat-counter-controls"
-import { decksFor, videoFlip, isLocal, isPinned, togglePin, type TableView } from "./table-view"
+import {
+  decksFor,
+  isCurrentTurn,
+  videoFlip,
+  isLocal,
+  revealLabels,
+  streamFor,
+  togglePin,
+  type TableView,
+} from "./table-view"
+import { VideoStatsOverlay, type useVideoStats } from "./video-stats"
 
 type SeatSize = "board" | "tile"
 
@@ -66,8 +77,6 @@ export function SeatActions({ view, participant, size }: SeatProps) {
       onChooseDeck={room.chooseDeck}
       onToggleCamera={view.toggleCamera}
       onReveal={view.openReveal}
-      pinned={isPinned(view, participant)}
-      onTogglePin={() => togglePin(view, participant)}
       onSetEliminated={(eliminated) => room.setEliminated(participant.peer_id, eliminated)}
       flip={videoFlip(view, participant)}
       onToggleFlip={(axis) => view.preferences.toggleVideoFlip(participant.player_id, axis)}
@@ -77,6 +86,50 @@ export function SeatActions({ view, participant, size }: SeatProps) {
         (room.isOwner || isLocal(view, participant))
       }
     />
+  )
+}
+
+/** A seat's camera tile with its name bar, for the camera rail and the grid. Clicking the video
+ * pins that board; clicking it again releases it. */
+export function SeatTile({
+  view,
+  participant,
+  videoStats,
+  fill = false,
+}: {
+  view: TableView
+  participant: TableParticipant
+  videoStats: ReturnType<typeof useVideoStats>
+  fill?: boolean
+}) {
+  const { room, preferences } = view
+  return (
+    <div className={fill ? "flex min-h-0 flex-1 flex-col" : "overflow-hidden rounded-sm"}>
+      <div className={fill ? "relative min-h-0 flex-1" : "relative"}>
+        <CameraTile
+          participant={participant}
+          unattackable={view.protectedSeats.includes(participant.peer_id)}
+          monarch={room.monarch?.peer_id === participant.peer_id}
+          {...revealLabels(view, participant)}
+          local={isLocal(view, participant)}
+          flip={videoFlip(view, participant)}
+          active={!view.showGrid && participant.peer_id === view.activeParticipant.peer_id}
+          currentTurn={isCurrentTurn(view, participant)}
+          connectionState={room.connectionStates[participant.peer_id]}
+          stream={streamFor(view, participant)}
+          fill={fill}
+          onActivate={() => togglePin(view, participant)}
+          lifeControl={<SeatLife view={view} participant={participant} size="tile" />}
+        />
+        {preferences.stats && (
+          <VideoStatsOverlay
+            stats={videoStats[participant.peer_id]}
+            localStream={isLocal(view, participant) ? room.localStream : undefined}
+          />
+        )}
+      </div>
+      <SeatActions view={view} participant={participant} size="tile" />
+    </div>
   )
 }
 

@@ -1,19 +1,12 @@
 import { cn } from "@/lib/cn"
-import { CameraTile, OpenSeat } from "./board"
+import { OpenSeat } from "./board"
 import { MAX_PLAYERS } from "./rooms"
-import { SeatActions, SeatLife, TeamHeader } from "./table-seat"
-import {
-  isCurrentTurn,
-  videoFlip,
-  isLocal,
-  revealLabels,
-  streamFor,
-  type TableView,
-} from "./table-view"
-import { VideoStatsOverlay, type useVideoStats } from "./video-stats"
+import { SeatTile, TeamHeader } from "./table-seat"
+import type { TableView } from "./table-view"
+import type { useVideoStats } from "./video-stats"
 
 /** Every seat's camera as a tile (grouped by team in Two-Headed Giant), plus open seats
- * before the match starts. Clicking a tile makes it the active board. */
+ * before the match starts. Clicking a tile pins it as the active board; clicking again releases. */
 export function TableCameraRail({
   view,
   videoStats,
@@ -44,31 +37,12 @@ export function TableCameraRail({
         >
           {teamsMode && <TeamHeader view={view} group={group} />}
           {group.map((participant) => (
-            <div key={participant.peer_id} className="overflow-hidden rounded-sm">
-              <div className="relative">
-                <CameraTile
-                  participant={participant}
-                  unattackable={view.protectedSeats.includes(participant.peer_id)}
-                  monarch={room.monarch?.peer_id === participant.peer_id}
-                  {...revealLabels(view, participant)}
-                  local={isLocal(view, participant)}
-                  flip={videoFlip(view, participant)}
-                  active={participant.peer_id === view.activeParticipant.peer_id}
-                  currentTurn={isCurrentTurn(view, participant)}
-                  connectionState={room.connectionStates[participant.peer_id]}
-                  stream={streamFor(view, participant)}
-                  onActivate={() => view.selectBoard(participant.peer_id)}
-                  lifeControl={<SeatLife view={view} participant={participant} size="tile" />}
-                />
-                {preferences.stats && (
-                  <VideoStatsOverlay
-                    stats={videoStats[participant.peer_id]}
-                    localStream={isLocal(view, participant) ? room.localStream : undefined}
-                  />
-                )}
-              </div>
-              <SeatActions view={view} participant={participant} size="tile" />
-            </div>
+            <SeatTile
+              key={participant.peer_id}
+              view={view}
+              participant={participant}
+              videoStats={videoStats}
+            />
           ))}
         </div>
       ))}

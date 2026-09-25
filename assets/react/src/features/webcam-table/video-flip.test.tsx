@@ -187,20 +187,59 @@ it("maps inspection clicks on a horizontally flipped board back to the source", 
   expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.8, 0.75, false)
 })
 
-it("pins a selected board over follow-turn without overwriting the saved view mode", () => {
-  localStorage.setItem("the-gathering:table-preferences:1", JSON.stringify({ followTurn: true }))
+it("soft-pins a clicked board over follow-turn until it is clicked again", () => {
   remote.activePlayerId = 73
   renderTable()
   expect(screen.getByRole("button", { name: "Inspect Mara's board" })).toBeTruthy()
+  expect(screen.queryByRole("button", { name: "Follow turn" })).toBeNull()
 
   fireEvent.click(screen.getByRole("button", { name: "Show Theo's board" }))
   expect(screen.getByRole("button", { name: "Inspect Theo's board" })).toBeTruthy()
-  expect(JSON.parse(localStorage.getItem("the-gathering:table-preferences:1")!)).toMatchObject({
-    followTurn: true,
-  })
-
-  fireEvent.click(screen.getByRole("button", { name: "Pinned" }))
+  fireEvent.click(screen.getByRole("button", { name: "Show Theo's board" }))
   expect(screen.getByRole("button", { name: "Inspect Mara's board" })).toBeTruthy()
+
+  fireEvent.click(screen.getByRole("button", { name: "Show Theo's board" }))
+  fireEvent.click(screen.getByRole("button", { name: "Follow turn" }))
+  expect(screen.getByRole("button", { name: "Inspect Mara's board" })).toBeTruthy()
+  expect(JSON.parse(localStorage.getItem("the-gathering:table-preferences:1")!)).toMatchObject({
+    viewMode: "follow",
+  })
+})
+
+it("shows every camera in grid view and fills the stage with a clicked one until clicked again", () => {
+  localStorage.setItem("the-gathering:table-preferences:1", JSON.stringify({ viewMode: "grid" }))
+  remote.activePlayerId = 73
+  renderTable()
+  const grid = screen.getByRole("region", { name: "Camera grid" })
+  for (const name of ["Cody", "Theo", "Mara"])
+    expect(within(grid).getByRole("button", { name: `Show ${name}'s board` })).toBeTruthy()
+  expect(screen.queryByRole("complementary", { name: "Player cameras" })).toBeNull()
+  expect(screen.queryByRole("button", { name: /Inspect/ })).toBeNull()
+
+  fireEvent.click(within(grid).getByRole("button", { name: "Show Theo's board" }))
+  expect(screen.getByRole("button", { name: "Inspect Theo's board" })).toBeTruthy()
+  const rail = screen.getByRole("complementary", { name: "Player cameras" })
+  fireEvent.click(within(rail).getByRole("button", { name: "Show Theo's board" }))
+  expect(screen.getByRole("region", { name: "Camera grid" })).toBeTruthy()
+
+  fireEvent.click(screen.getByRole("button", { name: "Show Mara's board" }))
+  fireEvent.click(screen.getByRole("button", { name: "Back to grid" }))
+  expect(screen.getByRole("region", { name: "Camera grid" })).toBeTruthy()
+})
+
+it("toggles grid view with G and drops a pin made in the other view", () => {
+  remote.activePlayerId = 73
+  renderTable()
+  fireEvent.keyDown(window, { key: "g" })
+  expect(screen.getByRole("region", { name: "Camera grid" })).toBeTruthy()
+  fireEvent.click(screen.getByRole("button", { name: "Show Theo's board" }))
+  expect(screen.getByRole("button", { name: "Inspect Theo's board" })).toBeTruthy()
+
+  fireEvent.keyDown(window, { key: "g" })
+  expect(screen.getByRole("button", { name: "Inspect Mara's board" })).toBeTruthy()
+  expect(JSON.parse(localStorage.getItem("the-gathering:table-preferences:1")!)).toMatchObject({
+    viewMode: "follow",
+  })
   cleanup()
   renderTable()
   expect(screen.getByRole("button", { name: "Inspect Mara's board" })).toBeTruthy()

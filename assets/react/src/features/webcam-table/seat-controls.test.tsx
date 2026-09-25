@@ -341,10 +341,9 @@ describe("seat counters", () => {
 })
 
 describe.each([true, false])("seat actions (local=%s)", (local) => {
-  it("limits camera/reveal to the owner and exposes pin and eliminate/restore for everyone", async () => {
+  it("limits camera/reveal to the owner and exposes eliminate/restore for everyone", async () => {
     const onToggleCamera = vi.fn()
     const onSetEliminated = vi.fn()
-    const onTogglePin = vi.fn()
     const onReveal = vi.fn()
     function Seat() {
       const [eliminated, setEliminated] = useState(false)
@@ -354,11 +353,9 @@ describe.each([true, false])("seat actions (local=%s)", (local) => {
           local={local}
           decks={[]}
           size="tile"
-          pinned={false}
           onChooseDeck={vi.fn()}
           onToggleCamera={onToggleCamera}
           onReveal={onReveal}
-          onTogglePin={onTogglePin}
           onSetEliminated={(value) => {
             onSetEliminated(value)
             setEliminated(value)
@@ -393,9 +390,7 @@ describe.each([true, false])("seat actions (local=%s)", (local) => {
     } else {
       expect(screen.queryByRole("menuitem", { name: /camera|Reveal/ })).toBeNull()
     }
-    fireEvent.click(screen.getByRole("menuitem", { name: "Pin as active board" }))
-    expect(onTogglePin).toHaveBeenCalledOnce()
-    await open()
+    expect(screen.queryByRole("menuitem", { name: /pin/i })).toBeNull()
     if (!local) {
       expect(screen.queryByRole("menuitem", { name: "Eliminate player" })).toBeNull()
       return

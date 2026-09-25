@@ -7,11 +7,13 @@ export const RAIL_WIDTHS = {
   panel: { min: 240, max: 480, initial: 288 },
 }
 type Rail = keyof typeof RAIL_WIDTHS
+/** Follow the active turn on one large board, or show every camera at once in a grid. */
+export type ViewMode = "follow" | "grid"
 interface Preferences {
   hotkeys: boolean
   camera: number
   panel: number
-  followTurn: boolean
+  viewMode: ViewMode
   panelLeft: boolean
   deviceId: string
   cameraEnabled: boolean
@@ -47,7 +49,7 @@ export function useTablePreferences(playerId: number) {
       hotkeys: true,
       camera: RAIL_WIDTHS.camera.initial,
       panel: RAIL_WIDTHS.panel.initial,
-      followTurn: false,
+      viewMode: "follow",
       panelLeft: false,
       deviceId: "",
       cameraEnabled: true,
@@ -62,7 +64,7 @@ export function useTablePreferences(playerId: number) {
       if (!saved || typeof saved !== "object") return defaults
       return {
         ...defaults,
-        followTurn: "followTurn" in saved && saved.followTurn === true,
+        viewMode: "viewMode" in saved && saved.viewMode === "grid" ? "grid" : "follow",
         panelLeft: "panelLeft" in saved && saved.panelLeft === true,
         deviceId: "deviceId" in saved && typeof saved.deviceId === "string" ? saved.deviceId : "",
         cameraEnabled: !("cameraEnabled" in saved && saved.cameraEnabled === false),

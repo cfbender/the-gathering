@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from "react"
 import type { TableParticipant } from "./room-types"
+import type { ViewMode } from "./table-preferences"
 
-/** Which board fills the stage: the pinned/selected one, else the newest remote joiner, else you.
- * Falls back to your own board when the selected player leaves. */
-export function useActiveBoard(participants: TableParticipant[], localPeerId: string) {
+/** Which board the viewer picked. Clicking a player soft-pins their board: it overrides following
+ * the turn, or fills the stage instead of the grid, until released. The pin remembers the view
+ * mode it was made in, so switching modes starts unpinned. Unpinned, the selection tracks the
+ * newest remote joiner, and it falls back to your own board when the selected player leaves. */
+export function useActiveBoard(
+  participants: TableParticipant[],
+  localPeerId: string,
+  viewMode: ViewMode,
+) {
   const [selectedPeerId, setSelectedPeerId] = useState(localPeerId)
-  const [pinned, setPinned] = useState(false)
+  const [pinnedIn, setPinnedIn] = useState<ViewMode | null>(null)
+  const pinned = pinnedIn === viewMode
   const knownPeers = useRef(new Set<string>([localPeerId]))
 
   useEffect(() => {
@@ -17,7 +25,7 @@ export function useActiveBoard(participants: TableParticipant[], localPeerId: st
 
     if (!present.has(selectedPeerId) && selectedPeerId !== localPeerId) {
       setSelectedPeerId(localPeerId)
-      setPinned(false)
+      setPinnedIn(null)
     } else if (!pinned && newcomers.length > 0) {
       const newest = newcomers[newcomers.length - 1]
       if (newest && newest.peer_id !== localPeerId) setSelectedPeerId(newest.peer_id)
@@ -29,8 +37,8 @@ export function useActiveBoard(participants: TableParticipant[], localPeerId: st
     pinned,
     select: (peerId: string) => {
       setSelectedPeerId(peerId)
-      setPinned(true)
+      setPinnedIn(viewMode)
     },
-    togglePin: () => setPinned((value) => !value),
+    release: () => setPinnedIn(null),
   }
 }

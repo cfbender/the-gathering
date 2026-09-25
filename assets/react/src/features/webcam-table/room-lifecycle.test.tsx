@@ -88,7 +88,7 @@ it("offers Eliminate player in the seat menu only after the match starts", async
   renderTable(false)
   expect(screen.queryByRole("button", { name: /Eliminat/ })).toBeNull()
   await openMenu()
-  expect(screen.getByRole("menuitem", { name: "Pin as active board" })).toBeTruthy()
+  expect(screen.getByRole("menuitem", { name: "Reveal hand…" })).toBeTruthy()
   expect(screen.queryByRole("menuitem", { name: /Eliminate|Restore/ })).toBeNull()
   cleanup()
   renderTable(true)

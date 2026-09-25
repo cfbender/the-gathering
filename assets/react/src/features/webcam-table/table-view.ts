@@ -24,9 +24,12 @@ export interface TableView {
   activeGroup: TableParticipant[]
   /** Five Star: seats the viewer may not attack yet. */
   protectedSeats: string[]
+  /** Grid view with no board picked: every camera shares the stage and the rail is hidden. */
+  showGrid: boolean
+  /** The viewer clicked a board; it overrides the turn (or the grid) until released. */
   boardPinned: boolean
   selectBoard: (peerId: string) => void
-  toggleBoardPin: () => void
+  releaseBoard: () => void
   toggleCamera: () => void
   openReveal: () => void
 }
@@ -43,7 +46,7 @@ export function useTableView({
   TableView,
   "room" | "preferences" | "playerId" | "decks" | "toggleCamera" | "openReveal"
 > & { playerName: string }): TableView {
-  const board = useActiveBoard(room.participants, room.peerId)
+  const board = useActiveBoard(room.participants, room.peerId, preferences.viewMode)
   const localParticipant: TableParticipant = room.participants.find(
     (participant) => participant.peer_id === room.peerId,
   ) ?? {
@@ -62,7 +65,7 @@ export function useTableView({
       : [localParticipant, ...room.participants]
   // A pinned board overrides following the turn without changing the saved view mode.
   const activeParticipant =
-    (preferences.followTurn &&
+    (preferences.viewMode === "follow" &&
       !board.pinned &&
       seated.find((participant) => participant.player_id === room.turns.active_player_id)) ||
     seated.find((participant) => participant.peer_id === board.selectedPeerId) ||
@@ -81,9 +84,10 @@ export function useTableView({
     activeGroup: groups.find((group) => group.includes(activeParticipant)) ?? [activeParticipant],
     protectedSeats:
       room.mode === "five_star" && !room.spectating ? unattackableSeats(seated, playerId) : [],
+    showGrid: preferences.viewMode === "grid" && !board.pinned,
     boardPinned: board.pinned,
     selectBoard: board.select,
-    toggleBoardPin: board.togglePin,
+    releaseBoard: board.release,
     toggleCamera,
     openReveal,
   }
@@ -111,8 +115,9 @@ export function isPinned(view: TableView, participant: TableParticipant) {
   return view.boardPinned && participant.peer_id === view.activeParticipant.peer_id
 }
 
+/** Clicking a player's camera pins their board; clicking it again releases it. */
 export function togglePin(view: TableView, participant: TableParticipant) {
-  if (isPinned(view, participant)) view.toggleBoardPin()
+  if (isPinned(view, participant)) view.releaseBoard()
   else view.selectBoard(participant.peer_id)
 }
 

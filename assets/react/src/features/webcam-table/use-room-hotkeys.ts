@@ -45,6 +45,8 @@ export function useRoomHotkeys(
         return panel.togglePanel()
       case "help":
         return panel.openHelp()
+      case "grid":
+        return preferences.update({ viewMode: preferences.viewMode === "grid" ? "follow" : "grid" })
       case "dismiss":
         return flow.dismissPicker()
       case "previous":
