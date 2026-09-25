@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "./card-hover"
 import { CommanderPicker } from "./commander-picker"
+import { DeckChooserButton } from "./deck-chooser-button"
 import type { TimerSample } from "./game-timer"
 import { PanelSection } from "./panel-section"
 import type { RecognizerState } from "./recognition/use-recognizer"
@@ -230,7 +231,14 @@ function SetupSection(props: TableTabProps) {
           {props.inviteCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
           {props.inviteCopied ? "Invite link copied" : "Invite players"}
         </Button>
-        <CommanderButton {...props} />
+        <div className="flex gap-1.5">
+          <div className="min-w-0 flex-1">
+            <CommanderButton {...props} />
+          </div>
+          {props.timer?.state.started_at == null && (
+            <DeckChooserButton onChooseDeck={props.onChooseDeck} />
+          )}
+        </div>
       </div>
 
       <h3 className="text-base-content/50 mt-4 mb-1 text-[0.6rem] font-bold tracking-wider uppercase">

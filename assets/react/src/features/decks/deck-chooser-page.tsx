@@ -1,11 +1,10 @@
-import { useMutation, useQuery } from "@tanstack/react-query"
 import { Check, Dices, Library, SkipForward } from "lucide-react"
 import { useState } from "react"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { CardArtBackground } from "@/components/card-art-background"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Button } from "@/components/ui/button"
-import { getDeckPick, recordDeckOutcome, type DeckPick } from "@/features/decks/deck-chooser"
+import { useDeckChooser, type DeckPick } from "@/features/decks/deck-chooser"
 import { DeckCommanders } from "./deck-commanders"
 import {
   SyncRemoteDecksButton,
@@ -14,32 +13,22 @@ import {
 } from "@/features/decks/sync-remote-decks"
 
 export function DeckChooserPage() {
-  const [excludeId, setExcludeId] = useState<number>()
   const [chosenName, setChosenName] = useState<string>()
-  const pick = useQuery({
-    queryKey: ["deck-chooser", excludeId ?? null],
-    queryFn: () => getDeckPick(excludeId),
-  })
-  const outcome = useMutation({
-    mutationFn: ({ deckId, outcome }: { deckId: number; outcome: "played" | "skipped" }) =>
-      recordDeckOutcome(deckId, outcome),
-  })
+  const chooser = useDeckChooser()
+  const { pick, outcome } = chooser
   const sync = useSyncRemoteDecks(() => {
-    setExcludeId(undefined)
+    chooser.reset()
     setChosenName(undefined)
   })
 
   async function skip() {
-    if (!pick.data?.deck) return
     setChosenName(undefined)
-    await outcome.mutateAsync({ deckId: pick.data.deck.id, outcome: "skipped" })
-    setExcludeId(pick.data.deck.id)
+    await chooser.skip()
   }
 
   async function choose() {
-    if (!pick.data?.deck) return
-    await outcome.mutateAsync({ deckId: pick.data.deck.id, outcome: "played" })
-    setChosenName(pick.data.deck.name)
+    const deck = await chooser.play()
+    if (deck) setChosenName(deck.name)
   }
 
   return (
