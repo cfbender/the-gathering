@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { NO_FLIP, type VideoFlip } from "./board"
 import type { CaptureRequest, CaptureResponse } from "./data-messages"
 import { canViewBoard } from "./media-policy"
+import { orientCrop } from "./orient-crop"
 import { liveStatus, type RoomLink } from "./room-link"
 import type { CapturedCard } from "./room-types"
 import type { LocalCamera } from "./use-local-camera"
@@ -12,6 +14,8 @@ export const CAPTURE_TIMEOUT_MS = 8000
 interface PendingCapture {
   targetPeerId: string
   inspect: boolean
+  /** The clicker's flip of that board; the owner crops native pixels, so it is applied here. */
+  flip: VideoFlip
   timeout: number
 }
 
@@ -26,6 +30,27 @@ export function useCardCapture(
 ) {
   const pendingRef = useRef(new Map<string, PendingCapture>())
   const [capture, setCapture] = useState<CapturedCard | null>(null)
+  const showingRef = useRef(0)
+
+  /** Shows a crop oriented the way the clicker sees the board. The latest click wins, and a
+   * dismissal discards a crop that is still being flipped. */
+  const show = useCallback(
+    (card: CapturedCard, flip: VideoFlip) => {
+      const showing = (showingRef.current += 1)
+      if (!flip.horizontal && !flip.vertical) {
+        setCapture(card)
+        return
+      }
+      orientCrop(card, flip)
+        .then((oriented) => {
+          if (showing === showingRef.current) setCapture(oriented)
+        })
+        .catch(() => {
+          if (showing === showingRef.current) setStatus("Could not read that crop; click again")
+        })
+    },
+    [setStatus],
+  )
 
   /** Forgets outstanding requests to one peer, or to everyone when `peerId` is null. */
   const cancel = useCallback(
@@ -70,14 +95,12 @@ export function useCardCapture(
       if (!owner || owner.camera_off || !canViewBoard(fromPeerId, link.peerId, owner.reveal_to))
         return
       const { type: _type, requestId: _requestId, ...image } = response
-      setCapture({
-        peerId: fromPeerId,
-        playerId: owner.player_id,
-        inspect: pending.inspect,
-        ...image,
-      })
+      show(
+        { peerId: fromPeerId, playerId: owner.player_id, inspect: pending.inspect, ...image },
+        pending.flip,
+      )
     },
-    [link, setStatus],
+    [link, setStatus, show],
   )
 
   useEffect(
@@ -95,20 +118,17 @@ export function useCardCapture(
   useEffect(() => () => cancel(null, false), [cancel])
 
   const requestCapture = useCallback(
-    (targetPeerId: string, x: number, y: number, inspect = false) => {
+    (targetPeerId: string, x: number, y: number, inspect = false, flip: VideoFlip = NO_FLIP) => {
       const owner = link.participants.find((item) => item.peer_id === targetPeerId)
       if (!owner || owner.camera_off || !canViewBoard(targetPeerId, link.peerId, owner.reveal_to))
         return
       if (targetPeerId === link.peerId) {
         const result = crop(x, y)
         if (result)
-          setCapture({
-            peerId: targetPeerId,
-            playerId,
-            inspect,
-            private: !!revealTarget(),
-            ...result,
-          })
+          show(
+            { peerId: targetPeerId, playerId, inspect, private: !!revealTarget(), ...result },
+            flip,
+          )
         return
       }
       const requestId = crypto.randomUUID()
@@ -116,7 +136,7 @@ export function useCardCapture(
         if (!pendingRef.current.delete(requestId)) return
         setStatus(`${owner.player_name}'s camera did not send a crop; click the card again`)
       }, CAPTURE_TIMEOUT_MS)
-      pendingRef.current.set(requestId, { targetPeerId, inspect, timeout })
+      pendingRef.current.set(requestId, { targetPeerId, inspect, flip, timeout })
       if (!send(targetPeerId, { type: "capture_request", requestId, x, y })) {
         window.clearTimeout(timeout)
         pendingRef.current.delete(requestId)
@@ -125,10 +145,13 @@ export function useCardCapture(
       }
       setStatus("Requesting native camera crop…")
     },
-    [cancel, crop, link, playerId, revealTarget, send, setStatus],
+    [crop, link, playerId, revealTarget, send, setStatus, show],
   )
 
-  const dismissCapture = useCallback(() => setCapture(null), [])
+  const dismissCapture = useCallback(() => {
+    showingRef.current += 1
+    setCapture(null)
+  }, [])
   const cancelAll = useCallback(() => cancel(null, false), [cancel])
 
   return { capture, requestCapture, dismissCapture, cancelAll }

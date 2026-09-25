@@ -337,6 +337,38 @@ it("accepts only the requested peer's well-formed crop and restores the live sta
   expect(result.current.status).toMatch(/^Live/)
 })
 
+it("mirrors a remote crop to match the clicker's flip of that board", async () => {
+  const { result, channel } = await roomWithTheo()
+  const context = { setTransform: vi.fn(), drawImage: vi.fn() }
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+    context as unknown as CanvasRenderingContext2D,
+  )
+  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/jpeg;base64,seen")
+  Object.defineProperty(HTMLImageElement.prototype, "decode", {
+    configurable: true,
+    value: () => Promise.resolve(),
+  })
+  const flip = { vertical: true, horizontal: true }
+  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5, false, flip))
+  // The owner is asked for native pixels; the flip never leaves the clicker.
+  expect(channel.messages()[0]).toEqual({
+    type: "capture_request",
+    requestId: expect.any(String),
+    x: 0.5,
+    y: 0.5,
+  })
+  const { requestId } = channel.messages()[0]!
+  act(() => channel.deliver(JSON.stringify({ ...crop, requestId, clickX: 100, clickY: 200 })))
+  await waitFor(() =>
+    expect(result.current.capture).toMatchObject({
+      image: "data:image/jpeg;base64,seen",
+      clickX: 540,
+      clickY: 440,
+    }),
+  )
+  expect(context.setTransform).toHaveBeenCalledWith(-1, 0, 0, -1, 640, 640)
+})
+
 it("times out a crop request that a silent peer never answers", async () => {
   const { result, channel } = await roomWithTheo()
   vi.useFakeTimers()

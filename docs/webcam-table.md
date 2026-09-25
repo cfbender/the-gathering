@@ -129,6 +129,12 @@ coordinates to its native `videoWidth`/`videoHeight`, captures the same 640 px J
 `cardid.capture`, and returns it on the data channel together with the click position inside the
 crop. The requester recognizes the card from that crop.
 
+Video flips are a viewer-only preference, so the click is mapped back to unflipped source
+coordinates before it is sent, and the owner always crops native pixels. The requester then
+mirrors the returned crop and its click position to match its own flip of that board
+(`orient-crop.ts`), so recognition, the picker thumbnail, and correction uploads see the card as
+it appears on screen.
+
 This protocol does not depend on the resolution selected by WebRTC congestion control (a
 960 × 540 received stream still yields a crop of the owner's 1920 × 1080 frame) and keeps the
 click-to-candidate latency budget local: capture + detector + embedder + gallery search, with no

@@ -134,14 +134,26 @@ it("maps inspection clicks back to the unflipped source, including letterbox edg
   vi.spyOn(board, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 400, 400))
   // Video occupies x=20..420, y=130..330. Off-center point is (0.2, 0.25).
   fireEvent.click(board, { clientX: 100, clientY: 180 })
-  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0.25, false)
+  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0.25, false, {
+    vertical: false,
+    horizontal: false,
+  })
   await toggleFlip("Flip")
   fireEvent.click(board, { clientX: 100, clientY: 180, shiftKey: true })
-  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0.75, true)
+  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0.75, true, {
+    vertical: true,
+    horizontal: false,
+  })
   fireEvent.click(board, { clientX: 100, clientY: 40 })
-  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 1, false)
+  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 1, false, {
+    vertical: true,
+    horizontal: false,
+  })
   fireEvent.click(board, { clientX: 100, clientY: 420 })
-  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0, false)
+  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0, false, {
+    vertical: true,
+    horizontal: false,
+  })
 })
 
 it("flips horizontally on its own or combined with a vertical flip, and remembers both", async () => {
@@ -181,10 +193,16 @@ it("maps inspection clicks on a horizontally flipped board back to the source", 
   vi.spyOn(board, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 400, 400))
   await toggleFlip("Flip", "horizontal")
   fireEvent.click(board, { clientX: 100, clientY: 180 })
-  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.8, 0.25, false)
+  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.8, 0.25, false, {
+    vertical: false,
+    horizontal: true,
+  })
   await toggleFlip("Flip", "vertical")
   fireEvent.click(board, { clientX: 100, clientY: 180 })
-  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.8, 0.75, false)
+  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.8, 0.75, false, {
+    vertical: true,
+    horizontal: true,
+  })
 })
 
 it("soft-pins a clicked board over follow-turn until it is clicked again", () => {
