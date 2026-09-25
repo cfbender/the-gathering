@@ -1,5 +1,5 @@
 import type { DeckSummary } from "@/features/decks/decks"
-import { NO_FLIP, type VideoFlip } from "./board"
+import type { VideoFlip } from "./board"
 import { teams, turnId, unattackableSeats } from "./game-modes"
 import { canViewBoard } from "./media-policy"
 import type { TableParticipant } from "./room-types"
@@ -101,9 +101,8 @@ export function decksFor(view: TableView, participant: TableParticipant) {
   return view.decks.filter((deck) => deck.player_id === participant.player_id)
 }
 
-/** The viewer's saved flip for a remote seat; the local preview is never flipped. */
+/** The viewer's saved flip for any seat, their own preview included; streams are never flipped. */
 export function videoFlip(view: TableView, participant: TableParticipant): VideoFlip {
-  if (isLocal(view, participant)) return NO_FLIP
   const { flippedPlayerIds, horizontallyFlippedPlayerIds } = view.preferences
   return {
     vertical: flippedPlayerIds.includes(participant.player_id),
