@@ -105,11 +105,13 @@ export function TableSettings({
         <div className="grid gap-4">
           <Choice
             label="View mode"
-            value={preferences.followTurn ? "follow" : "selected"}
-            onChange={(value) => preferences.update({ followTurn: value === "follow" })}
+            value={preferences.viewMode}
+            onChange={(value) =>
+              preferences.update({ viewMode: value === "grid" ? "grid" : "follow" })
+            }
             options={[
               { value: "follow", label: "Follow active turn" },
-              { value: "selected", label: "Pinned / selected board" },
+              { value: "grid", label: "All cameras (grid)" },
             ]}
           />
           <Choice
@@ -122,8 +124,9 @@ export function TableSettings({
             ]}
           />
           <p className="text-[0.65rem] text-base-content/60">
-            The camera rail sits on the opposite side on desktop. Selecting a board pins it over the
-            active turn until you unpin it.
+            Click a player's camera to show their board instead of the active turn, or full size in
+            grid view; click it again to go back. The camera rail sits opposite the side panel on
+            desktop.
           </p>
           <Choice
             label="Theme style"

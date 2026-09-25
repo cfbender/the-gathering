@@ -203,12 +203,13 @@ reappear once someone opens their saved URL.
 
 ## Table view layout
 
-The room is laid out like a webcam play surface rather than a video-call grid: one board is
-always large, everyone else is small, and controls live in a collapsible column.
+The room is laid out like a webcam play surface rather than a video-call grid: by default one
+board is large, everyone else is small, and controls live in a collapsible column. Grid view
+(Settings → View, or `G`) shows every camera at once instead.
 
 ```text
 ┌──────────┬─────────────────────────────────────────────┬──┬──────────────┐
-│ rail     │ 40                                     Pin  │  │ Setup  3/10  │
+│ rail     │ 40                                          │  │ Setup  3/10  │
 │ ┌──────┐ │                                             │▪ │ Invite       │
 │ │40    │ │                                             │▪ │ Commander    │
 │ └──────┘ │              active board                   │▪ │ Turn order   │
@@ -231,12 +232,13 @@ always large, everyone else is small, and controls live in a collapsible column.
   Other seats have read-only life and an always-visible chevron to inspect their counters.
   Once a commander is chosen, a tax badge (`+4`, or `+4/+2` for partners in name order) sits just
   left of the commander name on every seat; adjust it from the counters panel or tax hotkeys.
-  The ⋯ menu offers pin/unpin and eliminate/restore for every seat; your own menu also has
+  The ⋯ menu offers flip video (others) and eliminate/restore for every seat; your own menu also has
   camera on/off and Reveal hand, opening the existing private-reveal flow in a dialog.
   Commander names truncate when necessary; the full name remains in the title/hover preview.
   Empty seats up to ten render as dashed "Open seat" placeholders. The rail scrolls vertically
   on desktop and horizontally in 240px tiles at narrow widths rather than shrinking ten cameras until their
-  names and controls are unreadable. Clicking a tile makes it the active board and pins it.
+  names and controls are unreadable. Clicking a tile soft-pins that board over the active turn;
+  clicking the same tile again releases it.
 - **Commander identity** colors both the rail and active-board name bars: one muted solid for
   mono-color, a WUBRG-ordered gradient for multiple colors, and neutral for colorless or unknown.
   The active-board commander name shows identity pips using the existing mana symbols; compact
@@ -244,11 +246,17 @@ always large, everyone else is small, and controls live in a collapsible column.
   API's stored `color_identity` (including partners), not a browser Scryfall request. An empty
   identity is treated as unknown, not falsely labelled colorless; explicit `C` shows its pip.
 - **Active board** (center): the stage fills the remaining viewport. The same life control sits
-  top-left, a Pin/Pinned toggle top-right, and the matching name bar underneath carries the seat
-  menu, camera state, and "Select commander" popover without repeating life. Unpinned, the stage follows the newest
-  remote joiner; when the active player leaves it falls back to your own board. Clicking the
+  top-left and the matching name bar underneath carries the seat menu, camera state, and "Select
+  commander" popover without repeating life. The stage follows the active turn; before turns
+  start it shows the newest remote joiner, and when the shown player leaves it falls back to your
+  own board. While a board is soft-pinned, a Follow turn button top-right releases it. Clicking the
   video starts the click-to-identify flow, and the suggestion card floats bottom-center over the
   stage (keys 1–5 still pick).
+- **Grid view** replaces the rail and active board with every seat's camera in a near-square
+  grid (Two-Headed Giant teams stay together under their shared life). Tiles letterbox rather
+  than crop so each whole board stays visible. Clicking a tile fills the stage with that board,
+  restoring the rail and card identification, until the same tile or the Back to grid button is
+  clicked. A soft pin belongs to the view it was made in, so switching views starts unpinned.
 - **Side panel** (right): a narrow icon strip (Table, Decks, Cards, Log, Settings) plus a collapse chevron and shortcut help. The
   Table tab holds the Setup section (elapsed-time badge and players count in the header, Invite
   players copies the room URL, Select your commander, a turn-order table with #/Player/Turn/Time
@@ -268,14 +276,15 @@ always large, everyone else is small, and controls live in a collapsible column.
   two commander tax by changing your primary commander's cast count by one; partner commanders
   retain individual counter rows. `C` toggles your camera, `B` collapses/expands the panel,
   `T` / `D` / `A` / `L` / `S` opens Table / Decks / Cards / Log / Settings, and `,` / `.`
-  selects and pins the previous/next board. `?` or `H` toggles the grouped shortcut dialog.
+  soft-pins the previous/next board, and `G` toggles grid view. `?` or `H` toggles the grouped
+  shortcut dialog.
   All table actions, including Space, honor the enable preference and pause while typing,
   using a keyboard widget, or while an overlay/picker is open. Ctrl/Alt/Meta, composing and
   repeat events are ignored; Space preserves native button/link activation. The card picker
   retains `1`–`5` and `/` gallery search. Escape closes overlays even with shortcuts disabled.
 - **Settings** stacks collapsible Keyboard shortcuts, View, Camera, Sound and Card scan sections.
-  View switches between selected/pinned boards and following the active turn; manually selecting
-  or cycling a board pins it over the active turn until unpinned, without changing the saved view. Left/Right swaps the side panel and camera rail on desktop;
+  View switches between following the active turn and the all-cameras grid; clicking or cycling
+  a board soft-pins it without changing the saved view. Left/Right swaps the side panel and camera rail on desktop;
   narrow layouts keep cameras above and controls below. Glass/Classic uses the existing global
   theme-style preference. Camera lists available devices, remembers the choice and enabled state,
   and replaces outgoing tracks on existing peer connections without leaving the room. Camera-off state and
@@ -289,7 +298,7 @@ always large, everyone else is small, and controls live in a collapsible column.
   Turn sound is an opt-in WebAudio tone, unlocked by interaction, on transitions to your turn.
   Card scan contains recognition bundle status/version and the existing corrections-sharing
   opt-out (`the-gathering:share-card-corrections`). Other table preferences use the per-player
-  browser key above; sound starts on, stats and follow-turn start off. There is no microphone, hand-count
+  browser key above; sound starts on, stats start off, and the view starts on follow-turn. There is no microphone, hand-count
   or token-copy binding because those features do not exist here.
 - The `/table/*` routes force the dark theme (`TableShell` in `routes/__root.tsx` swaps
   `data-theme` on mount and restores the user's choice on unmount) so portalled popovers and
@@ -387,7 +396,7 @@ player clocks; passing while paused changes the turn but adds no paused time. A 
 player can continue taking turns; elimination does not automatically end the game.
 
 An amber dot and highlight mark the current player's row; an amber Current turn badge marks their
-rail tile and board. This is independent of the violet selected/pinned-board border. Space does
+rail tile and board. This is independent of the violet active-board border. Space does
 not pass while typing, using a control, holding a modifier, repeating a key, composing text, or
 while a card picker/dialog is open. It shares the guarded registry and enable preference in
 `table-hotkeys.tsx` with the other table shortcuts.

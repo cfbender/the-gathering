@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { LayoutGrid, Undo2 } from "lucide-react"
 import { cn } from "@/lib/cn"
 import { ActiveBoard, capturePoint } from "./board"
 import { BoardCardTray } from "./board-cards"
@@ -6,7 +7,7 @@ import { CardPreview } from "./card-preview"
 import { CardSuggestions } from "./card-suggestions"
 import type { TableParticipant } from "./room-types"
 import { describeRoll } from "./table-rolls"
-import { SeatActions, SeatLife, TeamHeader } from "./table-seat"
+import { SeatActions, SeatLife, SeatTile, TeamHeader } from "./table-seat"
 import {
   isCurrentTurn,
   videoFlip,
@@ -14,10 +15,10 @@ import {
   isPinned,
   revealLabels,
   streamFor,
-  togglePin,
   type TableView,
 } from "./table-view"
 import type { CardIdentificationFlow } from "./use-card-identification-flow"
+import type { useVideoStats } from "./video-stats"
 
 function StageBoard({
   view,
@@ -43,8 +44,23 @@ function StageBoard({
           connectionState={room.connectionStates[participant.peer_id]}
           stream={streamFor(view, participant)}
           lifeControl={<SeatLife view={view} participant={participant} size="board" />}
-          pinned={isPinned(view, participant)}
-          onTogglePin={() => togglePin(view, participant)}
+          release={
+            !isPinned(view, participant)
+              ? undefined
+              : view.preferences.viewMode === "grid"
+                ? {
+                    label: "Back to grid",
+                    title: "Show every camera again (or click this player's camera)",
+                    icon: LayoutGrid,
+                    onClick: view.releaseBoard,
+                  }
+                : {
+                    label: "Follow turn",
+                    title: "Go back to following the active turn (or click this player's camera)",
+                    icon: Undo2,
+                    onClick: view.releaseBoard,
+                  }
+          }
           onInspect={(event) => {
             const point = capturePoint(event, videoFlip(view, participant))
             if (point) room.requestCapture(participant.peer_id, point.x, point.y, event.shiftKey)
@@ -61,6 +77,50 @@ function StageBoard({
         />
       </div>
       <SeatActions view={view} participant={participant} size="board" />
+    </div>
+  )
+}
+
+/** Grid view: every seat's camera shares the stage (teams stay together in Two-Headed Giant).
+ * Clicking one fills the stage with that board until it is clicked again. */
+function CameraGrid({
+  view,
+  videoStats,
+}: {
+  view: TableView
+  videoStats: ReturnType<typeof useVideoStats>
+}) {
+  const teamsMode = view.room.mode === "two_headed_giant"
+  const columns = Math.ceil(Math.sqrt(view.groups.length))
+  const rows = Math.ceil(view.groups.length / columns)
+  return (
+    <div
+      className="grid min-h-0 flex-1 gap-1.5 p-1.5"
+      style={{
+        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+      }}
+    >
+      {view.groups.map((group) => (
+        <div
+          key={group[0]!.peer_id}
+          className={cn(
+            "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-sm",
+            teamsMode && "rounded-lg border border-primary/40",
+          )}
+        >
+          {teamsMode && <TeamHeader view={view} group={group} />}
+          {group.map((participant) => (
+            <SeatTile
+              key={participant.peer_id}
+              view={view}
+              participant={participant}
+              videoStats={videoStats}
+              fill
+            />
+          ))}
+        </div>
+      ))}
     </div>
   )
 }
@@ -114,8 +174,16 @@ function IdentificationOverlays({ view, flow }: { view: TableView; flow: CardIde
   )
 }
 
-/** The active board (or team) filling the middle of the table. */
-export function TableStage({ view, flow }: { view: TableView; flow: CardIdentificationFlow }) {
+/** The middle of the table: the active board (or team), or every camera in grid view. */
+export function TableStage({
+  view,
+  flow,
+  videoStats,
+}: {
+  view: TableView
+  flow: CardIdentificationFlow
+  videoStats: ReturnType<typeof useVideoStats>
+}) {
   const { room } = view
   return (
     <section
@@ -123,7 +191,7 @@ export function TableStage({ view, flow }: { view: TableView; flow: CardIdentifi
         "relative flex min-h-0 min-w-0 flex-col",
         view.preferences.panelLeft && "lg:order-3",
       )}
-      aria-label="Active board"
+      aria-label={view.showGrid ? "Camera grid" : "Active board"}
     >
       {room.spectating && (
         <p role="status" className="bg-base-200 px-4 py-2 text-sm font-semibold text-base-content">
@@ -141,11 +209,22 @@ export function TableStage({ view, flow }: { view: TableView; flow: CardIdentifi
           {describeRoll(room.roll)}
         </div>
       )}
-      {room.mode === "two_headed_giant" && <TeamHeader view={view} group={view.activeGroup} />}
+      {room.mode === "two_headed_giant" && !view.showGrid && (
+        <TeamHeader view={view} group={view.activeGroup} />
+      )}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        {view.activeGroup.map((participant) => (
-          <StageBoard key={participant.peer_id} view={view} participant={participant} flow={flow} />
-        ))}
+        {view.showGrid ? (
+          <CameraGrid view={view} videoStats={videoStats} />
+        ) : (
+          view.activeGroup.map((participant) => (
+            <StageBoard
+              key={participant.peer_id}
+              view={view}
+              participant={participant}
+              flow={flow}
+            />
+          ))
+        )}
         <IdentificationOverlays view={view} flow={flow} />
       </div>
     </section>

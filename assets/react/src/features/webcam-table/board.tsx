@@ -1,4 +1,4 @@
-import { Crown, Pin, PinOff, UserPlus, Video, VideoOff } from "lucide-react"
+import { Crown, UserPlus, Video, VideoOff, type LucideIcon } from "lucide-react"
 import type { MouseEvent, ReactNode } from "react"
 import { cn } from "@/lib/cn"
 import { describeConnection, type TableParticipant } from "./use-webcam-room"
@@ -109,8 +109,7 @@ export function ActiveBoard({
   connectionState,
   hiddenLabel,
   revealBadge,
-  pinned,
-  onTogglePin,
+  release,
   onInspect,
   lifeControl,
 }: {
@@ -124,8 +123,8 @@ export function ActiveBoard({
   connectionState?: RTCPeerConnectionState
   hiddenLabel?: string
   revealBadge?: string
-  pinned: boolean
-  onTogglePin: () => void
+  /** Shown while the viewer has pinned this board: returns to the turn or the grid. */
+  release?: { label: string; title: string; icon: LucideIcon; onClick: () => void }
   onInspect: (event: MouseEvent<HTMLButtonElement>) => void
   lifeControl: ReactNode
 }) {
@@ -179,23 +178,17 @@ export function ActiveBoard({
           <Crown className="size-6" />
         </span>
       )}
-      <button
-        type="button"
-        className={cn(
-          "btn btn-xs absolute top-2 right-2 h-7 min-h-0 gap-1 border-white/15 bg-black/70 px-2.5 text-xs text-white hover:bg-black/85",
-          pinned && "border-primary bg-primary/80 hover:bg-primary",
-        )}
-        onClick={onTogglePin}
-        aria-pressed={pinned}
-        title={
-          pinned
-            ? "Pinned: this board stays active when players join"
-            : "Pin this board so it stays active when players join"
-        }
-      >
-        {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
-        {pinned ? "Pinned" : "Pin"}
-      </button>
+      {release && (
+        <button
+          type="button"
+          className="btn btn-xs absolute top-2 right-2 h-7 min-h-0 gap-1 border-primary bg-primary/80 px-2.5 text-xs text-white hover:bg-primary"
+          onClick={release.onClick}
+          title={release.title}
+        >
+          <release.icon className="size-3.5" />
+          {release.label}
+        </button>
+      )}
     </div>
   )
 }
@@ -212,6 +205,7 @@ export function CameraTile({
   revealBadge,
   active,
   currentTurn = false,
+  fill = false,
   onActivate,
   lifeControl,
 }: {
@@ -226,13 +220,16 @@ export function CameraTile({
   revealBadge?: string
   active: boolean
   currentTurn?: boolean
+  /** Grid cells fill their container and letterbox the video so the whole board stays visible. */
+  fill?: boolean
   onActivate: () => void
   lifeControl: ReactNode
 }) {
   return (
     <div
       className={cn(
-        "relative block aspect-video w-full overflow-hidden rounded-sm border-2 bg-black text-left transition",
+        "relative block w-full overflow-hidden rounded-sm border-2 bg-black text-left transition",
+        fill ? "h-full" : "aspect-video",
         active ? "border-primary" : "border-white/10 hover:border-white/40",
       )}
     >
@@ -246,7 +243,10 @@ export function CameraTile({
         {hiddenLabel ? (
           <VideoPlaceholder compact label={hiddenLabel} />
         ) : stream ? (
-          <StreamVideo stream={stream} className={cn("object-cover", flipClasses(flip))} />
+          <StreamVideo
+            stream={stream}
+            className={cn(fill ? "object-contain" : "object-cover", flipClasses(flip))}
+          />
         ) : (
           <VideoPlaceholder
             compact

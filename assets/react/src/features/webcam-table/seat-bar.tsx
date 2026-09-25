@@ -1,8 +1,6 @@
 import {
   Ellipsis,
   Eye,
-  Pin,
-  PinOff,
   TrianglesCenterlineDashedHorizontal,
   TrianglesCenterlineDashedVertical,
   Video,
@@ -33,11 +31,9 @@ export function SeatBar({
   local,
   decks,
   size,
-  pinned,
   onChooseDeck,
   onToggleCamera,
   onReveal,
-  onTogglePin,
   onSetEliminated,
   flip = NO_FLIP,
   onToggleFlip,
@@ -47,11 +43,9 @@ export function SeatBar({
   local: boolean
   decks: DeckSummary[]
   size: "board" | "tile"
-  pinned: boolean
   onChooseDeck: (deckId: number) => void
   onToggleCamera: () => void
   onReveal: () => void
-  onTogglePin: () => void
   onSetEliminated: (eliminated: boolean) => void
   flip?: VideoFlip
   onToggleFlip?: (axis: FlipAxis) => void
@@ -100,10 +94,6 @@ export function SeatBar({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
-          <DropdownMenuItem onSelect={onTogglePin}>
-            {pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
-            {pinned ? "Unpin board" : "Pin as active board"}
-          </DropdownMenuItem>
           {!local &&
             onToggleFlip &&
             FLIP_ITEMS.map(({ axis, Icon }) => (

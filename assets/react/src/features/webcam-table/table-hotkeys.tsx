@@ -126,7 +126,7 @@ export const TABLE_HOTKEYS = [
     action: "previous",
     section: "View & panels",
     title: "Previous board",
-    description: "Select and pin the previous board.",
+    description: "Show the previous player's board.",
   },
   {
     keys: ["."],
@@ -134,7 +134,15 @@ export const TABLE_HOTKEYS = [
     action: "next",
     section: "View & panels",
     title: "Next board",
-    description: "Select and pin the next board.",
+    description: "Show the next player's board.",
+  },
+  {
+    keys: ["g"],
+    chips: ["G"],
+    action: "grid",
+    section: "View & panels",
+    title: "Grid view",
+    description: "Switch between all cameras and following the active turn.",
   },
   {
     keys: ["?", "h"],

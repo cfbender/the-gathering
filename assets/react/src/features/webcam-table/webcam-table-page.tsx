@@ -100,13 +100,20 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     openHelp,
   })
 
+  // The grid already shows every camera, so the rail and its divider step aside.
+  const railShown = !view.showGrid
   return (
     <div
       className={cn(
-        "grid h-dvh grid-rows-[auto_minmax(0,1fr)_auto] bg-black text-white lg:grid-rows-1",
-        preferences.panelLeft
-          ? "lg:grid-cols-[auto_auto_minmax(0,1fr)_0.375rem_var(--table-camera-width)]"
-          : "lg:grid-cols-[var(--table-camera-width)_0.375rem_minmax(0,1fr)_auto_auto]",
+        "grid h-dvh bg-black text-white lg:grid-rows-1",
+        railShown ? "grid-rows-[auto_minmax(0,1fr)_auto]" : "grid-rows-[minmax(0,1fr)_auto]",
+        railShown
+          ? preferences.panelLeft
+            ? "lg:grid-cols-[auto_auto_minmax(0,1fr)_0.375rem_var(--table-camera-width)]"
+            : "lg:grid-cols-[var(--table-camera-width)_0.375rem_minmax(0,1fr)_auto_auto]"
+          : preferences.panelLeft
+            ? "lg:grid-cols-[auto_auto_minmax(0,1fr)]"
+            : "lg:grid-cols-[minmax(0,1fr)_auto_auto]",
       )}
       style={
         {
@@ -115,16 +122,19 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         } as CSSProperties
       }
     >
-      <TableCameraRail view={view} videoStats={videoStats} />
+      {railShown && (
+        <>
+          <TableCameraRail view={view} videoStats={videoStats} />
+          <RailResizeHandle
+            rail="camera"
+            reversed={preferences.panelLeft}
+            width={preferences.camera}
+            onChange={(width) => preferences.setWidth("camera", width)}
+          />
+        </>
+      )}
 
-      <RailResizeHandle
-        rail="camera"
-        reversed={preferences.panelLeft}
-        width={preferences.camera}
-        onChange={(width) => preferences.setWidth("camera", width)}
-      />
-
-      <TableStage view={view} flow={flow} />
+      <TableStage view={view} flow={flow} videoStats={videoStats} />
 
       {panelOpen ? (
         <RailResizeHandle
