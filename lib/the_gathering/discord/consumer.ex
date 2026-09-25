@@ -27,7 +27,7 @@ defmodule TheGathering.Discord.Consumer do
 
     # Nostrum identifies without a presence, so announce one on this shard's
     # session to show the bot as online and describe what it is doing.
-    Self.update_shard_status(ws_state.conn_pid, :online, "SpellBot games", @watching)
+    Self.update_shard_status(ws_state.conn_pid, :online, "the battlefield", @watching)
 
     case Command.register(ready.application.id) do
       {:ok, description} -> Logger.info("Discord #{description}")
