@@ -20,7 +20,7 @@ interface Preferences {
   quality: PublisherQuality
   stats: boolean
   turnSound: boolean
-  /** Remote players whose video this viewer flips vertically (saved before horizontal flips existed). */
+  /** Players (the viewer included) whose video this viewer flips vertically (saved before horizontal flips existed). */
   flippedPlayerIds: number[]
   horizontallyFlippedPlayerIds: number[]
 }
@@ -97,14 +97,14 @@ export function useTablePreferences(playerId: number) {
   }, [key, preferences])
   return {
     ...preferences,
-    toggleVideoFlip: (remotePlayerId: number, axis: FlipAxis) =>
+    toggleVideoFlip: (seatPlayerId: number, axis: FlipAxis) =>
       setPreferences((value) => {
         const ids = value[FLIP_KEYS[axis]]
         return {
           ...value,
-          [FLIP_KEYS[axis]]: ids.includes(remotePlayerId)
-            ? ids.filter((id) => id !== remotePlayerId)
-            : [...ids, remotePlayerId],
+          [FLIP_KEYS[axis]]: ids.includes(seatPlayerId)
+            ? ids.filter((id) => id !== seatPlayerId)
+            : [...ids, seatPlayerId],
         }
       }),
     update: (changes: Partial<Preferences>) =>

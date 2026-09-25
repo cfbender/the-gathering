@@ -130,7 +130,8 @@ coordinates to its native `videoWidth`/`videoHeight`, captures the same 640 px J
 `cardid.capture`, and returns it on the data channel together with the click position inside the
 crop. The requester recognizes the card from that crop.
 
-Video flips are a viewer-only preference, so the click is mapped back to unflipped source
+Video flips are a viewer-only preference (players can flip their own preview too; the sent
+stream is never flipped), so the click is mapped back to unflipped source
 coordinates before it is sent, and the owner always crops native pixels. The requester then
 mirrors the returned crop and its click position to match its own flip of that board
 (`orient-crop.ts`), so recognition, the picker thumbnail, and correction uploads see the card as
@@ -239,7 +240,8 @@ board is large, everyone else is small, and controls live in a collapsible colum
   Other seats have read-only life and an always-visible chevron to inspect their counters.
   Once a commander is chosen, a tax badge (`+4`, or `+4/+2` for partners in name order) sits just
   left of the commander name on every seat; adjust it from the counters panel or tax hotkeys.
-  The ⋯ menu offers flip video (others) and eliminate/restore for every seat; your own menu also has
+  The ⋯ menu offers flip video (vertical or horizontal, your own preview included) and
+  eliminate/restore for every seat; your own menu also has
   camera on/off and Reveal hand, opening the existing private-reveal flow in a dialog.
   Commander names truncate when necessary; the full name remains in the title/hover preview.
   Empty seats up to ten render as dashed "Open seat" placeholders. The rail scrolls vertically

@@ -94,14 +94,17 @@ export function SeatBar({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
-          {!local &&
-            onToggleFlip &&
+          {onToggleFlip &&
             FLIP_ITEMS.map(({ axis, Icon }) => (
               <DropdownMenuItem
                 key={axis}
                 onSelect={() => onToggleFlip(axis)}
                 aria-label={`${flip[axis] ? "Unflip" : "Flip"} ${participant.player_name}'s video ${axis}ly`}
-                title="Only changes your view; remembered for this player"
+                title={
+                  local
+                    ? "Only changes your preview; others see your camera as sent"
+                    : "Only changes your view; remembered for this player"
+                }
               >
                 <Icon className="size-4" />
                 {`${flip[axis] ? "Unflip" : "Flip"} video ${axis}ly`}
