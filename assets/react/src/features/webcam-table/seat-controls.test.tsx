@@ -198,21 +198,38 @@ describe("seat counters", () => {
     expect(screen.getByText("Cara · Commander not revealed")).toBeTruthy()
     expect(screen.getByRole("img", { name: "No image available for Cara" })).toBeTruthy()
     const increase = screen.getByRole("button", { name: "Increase Bob · Tymna" })
-    for (let i = 0; i < 3; i++) fireEvent.click(increase)
+    const decrease = screen.getByRole("button", { name: "Decrease Bob · Tymna" })
+    const settle = () =>
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+    // Each click restarts the 500ms debounce before the life offer appears.
+    for (let i = 0; i < 4; i++) {
+      fireEvent.click(increase)
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+      expect(screen.queryByRole("button", { name: /Apply .* life/ })).toBeNull()
+    }
+    // Correcting a misclick nets the offer down instead of offering life back.
+    fireEvent.click(decrease)
     fireEvent.click(screen.getByRole("button", { name: "Increase Bob · Thrasios" }))
+    settle()
     expect(onChangeLife).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole("button", { name: "Apply -3 life for Bob · Tymna" }))
     expect(onChangeLife.mock.calls).toEqual([[-3]])
     expect(screen.queryByRole("button", { name: "Apply -3 life for Bob · Tymna" })).toBeNull()
     expect(screen.getByRole("button", { name: "Apply -1 life for Bob · Thrasios" })).toBeTruthy()
-    fireEvent.click(screen.getByRole("button", { name: "Decrease Bob · Tymna" }))
-    fireEvent.click(screen.getByRole("button", { name: "Apply +1 life for Bob · Tymna" }))
-    expect(onChangeLife.mock.calls).toEqual([[-3], [1]])
+    fireEvent.click(decrease)
+    settle()
+    expect(screen.queryByRole("button", { name: /life for Bob · Tymna/ })).toBeNull()
+    expect(screen.queryByText(/Also \+/)).toBeNull()
     act(() => {
       vi.advanceTimersByTime(5000)
     })
     expect(screen.queryByRole("button", { name: /Apply .* life/ })).toBeNull()
     fireEvent.click(increase)
+    settle()
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })
     fireEvent.click(screen.getByRole("button", { name: "Alice's counters" }))
     expect(screen.queryByRole("button", { name: /Apply .* life/ })).toBeNull()
