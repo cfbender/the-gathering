@@ -9,7 +9,7 @@ import { describeRoll } from "./table-rolls"
 import { SeatActions, SeatLife, TeamHeader } from "./table-seat"
 import {
   isCurrentTurn,
-  isFlipped,
+  videoFlip,
   isLocal,
   isPinned,
   revealLabels,
@@ -38,7 +38,7 @@ function StageBoard({
           monarch={room.monarch?.peer_id === participant.peer_id}
           {...revealLabels(view, participant)}
           local={isLocal(view, participant)}
-          flipped={isFlipped(view, participant)}
+          flip={videoFlip(view, participant)}
           currentTurn={isCurrentTurn(view, participant)}
           connectionState={room.connectionStates[participant.peer_id]}
           stream={streamFor(view, participant)}
@@ -46,7 +46,7 @@ function StageBoard({
           pinned={isPinned(view, participant)}
           onTogglePin={() => togglePin(view, participant)}
           onInspect={(event) => {
-            const point = capturePoint(event, isFlipped(view, participant))
+            const point = capturePoint(event, videoFlip(view, participant))
             if (point) room.requestCapture(participant.peer_id, point.x, point.y, event.shiftKey)
           }}
         />

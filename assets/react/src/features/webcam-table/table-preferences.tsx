@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react"
+import type { FlipAxis } from "./board"
 import { isPublisherQuality, type PublisherQuality } from "./media-policy"
 
 export const RAIL_WIDTHS = {
@@ -17,7 +18,21 @@ interface Preferences {
   quality: PublisherQuality
   stats: boolean
   turnSound: boolean
+  /** Remote players whose video this viewer flips vertically (saved before horizontal flips existed). */
   flippedPlayerIds: number[]
+  horizontallyFlippedPlayerIds: number[]
+}
+
+const FLIP_KEYS = {
+  vertical: "flippedPlayerIds",
+  horizontal: "horizontallyFlippedPlayerIds",
+} as const satisfies Record<FlipAxis, keyof Preferences>
+
+function savedPlayerIds(saved: object, key: string): number[] {
+  const ids: unknown = key in saved ? (saved as Record<string, unknown>)[key] : undefined
+  return Array.isArray(ids)
+    ? ids.filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0)
+    : []
 }
 
 export function clampRailWidth(rail: Rail, width: number): number {
@@ -40,6 +55,7 @@ export function useTablePreferences(playerId: number) {
       stats: false,
       turnSound: true,
       flippedPlayerIds: [],
+      horizontallyFlippedPlayerIds: [],
     }
     try {
       const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "null")
@@ -53,12 +69,8 @@ export function useTablePreferences(playerId: number) {
         quality: "quality" in saved && isPublisherQuality(saved.quality) ? saved.quality : "auto",
         stats: "stats" in saved && saved.stats === true,
         turnSound: !("turnSound" in saved && saved.turnSound === false),
-        flippedPlayerIds:
-          "flippedPlayerIds" in saved && Array.isArray(saved.flippedPlayerIds)
-            ? saved.flippedPlayerIds.filter(
-                (id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0,
-              )
-            : [],
+        flippedPlayerIds: savedPlayerIds(saved, FLIP_KEYS.vertical),
+        horizontallyFlippedPlayerIds: savedPlayerIds(saved, FLIP_KEYS.horizontal),
         hotkeys: "hotkeys" in saved && typeof saved.hotkeys === "boolean" ? saved.hotkeys : true,
         camera:
           "camera" in saved && typeof saved.camera === "number"
@@ -83,13 +95,16 @@ export function useTablePreferences(playerId: number) {
   }, [key, preferences])
   return {
     ...preferences,
-    toggleVideoFlip: (remotePlayerId: number) =>
-      setPreferences((value) => ({
-        ...value,
-        flippedPlayerIds: value.flippedPlayerIds.includes(remotePlayerId)
-          ? value.flippedPlayerIds.filter((id) => id !== remotePlayerId)
-          : [...value.flippedPlayerIds, remotePlayerId],
-      })),
+    toggleVideoFlip: (remotePlayerId: number, axis: FlipAxis) =>
+      setPreferences((value) => {
+        const ids = value[FLIP_KEYS[axis]]
+        return {
+          ...value,
+          [FLIP_KEYS[axis]]: ids.includes(remotePlayerId)
+            ? ids.filter((id) => id !== remotePlayerId)
+            : [...ids, remotePlayerId],
+        }
+      }),
     update: (changes: Partial<Preferences>) =>
       setPreferences((value) => ({ ...value, ...changes })),
     setHotkeys: (hotkeys: boolean) => setPreferences((value) => ({ ...value, hotkeys })),

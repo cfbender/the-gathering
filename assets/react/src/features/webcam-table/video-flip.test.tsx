@@ -72,14 +72,12 @@ function tileVideo(name: string) {
   return screen.getByRole("button", { name: `Show ${name}'s board` }).querySelector("video")!
 }
 
-async function toggleFlip(action: "Flip" | "Unflip") {
+async function toggleFlip(action: "Flip" | "Unflip", axis: "vertical" | "horizontal" = "vertical") {
   const rail = screen.getByRole("complementary", { name: "Player cameras" })
   const trigger = within(rail).getByRole("button", { name: "Theo's seat actions" })
   act(() => trigger.focus())
   fireEvent.keyDown(trigger, { key: "ArrowDown" })
-  fireEvent.click(
-    await screen.findByRole("menuitem", { name: `${action} Theo's video vertically` }),
-  )
+  fireEvent.click(await screen.findByRole("menuitem", { name: `${action} Theo's video ${axis}ly` }))
 }
 
 it("persists a remote player's flip across reloads, changed peer IDs and rooms, then clears it", async () => {
@@ -144,6 +142,49 @@ it("maps inspection clicks back to the unflipped source, including letterbox edg
   expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 1, false)
   fireEvent.click(board, { clientX: 100, clientY: 420 })
   expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0, false)
+})
+
+it("flips horizontally on its own or combined with a vertical flip, and remembers both", async () => {
+  renderTable()
+  await toggleFlip("Flip", "horizontal")
+  expect(tileVideo("Theo").classList.contains("-scale-x-100")).toBe(true)
+  expect(tileVideo("Theo").classList.contains("-scale-y-100")).toBe(false)
+  expect(tileVideo("Mara").classList.contains("-scale-x-100")).toBe(false)
+  expect(tileVideo("Cody").classList.contains("-scale-x-100")).toBe(false)
+  await toggleFlip("Flip", "vertical")
+  expect(tileVideo("Theo").classList.contains("-scale-x-100")).toBe(true)
+  expect(tileVideo("Theo").classList.contains("-scale-y-100")).toBe(true)
+  expect(JSON.parse(localStorage.getItem("the-gathering:table-preferences:1")!)).toMatchObject({
+    flippedPlayerIds: [42],
+    horizontallyFlippedPlayerIds: [42],
+  })
+
+  cleanup()
+  remote.peerId = "reconnected-in-another-room"
+  renderTable("second-room")
+  expect(tileVideo("Theo").classList.contains("-scale-x-100")).toBe(true)
+  await toggleFlip("Unflip", "horizontal")
+  expect(tileVideo("Theo").classList.contains("-scale-x-100")).toBe(false)
+  expect(tileVideo("Theo").classList.contains("-scale-y-100")).toBe(true)
+  expect(JSON.parse(localStorage.getItem("the-gathering:table-preferences:1")!)).toMatchObject({
+    flippedPlayerIds: [42],
+    horizontallyFlippedPlayerIds: [],
+  })
+})
+
+it("maps inspection clicks on a horizontally flipped board back to the source", async () => {
+  renderTable()
+  fireEvent.click(screen.getByRole("button", { name: "Show Theo's board" }))
+  const board = screen.getByRole("button", { name: "Inspect Theo's board" })
+  const video = board.querySelector("video")!
+  Object.defineProperties(video, { videoWidth: { value: 800 }, videoHeight: { value: 400 } })
+  vi.spyOn(board, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 400, 400))
+  await toggleFlip("Flip", "horizontal")
+  fireEvent.click(board, { clientX: 100, clientY: 180 })
+  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.8, 0.25, false)
+  await toggleFlip("Flip", "vertical")
+  fireEvent.click(board, { clientX: 100, clientY: 180 })
+  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.8, 0.75, false)
 })
 
 it("pins a selected board over follow-turn without overwriting the saved view mode", () => {

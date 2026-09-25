@@ -1,4 +1,13 @@
-import { Ellipsis, Eye, FlipVertical2, Pin, PinOff, Video, VideoOff } from "lucide-react"
+import {
+  Ellipsis,
+  Eye,
+  Pin,
+  PinOff,
+  TrianglesCenterlineDashedHorizontal,
+  TrianglesCenterlineDashedVertical,
+  Video,
+  VideoOff,
+} from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,9 +16,16 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { DeckSummary } from "@/features/decks/decks"
 import { cn } from "@/lib/cn"
+import { NO_FLIP, type FlipAxis, type VideoFlip } from "./board"
 import { commanderBackground } from "./commander-colors"
 import { CommanderControl } from "./commander-control"
 import type { TableParticipant } from "./use-webcam-room"
+
+// Each icon shows the mirror line: a vertical flip mirrors across a horizontal line.
+const FLIP_ITEMS = [
+  { axis: "vertical", Icon: TrianglesCenterlineDashedHorizontal },
+  { axis: "horizontal", Icon: TrianglesCenterlineDashedVertical },
+] as const
 
 /** One line below either video: identity, actions, camera state, commander picker. */
 export function SeatBar({
@@ -23,7 +39,7 @@ export function SeatBar({
   onReveal,
   onTogglePin,
   onSetEliminated,
-  flipped = false,
+  flip = NO_FLIP,
   onToggleFlip,
   canEliminate = local,
 }: {
@@ -37,8 +53,8 @@ export function SeatBar({
   onReveal: () => void
   onTogglePin: () => void
   onSetEliminated: (eliminated: boolean) => void
-  flipped?: boolean
-  onToggleFlip?: () => void
+  flip?: VideoFlip
+  onToggleFlip?: (axis: FlipAxis) => void
   canEliminate?: boolean
 }) {
   const compact = size === "tile"
@@ -88,16 +104,19 @@ export function SeatBar({
             {pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
             {pinned ? "Unpin board" : "Pin as active board"}
           </DropdownMenuItem>
-          {!local && onToggleFlip && (
-            <DropdownMenuItem
-              onSelect={onToggleFlip}
-              aria-label={`${flipped ? "Unflip" : "Flip"} ${participant.player_name}'s video vertically`}
-              title="Only changes your view; remembered for this player"
-            >
-              <FlipVertical2 className="size-4" />
-              {flipped ? "Unflip video vertically" : "Flip video vertically"}
-            </DropdownMenuItem>
-          )}
+          {!local &&
+            onToggleFlip &&
+            FLIP_ITEMS.map(({ axis, Icon }) => (
+              <DropdownMenuItem
+                key={axis}
+                onSelect={() => onToggleFlip(axis)}
+                aria-label={`${flip[axis] ? "Unflip" : "Flip"} ${participant.player_name}'s video ${axis}ly`}
+                title="Only changes your view; remembered for this player"
+              >
+                <Icon className="size-4" />
+                {`${flip[axis] ? "Unflip" : "Flip"} video ${axis}ly`}
+              </DropdownMenuItem>
+            ))}
           {local && (
             <>
               <DropdownMenuItem onSelect={onToggleCamera}>
