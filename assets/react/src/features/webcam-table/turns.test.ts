@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test"
 import { elapsedMilliseconds } from "./game-timer"
-import { EMPTY_TURNS, formatTurnTime, nextActiveSeat, turnDisplay, type TurnState } from "./turns"
+import {
+  EMPTY_TURNS,
+  formatTurnTime,
+  nextActiveSeat,
+  turnDisplay,
+  unpassTarget,
+  type TurnState,
+} from "./turns"
 import { EMPTY_COUNTERS } from "./seat-counters"
 import type { TableParticipant } from "./use-webcam-room"
 
@@ -26,6 +33,13 @@ describe("next turn", () => {
     expect(nextActiveSeat([], null)).toBeUndefined()
   })
 
+  it("offers un-pass only when the last pass led to the current turn", () => {
+    expect(unpassTarget(EMPTY_TURNS)).toBeNull()
+    const pass = { player_id: 1, started_elapsed_ms: 0, next_player_id: 2 }
+    expect(unpassTarget({ ...EMPTY_TURNS, active_player_id: 2, history: [pass] })).toBe(1)
+    expect(unpassTarget({ ...EMPTY_TURNS, active_player_id: 3, history: [pass] })).toBeNull()
+  })
+
   it("displays authoritative turn counts and unequal banked/active times across pass and pause", () => {
     expect(turnDisplay(EMPTY_TURNS, 1, 0)).toEqual({ count: 0, milliseconds: 0 })
     // Server snapshot after player 1 spent 12s, then player 4 spent 19s.
@@ -35,6 +49,7 @@ describe("next turn", () => {
       elapsed_ms: { 1: 12000, 4: 19000 },
       started_elapsed_ms: 31000,
       revision: 3,
+      history: [],
     }
     const timer = { started_at: 1000, paused_ms: 9000, paused_at: 46000, server_now: 100000 }
     const elapsed = elapsedMilliseconds(timer)

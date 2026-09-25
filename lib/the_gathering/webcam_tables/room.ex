@@ -262,6 +262,15 @@ defmodule TheGathering.WebcamTables.Room do
     end
   end
 
+  def handle_call({:unpass_turn, revision}, _from, %{entry: entry} = state) do
+    with true <- entry.turns.revision == revision,
+         {:ok, turns} <- Turns.unpass(entry.turns, ordered_seats(entry), entry.mode) do
+      {:reply, :ok, commit(state, %{entry | turns: turns})}
+    else
+      _ -> {:reply, {:error, %{reason: "there is no pass to undo"}}, state}
+    end
+  end
+
   def handle_call({:adjust_turn, player_id, delta}, _from, %{entry: entry} = state) do
     if Map.has_key?(entry.all_seats, player_id) do
       player_id = Turns.turn_id(ordered_seats(entry), player_id, entry.mode)

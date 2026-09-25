@@ -195,6 +195,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         turns={room.turns}
         timer={room.timer}
         onPassTurn={room.passTurn}
+        onUnpassTurn={room.unpassTurn}
         onAdjustTurn={room.adjustTurn}
         onRoll={room.rollDice}
         onChangeTimer={(action) => {

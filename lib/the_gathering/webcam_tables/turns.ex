@@ -3,10 +3,23 @@ defmodule TheGathering.WebcamTables.Turns do
   Pure turn accounting. Times are measured against the shared game's elapsed
   milliseconds, so pauses freeze a turn without a second set of pause bookkeeping.
   Counts increment when a turn starts, including the first turn of the game.
+
+  `history` holds the most recent passes, newest first, so a mistaken pass can
+  be undone exactly: each entry records who passed, when their turn started and
+  who received it.
   """
 
+  @history_limit 20
+
   def new do
-    %{active_player_id: nil, counts: %{}, elapsed_ms: %{}, started_elapsed_ms: 0, revision: 0}
+    %{
+      active_player_id: nil,
+      counts: %{},
+      elapsed_ms: %{},
+      started_elapsed_ms: 0,
+      revision: 0,
+      history: []
+    }
   end
 
   # A team's first seat is its stable accounting key. Keep the full order when
@@ -73,8 +86,56 @@ defmodule TheGathering.WebcamTables.Turns do
         counts: counts,
         elapsed_ms: times,
         started_elapsed_ms: elapsed,
-        revision: turns.revision + 1
+        revision: turns.revision + 1,
+        history: record_pass(turns, next)
     }
+  end
+
+  # A turn that starts from no active player has no one to hand it back to.
+  defp record_pass(%{active_player_id: nil} = turns, _next), do: turns.history
+
+  defp record_pass(turns, next) do
+    entry = %{
+      player_id: turns.active_player_id,
+      started_elapsed_ms: turns.started_elapsed_ms,
+      next_player_id: next
+    }
+
+    Enum.take([entry | turns.history], @history_limit)
+  end
+
+  @doc """
+  Reverses the most recent pass: the previous player's turn resumes from when it
+  originally started, the time banked by that pass is removed, and the receiving
+  player's count goes back down. Time spent since the pass counts toward the
+  resumed turn. Refuses when the last pass does not lead to the current player
+  (for example after every seat went out) or the previous player is now out.
+  """
+  def unpass(turns, seats, mode \\ "commander") do
+    with [%{next_player_id: next} = last | rest] when next == turns.active_player_id <-
+           turns.history,
+         true <-
+           Enum.any?(units(seats, mode), &(&1.player_id == last.player_id and eligible?(&1))) do
+      banked = turns.started_elapsed_ms - last.started_elapsed_ms
+
+      counts =
+        if next,
+          do: Map.update(turns.counts, next, 0, &max(&1 - 1, 0)),
+          else: turns.counts
+
+      {:ok,
+       %{
+         turns
+         | active_player_id: last.player_id,
+           counts: counts,
+           elapsed_ms: Map.update(turns.elapsed_ms, last.player_id, 0, &max(&1 - banked, 0)),
+           started_elapsed_ms: last.started_elapsed_ms,
+           revision: turns.revision + 1,
+           history: rest
+       }}
+    else
+      _ -> :error
+    end
   end
 
   def reconcile(turns, seats, elapsed, mode \\ "commander") do

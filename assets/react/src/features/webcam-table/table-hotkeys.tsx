@@ -17,6 +17,14 @@ export const TABLE_HOTKEYS = [
     description: "Advance the turn once the match has started.",
   },
   {
+    keys: ["shift+ "],
+    chips: ["Shift + Space"],
+    action: "unpassTurn",
+    section: "Turn & counters",
+    title: "Un-pass turn",
+    description: "Hand the turn back to the previous player after a mistaken pass.",
+  },
+  {
     keys: ["arrowup"],
     chips: ["↑"],
     action: "gainLife",
@@ -206,10 +214,9 @@ export function tableHotkeyAction(
   )
     return null
   const key =
-    event.shiftKey && event.key.startsWith("Arrow")
+    event.shiftKey && (event.key.startsWith("Arrow") || event.key === " ")
       ? `shift+${event.key.toLowerCase()}`
       : event.key.toLowerCase()
-  if (event.shiftKey && event.key === " ") return null
   return TABLE_HOTKEYS.find(({ keys }) => (keys as readonly string[]).includes(key))?.action ?? null
 }
 

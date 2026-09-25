@@ -493,6 +493,7 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
           {"update_status", %{"life" => 7}},
           {"start_game", %{}},
           {"pass_turn", %{"revision" => 1}},
+          {"unpass_turn", %{"revision" => 1}},
           {"take_monarch", %{}},
           {"set_eliminated", %{"peer_id" => @peer_a, "eliminated" => true}},
           {"cards", %{"type" => "cards_cleared", "ownerPeerId" => @peer_a}}
@@ -724,10 +725,26 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
       turns: %{active_player_id: ^bob, counts: %{^alice => 1, ^bob => 1}, revision: 2}
     }
 
+    # Un-pass hands the turn back once per revision, and passing again restores it.
+    assert_reply push(socket, "unpass_turn", %{"revision" => 1}), :error
+    assert_reply push(socket, "unpass_turn", %{}), :error
+    assert_reply push(socket, "unpass_turn", %{"revision" => 2}), :ok
+
+    assert_broadcast "table_state", %{
+      turns: %{active_player_id: ^alice, counts: %{^alice => 1, ^bob => 0}, revision: 3}
+    }
+
+    assert_reply push(other, "unpass_turn", %{"revision" => 3}), :error
+    assert_reply push(other, "pass_turn", %{"revision" => 3}), :ok
+
+    assert_broadcast "table_state", %{
+      turns: %{active_player_id: ^bob, counts: %{^alice => 1, ^bob => 1}, revision: 4}
+    }
+
     assert_reply push(socket, "adjust_turn", %{"player_id" => alice, "delta" => 1}), :ok
     assert WebcamTables.snapshot(room_id).turns.counts[alice] == 2
     assert_reply push(socket, "timer", %{"action" => "pause"}), :ok, paused
-    assert_reply push(socket, "pass_turn", %{"revision" => 2}), :ok
+    assert_reply push(socket, "pass_turn", %{"revision" => 4}), :ok
     current = WebcamTables.snapshot(room_id)
     assert current.turns.counts == %{alice => 3, bob => 1}
     assert current.turns.active_player_id == alice

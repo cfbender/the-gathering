@@ -8,6 +8,8 @@ export interface TurnState {
   elapsed_ms: Record<number, number>
   started_elapsed_ms: number
   revision: number
+  /** Recent passes, newest first; the server uses them to undo a pass. */
+  history: { player_id: number; started_elapsed_ms: number; next_player_id: number | null }[]
 }
 
 export const EMPTY_TURNS: TurnState = {
@@ -16,6 +18,14 @@ export const EMPTY_TURNS: TurnState = {
   elapsed_ms: {},
   started_elapsed_ms: 0,
   revision: 0,
+  history: [],
+}
+
+/** The player an un-pass would hand the turn back to, if the last pass led to the current turn.
+ * The server still refuses when that player has since been eliminated or left. */
+export function unpassTarget(turns: TurnState): number | null {
+  const [last] = turns.history
+  return last && last.next_player_id === turns.active_player_id ? last.player_id : null
 }
 
 /** After the current player, wrapping once; never suggest an out or departed seat. */

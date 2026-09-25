@@ -77,5 +77,50 @@ defmodule TheGathering.WebcamTables.TurnsTest do
     assert Turns.reconcile(turns, all_out, 21_000, mode).active_player_id == nil
   end
 
+  test "un-pass resumes the previous turn, removing the banked time and the extra count" do
+    seats = [seat(1), seat(2), seat(3)]
+    started = Turns.reconcile(Turns.new(), seats, 0)
+    first = Turns.pass(started, seats, 10_000)
+    second = Turns.pass(first, seats, 25_000)
+    assert second.active_player_id == 3
+
+    assert {:ok, undone} = Turns.unpass(second, seats)
+    assert undone.active_player_id == 2
+    assert undone.counts == %{1 => 1, 2 => 1, 3 => 0}
+    assert undone.elapsed_ms == %{1 => 10_000, 2 => 0}
+    # Time since the mistaken pass keeps counting toward player 2's resumed turn.
+    assert undone.started_elapsed_ms == 10_000
+    assert undone.revision == second.revision + 1
+
+    assert {:ok, back} = Turns.unpass(undone, seats)
+    assert back.active_player_id == 1
+    assert back.elapsed_ms == %{1 => 0, 2 => 0}
+    assert back.started_elapsed_ms == 0
+    assert Turns.unpass(back, seats) == :error
+  end
+
+  test "un-pass refuses when the previous player is out or the turn restarted from nobody" do
+    seats = [seat(1), seat(2)]
+    turns = Turns.pass(Turns.reconcile(Turns.new(), seats, 0), seats, 5000)
+    assert Turns.unpass(turns, [seat(1, true), seat(2)]) == :error
+
+    all_out = [seat(1, true), seat(2, true)]
+    cleared = Turns.reconcile(turns, all_out, 8000)
+    restarted = Turns.reconcile(cleared, [seat(1), seat(2, true)], 9000)
+    assert restarted.active_player_id == 1
+    assert Turns.unpass(restarted, [seat(1), seat(2)]) == :error
+  end
+
+  test "pass history is bounded" do
+    seats = [seat(1), seat(2)]
+
+    turns =
+      Enum.reduce(1..30, Turns.reconcile(Turns.new(), seats, 0), fn n, turns ->
+        Turns.pass(turns, seats, n * 1000)
+      end)
+
+    assert length(turns.history) == 20
+  end
+
   defp seat(id, eliminated \\ false), do: %{player_id: id, eliminated: eliminated}
 end

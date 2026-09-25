@@ -60,7 +60,8 @@ defmodule TheGathering.WebcamTables.Session do
         :counts,
         :elapsed_ms,
         :started_elapsed_ms,
-        :revision
+        :revision,
+        :history
       ])
 
     %{
@@ -77,11 +78,17 @@ defmodule TheGathering.WebcamTables.Session do
       log: Enum.map(data["log"] || [], &restore_log_entry/1),
       all_seats: restore_seats(data["all_seats"]),
       eliminated_seats: restore_seats(data["eliminated_seats"]),
-      turns: %{
-        turns
-        | counts: player_keys(turns.counts),
-          elapsed_ms: player_keys(turns.elapsed_ms)
-      }
+      turns:
+        Map.merge(turns, %{
+          counts: player_keys(turns.counts),
+          elapsed_ms: player_keys(turns.elapsed_ms),
+          # Snapshots saved before un-pass existed restore with nothing to undo.
+          history:
+            Enum.map(
+              turns[:history] || [],
+              &fields(&1, [:player_id, :started_elapsed_ms, :next_player_id])
+            )
+        })
     }
   end
 
