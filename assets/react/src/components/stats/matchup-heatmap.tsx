@@ -1,12 +1,17 @@
+import { Link } from "@tanstack/react-router"
+import { gamesLink, type GamesLinkScope } from "@/features/games/game-filters"
 import { matchupGrid } from "@/lib/matchups"
 import type { MatchupRow, NamedRecordRow } from "@/lib/stats"
 
 export function MatchupHeatmap({
   players,
   matchups,
+  games,
 }: {
   players: NamedRecordRow[]
   matchups: MatchupRow[]
+  /** Makes each cell a link to the games both players shared. */
+  games?: GamesLinkScope
 }) {
   const grid = matchupGrid(players, matchups)
 
@@ -16,6 +21,7 @@ export function MatchupHeatmap({
       <h2 className="text-xl font-bold">Matchup heatmap</h2>
       <p className="text-base-content/55 mt-1 text-sm">
         Each row shows that player&apos;s win rate when sharing a pod with the column player.
+        {games && " Click a cell to see those games."}
       </p>
       {grid.players.length < 2 ? (
         <p className="text-base-content/50 mt-5 text-sm">More shared games are needed.</p>
@@ -69,7 +75,21 @@ export function MatchupHeatmap({
                             : undefined
                         }
                       >
-                        {matchup ? (
+                        {matchup && games ? (
+                          <Link
+                            {...gamesLink(games, {
+                              player_id: player.id,
+                              opponent_id: opponent.id,
+                            })}
+                            aria-label={`${player.name}: ${matchup.win_rate}% in ${matchup.games} shared games with ${opponent.name}. Show games`}
+                            className="hover:ring-primary flex size-full flex-col items-center justify-center rounded-md font-bold hover:ring-2"
+                          >
+                            {matchup.win_rate}%
+                            <small className="text-base-content/55 block font-normal">
+                              {matchup.games}g
+                            </small>
+                          </Link>
+                        ) : matchup ? (
                           <span className="font-bold">
                             {matchup.win_rate}%
                             <small className="text-base-content/55 block font-normal">

@@ -1,4 +1,6 @@
+import { Link } from "@tanstack/react-router"
 import { ManaSymbol } from "@/components/mana-symbols"
+import { gamesLink, type GamesLinkScope } from "@/features/games/game-filters"
 import type { ColorExposure } from "@/lib/stats"
 
 const center = 120
@@ -14,7 +16,8 @@ function polygon(values: number[]) {
   return values.map((value, index) => point(index, value)).join(" ")
 }
 
-export function ColorRadar({ rows }: { rows: ColorExposure[] }) {
+/** With `games` (a profile scope), names link to games with the color and win rates to wins. */
+export function ColorRadar({ rows, games }: { rows: ColorExposure[]; games?: GamesLinkScope }) {
   if (rows.every((row) => row.games === 0)) {
     return (
       <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
@@ -103,14 +106,36 @@ export function ColorRadar({ rows }: { rows: ColorExposure[] }) {
             {rows.map((row) => (
               <tr key={row.id} className="border-base-300/70 border-t">
                 <td className="py-2">
-                  <span className="flex items-center gap-2 font-medium">
-                    <ManaSymbol symbol={row.id} className="m-0 translate-y-0" />
-                    {row.name}
-                  </span>
+                  {games && row.games > 0 ? (
+                    <Link
+                      {...gamesLink(games, { player_id: games.player_id, color: row.id })}
+                      className="hover:text-primary flex items-center gap-2 font-medium hover:underline"
+                    >
+                      <ManaSymbol symbol={row.id} className="m-0 translate-y-0" />
+                      {row.name}
+                    </Link>
+                  ) : (
+                    <span className="flex items-center gap-2 font-medium">
+                      <ManaSymbol symbol={row.id} className="m-0 translate-y-0" />
+                      {row.name}
+                    </span>
+                  )}
                 </td>
                 <td className="text-base-content/70 py-2 text-right">{row.games}</td>
                 <td className="py-2 text-right font-semibold">{row.share}%</td>
-                <td className="py-2 text-right font-semibold">{row.win_rate}%</td>
+                <td className="py-2 text-right font-semibold">
+                  {games && row.wins > 0 ? (
+                    <Link
+                      {...gamesLink(games, { winner_id: games.player_id, winner_color: row.id })}
+                      className="hover:text-primary hover:underline"
+                      aria-label={`${row.win_rate}% win rate with ${row.name}. Show wins`}
+                    >
+                      {row.win_rate}%
+                    </Link>
+                  ) : (
+                    `${row.win_rate}%`
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

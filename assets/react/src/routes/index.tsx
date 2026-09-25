@@ -21,6 +21,7 @@ import {
   statsQueryKey,
 } from "@/lib/stats"
 import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
+import { detailedScope, gamesLink } from "@/features/games/game-filters"
 
 export const Route = createFileRoute("/")({ component: HomePage })
 
@@ -44,6 +45,8 @@ function HomePage() {
   const leaderboard = leaderboardRows(stats.leaderboard)
   const leader = leaderboard[0]
   const since = sinceLabel(stats.detailed_stats_from)
+  const games = { date_from: params.date_from }
+  const detailedGames = detailedScope(games, stats.detailed_stats_from)
 
   return (
     <div className="flex flex-col gap-6">
@@ -158,7 +161,12 @@ function HomePage() {
               View all
             </Link>
           </div>
-          <BarChart rows={stats.commanders} value="games" columns={2} />
+          <BarChart
+            rows={stats.commanders}
+            value="games"
+            columns={2}
+            linkTo={(row) => gamesLink(games, { commander: row.name })}
+          />
         </section>
         <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
           <p className="text-primary text-xs font-bold uppercase">Opening advantage</p>
@@ -168,7 +176,11 @@ function HomePage() {
               <span className="text-base-content/50 ml-2 text-sm font-medium">{since}</span>
             )}
           </h2>
-          <BarChart rows={stats.seat_win_rates} columns={2} />
+          <BarChart
+            rows={stats.seat_win_rates}
+            columns={2}
+            linkTo={(row) => gamesLink(detailedGames, { winner_seat: row.id })}
+          />
         </section>
       </div>
 
@@ -176,31 +188,33 @@ function HomePage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <KillStats stats={stats.kills} />
-        <WinConditions stats={stats.win_conditions} />
+        <WinConditions stats={stats.win_conditions} games={games} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <ColorSection
           rows={stats.color_win_rates}
+          games={games}
           action={
             <Link to="/colors" className="btn btn-ghost btn-sm">
               View all
             </Link>
           }
         />
-        <ColorWheel rows={stats.color_exposure} eyebrow="Playgroup colors" />
+        <ColorWheel rows={stats.color_exposure} eyebrow="Playgroup colors" games={games} />
       </div>
 
-      <MatchupHeatmap players={stats.leaderboard} matchups={stats.matchups} />
+      <MatchupHeatmap players={stats.leaderboard} matchups={stats.matchups} games={games} />
 
       <GameLengths
         gameLengths={stats.game_lengths}
         averageDuration={stats.average_duration_minutes}
         averageTurns={stats.average_turns}
         since={since}
+        games={detailedGames}
       />
 
-      <ActivityCalendar gameTimes={stats.game_times} />
+      <ActivityCalendar gameTimes={stats.game_times} games={games} />
 
       <RecentGames games={stats.recent_games} />
     </div>

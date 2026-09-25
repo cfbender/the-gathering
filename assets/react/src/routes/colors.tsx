@@ -5,9 +5,11 @@ import { useState } from "react"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart } from "@/components/stats/charts"
+import { colorIdentityLink } from "@/components/stats/color-section"
 import { ColorWheel } from "@/components/stats/color-wheel"
 import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { gamesLink } from "@/features/games/game-filters"
 import { cn } from "@/lib/cn"
 import {
   LEADERBOARD_MIN_GAMES,
@@ -45,6 +47,7 @@ function ColorsPage() {
   const [metric, setMetric] = useState<ColorMetric>("games")
   const identities = query.data?.color_win_rates ?? []
   const ranked = sortByMetric(identities, metric)
+  const games = { date_from: params.date_from }
 
   return (
     <div className="flex flex-col gap-6">
@@ -101,18 +104,25 @@ function ColorsPage() {
       {query.data && identities.length > 0 && (
         <>
           <div className="grid gap-4 md:grid-cols-2">
-            <ColorWheel rows={query.data.color_exposure} eyebrow="Playgroup colors" />
+            <ColorWheel rows={query.data.color_exposure} eyebrow="Playgroup colors" games={games} />
             <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
               <p className="text-primary text-xs font-bold uppercase">By color</p>
               <h2 className="text-xl font-bold">
                 {metric === "games" ? "Most played colors" : "Win rate by color"}
               </h2>
               <p className="text-base-content/60 mt-1 mb-5 text-sm">
-                Multicolor decks count toward every color they include.
+                Multicolor decks count toward every color they include. Click a color to see its{" "}
+                {metric === "games" ? "games" : "wins"}.
               </p>
               <BarChart
                 rows={sortByMetric(query.data.color_exposure, metric, 0)}
                 value={metric}
+                linkTo={(row) =>
+                  gamesLink(
+                    games,
+                    metric === "games" ? { color: row.id } : { winner_color: row.id },
+                  )
+                }
                 renderLabel={(row) => (
                   <IdentityLabel
                     row={row}
@@ -148,6 +158,7 @@ function ColorsPage() {
                   rows={rows}
                   value={metric}
                   columns={2}
+                  linkTo={(row) => colorIdentityLink(games, metric, row)}
                   renderLabel={(row) => (
                     <IdentityLabel
                       row={row}

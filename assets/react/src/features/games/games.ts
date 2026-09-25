@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { browserTimeZone } from "@/lib/time-zone"
 import type { DeckSummary } from "@/features/decks/decks"
 import type { GameFormat } from "./game-format"
 
@@ -30,6 +31,7 @@ export interface Seat {
   mvp_card_id: string | null
   mvp_card_name: string | null
   mvp_game_changer?: boolean
+  mvp_image_url?: string | null
   mvp_art_crop_url: string | null
   notes: string | null
   player: PlayerSummary
@@ -136,9 +138,10 @@ export const invalidateGameRelated = (queryClient: QueryClient) =>
     queryClient.invalidateQueries({ queryKey: ["stats"] }),
   ])
 
+/** Lists games; dates, weekdays, and hours in `params` are read in the browser's time zone. */
 export function getGames(params: Record<string, string | number | undefined>) {
   const query = new URLSearchParams()
-  Object.entries(params).forEach(([key, value]) => {
+  Object.entries({ ...params, tz: browserTimeZone() }).forEach(([key, value]) => {
     if (value !== undefined && value !== "") query.set(key, String(value))
   })
   return api<{ data: Game[]; pagination: Pagination }>(`/api/games?${query}`)

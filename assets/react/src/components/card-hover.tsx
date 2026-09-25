@@ -4,7 +4,7 @@ import { CardImage } from "@/components/card-image"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { Popover, PopoverContent } from "@/components/ui/popover"
 import type { DeckSummary } from "@/features/decks/decks"
-import { printingPrices, usePrintingDetails } from "./card-details"
+import { printingPrices, usePrintingDetails } from "@/features/webcam-table/card-details"
 
 /** Shared, non-focusing hover preview. Portalled so rail and list overflow cannot clip it. */
 export function CardHover({
@@ -23,7 +23,6 @@ export function CardHover({
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
-  const details = usePrintingDetails(open ? id : null)
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <Anchor asChild>
@@ -45,29 +44,57 @@ export function CardHover({
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-        <CardImage
-          imageUris={
-            details.data?.image_uris ?? {
-              normal: imageUrl ?? undefined,
-              art_crop: artCropUrl ?? undefined,
-            }
-          }
+        <CardHoverPreview
+          id={id}
           name={name}
-          variant={id || imageUrl ? "card" : "art"}
-          className="w-full"
+          imageUrl={imageUrl}
+          artCropUrl={artCropUrl}
+          gameChanger={gameChanger}
         />
-        <p className="mt-1 text-center text-xs">{name}</p>
-        <GameChangerBadge gameChanger={details.data?.game_changer ?? gameChanger} />
-        {details.data && (
-          <p className="mt-1 text-center text-xs text-white/70">
-            {printingPrices(details.data.prices)}
-          </p>
-        )}
-        {details.isPending && id && (
-          <p className="text-center text-xs text-white/60">Loading card…</p>
-        )}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/** Mounted only while the popover is open, so closed hovers never touch the query cache. */
+function CardHoverPreview({
+  id,
+  name,
+  imageUrl,
+  artCropUrl,
+  gameChanger,
+}: {
+  id: string | null
+  name: string
+  imageUrl?: string | null
+  artCropUrl?: string | null
+  gameChanger?: boolean
+}) {
+  const details = usePrintingDetails(id)
+  return (
+    <>
+      <CardImage
+        imageUris={
+          details.data?.image_uris ?? {
+            normal: imageUrl ?? undefined,
+            art_crop: artCropUrl ?? undefined,
+          }
+        }
+        name={name}
+        variant={id || imageUrl ? "card" : "art"}
+        className="w-full"
+      />
+      <p className="mt-1 text-center text-xs">{name}</p>
+      <GameChangerBadge gameChanger={details.data?.game_changer ?? gameChanger} />
+      {details.data && (
+        <p className="mt-1 text-center text-xs text-white/70">
+          {printingPrices(details.data.prices)}
+        </p>
+      )}
+      {details.isPending && id && (
+        <p className="text-center text-xs text-white/60">Loading card…</p>
+      )}
+    </>
   )
 }
 

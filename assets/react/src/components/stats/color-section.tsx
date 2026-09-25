@@ -2,7 +2,9 @@ import { useState, type ReactNode } from "react"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart } from "@/components/stats/charts"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { gamesLink, type GamesLinkScope } from "@/features/games/game-filters"
 import { cn } from "@/lib/cn"
+import { identityFilterValue } from "@/lib/color-identities"
 import {
   LEADERBOARD_MIN_GAMES,
   sortByMetric,
@@ -24,12 +26,15 @@ export function ColorSection({
   eyebrow = "Color check",
   minGames = LEADERBOARD_MIN_GAMES,
   action,
+  games,
 }: {
   rows: NamedRecordRow[]
   eyebrow?: string
   minGames?: number
   /** Rendered after the metric toggle, for example a "View all" link. */
   action?: ReactNode
+  /** Links rows to their games: games played in the Popularity view, wins in Win rate. */
+  games?: GamesLinkScope
 }) {
   const [metric, setMetric] = useState<ColorMetric>("games")
   const shown = sortByMetric(rows, metric, minGames).slice(0, 6)
@@ -76,6 +81,7 @@ export function ColorSection({
         <BarChart
           rows={shown}
           value={metric}
+          linkTo={games && ((row) => colorIdentityLink(games, metric, row))}
           renderLabel={(row) => (
             <span className="inline-flex items-center gap-2">
               <ColorIdentity colors={String(row.id)} />
@@ -91,4 +97,12 @@ export function ColorSection({
       )}
     </section>
   )
+}
+
+/** Games where the identity was played or, for win rates, won with; on a profile, by that player. */
+export function colorIdentityLink(scope: GamesLinkScope, metric: ColorMetric, row: NamedRecordRow) {
+  const colors = identityFilterValue(row.id)
+  return metric === "games"
+    ? gamesLink(scope, { player_id: scope.player_id, colors })
+    : gamesLink(scope, { winner_id: scope.player_id, winner_colors: colors })
 }

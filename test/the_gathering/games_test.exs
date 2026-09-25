@@ -522,4 +522,113 @@ defmodule TheGathering.GamesTest do
     assert ids.(%{min_duration: 40, max_duration: 60}) == [bob_win.id]
     assert ids.(%{"min_duration" => "junk"}) == [bob_win.id, alice_win.id]
   end
+
+  test "list_games filters by colors, win condition, seat, opponent, and player result" do
+    alice = player("Alice")
+    bob = player("Bob")
+    cara = player("Cara")
+
+    # Identities are stored unordered; filters compare them as sets.
+    {:ok, golgari} =
+      Games.create_deck(%{
+        player_id: alice.id,
+        name: "Rot",
+        commander_name: "Meren",
+        color_identity: "GB"
+      })
+
+    {:ok, azorius} =
+      Games.create_deck(%{
+        player_id: bob.id,
+        name: "Walls",
+        commander_name: "Hanna",
+        color_identity: "WU"
+      })
+
+    {:ok, colorless} =
+      Games.create_deck(%{
+        player_id: cara.id,
+        name: "Artifacts",
+        commander_name: "Karn",
+        color_identity: ""
+      })
+
+    {:ok, golgari_win} =
+      Games.create_game(
+        game_attrs([alice, bob], %{
+          win_condition: "infinite_combo",
+          seats: [
+            %{player_id: alice.id, deck_id: golgari.id, seat: 1, result: "win"},
+            %{player_id: bob.id, deck_id: azorius.id, seat: 2, result: "loss"}
+          ]
+        })
+      )
+
+    {:ok, azorius_win} =
+      Games.create_game(
+        game_attrs([alice, bob, cara], %{
+          win_condition: "damage",
+          seats: [
+            %{player_id: alice.id, deck_id: golgari.id, seat: 1, result: "loss"},
+            %{player_id: bob.id, deck_id: azorius.id, seat: 2, result: "win"},
+            %{player_id: cara.id, deck_id: colorless.id, seat: 3, result: "loss"}
+          ]
+        })
+      )
+
+    ids = fn opts -> Games.list_games(opts) |> elem(0) |> Enum.map(& &1.id) end
+
+    assert ids.(%{colors: "BG"}) == [azorius_win.id, golgari_win.id]
+    assert ids.(%{"winner_colors" => "BG"}) == [golgari_win.id]
+    assert ids.(%{winner_colors: "UW"}) == [azorius_win.id]
+    assert ids.(%{colors: "B"}) == []
+    assert ids.(%{colors: "C"}) == [azorius_win.id]
+    assert ids.(%{colors: "junk"}) == [azorius_win.id, golgari_win.id]
+
+    assert ids.(%{color: "g"}) == [azorius_win.id, golgari_win.id]
+    assert ids.(%{winner_color: "W"}) == [azorius_win.id]
+
+    assert ids.(%{win_condition: "infinite_combo"}) == [golgari_win.id]
+    assert ids.(%{"winner_seat" => "2"}) == [azorius_win.id]
+
+    assert ids.(%{player_id: alice.id, opponent_id: cara.id}) == [azorius_win.id]
+    assert ids.(%{player_id: alice.id, player_result: "loss"}) == [azorius_win.id]
+    assert ids.(%{player_id: alice.id, player_result: "junk"}) == [azorius_win.id, golgari_win.id]
+
+    # Deck and winner filters describe the same seat as the chosen player or winner.
+    assert ids.(%{player_id: bob.id, colors: "BG"}) == []
+    assert ids.(%{player_id: alice.id, colors: "BG", player_result: "win"}) == [golgari_win.id]
+    assert ids.(%{player_id: bob.id, commander: "meren"}) == []
+    assert ids.(%{winner_id: alice.id, winner_colors: "WU"}) == []
+    assert ids.(%{winner_id: bob.id, winner_seat: 2, winner_color: "U"}) == [azorius_win.id]
+    assert ids.(%{winner_seat: 1, winner_colors: "WU"}) == []
+  end
+
+  test "list_games reads dates, weekdays, and hours in the requested time zone" do
+    alice = player("Alice")
+    bob = player("Bob")
+
+    # Thursday 2026-09-24 21:30 in New York; already Friday 01:30 in UTC.
+    {:ok, evening} =
+      Games.create_game(game_attrs([alice, bob], %{played_at: ~U[2026-09-25 01:30:00Z]}))
+
+    # Friday 2026-09-25 14:00 in New York.
+    {:ok, afternoon} =
+      Games.create_game(game_attrs([alice, bob], %{played_at: ~U[2026-09-25 18:00:00Z]}))
+
+    ids = fn opts -> Games.list_games(opts) |> elem(0) |> Enum.map(& &1.id) end
+    ny = "America/New_York"
+
+    assert ids.(%{date_from: "2026-09-24", date_to: "2026-09-24", tz: ny}) == [evening.id]
+    assert ids.(%{date_from: "2026-09-24", date_to: "2026-09-24"}) == []
+    assert ids.(%{date_from: "2026-09-25", tz: ny}) == [afternoon.id]
+    assert ids.(%{date_from: "not-a-date"}) == [afternoon.id, evening.id]
+
+    assert ids.(%{"weekday" => "4", "tz" => ny}) == [evening.id]
+    assert ids.(%{weekday: 5}) == [afternoon.id, evening.id]
+    assert ids.(%{hour: 21, tz: ny}) == [evening.id]
+    assert ids.(%{hour: "0", weekday: 0, tz: ny}) == []
+    assert ids.(%{hour: 14, tz: "Not/AZone"}) == []
+    assert ids.(%{hour: 18, tz: "Not/AZone"}) == [afternoon.id]
+  end
 end

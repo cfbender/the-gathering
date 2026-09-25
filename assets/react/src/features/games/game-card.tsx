@@ -32,7 +32,7 @@ function TablePlayer({ seat }: { seat: Seat }) {
           className="text-base-content/80 mt-0.5 text-xs break-words"
           title={seat.deck?.commander_name}
         >
-          {seat.deck ? <DeckCommanders deck={seat.deck} /> : "Unknown commander"}
+          {seat.deck ? <DeckCommanders deck={seat.deck} hover /> : "Unknown commander"}
         </p>
       </div>
     </li>
@@ -107,7 +107,7 @@ export function GameCard({ game }: { game: Game }) {
             {winners.map((seat, index) => (
               <span key={seat.id}>
                 {index > 0 && " / "}
-                {seat.deck ? <DeckCommanders deck={seat.deck} /> : "Unknown commander"}
+                {seat.deck ? <DeckCommanders deck={seat.deck} hover /> : "Unknown commander"}
               </span>
             ))}
           </p>

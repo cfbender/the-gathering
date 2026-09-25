@@ -1,5 +1,6 @@
 import { api } from "@/lib/api"
 import type { StatsRangeParams } from "@/lib/stats-range"
+import { browserTimeZone } from "@/lib/time-zone"
 import type { WinCondition } from "@/features/games/games"
 
 export interface RecordCounts {
@@ -38,6 +39,7 @@ export interface RivalCommander {
   game_changer?: boolean
   id: string
   name: string
+  image_url?: string | null
   art_crop_url: string | null
   color_identity: string | null
   faced: number
@@ -165,6 +167,7 @@ export interface PlayerStats {
     id: string | null
     name: string
     mentions: number
+    image_url?: string | null
     art_crop_url: string | null
     game_changer?: boolean
   }[]
@@ -210,7 +213,8 @@ export interface CommanderStats {
 }
 
 const data = <T>(path: string, params: StatsRangeParams = {}) => {
-  const search = new URLSearchParams(params).toString()
+  const tz = browserTimeZone()
+  const search = new URLSearchParams(tz ? { ...params, tz } : params).toString()
   return api<{ data: T }>(search ? `${path}?${search}` : path).then((body) => body.data)
 }
 

@@ -85,6 +85,14 @@ defmodule TheGathering.StatsTest do
     %{players: players, decks: decks}
   end
 
+  test "date ranges follow the requested time zone's calendar days" do
+    # 2026-01-15 12:00 UTC is already 2026-01-16 02:00 in Kiritimati (UTC+14).
+    kiritimati = %{"date_from" => "2026-01-16", "date_to" => "2026-01-16"}
+    assert Stats.overview(kiritimati).games_count == 0
+    assert Stats.overview(Map.put(kiritimati, "tz", "Pacific/Kiritimati")).games_count == 1
+    assert Stats.overview(Map.put(kiritimati, "tz", "Not/AZone")).games_count == 0
+  end
+
   test "overview reports asymmetric records, draws, seats, colors, and inclusive boundaries", %{
     players: players
   } do
@@ -618,6 +626,7 @@ defmodule TheGathering.StatsTest do
              id: "Krenko, Mob Boss",
              name: "Krenko, Mob Boss",
              game_changer: false,
+             image_url: nil,
              art_crop_url: nil,
              color_identity: nil
            }

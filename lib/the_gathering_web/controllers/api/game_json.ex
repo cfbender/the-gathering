@@ -38,6 +38,7 @@ defmodule TheGatheringWeb.API.GameJSON do
       mvp_card_id: seat.mvp_card_id,
       mvp_card_name: seat.mvp_card_name,
       mvp_game_changer: Catalog.game_changer?(card_art, seat.mvp_card_id, seat.mvp_card_name),
+      mvp_image_url: Catalog.card_image_url(card_art, seat.mvp_card_id, seat.mvp_card_name),
       mvp_art_crop_url: Catalog.art_crop_url(card_art, seat.mvp_card_id, seat.mvp_card_name),
       notes: seat.notes,
       player: association(seat.player, &PlayerJSON.summary/1),
