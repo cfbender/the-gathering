@@ -18,14 +18,19 @@ const out = (...indices: number[]) =>
   seats.map((seat, index) => ({ ...seat, eliminated: indices.includes(index) }))
 
 describe("Five Star original-seat neighbours", () => {
-  it("wraps at seat 1 and waits for both opponents, not a neighbour", () => {
+  it("wraps at seat 1 and drops eliminated neighbours", () => {
     expect(unattackableSeats(seats, 8)).toEqual(["peer-2", "peer-3"])
     expect(unattackableSeats(out(2), 8)).toEqual(["peer-2", "peer-3"])
-    expect(unattackableSeats(out(1, 2), 8)).toEqual(["peer-2", "peer-3"])
+    expect(unattackableSeats(out(1), 8)).toEqual(["peer-2"])
+    expect(unattackableSeats(out(4), 8)).toEqual(["peer-3"])
+  })
+  it("lifts every restriction once three players remain", () => {
     expect(unattackableSeats(out(2, 3), 8)).toEqual([])
+    expect(unattackableSeats(out(1, 2), 8)).toEqual([])
+    expect(unattackableSeats(out(3, 4), 17)).toEqual([])
   })
   it("wraps at seat 5 and does not give spectators badges", () => {
-    expect(unattackableSeats(out(1), 2)).toEqual(["peer-5", "peer-8"])
+    expect(unattackableSeats(out(2), 2)).toEqual(["peer-5", "peer-8"])
     expect(unattackableSeats(out(1, 2), 2)).toEqual([])
     expect(unattackableSeats(seats, 999)).toEqual([])
     expect(unattackableSeats(seats.slice(0, 4), 8)).toEqual([])

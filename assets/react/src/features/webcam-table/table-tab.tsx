@@ -159,8 +159,7 @@ function MatchControls(props: TableTabProps) {
           )}
           {mode === "five_star" && (
             <p className="text-[0.65rem] text-base-content/60">
-              Exactly 5 players. Neighbours can't be attacked until your other two opponents are
-              eliminated.
+              Exactly 5 players. Neighbours can't be attacked until only three players remain.
             </p>
           )}
           <div className="grid grid-cols-2 gap-1.5">

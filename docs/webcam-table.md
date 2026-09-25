@@ -17,7 +17,8 @@ team; eliminating or restoring a player also applies to their whole team. Counte
 commanders remain individual. The result picker records both teammates as winners.
 
 Five Star requires exactly five seats. Each seated viewer sees “Can't attack yet” on their
-original previous/next neighbours until both non-adjacent opponents are eliminated. These are
+original previous/next neighbours. An eliminated neighbour loses its badge, and all badges clear
+once only three players remain. These are
 advisory badges, not enforced attacks or alliances. Spectators see no restrictions. Seat order
 is fixed after starting either new mode, including across reconnects.
 
