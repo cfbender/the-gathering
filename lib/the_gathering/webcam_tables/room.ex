@@ -39,6 +39,9 @@ defmodule TheGathering.WebcamTables.Room do
   """
   def close_if_idle(pid, idle_ms), do: GenServer.call(pid, {:close_if_idle, idle_ms})
 
+  @doc "Whether `player_id` holds a seat in the room, in the lobby or a started game."
+  def seated?(pid, player_id), do: GenServer.call(pid, {:seated?, player_id})
+
   @impl true
   def init(id) do
     Process.send_after(self(), :refresh, @refresh_interval)
@@ -76,6 +79,9 @@ defmodule TheGathering.WebcamTables.Room do
 
   def handle_call({:current?, player_id, pid}, _from, state),
     do: {:reply, match?({^pid, _ref}, state.connections[player_id]), state}
+
+  def handle_call({:seated?, player_id}, _from, state),
+    do: {:reply, state.entry != nil and Map.has_key?(state.entry.all_seats, player_id), state}
 
   def handle_call(:snapshot, _from, state), do: {:reply, snapshot(state.entry), state}
 

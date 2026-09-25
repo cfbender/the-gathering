@@ -7,10 +7,25 @@ defmodule TheGathering.Games.MergePlayers do
   alias TheGathering.Accounts.User
   alias TheGathering.Games.{Deck, GamePlayer, Player}
   alias TheGathering.Repo
+  alias TheGathering.WebcamTables
+
+  @seated_message "has a seat at an open webcam table; record that game and try again " <>
+                    "once the table closes (30 minutes after everyone leaves)"
 
   def run(%Player{id: id}, %Player{id: id}), do: {:error, :bad_request}
 
+  # A webcam table keys its seats, turns and commander damage by player id and
+  # records the result from those ids, so deleting a seated source would leave
+  # the table unable to record its game. Seats last until the room closes, 30
+  # idle minutes after everyone leaves. Checked before the transaction because
+  # asking a room waits on it, and rooms write their sessions to SQLite.
   def run(%Player{} = source, %Player{} = target) do
+    if WebcamTables.seated?(source.id),
+      do: {:error, merge_error(source, "#{source.name} #{@seated_message}")},
+      else: merge_unseated(source, target)
+  end
+
+  defp merge_unseated(source, target) do
     Repo.transaction(fn ->
       with :ok <- ensure_mergeable(source, target),
            {:ok, target} <- carry_identity(source, target) do

@@ -988,6 +988,43 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert rejoin(room, player, @fresh).assigns.participant.life == 40
   end
 
+  test "a seated player cannot be merged away until the table closes", %{
+    socket: socket,
+    room_id: room,
+    player: player
+  } do
+    user = Repo.preload(player, :user).user
+    {:ok, imported} = Games.create_player(%{name: "Alice (imported)"})
+
+    message =
+      "Alice has a seat at an open webcam table; record that game and try again " <>
+        "once the table closes (30 minutes after everyone leaves)"
+
+    # Linking the account to another player would merge (delete) the seated one,
+    # leaving the table's seat and deck ids pointing at rows that no longer exist.
+    assert {:error, changeset} = Games.link_player_to_user(imported, user)
+    assert errors_on(changeset).merge == [message]
+    assert {:error, changeset} = Games.merge_players(player, imported)
+    assert errors_on(changeset).merge == [message]
+    assert Games.get_player(player.id)
+
+    # Merging into the seated player keeps its id, so the table stays valid.
+    {:ok, guest} = Games.create_player(%{name: "Guest"})
+    assert {:ok, %{id: id}} = Games.merge_players(guest, player)
+    assert id == player.id
+
+    # A departed seat still holds its place until the idle room closes.
+    disconnect(socket)
+    assert {:error, _changeset} = Games.link_player_to_user(imported, user)
+
+    ref = Process.monitor(room_pid(room))
+    assert WebcamTables.close_idle_rooms(0) == [room]
+    assert_receive {:DOWN, ^ref, :process, _, :normal}
+    assert {:ok, %{id: linked_id}} = Games.link_player_to_user(imported, user)
+    assert linked_id == imported.id
+    assert Games.get_player(player.id) == nil
+  end
+
   test "expired disconnected sessions are pruned instead of resurrected", %{
     socket: socket,
     room_id: room,
