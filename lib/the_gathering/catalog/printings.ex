@@ -1,9 +1,11 @@
 defmodule TheGathering.Catalog.Printings do
   @moduledoc false
 
-  alias TheGathering.Catalog.{CardData, Printing, PrintingId, Scryfall}
+  alias TheGathering.Catalog.{CardData, DetailsCache, Printing, PrintingId, Scryfall}
   alias TheGathering.Repo
 
+  # Scryfall syncs prices from its affiliates every 24 hours, so a day-old copy loses little.
+  @details_ttl_seconds 86_400
   @face_layouts ~w(transform modal_dfc reversible_card double_faced_token split flip)
   @face_fields ~w(name image_uris mana_cost type_line oracle_text flavor_text power toughness loyalty)
 
@@ -29,15 +31,50 @@ defmodule TheGathering.Catalog.Printings do
 
   The catalog keeps one printing per card, so an arbitrary printing (a webcam-table
   recognition result, for example) is fetched from Scryfall. Its image and set are cached in
-  `card_printings` on the way through, like the printing picker does.
+  `card_printings` on the way through, like the printing picker does, and the whole answer is
+  kept in `card_details_cache` for a day so every seat at a table, and every later game, reads
+  it locally.
   """
   def details(id) do
-    with {:ok, card_id, face} <- PrintingId.parse(id),
-         {:ok, card} <- Scryfall.card(card_id),
+    with {:ok, card_id, face} <- PrintingId.parse(id) do
+      cached_details(id, card_id, face)
+    end
+  end
+
+  defp cached_details(id, card_id, face) do
+    now = DateTime.utc_now(:second)
+
+    case Repo.get(DetailsCache, id) do
+      %DetailsCache{fetched_at: fetched_at, details: details} ->
+        if DateTime.diff(now, fetched_at) < @details_ttl_seconds,
+          do: {:ok, from_cache(details)},
+          else: fetch_details(id, card_id, face, now)
+
+      nil ->
+        fetch_details(id, card_id, face, now)
+    end
+  end
+
+  # The JSON column reads back with string keys; the keys are the ones `details_data/2` wrote.
+  defp from_cache(details),
+    do: Map.new(details, fn {key, value} -> {String.to_existing_atom(key), value} end)
+
+  defp fetch_details(id, card_id, face, now) do
+    with {:ok, card} <- Scryfall.card(card_id),
          {:ok, card} <- select_face(card, face, id) do
       row = printing_data(card)
-      Repo.insert_all(Printing, [row], on_conflict: :replace_all, conflict_target: :id)
-      {:ok, details_data(card, row)}
+      details = details_data(card, row)
+
+      Repo.transaction(fn ->
+        Repo.insert_all(Printing, [row], on_conflict: :replace_all, conflict_target: :id)
+
+        Repo.insert_all(DetailsCache, [%{id: id, details: details, fetched_at: now}],
+          on_conflict: :replace_all,
+          conflict_target: :id
+        )
+      end)
+
+      {:ok, details}
     end
   end
 

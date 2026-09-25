@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import { getPrintings, type CardPrinting } from "@/features/decks/printings"
 import type { CardImageUris } from "@/lib/cards"
+import { preloadImage } from "./card-details"
 import type { IdentifiedCard } from "./use-webcam-room"
 
 /** Fetch every page in API order; selection is local to the preview, never the shared tray. */
@@ -41,14 +42,7 @@ export function usePreviewPrintings(initial: IdentifiedCard) {
   const next = neighbour(1)
 
   useEffect(() => {
-    for (const printing of [previous, next]) {
-      if (printing.image_uris?.normal) {
-        const image = new Image()
-        image.fetchPriority = "low"
-        image.decoding = "async"
-        image.src = printing.image_uris.normal
-      }
-    }
+    for (const printing of [previous, next]) preloadImage(printing.image_uris?.normal)
   }, [previous, next])
 
   return {

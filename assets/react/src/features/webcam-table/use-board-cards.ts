@@ -1,5 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query"
 import type { Channel } from "phoenix"
 import { useCallback, useRef, useState } from "react"
+import { prefetchPrintings } from "./card-details"
 import { applyCardCommand, sameCard, type CardCommand } from "./identified-cards"
 import type { RoomLink } from "./room-link"
 import type { BoardCard, IdentifiedCard } from "./room-types"
@@ -21,6 +23,7 @@ export function useBoardCards(link: RoomLink) {
   const pendingRef = useRef(new Map<number, CardCommand>())
   const commandIdRef = useRef(0)
   const [identifiedCards, setIdentifiedCards] = useState<BoardCard[]>([])
+  const queryClient = useQueryClient()
 
   const show = useCallback(() => {
     cardsRef.current = [...pendingRef.current.values()].reduce(
@@ -30,12 +33,21 @@ export function useBoardCards(link: RoomLink) {
     setIdentifiedCards(cardsRef.current)
   }, [])
 
+  /** Cards new to this seat, including everything already on the table when it joins mid-game,
+   * are fetched in the background so opening them is instant. Newest first: those are the
+   * ones someone is about to open. */
   const receive = useCallback(
     (entries: BoardCard[]) => {
+      const known = new Set(serverCardsRef.current.map((entry) => entry.card.id))
       serverCardsRef.current = entries
       show()
+      const added = entries
+        .map((entry) => entry.card.id)
+        .filter((id) => !known.has(id))
+        .reverse()
+      if (added.length > 0) void prefetchPrintings(queryClient, new Set(added))
     },
-    [show],
+    [queryClient, show],
   )
 
   /** The server broadcasts its list before replying, so an accepted change never flickers; a
