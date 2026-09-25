@@ -81,6 +81,25 @@ defmodule TheGathering.WebcamTables do
     |> Enum.map(fn {id, _pid} -> id end)
   end
 
+  @doc """
+  Whether `player_id` holds a seat at any running table, in the lobby or a
+  started game. Seats stay taken until the room closes, even after their
+  player disconnects. Do not call this inside a `Repo` transaction: rooms
+  write their sessions while answering, and SQLite allows one writer.
+  """
+  def seated?(player_id) do
+    TheGathering.WebcamTables.Registry
+    |> Registry.select([{{:_, :"$1", :_}, [], [:"$1"]}])
+    |> Enum.any?(fn pid ->
+      try do
+        Room.seated?(pid, player_id)
+      catch
+        # The room crashed or stopped since the registry listed it.
+        :exit, _reason -> false
+      end
+    end)
+  end
+
   @doc "Whether `pid` is `player_id`'s current connection."
   def current?(room, player_id, pid), do: call(room, {:current?, player_id, pid})
 
