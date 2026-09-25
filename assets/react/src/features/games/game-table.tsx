@@ -58,7 +58,7 @@ function PlayerPortrait({ seat }: { seat: Seat }) {
             {result} · Seat {seat.seat}
           </p>
           <p className="text-sm font-semibold break-words">
-            {seat.deck ? <DeckCommanders deck={seat.deck} /> : "Unknown commander"}
+            {seat.deck ? <DeckCommanders deck={seat.deck} hover /> : "Unknown commander"}
           </p>
           <p className="text-base-content/70 mt-1 text-xs break-words">
             {seat.deck?.name ?? "Unknown deck"}

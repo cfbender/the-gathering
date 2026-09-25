@@ -1,6 +1,6 @@
 # Statistics API
 
-All statistics routes require an authenticated session and return `{ "data": ... }`. Each accepts optional inclusive `date_from` and `date_to` query parameters in `YYYY-MM-DD` format. Historical rows remain included when a player or deck is archived.
+All statistics routes require an authenticated session and return `{ "data": ... }`. Each accepts optional inclusive `date_from` and `date_to` query parameters in `YYYY-MM-DD` format, read as calendar days in the optional `tz` IANA zone (default UTC; the frontend sends the browser's zone). Historical rows remain included when a player or deck is archived.
 
 ## Detailed-statistics cutoff
 
@@ -28,4 +28,4 @@ Returns every commander played across the playgroup, most played first. Each row
 
 Accepts a Scryfall card ID or a card name. Returns the `commander` identity, overall `record`, per-pilot and per-deck records, `partners` it was paired with, `opponents` faced, cumulative `win_rate_over_time`, and `recent_games` with the commander's result. Responds 404 when the commander has never been played.
 
-All stats endpoints accept optional `date_from` / `date_to` (inclusive ISO dates).
+All stats endpoints accept optional `date_from` / `date_to` (inclusive ISO dates) and `tz`.

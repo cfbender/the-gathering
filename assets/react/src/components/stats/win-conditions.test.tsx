@@ -1,6 +1,25 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vite-plus/test"
+import type { ReactNode } from "react"
+import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import { PlayerWinConditions, WinConditions } from "./win-conditions"
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({
+    children,
+    to,
+    search,
+  }: {
+    children: ReactNode
+    to: string
+    search: Record<string, string | number>
+  }) => (
+    <a
+      href={`${to}?${new URLSearchParams(Object.entries(search).map(([k, v]) => [k, String(v)]))}`}
+    >
+      {children}
+    </a>
+  ),
+}))
 
 afterEach(cleanup)
 
@@ -76,5 +95,27 @@ describe("win conditions", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Wins" }))
     expect(screen.getAllByText("Mill")).toHaveLength(2)
     expect(screen.getByText(/Known for 2 of 3 wins/)).toBeTruthy()
+  })
+
+  it("links a profile's conditions to that player's wins or losses within the range", () => {
+    const stats = {
+      recorded_games: 1,
+      total_games: 1,
+      conditions: [{ condition: "mill" as const, games: 1 }],
+    }
+    render(
+      <PlayerWinConditions
+        wins={stats}
+        losses={{ ...stats, conditions: [{ condition: "poison" as const, games: 1 }] }}
+        games={{ date_from: "2026-03-01", player_id: 7 }}
+      />,
+    )
+    expect(screen.getByRole("link", { name: /Mill/ }).getAttribute("href")).toBe(
+      "/games?winner_id=7&win_condition=mill&date_from=2026-03-01",
+    )
+    fireEvent.click(screen.getByRole("radio", { name: "Losses" }))
+    expect(screen.getByRole("link", { name: /Poison/ }).getAttribute("href")).toBe(
+      "/games?player_id=7&win_condition=poison&player_result=loss&date_from=2026-03-01",
+    )
   })
 })

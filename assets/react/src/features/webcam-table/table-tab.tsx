@@ -22,7 +22,7 @@ import {
   type GameFormat,
 } from "@/features/games/game-format"
 import { cn } from "@/lib/cn"
-import { CommanderHover } from "./card-hover"
+import { CommanderHover } from "@/components/card-hover"
 import { CommanderPicker } from "./commander-picker"
 import { DeckChooserButton } from "./deck-chooser-button"
 import type { TimerSample } from "./game-timer"

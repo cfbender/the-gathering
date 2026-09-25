@@ -73,7 +73,12 @@ catalog backfill operation.
 - `find_or_create_deck(player_or_id, name, attrs \\ %{})` matches deck names case-insensitively within one owner. New decks require `commander_name` in `attrs`.
 - `find_or_create_game_by_external_id(source, external_id, attrs)` and `create_game/1` are idempotent when both external identity fields are present; a repeat returns the existing, fully preloaded game.
 - `create_game/1` and `update_game/2` accept nested `seats` and persist the game atomically.
-- `list_games/1` accepts `player_id`, `deck_id`, `date_from`, `date_to`, `page`, and `per_page` (capped at 100).
+- `list_games/1` (implemented by `Games.ListGames`) accepts `page` and `per_page` (capped at 100) plus these filters:
+  - Seats: `player_id` (with optional `player_result` of `win`/`loss`/`draw`), `winner_id`, `opponent_id` (another player at the table), `deck_id`, `winner_seat`.
+  - Decks: `commander` (substring of commander or partner), `colors` / `winner_colors` (exact identity as WUBRG letters, `C` for colorless; unordered stored identities match), `color` / `winner_color` (identity includes one color).
+  - Games: `win_condition`, `player_count`, `min_turns` / `max_turns`, `min_duration` / `max_duration`.
+  - Time: `date_from` / `date_to` (inclusive local days), `weekday` (0 = Sunday) and `hour` (0–23), all read in the `tz` IANA zone (default UTC). Weekday and hour are matched in Elixir because SQLite has no time zone data.
+  - Deck filters describe the `player_id` seat when a player is chosen, and winner filters all describe one winning seat, so "Alice with Golgari" means Alice piloted Golgari.
 - `get_game!/1` preloads each seat's player and deck.
 
 The public `Games` context remains the compatibility boundary. Complete workflows are

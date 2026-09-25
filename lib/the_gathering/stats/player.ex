@@ -114,7 +114,7 @@ defmodule TheGathering.Stats.Player do
     faced
     |> Enum.map(fn row ->
       row
-      |> Map.take([:id, :name, :art_crop_url, :color_identity, :game_changer])
+      |> Map.take([:id, :name, :image_url, :art_crop_url, :color_identity, :game_changer])
       |> Map.merge(%{faced: row.games, beat_me: row.wins, beaten: Map.get(beaten, row.id, 0)})
     end)
     |> Enum.sort_by(&{-&1.faced, -&1.beat_me, String.downcase(&1.name)})
@@ -177,6 +177,7 @@ defmodule TheGathering.Stats.Player do
         name: name,
         mentions: length(rows),
         game_changer: Catalog.game_changer?(card_art, id, name),
+        image_url: Catalog.card_image_url(card_art, id, name),
         art_crop_url: Catalog.art_crop_url(card_art, id, name)
       }
     end)

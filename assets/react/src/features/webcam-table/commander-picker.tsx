@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { commanderNames, type DeckSummary } from "@/features/decks/decks"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { cn } from "@/lib/cn"
-import { CommanderHover } from "./card-hover"
+import { CommanderHover } from "@/components/card-hover"
 import { CommanderActions } from "./new-commander-dialog"
 
 interface Props {

@@ -152,7 +152,7 @@ function DeckGrid({ decks }: { decks: DeckSummary[] }) {
               <ColorIdentity colors={deck.color_identity} />
             </span>
             <span className="text-base-content/85 text-sm">
-              <DeckCommanders deck={deck} />
+              <DeckCommanders deck={deck} hover />
             </span>
             {deck.decklist_url && (
               <span className="text-base-content/70 inline-flex items-center gap-1 text-xs">

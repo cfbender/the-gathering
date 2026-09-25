@@ -105,6 +105,7 @@ defmodule TheGathering.Stats.Summaries do
     %{
       id: public_commander_id(key, card),
       name: card.name,
+      image_url: Map.get(card, :image_url),
       art_crop_url: card.art_crop_url,
       game_changer: Map.get(card, :game_changer, false),
       color_identity: card.color_identity

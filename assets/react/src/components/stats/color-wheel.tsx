@@ -1,4 +1,6 @@
 import { useState } from "react"
+import { Link } from "@tanstack/react-router"
+import { gamesLink, type GamesLinkScope } from "@/features/games/game-filters"
 import { colorWheelSlices, donutSlicePath } from "@/lib/color-wheel"
 import { cn } from "@/lib/cn"
 import type { ColorExposure } from "@/lib/stats"
@@ -15,10 +17,13 @@ export function ColorWheel({
   rows,
   eyebrow = "Color spread",
   className,
+  games,
 }: {
   rows: ColorExposure[]
   eyebrow?: string
   className?: string
+  /** Makes each slice a link to the games whose decks included that color. */
+  games?: GamesLinkScope
 }) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const slices = colorWheelSlices(rows)
@@ -40,23 +45,40 @@ export function ColorWheel({
           aria-label="Color identity appearance share"
           onMouseLeave={() => setActiveId(null)}
         >
-          {slices.map((slice) => (
-            <path
-              key={slice.id}
-              d={donutSlicePath(slice.startAngle, slice.endAngle)}
-              fill={colors[slice.id as ColorExposure["id"]]}
-              className={cn(
-                "stroke-base-content/35 cursor-pointer outline-none transition-opacity",
-                activeId !== null && activeId !== slice.id && "opacity-40",
-              )}
-              strokeWidth="2"
-              tabIndex={0}
-              aria-label={`${slice.id}: ${slice.percentage.toFixed(1)}%, ${slice.games} games`}
-              onMouseEnter={() => setActiveId(slice.id)}
-              onFocus={() => setActiveId(slice.id)}
-              onBlur={() => setActiveId(null)}
-            />
-          ))}
+          {slices.map((slice) => {
+            const label = `${rows.find((row) => row.id === slice.id)?.name ?? slice.id}: ${slice.percentage.toFixed(1)}%, ${slice.games} games`
+            const path = (
+              <path
+                d={donutSlicePath(slice.startAngle, slice.endAngle)}
+                fill={colors[slice.id as ColorExposure["id"]]}
+                className={cn(
+                  "stroke-base-content/35 cursor-pointer outline-none transition-opacity",
+                  activeId !== null && activeId !== slice.id && "opacity-40",
+                )}
+                strokeWidth="2"
+                tabIndex={games ? undefined : 0}
+                aria-label={games ? undefined : label}
+                onMouseEnter={() => setActiveId(slice.id)}
+                onFocus={() => setActiveId(slice.id)}
+                onBlur={() => setActiveId(null)}
+              />
+            )
+            // SVG anchors take focus themselves, so the path only handles hover.
+            return games ? (
+              <Link
+                key={slice.id}
+                {...gamesLink(games, { player_id: games.player_id, color: slice.id })}
+                aria-label={`${label}. Show games`}
+                className="outline-none"
+                onFocus={() => setActiveId(slice.id)}
+                onBlur={() => setActiveId(null)}
+              >
+                {path}
+              </Link>
+            ) : (
+              <g key={slice.id}>{path}</g>
+            )
+          })}
           {active && activeRow ? (
             <>
               <text

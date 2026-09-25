@@ -12,6 +12,7 @@ defmodule TheGathering.Games do
     DeleteDeck,
     Game,
     GamePlayer,
+    ListGames,
     MergePlayers,
     Player,
     RecordGame,
@@ -285,37 +286,7 @@ defmodule TheGathering.Games do
     |> Enum.sort()
   end
 
-  def list_games(opts \\ %{}) do
-    page = positive_integer(value(opts, :page), 1)
-    per_page = value(opts, :per_page) |> positive_integer(20) |> min(100)
-
-    query =
-      Game
-      |> maybe_game_player(value(opts, :player_id))
-      |> maybe_game_winner(value(opts, :winner_id))
-      |> maybe_game_deck(value(opts, :deck_id))
-      |> maybe_game_commander(value(opts, :commander))
-      |> maybe_player_count(positive_integer(value(opts, :player_count), nil))
-      |> maybe_minimum(:turns, positive_integer(value(opts, :min_turns), nil))
-      |> maybe_maximum(:turns, positive_integer(value(opts, :max_turns), nil))
-      |> maybe_minimum(:duration_minutes, positive_integer(value(opts, :min_duration), nil))
-      |> maybe_maximum(:duration_minutes, positive_integer(value(opts, :max_duration), nil))
-      |> maybe_date_from(value(opts, :date_from))
-      |> maybe_date_to(value(opts, :date_to))
-      |> order_by([game], desc: game.played_at, desc: game.id)
-
-    total = Repo.aggregate(query, :count, :id)
-
-    games =
-      query
-      |> limit(^per_page)
-      |> offset(^((page - 1) * per_page))
-      |> preload(seats: [:player, :deck])
-      |> Repo.all()
-
-    {games,
-     %{page: page, per_page: per_page, total: total, total_pages: max(ceil(total / per_page), 1)}}
-  end
+  def list_games(opts \\ %{}), do: ListGames.call(opts)
 
   def get_game!(id),
     do: Game |> Repo.get!(id) |> Repo.preload(seats: [:player, :deck, :eliminated_by_player])
@@ -412,84 +383,6 @@ defmodule TheGathering.Games do
 
   defp maybe_where_player(query, player_id),
     do: where(query, [deck], deck.player_id == ^player_id)
-
-  defp maybe_game_player(query, nil), do: query
-
-  defp maybe_game_player(query, player_id) do
-    game_ids = from seat in GamePlayer, where: seat.player_id == ^player_id, select: seat.game_id
-    where(query, [game], game.id in subquery(game_ids))
-  end
-
-  defp maybe_game_winner(query, nil), do: query
-
-  defp maybe_game_winner(query, player_id) do
-    game_ids =
-      from seat in GamePlayer,
-        where: seat.player_id == ^player_id and seat.result == "win",
-        select: seat.game_id
-
-    where(query, [game], game.id in subquery(game_ids))
-  end
-
-  defp maybe_game_deck(query, nil), do: query
-
-  defp maybe_game_deck(query, deck_id) do
-    game_ids = from seat in GamePlayer, where: seat.deck_id == ^deck_id, select: seat.game_id
-    where(query, [game], game.id in subquery(game_ids))
-  end
-
-  defp maybe_game_commander(query, nil), do: query
-
-  defp maybe_game_commander(query, name) do
-    case String.trim(name) do
-      "" ->
-        query
-
-      trimmed ->
-        needle = String.downcase(trimmed)
-
-        game_ids =
-          from seat in GamePlayer,
-            join: deck in assoc(seat, :deck),
-            where:
-              fragment("instr(lower(?), ?) > 0", deck.commander_name, ^needle) or
-                fragment("instr(lower(coalesce(?, '')), ?) > 0", deck.partner_name, ^needle),
-            select: seat.game_id
-
-        where(query, [game], game.id in subquery(game_ids))
-    end
-  end
-
-  defp maybe_player_count(query, nil), do: query
-
-  defp maybe_player_count(query, count) do
-    game_ids =
-      from seat in GamePlayer,
-        group_by: seat.game_id,
-        having: count(seat.id) == ^count,
-        select: seat.game_id
-
-    where(query, [game], game.id in subquery(game_ids))
-  end
-
-  defp maybe_minimum(query, _field, nil), do: query
-  defp maybe_minimum(query, field, min), do: where(query, [game], field(game, ^field) >= ^min)
-
-  defp maybe_maximum(query, _field, nil), do: query
-  defp maybe_maximum(query, field, max), do: where(query, [game], field(game, ^field) <= ^max)
-
-  defp maybe_date_from(query, nil), do: query
-
-  defp maybe_date_from(query, date),
-    do: where(query, [game], game.played_at >= ^start_of_day(date))
-
-  defp maybe_date_to(query, nil), do: query
-  defp maybe_date_to(query, date), do: where(query, [game], game.played_at <= ^end_of_day(date))
-
-  defp start_of_day(%Date{} = date), do: DateTime.new!(date, ~T[00:00:00], "Etc/UTC")
-  defp start_of_day(date), do: date |> Date.from_iso8601!() |> start_of_day()
-  defp end_of_day(%Date{} = date), do: DateTime.new!(date, ~T[23:59:59], "Etc/UTC")
-  defp end_of_day(date), do: date |> Date.from_iso8601!() |> end_of_day()
 
   defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
 

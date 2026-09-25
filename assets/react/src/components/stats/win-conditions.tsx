@@ -1,21 +1,27 @@
 import { useState, type ReactNode } from "react"
+import { Link } from "@tanstack/react-router"
 import { Trophy } from "lucide-react"
+import { gamesLink, type GamesLinkScope } from "@/features/games/game-filters"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { winConditionLabel } from "@/features/games/games"
+import { winConditionLabel, type WinCondition } from "@/features/games/games"
 import type { WinConditionStats } from "@/lib/stats"
 
 export function PlayerWinConditions({
   wins,
   losses,
+  games,
 }: {
   wins: WinConditionStats
   losses: WinConditionStats
+  /** Must carry the profile's `player_id` so rows link to that player's wins or losses. */
+  games?: GamesLinkScope
 }) {
   const [perspective, setPerspective] = useState<"wins" | "losses">("wins")
   return (
     <WinConditions
       stats={perspective === "wins" ? wins : losses}
       perspective={perspective}
+      games={games}
       action={
         <ToggleGroup
           type="single"
@@ -48,10 +54,13 @@ export function WinConditions({
   stats,
   perspective,
   action,
+  games,
 }: {
   stats: WinConditionStats
   perspective?: "wins" | "losses"
   action?: ReactNode
+  /** Makes each condition a link to the games that ended that way. */
+  games?: GamesLinkScope
 }) {
   const top = stats.conditions[0]
   const favorites = stats.conditions.filter((row) => row.games === top?.games)
@@ -93,10 +102,18 @@ export function WinConditions({
         <ul className="mt-5 space-y-3">
           {stats.conditions.map((row) => {
             const share = Math.round((row.games / stats.recorded_games) * 100)
-            return (
-              <li key={row.condition}>
+            const content = (
+              <>
                 <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
-                  <span className="font-medium">{winConditionLabel(row.condition)}</span>
+                  <span
+                    className={
+                      games
+                        ? "group-hover:text-primary decoration-primary/60 font-medium group-hover:underline"
+                        : "font-medium"
+                    }
+                  >
+                    {winConditionLabel(row.condition)}
+                  </span>
                   <span className="text-base-content/70 shrink-0 tabular-nums">
                     {row.games} · {share}%
                   </span>
@@ -104,6 +121,20 @@ export function WinConditions({
                 <div className="bg-base-300 h-2 overflow-hidden rounded-full" aria-hidden="true">
                   <div className="bg-primary h-full rounded-full" style={{ width: `${share}%` }} />
                 </div>
+              </>
+            )
+            return (
+              <li key={row.condition}>
+                {games ? (
+                  <Link
+                    {...winConditionLink(games, perspective, row.condition)}
+                    className="group hover:bg-base-300/60 -mx-1 block rounded-lg px-1 py-0.5 transition-colors"
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  content
+                )}
               </li>
             )
           })}
@@ -117,4 +148,20 @@ export function WinConditions({
       )}
     </section>
   )
+}
+
+function winConditionLink(
+  scope: GamesLinkScope,
+  perspective: "wins" | "losses" | undefined,
+  condition: WinCondition,
+) {
+  if (perspective === "wins")
+    return gamesLink(scope, { winner_id: scope.player_id, win_condition: condition })
+  if (perspective === "losses")
+    return gamesLink(scope, {
+      player_id: scope.player_id,
+      player_result: "loss",
+      win_condition: condition,
+    })
+  return gamesLink(scope, { player_id: scope.player_id, win_condition: condition })
 }

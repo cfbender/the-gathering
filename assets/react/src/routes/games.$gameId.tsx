@@ -6,6 +6,7 @@ import { Clock, Pencil, Trophy } from "lucide-react"
 import { canManageGame, formatDate, getGame, winConditionLabel } from "@/features/games/games"
 import { DeleteGame } from "@/features/games/delete-game"
 import { CardArtBackground } from "@/components/card-art-background"
+import { CardHover } from "@/components/card-hover"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { useCurrentUser } from "@/lib/auth"
@@ -98,7 +99,7 @@ function GameDetailPage() {
                     <ColorIdentity colors={seat.deck.color_identity} />
                   </span>
                   <span className="text-base-content/85 block text-sm">
-                    <DeckCommanders deck={seat.deck} />
+                    <DeckCommanders deck={seat.deck} hover />
                   </span>
                 </Link>
               ) : (
@@ -108,7 +109,18 @@ function GameDetailPage() {
                 <div className="border-accent/40 relative mt-2 overflow-hidden rounded-lg border px-3 py-2 text-sm">
                   <CardArtBackground imageUrl={seat.mvp_art_crop_url} />
                   <p className="text-accent relative z-10">
-                    <strong>MVP:</strong> {seat.mvp_card_name}{" "}
+                    <strong>MVP:</strong>{" "}
+                    <CardHover
+                      id={seat.mvp_image_url ? null : seat.mvp_card_id}
+                      name={seat.mvp_card_name}
+                      gameChanger={seat.mvp_game_changer}
+                      imageUrl={seat.mvp_image_url}
+                      artCropUrl={seat.mvp_art_crop_url}
+                    >
+                      <span className="decoration-accent/50 cursor-help underline decoration-dotted underline-offset-2">
+                        {seat.mvp_card_name}
+                      </span>
+                    </CardHover>{" "}
                     <GameChangerBadge gameChanger={seat.mvp_game_changer} />
                   </p>
                 </div>

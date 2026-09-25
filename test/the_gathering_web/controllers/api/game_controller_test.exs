@@ -36,7 +36,10 @@ defmodule TheGatheringWeb.API.GameControllerTest do
       type_line: "Instant",
       colors: [],
       color_identity: [],
-      image_uris: %{"art_crop" => "https://cards.example/swan-song-art.jpg"},
+      image_uris: %{
+        "art_crop" => "https://cards.example/swan-song-art.jpg",
+        "normal" => "https://cards.example/swan-song.jpg"
+      },
       set_code: "tst",
       collector_number: "2",
       layout: "normal",
@@ -133,7 +136,8 @@ defmodule TheGatheringWeb.API.GameControllerTest do
                    "player" => %{"id" => alice_id, "name" => "Alice"},
                    "deck" => %{"id" => deck_id, "commander_name" => "Kangee, Sky Warden"},
                    "mvp_card_name" => "Swan Song",
-                   "mvp_art_crop_url" => "https://cards.example/swan-song-art.jpg"
+                   "mvp_art_crop_url" => "https://cards.example/swan-song-art.jpg",
+                   "mvp_image_url" => "https://cards.example/swan-song.jpg"
                  },
                  %{
                    "seat" => 2,

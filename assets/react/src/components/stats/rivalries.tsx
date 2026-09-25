@@ -1,6 +1,7 @@
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { Link } from "@tanstack/react-router"
 import { CardArtBackground } from "@/components/card-art-background"
+import { CardHover } from "@/components/card-hover"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { PlayerAvatar } from "@/components/player-avatar"
 import { favoritePrey, favoriteVictim, nemesisCommander, nemesisPlayer } from "@/lib/rivals"
@@ -168,7 +169,15 @@ export function Rivalries({
                   colors={commander.color_identity ?? ""}
                   className="hidden sm:inline-flex"
                 />
-                <span className="truncate">{commander.name}</span>
+                <CardHover
+                  id={null}
+                  name={commander.name}
+                  gameChanger={commander.game_changer}
+                  imageUrl={commander.image_url}
+                  artCropUrl={commander.art_crop_url}
+                >
+                  <span className="truncate">{commander.name}</span>
+                </CardHover>
                 <GameChangerBadge gameChanger={commander.game_changer} compact />
               </span>
               <span>{commander.faced}</span>

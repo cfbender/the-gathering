@@ -5,7 +5,7 @@ defmodule TheGathering.Stats.Query do
 
   alias TheGathering.Catalog.CardData
   alias TheGathering.Games.{Deck, Game, GamePlayer, Player}
-  alias TheGathering.Repo
+  alias TheGathering.{LocalTime, Repo}
 
   def games(params, filters \\ []) do
     from(game in Game, as: :game)
@@ -135,35 +135,46 @@ defmodule TheGathering.Stats.Query do
 
   @doc """
   Applies optional inclusive `date_from` / `date_to` ISO dates from `params` to a query
-  whose game binding is named `:game`. Unparseable values are ignored.
+  whose game binding is named `:game`. Days follow the `tz` IANA zone (default UTC), so
+  a range matches the browser's local calendar. Unparseable values are ignored.
   """
   def date_range(query, params) do
+    zone = LocalTime.zone(params_value(params, :tz))
+
     query
-    |> maybe_date_from(params_value(params, :date_from))
-    |> maybe_date_to(params_value(params, :date_to))
+    |> maybe_date_from(params_value(params, :date_from), zone)
+    |> maybe_date_to(params_value(params, :date_to), zone)
   end
 
   defp params_value(params, key), do: Map.get(params, key) || Map.get(params, Atom.to_string(key))
 
-  defp maybe_date_from(query, nil), do: query
+  defp maybe_date_from(query, nil, _zone), do: query
 
-  defp maybe_date_from(query, value) do
+  defp maybe_date_from(query, value, zone) do
     case Date.from_iso8601(value) do
-      {:ok, date} -> where(query, [game: game], game.played_at >= ^start_of_day(date))
-      _error -> query
+      {:ok, date} ->
+        where(query, [game: game], game.played_at >= ^LocalTime.start_of_day(date, zone))
+
+      _error ->
+        query
     end
   end
 
-  defp maybe_date_to(query, nil), do: query
+  defp maybe_date_to(query, nil, _zone), do: query
 
-  defp maybe_date_to(query, value) do
+  defp maybe_date_to(query, value, zone) do
     case Date.from_iso8601(value) do
-      {:ok, date} -> where(query, [game: game], game.played_at < ^start_of_day(Date.add(date, 1)))
-      _error -> query
+      {:ok, date} ->
+        where(
+          query,
+          [game: game],
+          game.played_at < ^LocalTime.start_of_day(Date.add(date, 1), zone)
+        )
+
+      _error ->
+        query
     end
   end
-
-  defp start_of_day(date), do: DateTime.new!(date, ~T[00:00:00], "Etc/UTC")
 
   defp all_commander_references do
     Deck

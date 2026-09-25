@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Link } from "@tanstack/react-router"
 import { Gauge, Timer } from "lucide-react"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { gamesLink, type GamesLinkScope } from "@/features/games/game-filters"
 import { cn } from "@/lib/cn"
 import type { GameLengths as GameLengthsData, HistogramBin, RecentStatGame } from "@/lib/stats"
 
@@ -12,11 +13,14 @@ export function GameLengths({
   averageDuration,
   averageTurns,
   since,
+  games,
 }: {
   gameLengths: GameLengthsData
   averageDuration: number | null
   averageTurns: number | null
   since?: string
+  /** Makes each bar a link to its games; narrow it with `detailedScope` first. */
+  games?: GamesLinkScope
 }) {
   const [metric, setMetric] = useState<LengthMetric>("duration")
   const bins = metric === "duration" ? gameLengths.durations : gameLengths.turns
@@ -58,7 +62,7 @@ export function GameLengths({
           No {metric === "duration" ? "timed games" : "turn counts"} recorded yet.
         </p>
       ) : (
-        <Histogram bins={bins} average={average} metric={metric} />
+        <Histogram bins={bins} average={average} metric={metric} games={games} />
       )}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -73,10 +77,12 @@ function Histogram({
   bins,
   average,
   metric,
+  games,
 }: {
   bins: HistogramBin[]
   average: number | null
   metric: LengthMetric
+  games?: GamesLinkScope
 }) {
   const maxGames = Math.max(...bins.map((bin) => bin.games), 1)
   const first = bins[0]!.from
@@ -86,7 +92,7 @@ function Histogram({
   const columns = { gridTemplateColumns: `repeat(${bins.length}, minmax(0, 1fr))` }
 
   return (
-    <div className="mt-5" role="img" aria-label={`${metric} histogram`}>
+    <div className="mt-5" role={games ? "group" : "img"} aria-label={`${metric} histogram`}>
       {average !== null && (
         <p className="text-accent text-right text-xs font-bold">AVG {average}</p>
       )}
@@ -94,20 +100,41 @@ function Histogram({
         <div style={{ minWidth: `${Math.max(30, bins.length * 3.25)}rem` }}>
           <div className="border-base-content/20 relative border-b pt-6">
             <div className="grid h-36 items-end" style={columns}>
-              {bins.map((bin) => (
-                <div
-                  key={bin.from}
-                  title={`${bin.from}–${bin.to - 1}: ${bin.games} games`}
-                  className="bg-primary/75 relative mx-1 rounded-t"
-                  style={{ height: `${(bin.games / maxGames) * 100}%` }}
-                >
-                  {bin.games > 0 && (
-                    <span className="text-base-content/65 absolute bottom-full mb-1 w-full text-center text-[10px]">
-                      {bin.games}
-                    </span>
-                  )}
-                </div>
-              ))}
+              {bins.map((bin) => {
+                const title = `${bin.from}–${bin.to - 1}: ${bin.games} games`
+                const style = { height: `${(bin.games / maxGames) * 100}%` }
+                const count = bin.games > 0 && (
+                  <span className="text-base-content/65 absolute bottom-full mb-1 w-full text-center text-[10px]">
+                    {bin.games}
+                  </span>
+                )
+                return games && bin.games > 0 ? (
+                  <Link
+                    key={bin.from}
+                    {...gamesLink(games, {
+                      player_id: games.player_id,
+                      ...(metric === "duration"
+                        ? { min_duration: bin.from, max_duration: bin.to - 1 }
+                        : { min_turns: bin.from, max_turns: bin.to - 1 }),
+                    })}
+                    title={title}
+                    aria-label={`${title}. Show games`}
+                    className="bg-primary/75 hover:bg-primary relative mx-1 block rounded-t transition-colors"
+                    style={style}
+                  >
+                    {count}
+                  </Link>
+                ) : (
+                  <div
+                    key={bin.from}
+                    title={title}
+                    className="bg-primary/75 relative mx-1 rounded-t"
+                    style={style}
+                  >
+                    {count}
+                  </div>
+                )
+              })}
             </div>
             {averageX !== null && averageX >= 0 && averageX <= 100 && (
               <div
