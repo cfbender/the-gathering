@@ -73,7 +73,7 @@ export function SeatOrderTable({
     >
       <thead className="text-base-content/50 text-[0.6rem] tracking-wider uppercase">
         <tr>
-          <th className="w-5 py-1 text-left font-semibold">#</th>
+          <th className="w-7 py-1 pl-2 text-left font-semibold">#</th>
           <th className="py-1 text-left font-semibold">Player</th>
           {canReorder && (
             <th className="w-7 py-1">
@@ -81,7 +81,7 @@ export function SeatOrderTable({
             </th>
           )}
           <th className="w-16 py-1 text-center font-semibold">Turn</th>
-          <th className="w-11 py-1 text-right font-semibold">Time</th>
+          <th className="w-13 py-1 pr-2 text-right font-semibold">Time</th>
         </tr>
       </thead>
       <tbody>
@@ -103,7 +103,7 @@ export function SeatOrderTable({
                 seat.eliminated && "text-white/45",
               )}
             >
-              <td className="py-2 tabular-nums">{positions.get(seat.peer_id) ?? "—"}</td>
+              <td className="py-2 pl-2 tabular-nums">{positions.get(seat.peer_id) ?? "—"}</td>
               <td className="py-2 pr-1">
                 <span className="flex items-center gap-1 font-semibold">
                   {active && (
@@ -188,7 +188,7 @@ export function SeatOrderTable({
                 </div>
               </td>
               <td
-                className="py-2 text-right tabular-nums"
+                className="py-2 pr-2 text-right tabular-nums"
                 aria-label={`${seat.player_name} turn time`}
               >
                 {formatTurnTime(display.milliseconds)}
