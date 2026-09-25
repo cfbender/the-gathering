@@ -4,7 +4,7 @@ import { MAX_PLAYERS } from "./rooms"
 import { SeatActions, SeatLife, TeamHeader } from "./table-seat"
 import {
   isCurrentTurn,
-  isFlipped,
+  videoFlip,
   isLocal,
   revealLabels,
   streamFor,
@@ -52,7 +52,7 @@ export function TableCameraRail({
                   monarch={room.monarch?.peer_id === participant.peer_id}
                   {...revealLabels(view, participant)}
                   local={isLocal(view, participant)}
-                  flipped={isFlipped(view, participant)}
+                  flip={videoFlip(view, participant)}
                   active={participant.peer_id === view.activeParticipant.peer_id}
                   currentTurn={isCurrentTurn(view, participant)}
                   connectionState={room.connectionStates[participant.peer_id]}

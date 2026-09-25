@@ -14,9 +14,21 @@ it.each([
 ])("ignores malformed saved flip identities: %j", (saved, expected) => {
   localStorage.setItem(
     "the-gathering:table-preferences:1",
-    JSON.stringify({ flippedPlayerIds: saved }),
+    JSON.stringify({ flippedPlayerIds: saved, horizontallyFlippedPlayerIds: saved }),
   )
-  expect(renderHook(() => useTablePreferences(1)).result.current.flippedPlayerIds).toEqual(expected)
+  expect(renderHook(() => useTablePreferences(1)).result.current).toMatchObject({
+    flippedPlayerIds: expected,
+    horizontallyFlippedPlayerIds: expected,
+  })
+})
+
+it("toggles each flip axis independently", () => {
+  const { result } = renderHook(() => useTablePreferences(1))
+  act(() => result.current.toggleVideoFlip(42, "horizontal"))
+  expect(result.current).toMatchObject({ flippedPlayerIds: [], horizontallyFlippedPlayerIds: [42] })
+  act(() => result.current.toggleVideoFlip(42, "vertical"))
+  act(() => result.current.toggleVideoFlip(42, "horizontal"))
+  expect(result.current).toMatchObject({ flippedPlayerIds: [42], horizontallyFlippedPlayerIds: [] })
 })
 
 it.each([null, {}, { turnSound: true }, { turnSound: false }])(

@@ -71,8 +71,17 @@ function CurrentTurnBadge({ compact = false }: { compact?: boolean }) {
   )
 }
 
+export type FlipAxis = "vertical" | "horizontal"
+/** How the viewer mirrors a remote video locally; the sender's stream is unchanged. */
+export type VideoFlip = Record<FlipAxis, boolean>
+export const NO_FLIP: VideoFlip = { vertical: false, horizontal: false }
+
+function flipClasses(flip: VideoFlip) {
+  return cn(flip.vertical && "-scale-y-100", flip.horizontal && "-scale-x-100")
+}
+
 /** Maps a click on a `object-contain` video to normalized source coordinates. */
-export function capturePoint(event: MouseEvent<HTMLElement>, flipped = false) {
+export function capturePoint(event: MouseEvent<HTMLElement>, flip: VideoFlip = NO_FLIP) {
   const video = event.currentTarget.querySelector("video")
   if (!video || !video.videoWidth || !video.videoHeight) return null
 
@@ -83,12 +92,10 @@ export function capturePoint(event: MouseEvent<HTMLElement>, flipped = false) {
   const renderedHeight = sourceRatio > boundsRatio ? bounds.width / sourceRatio : bounds.height
   const left = bounds.left + (bounds.width - renderedWidth) / 2
   const top = bounds.top + (bounds.height - renderedHeight) / 2
+  const x = Math.max(0, Math.min(1, (event.clientX - left) / renderedWidth))
   const y = Math.max(0, Math.min(1, (event.clientY - top) / renderedHeight))
 
-  return {
-    x: Math.max(0, Math.min(1, (event.clientX - left) / renderedWidth)),
-    y: flipped ? 1 - y : y,
-  }
+  return { x: flip.horizontal ? 1 - x : x, y: flip.vertical ? 1 - y : y }
 }
 
 export function ActiveBoard({
@@ -97,7 +104,7 @@ export function ActiveBoard({
   monarch,
   stream,
   local,
-  flipped = false,
+  flip = NO_FLIP,
   currentTurn = false,
   connectionState,
   hiddenLabel,
@@ -112,7 +119,7 @@ export function ActiveBoard({
   monarch?: boolean
   stream?: MediaStream
   local: boolean
-  flipped?: boolean
+  flip?: VideoFlip
   currentTurn?: boolean
   connectionState?: RTCPeerConnectionState
   hiddenLabel?: string
@@ -134,10 +141,7 @@ export function ActiveBoard({
         {hiddenLabel ? (
           <VideoPlaceholder label={hiddenLabel} />
         ) : stream ? (
-          <StreamVideo
-            stream={stream}
-            className={cn("object-contain", flipped && "-scale-y-100")}
-          />
+          <StreamVideo stream={stream} className={cn("object-contain", flipClasses(flip))} />
         ) : (
           <VideoPlaceholder
             label={
@@ -202,7 +206,7 @@ export function CameraTile({
   monarch,
   stream,
   local,
-  flipped = false,
+  flip = NO_FLIP,
   connectionState,
   hiddenLabel,
   revealBadge,
@@ -216,7 +220,7 @@ export function CameraTile({
   monarch?: boolean
   stream?: MediaStream
   local: boolean
-  flipped?: boolean
+  flip?: VideoFlip
   connectionState?: RTCPeerConnectionState
   hiddenLabel?: string
   revealBadge?: string
@@ -242,7 +246,7 @@ export function CameraTile({
         {hiddenLabel ? (
           <VideoPlaceholder compact label={hiddenLabel} />
         ) : stream ? (
-          <StreamVideo stream={stream} className={cn("object-cover", flipped && "-scale-y-100")} />
+          <StreamVideo stream={stream} className={cn("object-cover", flipClasses(flip))} />
         ) : (
           <VideoPlaceholder
             compact

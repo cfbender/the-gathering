@@ -2,7 +2,7 @@ import { LifeControl } from "./life-control"
 import type { TableParticipant } from "./room-types"
 import { SeatBar } from "./seat-bar"
 import { SeatCounterControls } from "./seat-counter-controls"
-import { decksFor, isFlipped, isLocal, isPinned, togglePin, type TableView } from "./table-view"
+import { decksFor, videoFlip, isLocal, isPinned, togglePin, type TableView } from "./table-view"
 
 type SeatSize = "board" | "tile"
 
@@ -69,8 +69,8 @@ export function SeatActions({ view, participant, size }: SeatProps) {
       pinned={isPinned(view, participant)}
       onTogglePin={() => togglePin(view, participant)}
       onSetEliminated={(eliminated) => room.setEliminated(participant.peer_id, eliminated)}
-      flipped={isFlipped(view, participant)}
-      onToggleFlip={() => view.preferences.toggleVideoFlip(participant.player_id)}
+      flip={videoFlip(view, participant)}
+      onToggleFlip={(axis) => view.preferences.toggleVideoFlip(participant.player_id, axis)}
       canEliminate={
         room.timer?.state.started_at != null &&
         !room.spectating &&
