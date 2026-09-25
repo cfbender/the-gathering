@@ -109,7 +109,7 @@ describe("GameTable", () => {
       "/art/3.jpg",
     ])
     expect(screen.getByRole("cell", { name: /Winner:\s*Bob/ })).toBeTruthy()
-    expect(screen.getByRole("cell", { name: "7" })).toBeTruthy()
+    expect(screen.getByRole("cell", { name: "7 turns" })).toBeTruthy()
     expect(screen.getByRole("cell", { name: "83 min" })).toBeTruthy()
     expect(screen.getByRole("link").getAttribute("href")).toBe("/games/42")
 
@@ -138,7 +138,7 @@ describe("GameTable", () => {
     expect(drawPlayers.queryByRole("button", { name: /Winner/ })).toBeNull()
     expect(drawPlayers.getAllByRole("button", { name: /Draw/ })).toHaveLength(2)
     expect(screen.getAllByLabelText("Not recorded")).toHaveLength(2)
-    expect(screen.getByRole("cell", { name: "0" })).toBeTruthy()
+    expect(screen.getByRole("cell", { name: "0 turns" })).toBeTruthy()
     expect(screen.getByRole("cell", { name: "0 min" })).toBeTruthy()
   })
 
