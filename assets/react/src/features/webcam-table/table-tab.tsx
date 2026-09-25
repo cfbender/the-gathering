@@ -8,6 +8,7 @@ import {
   Play,
   ScanSearch,
   Shuffle,
+  Undo2,
   Users,
   Wifi,
 } from "lucide-react"
@@ -34,7 +35,7 @@ import { describeIceServers, describeRecognizer } from "./side-panel-labels"
 import { TableRolls, type RollRequest } from "./table-rolls"
 import { Choice } from "./table-settings"
 import { TimerBadge, TimerToggle } from "./table-timer"
-import { nextActiveSeat, type TurnState } from "./turns"
+import { nextActiveSeat, unpassTarget, type TurnState } from "./turns"
 
 export interface TableTabProps {
   mode?: GameFormat
@@ -62,6 +63,7 @@ export interface TableTabProps {
   turns: TurnState
   timer: TimerSample | null
   onPassTurn: () => void
+  onUnpassTurn: () => void
   onAdjustTurn: (playerId: number, delta: -1 | 1) => void
   onRoll: (request: RollRequest) => void
   onEndGame: () => void
@@ -188,20 +190,45 @@ function MatchControls(props: TableTabProps) {
           </div>
         </>
       )}
-      {started && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="w-full"
-          onClick={props.onPassTurn}
-          disabled={props.turns.active_player_id === null}
-          title={`Next: ${nextActiveSeat(participants, props.turns.active_player_id, mode)?.player_name ?? "No eligible players"}`}
-        >
-          Pass turn <kbd className="kbd kbd-xs">Space</kbd>
-        </Button>
-      )}
+      {started && <TurnButtons {...props} />}
     </>
+  )
+}
+
+function TurnButtons(props: TableTabProps) {
+  const { participants, mode, turns } = props
+  const previousId = unpassTarget(turns)
+  const previous = participants.find((participant) => participant.player_id === previousId)
+  return (
+    <div className="flex gap-1.5">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="flex-1 whitespace-nowrap"
+        onClick={props.onPassTurn}
+        disabled={turns.active_player_id === null}
+        title={`Next: ${nextActiveSeat(participants, turns.active_player_id, mode)?.player_name ?? "No eligible players"}`}
+      >
+        Pass turn <kbd className="kbd kbd-xs">Space</kbd>
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="whitespace-nowrap"
+        onClick={props.onUnpassTurn}
+        disabled={previousId === null}
+        aria-label="Un-pass turn"
+        title={
+          previous
+            ? `Un-pass turn: back to ${previous.player_name}`
+            : "Un-pass turn: nothing to undo"
+        }
+      >
+        <Undo2 className="size-3.5" aria-hidden /> <kbd className="kbd kbd-xs">⇧ Space</kbd>
+      </Button>
+    </div>
   )
 }
 

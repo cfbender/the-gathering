@@ -261,7 +261,7 @@ board is large, everyone else is small, and controls live in a collapsible colum
   Table tab holds the Setup section (elapsed-time badge and players count in the header, Invite
   players copies the room URL, Select your commander, a turn-order table with #/Player/Turn/Time
   (life and commander under the name, and up/down arrows for the owner), then before the match
-  the primary Start match button beside Randomize, and after it Pass turn and Pause/Resume
+  the primary Start match button beside Randomize, and after it Pass turn, Un-pass and Pause/Resume
   timer; Reveal hand to…, the red End game button, Leave table), dice/coin controls, and collapsed Identify
   cards and Connection sections. Decks lists your commanders; Log shows the table event log. Collapsing the
   panel leaves only the icon strip so the board grows.
@@ -271,7 +271,7 @@ board is large, everyone else is small, and controls live in a collapsible colum
   Settings offers a reset for both widths and a hotkeys toggle. Preferences persist per player
   in this browser under `the-gathering:table-preferences:<playerId>`; they are not room state.
 - **Keyboard shortcuts** (Convoke-compatible where the table has the same feature):
-  `Space` passes the turn after the match starts; `↑` / `↓` gains/loses one life and
+  `Space` passes the turn after the match starts and `Shift+Space` un-passes it; `↑` / `↓` gains/loses one life and
   `Shift+↑` / `Shift+↓` gains/loses ten life (always your own seat). `[` / `]` subtracts/adds
   two commander tax by changing your primary commander's cast count by one; partner commanders
   retain individual counter rows. `C` toggles your camera, `B` collapses/expands the panel,
@@ -395,9 +395,17 @@ banks time against game elapsed time rather than wall time, so pausing freezes b
 player clocks; passing while paused changes the turn but adds no paused time. A single remaining
 player can continue taking turns; elimination does not automatically end the game.
 
+Any seat can also **Un-pass** (**Shift+Space**) to undo a mistaken pass. The turn state keeps the
+last 20 passes (who passed, when their turn started, who received it); `unpass_turn` takes the
+same revision as `pass_turn` and pops the newest one: the previous player's turn resumes from its
+original start, the time banked by the pass is removed, and the receiver's TURN count drops by one.
+Time spent since the pass counts toward the resumed turn. Repeated un-passes walk further back.
+The server refuses when the newest pass did not lead to the current turn (for example after every
+seat went out and play restarted) or when the previous player has since been eliminated or left.
+
 An amber dot and highlight mark the current player's row; an amber Current turn badge marks their
 rail tile and board. This is independent of the violet active-board border. Space does
-not pass while typing, using a control, holding a modifier, repeating a key, composing text, or
+not pass while typing, using a control, holding a modifier other than Shift (which un-passes), repeating a key, composing text, or
 while a card picker/dialog is open. It shares the guarded registry and enable preference in
 `table-hotkeys.tsx` with the other table shortcuts.
 
@@ -461,7 +469,7 @@ can still save or share what they saw; this feature cannot revoke frames already
   cookie session.
 - `TheGatheringWeb.WebcamTableChannel` caps rooms at ten, relays targeted WebRTC signals,
   merges `update_status`/`set_eliminated` into presence, validates `seat_order`/`timer`/`timer_sync`,
-  `start_game`/`turn_settings`/`pass_turn`/`adjust_turn`, and generates
+  `start_game`/`turn_settings`/`pass_turn`/`unpass_turn`/`adjust_turn`, and generates
   and broadcasts validated `roll` results.
 - `TheGathering.WebcamTables` is the context API for admission and game state. Each room is a
   `WebcamTables.Room` process (one per room, started on first join under

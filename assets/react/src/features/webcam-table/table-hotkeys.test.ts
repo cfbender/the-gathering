@@ -95,7 +95,8 @@ describe("table hotkeys", () => {
     ).toBeNull()
   })
 
-  it("distinguishes one and ten life and never changes either while searching", () => {
+  it("distinguishes one and ten life, pass and un-pass, and never fires them while searching", () => {
+    expect(tableHotkeyAction(key(" ", { shiftKey: true }), context)).toBe("unpassTurn")
     expect(tableHotkeyAction(key("ArrowUp", { shiftKey: true }), context)).toBe("gainTenLife")
     expect(tableHotkeyAction(key("ArrowDown", { shiftKey: true }), context)).toBe("loseTenLife")
     const target = document.createElement("input")
@@ -108,7 +109,6 @@ describe("table hotkeys", () => {
         ).toBeNull()
       }
     }
-    expect(tableHotkeyAction(key(" ", { shiftKey: true }), context)).toBeNull()
   })
 
   it("preserves native Space activation for buttons and links, including nested children", () => {
@@ -116,6 +116,7 @@ describe("table hotkeys", () => {
       const control = document.createElement(tag)
       const child = control.appendChild(document.createElement("span"))
       expect(tableHotkeyAction(key(" ", { target: child }), context)).toBeNull()
+      expect(tableHotkeyAction(key(" ", { target: child, shiftKey: true }), context)).toBeNull()
     }
   })
 })

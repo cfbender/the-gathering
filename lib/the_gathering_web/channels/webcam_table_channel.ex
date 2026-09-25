@@ -352,6 +352,14 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   defp handle_event("pass_turn", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid pass turn"}}, socket}
 
+  defp handle_event("unpass_turn", %{"revision" => revision} = payload, socket)
+       when map_size(payload) == 1 and is_integer(revision) and revision >= 0 do
+    {:reply, WebcamTables.unpass_turn(socket.assigns.room_id, revision), socket}
+  end
+
+  defp handle_event("unpass_turn", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid un-pass turn"}}, socket}
+
   defp handle_event(
          "adjust_turn",
          %{"player_id" => player_id, "delta" => delta} = payload,

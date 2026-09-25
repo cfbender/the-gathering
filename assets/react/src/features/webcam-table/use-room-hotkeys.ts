@@ -1,6 +1,7 @@
 import type { PanelTab } from "./side-panel"
 import { useTableHotkeys } from "./table-hotkeys"
 import type { TableView } from "./table-view"
+import { unpassTarget } from "./turns"
 import type { CardIdentificationFlow } from "./use-card-identification-flow"
 
 interface PanelControls {
@@ -28,6 +29,9 @@ export function useRoomHotkeys(
         return room.changeLife(-10)
       case "passTurn":
         if (room.turns.active_player_id !== null) room.passTurn()
+        return
+      case "unpassTurn":
+        if (unpassTarget(room.turns) !== null) room.unpassTurn()
         return
       case "gainTax":
       case "loseTax": {

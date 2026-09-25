@@ -109,6 +109,7 @@ export function useWebcamRoom(
     adjustTeamLife: game.adjustTeamLife,
     moveSeat: game.moveSeat,
     passTurn: game.passTurn,
+    unpassTurn: game.unpassTurn,
     adjustTurn: game.adjustTurn,
     roll: game.roll,
     changeTimer: game.changeTimer,

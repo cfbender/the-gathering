@@ -109,6 +109,8 @@ defmodule TheGathering.WebcamTables do
 
   def pass_turn(room, revision), do: call(room, {:pass_turn, revision})
 
+  def unpass_turn(room, revision), do: call(room, {:unpass_turn, revision})
+
   def adjust_turn(room, player_id, delta), do: call(room, {:adjust_turn, player_id, delta})
 
   def take_monarch(room, participant), do: call(room, {:monarch, participant})

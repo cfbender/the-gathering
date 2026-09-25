@@ -246,6 +246,12 @@ export function useTableGameState(
       .receive("error", ({ reason }: ErrorReply) => setError(reason))
   }, [link, setError, turnRevision])
 
+  const unpassTurn = useCallback(() => {
+    link.channel
+      ?.push("unpass_turn", { revision: turnRevision })
+      .receive("error", ({ reason }: ErrorReply) => setError(reason))
+  }, [link, setError, turnRevision])
+
   function adjustTurn(targetPlayerId: number, delta: -1 | 1) {
     link.channel
       ?.push("adjust_turn", { player_id: targetPlayerId, delta })
@@ -339,6 +345,7 @@ export function useTableGameState(
     takeMonarch,
     startGame,
     passTurn,
+    unpassTurn,
     adjustTurn,
     setMode,
     adjustTeamLife,
