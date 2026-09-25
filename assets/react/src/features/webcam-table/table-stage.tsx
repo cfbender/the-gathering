@@ -62,8 +62,10 @@ function StageBoard({
                   }
           }
           onInspect={(event) => {
-            const point = capturePoint(event, videoFlip(view, participant))
-            if (point) room.requestCapture(participant.peer_id, point.x, point.y, event.shiftKey)
+            const flip = videoFlip(view, participant)
+            const point = capturePoint(event, flip)
+            if (point)
+              room.requestCapture(participant.peer_id, point.x, point.y, event.shiftKey, flip)
           }}
         />
         <BoardCardTray
