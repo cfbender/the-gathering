@@ -119,4 +119,22 @@ describe("table hotkeys", () => {
       expect(tableHotkeyAction(key(" ", { target: child, shiftKey: true }), context)).toBeNull()
     }
   })
+
+  it("lets controls left focused by a click give up keys, but never text entry", () => {
+    const clicked = { ...context, pointerFocused: true }
+    expect(tableHotkeyAction(key(" ", { target: document.createElement("button") }), clicked)).toBe(
+      "passTurn",
+    )
+    for (const role of ["combobox", "slider", "separator"]) {
+      const widget = document.createElement("div")
+      widget.setAttribute("role", role)
+      expect(tableHotkeyAction(key("ArrowUp", { target: widget }), clicked)).toBe("gainLife")
+      expect(tableHotkeyAction(key(" ", { target: widget }), clicked)).toBe("passTurn")
+    }
+    for (const tag of ["input", "textarea", "select"]) {
+      expect(
+        tableHotkeyAction(key("ArrowUp", { target: document.createElement(tag) }), clicked),
+      ).toBeNull()
+    }
+  })
 })

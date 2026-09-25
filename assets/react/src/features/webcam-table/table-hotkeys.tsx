@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useEffectEvent } from "react"
 import {
   Dialog,
   DialogClose,
@@ -164,12 +164,33 @@ export const TABLE_HOTKEYS = [
 
 export type TableAction = (typeof TABLE_HOTKEYS)[number]["action"] | "dismiss"
 
+const TEXT_ENTRY =
+  'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]'
+const KEYBOARD_WIDGET = '[role="combobox"], [role="slider"], [role="separator"]'
+const ACTIVATABLE = 'button, a, [role="button"], summary'
+const MODAL_OVERLAY =
+  '[aria-modal="true"], [role="alertdialog"], dialog[open], [role="menu"], [role="listbox"]'
+
 export function isTypingTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest(`${TEXT_ENTRY}, ${KEYBOARD_WIDGET}`)
+}
+
+/** Text entry always keeps the keyboard. Other controls keep the keys they operate on only
+ * when reached by keyboard: a click leaves focus behind without meaning to claim keys. */
+function focusOwnsKey(target: EventTarget | null, key: string, pointerFocused: boolean) {
+  if (!(target instanceof Element)) return false
+  if (target.closest(TEXT_ENTRY)) return true
+  if (pointerFocused) return false
+  if (target.closest(KEYBOARD_WIDGET)) return true
+  // Space on a keyboard-focused button/link must retain its native activation behavior.
+  return key === " " && !!target.closest(ACTIVATABLE)
+}
+
+/** Modal overlays and overlays holding focus own the keyboard; hover previews such as
+ * non-focusing popovers do not. */
+function overlayOwnsKeyboard() {
   return (
-    target instanceof Element &&
-    !!target.closest(
-      'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"], [role="slider"], [role="separator"]',
-    )
+    !!document.querySelector(MODAL_OVERLAY) || !!document.activeElement?.closest('[role="dialog"]')
   )
 }
 
@@ -192,7 +213,8 @@ export function tableHotkeyAction(
     enabled,
     pickerOpen,
     overlayOpen,
-  }: { enabled: boolean; pickerOpen: boolean; overlayOpen: boolean },
+    pointerFocused = false,
+  }: { enabled: boolean; pickerOpen: boolean; overlayOpen: boolean; pointerFocused?: boolean },
 ): TableAction | null {
   if (
     event.defaultPrevented ||
@@ -205,39 +227,69 @@ export function tableHotkeyAction(
   )
     return null
   if (event.key === "Escape" && pickerOpen) return "dismiss"
-  if (!enabled || pickerOpen || isTypingTarget(event.target)) return null
-  // Space on a focused button/link must retain its native activation behavior.
-  if (
-    event.key === " " &&
-    event.target instanceof Element &&
-    event.target.closest('button, a, [role="button"], summary')
-  )
-    return null
+  if (!enabled || pickerOpen) return null
   const key =
     event.shiftKey && (event.key.startsWith("Arrow") || event.key === " ")
       ? `shift+${event.key.toLowerCase()}`
       : event.key.toLowerCase()
-  return TABLE_HOTKEYS.find(({ keys }) => (keys as readonly string[]).includes(key))?.action ?? null
+  const action = TABLE_HOTKEYS.find(({ keys }) => (keys as readonly string[]).includes(key))?.action
+  if (!action || focusOwnsKey(event.target, event.key, pointerFocused)) return null
+  return action
 }
 
+/** A control left focused by a click (rail handle, Select or menu trigger, button) does not
+ * own the keyboard: the table claims shortcuts in the capture phase, before that control's
+ * handlers, then releases its focus. Keyboard-focused controls handle keys first as usual. */
 export function useTableHotkeys(
   enabled: boolean,
   pickerOpen: boolean,
   onAction: (action: TableAction) => void,
 ) {
+  const dispatch = useEffectEvent((event: KeyboardEvent, pointerFocused: boolean) => {
+    const action = tableHotkeyAction(event, {
+      enabled,
+      pickerOpen,
+      overlayOpen: overlayOwnsKeyboard(),
+      pointerFocused,
+    })
+    if (!action) return false
+    event.preventDefault()
+    onAction(action)
+    return true
+  })
+
   useEffect(() => {
-    const handle = (event: KeyboardEvent) => {
-      const overlayOpen = !!document.querySelector(
-        '[role="dialog"], [role="alertdialog"], dialog[open], [role="menu"], [role="listbox"]',
-      )
-      const action = tableHotkeyAction(event, { enabled, pickerOpen, overlayOpen })
-      if (!action) return
-      event.preventDefault()
-      onAction(action)
+    let pointerInteraction = false
+    let pointerFocus: EventTarget | null = null
+    const onPointerDown = () => {
+      pointerInteraction = true
     }
+    const onFocusIn = (event: FocusEvent) => {
+      pointerFocus = pointerInteraction ? event.target : null
+    }
+    const clickedFocus = (event: KeyboardEvent) =>
+      event.target !== document.body && event.target === pointerFocus
+    const claim = (event: KeyboardEvent) => {
+      pointerInteraction = false
+      if (!clickedFocus(event)) return
+      // Releasing focus stops the control's keyup from activating it and lets later keys
+      // reach the table directly.
+      if (dispatch(event, true) && event.target instanceof HTMLElement) event.target.blur()
+    }
+    const handle = (event: KeyboardEvent) => {
+      if (!clickedFocus(event)) dispatch(event, false)
+    }
+    window.addEventListener("pointerdown", onPointerDown, true)
+    window.addEventListener("focusin", onFocusIn, true)
+    window.addEventListener("keydown", claim, true)
     window.addEventListener("keydown", handle)
-    return () => window.removeEventListener("keydown", handle)
-  }, [enabled, pickerOpen, onAction])
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true)
+      window.removeEventListener("focusin", onFocusIn, true)
+      window.removeEventListener("keydown", claim, true)
+      window.removeEventListener("keydown", handle)
+    }
+  }, [])
 }
 
 export function HotkeyHelp({
