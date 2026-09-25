@@ -429,7 +429,7 @@ how far it got. Read the log from the top of the last start:
 | `Discord bot could not start … Authentication rejected, invalid token` | The token is wrong or was reset in the Developer Portal. The web app keeps running without Discord; fix the token and restart. |
 | `Shard websocket closed (errno 4014, …)` repeating, no `READY` | Discord rejected the requested intents. Enable **Message Content Intent** on the **Bot** page. |
 | `Discord bot connected as <bot> in 0 guild(s)` | The bot was never invited to the server. Use the invite URL from step 4. |
-| `Discord bot connected …` but the bot looks offline in Discord | The bot sets an online presence ("Watching SpellBot games") right after this line. If the member list still shows it offline, the gateway session dropped afterwards; look for `Shard websocket closed` lines below it. |
+| `Discord bot connected …` but the bot looks offline in Discord | The bot sets an online presence ("Watching the battlefield") right after this line. If the member list still shows it offline, the gateway session dropped afterwards; look for `Shard websocket closed` lines below it. |
 | `Discord registered /log, /summary, and /newgame in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
 | `Discord registered /log, /summary, and /newgame globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
 | `Could not register Discord commands: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |
