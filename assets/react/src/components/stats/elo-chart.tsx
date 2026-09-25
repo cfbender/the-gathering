@@ -18,14 +18,27 @@ const COLORS = [
 export function EloChart({
   series,
   showLegend = true,
+  highlightedId = null,
+  onHighlightChange,
 }: {
   series: EloSeries[]
   showLegend?: boolean
+  highlightedId?: EloSeries["id"] | null
+  onHighlightChange?: (id: EloSeries["id"] | null) => void
 }) {
   const bounds = eloChartBounds(series)
   if (!bounds) return <p className="text-base-content/50 text-sm">No rating history yet.</p>
 
   const baselineY = PADDING_Y + ratingToY(1000, bounds.minRating, bounds.maxRating, PLOT_HEIGHT)
+  const lines = series.map((player, index) => ({ player, color: COLORS[index % COLORS.length] }))
+  // SVG has no z-index, so the highlighted line is drawn last to sit on top.
+  const highlighted = lines.some(({ player }) => player.id === highlightedId)
+  const orderedLines = highlighted
+    ? [
+        ...lines.filter(({ player }) => player.id !== highlightedId),
+        ...lines.filter(({ player }) => player.id === highlightedId),
+      ]
+    : lines
 
   // The SVG stretches to whatever box it is given (the section grid may make it
   // taller than its 600x210 viewBox), so strokes are drawn in screen space and
@@ -47,13 +60,16 @@ export function EloChart({
             strokeDasharray="5 5"
             vectorEffect="non-scaling-stroke"
           />
-          {series.map((player, index) => (
+          {orderedLines.map(({ player, color }) => (
             <polyline
               key={player.id}
+              data-player-id={player.id}
               points={buildEloPath(player.history, bounds, PLOT_WIDTH, PLOT_HEIGHT)}
               transform={`translate(${PADDING_X} ${PADDING_Y})`}
               fill="none"
-              stroke={COLORS[index % COLORS.length]}
+              stroke={color}
+              strokeOpacity={highlighted && highlightedId !== player.id ? 0.15 : 1}
+              className="transition-[stroke-opacity] duration-150"
               strokeWidth="3"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -74,11 +90,18 @@ export function EloChart({
         <span>{bounds.endDate}</span>
       </div>
       {showLegend && (
-        <ul className="mt-4 grid gap-x-4 gap-y-2 sm:grid-cols-2 xl:grid-cols-3">
+        <ul
+          className="mt-4 grid gap-x-4 gap-y-2 sm:grid-cols-2 xl:grid-cols-3"
+          onMouseLeave={() => onHighlightChange?.(null)}
+        >
           {series.map((player, index) => {
             const change = player.rating - 1000
             return (
-              <li key={player.id} className="flex min-w-0 items-center gap-2 text-sm">
+              <li
+                key={player.id}
+                className="flex min-w-0 cursor-default items-center gap-2 text-sm"
+                onMouseEnter={() => onHighlightChange?.(player.id)}
+              >
                 <span
                   className="size-2.5 shrink-0 rounded-full"
                   style={{ backgroundColor: COLORS[index % COLORS.length] }}

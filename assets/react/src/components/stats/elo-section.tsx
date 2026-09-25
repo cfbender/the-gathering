@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { useState } from "react"
 import { EloChart } from "./elo-chart"
 import { selectEloSeries } from "@/lib/elo"
 import { LEADERBOARD_MIN_GAMES, type OverviewStats } from "@/lib/stats"
@@ -6,6 +7,9 @@ import { LEADERBOARD_MIN_GAMES, type OverviewStats } from "@/lib/stats"
 export function EloSection({ players }: { players: OverviewStats["elo"] }) {
   const chartSeries = selectEloSeries(players, LEADERBOARD_MIN_GAMES)
   const ranked = players.filter((player) => player.games >= LEADERBOARD_MIN_GAMES)
+  const [highlightedId, setHighlightedId] = useState<OverviewStats["elo"][number]["id"] | null>(
+    null,
+  )
 
   return (
     <section aria-labelledby="ratings-heading">
@@ -19,7 +23,11 @@ export function EloSection({ players }: { players: OverviewStats["elo"] }) {
         <div className="border-base-300 bg-base-200/60 flex min-w-0 flex-col rounded-xl border p-5">
           <h3 className="mb-4 font-bold">Top players over time</h3>
           {chartSeries.length > 0 ? (
-            <EloChart series={chartSeries} />
+            <EloChart
+              series={chartSeries}
+              highlightedId={highlightedId}
+              onHighlightChange={setHighlightedId}
+            />
           ) : (
             <p className="text-base-content/55 text-sm">
               Players appear after {LEADERBOARD_MIN_GAMES} games.
@@ -28,7 +36,10 @@ export function EloSection({ players }: { players: OverviewStats["elo"] }) {
         </div>
         <div className="border-base-300 bg-base-200/60 flex flex-col overflow-hidden rounded-xl border">
           <h3 className="border-base-300 border-b px-5 py-4 font-bold">Current ratings</h3>
-          <div className="divide-base-300 min-h-0 flex-1 max-h-[28rem] divide-y overflow-y-auto lg:max-h-[40rem]">
+          <div
+            className="divide-base-300 min-h-0 flex-1 max-h-[28rem] divide-y overflow-y-auto lg:max-h-[40rem]"
+            onMouseLeave={() => setHighlightedId(null)}
+          >
             {ranked.length === 0 && (
               <p className="text-base-content/55 px-5 py-4 text-sm">
                 Players are ranked after {LEADERBOARD_MIN_GAMES} games.
@@ -39,6 +50,9 @@ export function EloSection({ players }: { players: OverviewStats["elo"] }) {
                 key={player.id}
                 to="/players/$playerId"
                 params={{ playerId: String(player.id) }}
+                onMouseEnter={() => setHighlightedId(player.id)}
+                onFocus={() => setHighlightedId(player.id)}
+                onBlur={() => setHighlightedId(null)}
                 className="hover:bg-base-300/40 grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-3 px-5 py-3 transition-colors"
               >
                 <span className="text-base-content/35 text-xs font-bold tabular-nums">
