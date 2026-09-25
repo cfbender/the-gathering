@@ -81,11 +81,11 @@ export function GameTable({ games }: { games: Game[] }) {
         tabIndex={0}
         className="focus-visible:outline-primary overflow-x-auto focus-visible:-outline-offset-2 focus-visible:outline-2"
       >
-        <table className="table w-full min-w-168">
+        <table className="table block w-full sm:table sm:min-w-168">
           <caption className="sr-only">
             Games — select a date to view the game or a player for commander details
           </caption>
-          <thead>
+          <thead className="hidden sm:table-header-group">
             <tr>
               <th scope="col">Played</th>
               <th scope="col">Players</th>
@@ -98,32 +98,40 @@ export function GameTable({ games }: { games: Game[] }) {
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="block sm:table-row-group">
             {games.map((game) => {
               const winner = game.seats.find((seat) => seat.result === "win")
               return (
-                <tr key={game.id} className="hover:bg-base-content/5">
-                  <th scope="row" className="font-normal">
+                <tr
+                  key={game.id}
+                  className="hover:bg-base-content/5 border-base-content/5 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 px-4 py-3 not-last:border-b sm:table-row sm:border-0 sm:p-0 max-sm:*:border-0"
+                >
+                  <th scope="row" className="col-start-1 row-start-1 font-normal max-sm:p-0">
                     <Link
                       to="/games/$gameId"
                       params={{ gameId: String(game.id) }}
-                      className="link link-hover text-primary focus-visible:outline-primary inline-block py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-4"
+                      className="link link-hover text-primary focus-visible:outline-primary inline-flex flex-wrap items-center gap-x-2 gap-y-1 py-1 font-semibold focus-visible:outline-2 focus-visible:outline-offset-4 sm:py-2"
                     >
                       <time dateTime={game.played_at}>{formatDate(game.played_at)}</time>
                       {game.format && game.format !== "commander" && (
-                        <span className="badge badge-sm ml-2">{formatLabel(game.format)}</span>
+                        <span className="badge badge-sm whitespace-nowrap">
+                          {formatLabel(game.format)}
+                        </span>
                       )}
                       <span className="sr-only"> · Game {game.id}</span>
                     </Link>
                   </th>
-                  <td className="py-2">
-                    <ul aria-label={`${game.seats.length} players`} className="flex w-max gap-1">
+                  <td className="col-span-3 max-sm:p-0 max-sm:pt-2 sm:py-2">
+                    <ul
+                      aria-label={`${game.seats.length} players`}
+                      className="flex flex-wrap gap-1 sm:w-max sm:flex-nowrap"
+                    >
                       {game.seats.map((seat) => (
                         <PlayerPortrait key={seat.id} seat={seat} />
                       ))}
                     </ul>
                   </td>
-                  <td>
+                  <td className="hidden sm:table-cell">
                     <span className="flex items-center gap-2">
                       {winner && (
                         <Trophy aria-hidden="true" className="text-accent size-4 shrink-0" />
@@ -143,10 +151,27 @@ export function GameTable({ games }: { games: Game[] }) {
                       </span>
                     </span>
                   </td>
-                  <td className="text-right tabular-nums">
-                    {game.turns ?? <span aria-label="Not recorded">—</span>}
+                  <td
+                    className={cn(
+                      "col-start-2 row-start-1 text-right whitespace-nowrap tabular-nums max-sm:text-base-content/70 max-sm:p-0 max-sm:text-sm",
+                      game.turns === null && "max-sm:hidden",
+                    )}
+                  >
+                    {game.turns === null ? (
+                      <span aria-label="Not recorded">—</span>
+                    ) : (
+                      <>
+                        {game.turns}{" "}
+                        <span className="sm:hidden">{game.turns === 1 ? "turn" : "turns"}</span>
+                      </>
+                    )}
                   </td>
-                  <td className="text-right whitespace-nowrap tabular-nums">
+                  <td
+                    className={cn(
+                      "col-start-3 row-start-1 text-right whitespace-nowrap tabular-nums max-sm:text-base-content/70 max-sm:p-0 max-sm:text-sm",
+                      game.duration_minutes === null && "max-sm:hidden",
+                    )}
+                  >
                     {game.duration_minutes === null ? (
                       <span aria-label="Not recorded">—</span>
                     ) : (
