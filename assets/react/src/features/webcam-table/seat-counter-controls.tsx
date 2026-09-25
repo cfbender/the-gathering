@@ -43,15 +43,27 @@ function CounterRow({
   onChangeLife?: (delta: number) => void
   gameChanger?: boolean
 }) {
+  // Net damage added since the last apply; removing damage never offers to gain life.
   const [pending, setPending] = useState(0)
+  // Bumped on every click so the offer only appears once clicking pauses.
+  const [clicks, setClicks] = useState(0)
+  const [settled, setSettled] = useState(false)
   useEffect(() => {
-    if (!pending) return
+    if (!clicks) return
+    const timeout = window.setTimeout(() => setSettled(true), 500)
+    return () => window.clearTimeout(timeout)
+  }, [clicks])
+  useEffect(() => {
+    if (!settled || !pending) return
     const timeout = window.setTimeout(() => setPending(0), 5000)
     return () => window.clearTimeout(timeout)
-  }, [pending])
+  }, [pending, settled])
   const adjust = (delta: number) => {
     onAdjust(delta)
-    if (onChangeLife) setPending((previous) => previous + delta)
+    if (!onChangeLife) return
+    setPending((previous) => Math.max(0, previous + delta))
+    setSettled(false)
+    setClicks((previous) => previous + 1)
   }
   const warning = threshold !== undefined && value >= threshold
   return (
@@ -99,19 +111,18 @@ function CounterRow({
       {warning && (
         <ShieldAlert className="size-4 shrink-0" aria-label={`${label} lethal threshold reached`} />
       )}
-      {local && pending !== 0 && onChangeLife && (
+      {local && settled && pending > 0 && onChangeLife && (
         <div className="flex w-full justify-end">
           <button
             type="button"
             className="btn btn-xs btn-soft"
-            aria-label={`Apply ${-pending > 0 ? "+" : ""}${-pending} life for ${label}`}
+            aria-label={`Apply -${pending} life for ${label}`}
             onClick={() => {
               onChangeLife(-pending)
               setPending(0)
             }}
           >
-            Also {pending > 0 ? "−" : "+"}
-            {Math.abs(pending)} life
+            Also −{pending} life
           </button>
         </div>
       )}
