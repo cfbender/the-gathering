@@ -3,6 +3,9 @@ defmodule TheGathering.Catalog.Scryfall do
 
   @bulk_url "https://api.scryfall.com/bulk-data"
   @user_agent "TheGathering/0.1 (+https://github.com/cfbender/the-gathering)"
+  # Every seat at a webcam table looks up a newly identified card at the same moment, so
+  # card lookups queue for the shared limit briefly instead of failing all but the first.
+  @card_queue_ms 3_000
 
   def printings(oracle_id, page) do
     limit = Application.get_env(:the_gathering, :scryfall_search_limit, 1)
@@ -28,8 +31,9 @@ defmodule TheGathering.Catalog.Scryfall do
   @doc "Fetches one printing by Scryfall id, for card details the catalog does not hold."
   def card(id) when is_binary(id) do
     limit = Application.get_env(:the_gathering, :scryfall_search_limit, 1)
+    deadline = System.monotonic_time(:millisecond) + @card_queue_ms
 
-    with {:allow, _count} <- TheGathering.RateLimiter.hit(:scryfall_card, 100, limit),
+    with :ok <- await_slot(:scryfall_card, 100, limit, deadline),
          {:ok, response} <- Req.get("https://api.scryfall.com/cards/#{id}", request_options()) do
       case response do
         %{status: 200, body: %{"id" => _id} = card} -> {:ok, card}
@@ -62,6 +66,21 @@ defmodule TheGathering.Catalog.Scryfall do
       end
     else
       _error -> {:error, :bad_gateway}
+    end
+  end
+
+  defp await_slot(key, scale, limit, deadline) do
+    case TheGathering.RateLimiter.hit(key, scale, limit) do
+      {:allow, _count} ->
+        :ok
+
+      {:deny, retry_after} ->
+        if System.monotonic_time(:millisecond) + retry_after <= deadline do
+          Process.sleep(retry_after)
+          await_slot(key, scale, limit, deadline)
+        else
+          {:error, :rate_limited}
+        end
     end
   end
 

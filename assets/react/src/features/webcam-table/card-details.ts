@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { queryOptions, useQuery, type QueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import type { CardImageUris } from "@/lib/cards"
 
@@ -35,13 +35,42 @@ export function getPrintingDetails(id: string) {
 }
 
 /** Prices change, so refresh printing details after one hour. */
-export function usePrintingDetails(id: string | null) {
-  return useQuery({
+function printingDetailsQuery(id: string) {
+  return queryOptions({
     queryKey: ["card-printings", id, "details"],
-    queryFn: () => getPrintingDetails(id as string),
-    enabled: id !== null,
+    queryFn: () => getPrintingDetails(id),
     staleTime: 60 * 60 * 1000,
   })
+}
+
+export function usePrintingDetails(id: string | null) {
+  return useQuery({ ...printingDetailsQuery(id as string), enabled: id !== null })
+}
+
+/** Starts a low-priority download so a later `<img>` with the same URL renders from cache. */
+export function preloadImage(src: string | undefined) {
+  if (!src) return
+  const image = new Image()
+  image.fetchPriority = "low"
+  image.decoding = "async"
+  image.src = src
+}
+
+/** Warms the details cache and both card images (tray thumb and preview) for printings named
+ * at the table, so opening one does not wait on Scryfall. Lookups run one at a time, in the
+ * order given, so a mid-game join's backlog does not crowd out other seats' fresh clicks on
+ * the server's shared Scryfall limit. A failure is left for the query to retry when something
+ * actually shows the card. */
+export async function prefetchPrintings(queryClient: QueryClient, ids: Iterable<string>) {
+  for (const id of ids) {
+    try {
+      const details = await queryClient.fetchQuery(printingDetailsQuery(id))
+      preloadImage(details.image_uris.small)
+      preloadImage(details.image_uris.normal)
+    } catch {
+      // The tray or preview refetches an errored query when it mounts.
+    }
+  }
 }
 
 /** Details cached by a browser or proxy before prices shipped have no `prices` field. */

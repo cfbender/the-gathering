@@ -2,7 +2,7 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
   use TheGatheringWeb.ConnCase, async: false
 
   alias TheGathering.{Catalog, Games, Repo, Stats}
-  alias TheGathering.Catalog.{Card, CardData, Printing, Sync}
+  alias TheGathering.Catalog.{Card, CardData, DetailsCache, Printing, Sync}
 
   @saga "00000000-0000-0000-0000-000000000001"
   @mdfc "00000000-0000-0000-0000-000000000002"
@@ -232,6 +232,27 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
 
     refute Map.has_key?(body, "games")
     assert Catalog.get_printing(@saga).set_name == "New Set"
+
+    # Every seat asks for the card; within a day the rest are answered without Scryfall.
+    cached = conn |> get(~p"/api/card-printings/#{@saga}/details") |> json_response(200)
+    assert cached["data"] == body
+  end
+
+  test "refetches printing details once the cached copy is a day old", %{conn: conn} do
+    Req.Test.expect(__MODULE__, 2, fn request ->
+      price = if Repo.aggregate(DetailsCache, :count) == 0, do: "0.25", else: "0.30"
+      card = scryfall_card(@saga, "Kiora Bests the Sea God")
+      Req.Test.json(request, Map.put(card, "prices", %{"usd" => price}))
+    end)
+
+    body = conn |> get(~p"/api/card-printings/#{@saga}/details") |> json_response(200)
+    assert body["data"]["prices"]["usd"] == "0.25"
+
+    stale = DateTime.add(DateTime.utc_now(:second), -86_400)
+    Repo.update_all(DetailsCache, set: [fetched_at: stale])
+
+    body = conn |> get(~p"/api/card-printings/#{@saga}/details") |> json_response(200)
+    assert body["data"]["prices"]["usd"] == "0.30"
   end
 
   test "selects each printed face without mixing text, images or cached IDs", %{conn: conn} do
@@ -491,6 +512,21 @@ defmodule TheGatheringWeb.API.CardPrintingControllerTest do
     assert conn |> get(~p"/api/card-printings/#{@down}/details") |> json_response(502)
 
     assert build_conn() |> get(~p"/api/card-printings/#{@mdfc}/details") |> json_response(401)
+  end
+
+  test "queues a details lookup behind the shared Scryfall limit instead of failing", %{
+    conn: conn
+  } do
+    Application.put_env(:the_gathering, :scryfall_search_limit, 1)
+    # Another seat's lookup of the same card has just taken this window's only slot.
+    TheGathering.RateLimiter.hit(:scryfall_card, 100, 1)
+
+    Req.Test.expect(__MODULE__, fn request ->
+      Req.Test.json(request, scryfall_card(@saga, "Kiora Bests the Sea God"))
+    end)
+
+    body = conn |> get(~p"/api/card-printings/#{@saga}/details") |> json_response(200)
+    assert body["data"]["name"] == "Kiora Bests the Sea God"
   end
 
   test "supports name-only or obsolete catalog references and surfaces upstream failure", %{

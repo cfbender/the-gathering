@@ -243,6 +243,70 @@ it("shows the server's card list, overlaying only changes the server has not ans
   expect(result.current.identifiedCards).toEqual([])
 })
 
+it("prefetches details and images for every card new to this seat, newest first, one at a time", async () => {
+  const preloaded: string[] = []
+  vi.stubGlobal(
+    "Image",
+    class {
+      fetchPriority = ""
+      decoding = ""
+      set src(value: string) {
+        preloaded.push(value)
+      }
+    },
+  )
+  const fetch = vi.mocked(globalThis.fetch)
+  const serveConfig = fetch.getMockImplementation()!
+  const answers = new Map<string, () => void>()
+  fetch.mockImplementation(async (input, init) => {
+    const url = input instanceof Request ? input.url : input.toString()
+    const id = url.match(/\/api\/card-printings\/([^/]+)\/details$/)?.[1]
+    if (!id) return serveConfig(input, init)
+    await new Promise<void>((resolve) => answers.set(id, resolve))
+    return new Response(
+      JSON.stringify({
+        data: { id, image_uris: { small: `/small/${id}`, normal: `/normal/${id}` } },
+      }),
+    )
+  })
+  const requested = () =>
+    fetch.mock.calls
+      .map(([input]) => (input instanceof Request ? input.url : input.toString()))
+      .flatMap((url) => url.match(/card-printings\/([^/]+)\/details$/)?.[1] ?? [])
+  const answer = async (id: string) => {
+    await waitFor(() => expect(answers.has(id)).toBe(true))
+    await act(async () => answers.get(id)!())
+  }
+
+  await joinedRoom()
+  // Joining mid-game: the table already has cards, fetched newest first and one at a time.
+  const older = boardCard("older", "remote", "Counterspell")
+  const newer = boardCard("newer", "remote", "Swords to Plowshares")
+  act(() => wire.channel!.emit("table_state", tableState({ cards: [older, newer] })))
+  await waitFor(() => expect(requested()).toEqual(["newer"]))
+  await answer("newer")
+  await waitFor(() => expect(requested()).toEqual(["newer", "older"]))
+  await answer("older")
+  await waitFor(() =>
+    expect(preloaded).toEqual(["/small/newer", "/normal/newer", "/small/older", "/normal/older"]),
+  )
+
+  // Another seat names a card; the same printing on a second board is fetched once.
+  const named = boardCard("named", "remote", "Lightning Bolt")
+  const sameOnAnotherBoard = { ...named, id: "again", ownerPeerId: "other" }
+  act(() =>
+    wire.channel!.emit("identified_cards", {
+      entries: [older, newer, named, sameOnAnotherBoard],
+    }),
+  )
+  await answer("named")
+  await waitFor(() => expect(preloaded.slice(4)).toEqual(["/small/named", "/normal/named"]))
+
+  // A later snapshot with nothing new fetches nothing.
+  act(() => wire.channel!.emit("table_state", tableState({ cards: [older, newer, named] })))
+  expect(requested()).toEqual(["newer", "older", "named"])
+})
+
 it("ignores card messages from peers and never sends cards over data channels", async () => {
   const { result } = await joinedRoom()
   const theirs = boardCard("theirs", "remote", "Counterspell")
