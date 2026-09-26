@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import { Trophy, UsersRound } from "lucide-react"
+import { CommanderArt } from "@/components/commander-art"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { formatDate, winConditionLabel, type Game, type Seat } from "./games"
@@ -10,16 +11,10 @@ function TablePlayer({ seat }: { seat: Seat }) {
     <li className="flex min-w-0 flex-col items-center gap-2 text-center">
       <div className="border-base-content/15 bg-base-300 relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full border sm:size-14">
         <UsersRound aria-hidden="true" className="text-base-content/40 size-5" />
-        {seat.deck?.commander_art_crop_url && (
-          <img
-            src={seat.deck.commander_art_crop_url}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="absolute inset-0 size-full object-cover"
-            onError={(event) => (event.currentTarget.hidden = true)}
-          />
-        )}
+        <CommanderArt
+          imageUrl={seat.deck?.commander_art_crop_url}
+          partnerImageUrl={seat.deck?.partner_art_crop_url}
+        />
       </div>
       <div className="w-full min-w-0">
         <div className="flex items-center justify-center gap-1.5">
@@ -68,16 +63,12 @@ export function GameCard({ game }: { game: Game }) {
           aria-label="Winner"
           className="relative isolate mx-5 flex min-h-60 flex-col justify-end overflow-hidden rounded-xl bg-stone-900 p-5 text-white ring-1 ring-white/15"
         >
-          {winner.deck?.commander_art_crop_url && (
-            <img
-              src={winner.deck.commander_art_crop_url}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="absolute inset-0 -z-20 size-full object-cover object-[center_35%]"
-              onError={(event) => (event.currentTarget.hidden = true)}
-            />
-          )}
+          <CommanderArt
+            imageUrl={winner.deck?.commander_art_crop_url}
+            partnerImageUrl={winner.deck?.partner_art_crop_url}
+            className="-z-20"
+            imageClassName="object-[center_35%]"
+          />
           <div
             aria-hidden="true"
             className="absolute inset-0 -z-10 bg-gradient-to-t from-black/95 via-black/30 to-transparent"

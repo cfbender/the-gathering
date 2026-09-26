@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import { UsersRound } from "lucide-react"
+import { CommanderArt } from "@/components/commander-art"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { formatDate } from "@/features/games/games"
 import { cn } from "@/lib/cn"
@@ -32,7 +33,8 @@ export function RecentGames({ games }: { games: OverviewStats["recent_games"] })
             </p>
             <ul aria-label="Commanders at the table" className="mt-auto flex flex-wrap gap-2 pt-4">
               {game.commanders.map((commander, index) => {
-                const label = `${commander.player_name}: ${commander.name ?? "Unknown commander"}${commander.winner ? " (winner)" : ""}`
+                const names = [commander.name, commander.partner_name].filter(Boolean).join(" / ")
+                const label = `${commander.player_name}: ${names || "Unknown commander"}${commander.winner ? " (winner)" : ""}`
                 return (
                   <li
                     key={index}
@@ -44,18 +46,15 @@ export function RecentGames({ games }: { games: OverviewStats["recent_games"] })
                     )}
                   >
                     <UsersRound aria-hidden="true" className="text-base-content/40 size-4" />
-                    {commander.art_crop_url && (
-                      <img
-                        src={commander.art_crop_url}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="absolute inset-0 size-full object-cover"
-                        onError={(event) => (event.currentTarget.hidden = true)}
-                      />
-                    )}
+                    <CommanderArt
+                      imageUrl={commander.art_crop_url}
+                      partnerImageUrl={commander.partner_art_crop_url}
+                    />
                     <span className="absolute bottom-0">
-                      <GameChangerBadge gameChanger={commander.game_changer} compact />
+                      <GameChangerBadge
+                        gameChanger={commander.game_changer || commander.partner_game_changer}
+                        compact
+                      />
                     </span>
                   </li>
                 )

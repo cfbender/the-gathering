@@ -26,6 +26,14 @@ it("shows commander portraits with accessible names and a fallback for absent or
           commanders: [
             { player_name: "Alice", name: "Kangee", art_crop_url: "/kangee.jpg", winner: true },
             { player_name: "Bob", name: null, art_crop_url: null, winner: false },
+            {
+              player_name: "Cara",
+              name: "Kraum",
+              art_crop_url: "/kraum.jpg",
+              partner_name: "Tymna",
+              partner_art_crop_url: "/tymna.jpg",
+              winner: false,
+            },
           ],
         },
       ]}
@@ -38,4 +46,10 @@ it("shows commander portraits with accessible names and a fallback for absent or
   fireEvent.error(art)
   expect(art.hidden).toBe(true)
   expect(screen.getByRole("listitem", { name: "Bob: Unknown commander" })).toBeTruthy()
+  const pairing = screen.getByRole("listitem", { name: "Cara: Kraum / Tymna" })
+  expect(
+    within(pairing)
+      .getAllByRole("presentation")
+      .map((image) => image.getAttribute("src")),
+  ).toEqual(["/kraum.jpg", "/tymna.jpg"])
 })

@@ -38,6 +38,7 @@ function DeckDetailPage() {
         title={deck.name}
         description={<DeckCommanders deck={deck} />}
         backgroundImageUrl={deck.commander_art_crop_url}
+        backgroundPartnerImageUrl={deck.partner_art_crop_url}
         actions={
           isRetired(deck) || deck.decklist_url ? (
             <>

@@ -152,7 +152,11 @@ function RecordLinks({
             {...link(row)}
             className="group hover:border-primary/40 border-base-300 relative flex items-center justify-between gap-3 overflow-hidden rounded-lg border px-3 py-2 transition-colors"
           >
-            <CardArtBackground imageUrl={row.art_crop_url} interactive />
+            <CardArtBackground
+              imageUrl={row.art_crop_url}
+              partnerImageUrl={row.partner_art_crop_url}
+              interactive
+            />
             <span className="relative z-10 min-w-0">
               <span className="block truncate font-medium">{row.name}</span>
               <GameChangerBadge gameChanger={row.game_changer} />

@@ -17,6 +17,8 @@ export interface NamedRecordRow extends RecordCounts {
   name: string
   commander_name?: string
   art_crop_url?: string | null
+  /** Deck rows with a partner commander; splits the row art with `art_crop_url`. */
+  partner_art_crop_url?: string | null
 }
 
 export interface HeadToHead {
@@ -126,6 +128,10 @@ export interface OverviewStats {
       player_name: string
       name: string | null
       art_crop_url: string | null
+      /** Set for partner pairings; the portrait splits between both crops. */
+      partner_name?: string | null
+      partner_art_crop_url?: string | null
+      partner_game_changer?: boolean
       winner: boolean
     }[]
   })[]
