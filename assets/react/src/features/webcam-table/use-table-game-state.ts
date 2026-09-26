@@ -50,6 +50,7 @@ export function useTableGameState(
   const monarchRevisionRef = useRef(-1)
   const [events, setEvents] = useState<TableEvent[]>([])
   const [participants, setParticipants] = useState<TableParticipant[]>([])
+  const [spectators, setSpectators] = useState<TableParticipant[]>([])
   const [eliminatedSeats, setEliminatedSeats] = useState<TableParticipant[]>([])
   const [seatOrder, setSeatOrder] = useState<string[]>([])
   const [shuffleVersion, setShuffleVersion] = useState(0)
@@ -137,12 +138,17 @@ export function useTableGameState(
     [queryClient, receiveTimer, syncMonarch],
   )
 
-  /** Everyone present, from presence; spectators do not take seats. */
+  /** Everyone present, from presence; spectators do not take seats but are listed apart. */
   const receivePresence = useCallback(
     (everyone: TableParticipant[]) => {
       const seats = everyone.filter((participant) => !participant.spectator)
       link.participants = seats
       setParticipants(seats)
+      setSpectators(
+        everyone
+          .filter((participant) => participant.spectator)
+          .sort((a, b) => a.player_name.localeCompare(b.player_name)),
+      )
     },
     [link],
   )
@@ -347,6 +353,7 @@ export function useTableGameState(
   return {
     isOwner,
     participants: seatedParticipants,
+    spectators,
     events,
     shuffleVersion,
     timer,

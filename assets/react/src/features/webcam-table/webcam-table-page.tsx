@@ -187,6 +187,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         onOpenChange={setPanelOpen}
         onTabChange={setPanelTab}
         participants={view.seated}
+        spectators={room.spectators}
         localParticipant={view.localParticipant}
         maxPlayers={MAX_PLAYERS}
         playerDecks={decksFor(view, view.localParticipant)}

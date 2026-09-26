@@ -116,6 +116,7 @@ export function useWebcamRoom(
     isOwner: game.isOwner,
     peerId: link.peerId,
     participants: game.participants,
+    spectators: game.spectators,
     setEliminated: game.setEliminated,
     shuffleVersion: game.shuffleVersion,
     timer: game.timer,
