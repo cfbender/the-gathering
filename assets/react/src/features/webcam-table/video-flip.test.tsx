@@ -61,11 +61,13 @@ function renderTable(roomId = "first-room", viewerId = 1) {
   client.setQueryData(["session"], { id: 7, role: "member" })
   client.setQueryData(["players"], [{ id: viewerId, user_id: 7, name: "Cody" }])
   client.setQueryData(["decks", {}], [])
-  return render(
+  const table = () => (
     <QueryClientProvider client={client}>
       <WebcamTablePage roomId={roomId} />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  const view = render(table())
+  return { ...view, rerenderTable: () => view.rerender(table()) }
 }
 
 function tileVideo(name: string) {
@@ -294,4 +296,39 @@ it("toggles grid view with G and drops a pin made in the other view", () => {
   cleanup()
   renderTable()
   expect(screen.getByRole("button", { name: "Inspect Mara's board" })).toBeTruthy()
+})
+
+it("keeps the card tray open across turn changes only when the viewer asks", () => {
+  const key = "the-gathering:table-preferences:1"
+  const tray = (name: string) =>
+    within(screen.getByRole("region", { name: `Cards identified on ${name}'s board` })).getByRole(
+      "button",
+      { name: new RegExp(`identified cards on ${name}'s board`) },
+    )
+  const expanded = (name: string) => tray(name).getAttribute("aria-expanded")
+  const passTurn = (view: ReturnType<typeof renderTable>, playerId: number) => {
+    remote.activePlayerId = playerId
+    view.rerenderTable()
+  }
+
+  remote.activePlayerId = 73
+  let view = renderTable()
+  fireEvent.click(tray("Mara"))
+  expect(expanded("Mara")).toBe("true")
+  passTurn(view, 42)
+  expect(expanded("Theo")).toBe("false")
+
+  // Turning the setting on picks up the tray's last state, even one left before it was on.
+  cleanup()
+  const saved = JSON.parse(localStorage.getItem(key)!)
+  localStorage.setItem(key, JSON.stringify({ ...saved, keepTrayOpen: true }))
+  remote.activePlayerId = 73
+  view = renderTable()
+  expect(expanded("Mara")).toBe("true")
+  passTurn(view, 42)
+  expect(expanded("Theo")).toBe("true")
+
+  fireEvent.click(tray("Theo"))
+  passTurn(view, 73)
+  expect(expanded("Mara")).toBe("false")
 })

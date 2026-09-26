@@ -20,6 +20,10 @@ interface Preferences {
   quality: PublisherQuality
   stats: boolean
   turnSound: boolean
+  /** Reopen the card tray the way it was left when the stage switches to another board. */
+  keepTrayOpen: boolean
+  /** The tray's last open state; only read while keepTrayOpen is on. */
+  trayOpen: boolean
   /** Players (the viewer included) whose video this viewer flips vertically (saved before horizontal flips existed). */
   flippedPlayerIds: number[]
   horizontallyFlippedPlayerIds: number[]
@@ -56,6 +60,8 @@ export function useTablePreferences(playerId: number) {
       quality: "auto",
       stats: false,
       turnSound: true,
+      keepTrayOpen: false,
+      trayOpen: false,
       flippedPlayerIds: [],
       horizontallyFlippedPlayerIds: [],
     }
@@ -71,6 +77,8 @@ export function useTablePreferences(playerId: number) {
         quality: "quality" in saved && isPublisherQuality(saved.quality) ? saved.quality : "auto",
         stats: "stats" in saved && saved.stats === true,
         turnSound: !("turnSound" in saved && saved.turnSound === false),
+        keepTrayOpen: "keepTrayOpen" in saved && saved.keepTrayOpen === true,
+        trayOpen: "trayOpen" in saved && saved.trayOpen === true,
         flippedPlayerIds: savedPlayerIds(saved, FLIP_KEYS.vertical),
         horizontallyFlippedPlayerIds: savedPlayerIds(saved, FLIP_KEYS.horizontal),
         hotkeys: "hotkeys" in saved && typeof saved.hotkeys === "boolean" ? saved.hotkeys : true,

@@ -123,6 +123,12 @@ export function TableSettings({
               { value: "right", label: "Right" },
             ]}
           />
+          <Toggle
+            checked={preferences.keepTrayOpen}
+            onChange={(keepTrayOpen) => preferences.update({ keepTrayOpen })}
+          >
+            Keep card tray open between players
+          </Toggle>
           <p className="text-[0.65rem] text-base-content/60">
             Click a player's camera to show their board instead of the active turn, or full size in
             grid view; click it again to go back. The camera rail sits opposite the side panel on

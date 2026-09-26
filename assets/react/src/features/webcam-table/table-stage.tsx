@@ -30,7 +30,7 @@ function StageBoard({
   participant: TableParticipant
   flow: CardIdentificationFlow
 }) {
-  const { room } = view
+  const { room, preferences } = view
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">
@@ -77,6 +77,8 @@ function StageBoard({
           onClear={
             participant.peer_id === view.localParticipant.peer_id ? room.clearOwnCards : undefined
           }
+          defaultExpanded={preferences.keepTrayOpen && preferences.trayOpen}
+          onExpandedChange={(trayOpen) => preferences.update({ trayOpen })}
         />
       </div>
       <SeatActions view={view} participant={participant} size="board" />
