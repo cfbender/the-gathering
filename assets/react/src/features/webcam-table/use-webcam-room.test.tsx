@@ -164,6 +164,16 @@ it("hydrates team state and routes life shortcuts to the viewer's team without c
   expect(result.current.counters.poison).toBe(6)
 })
 
+it("takes table controls from the join reply, not the room's creator id", async () => {
+  const { result } = await joinedRoom()
+  // The fixture's owner_id matches this seat, but only the server's join decision counts.
+  act(() => wire.channel!.emit("table_state", tableState()))
+  expect(result.current.isOwner).toBe(false)
+
+  await act(async () => wire.channel!.joinPush.reply("ok", { participant: saved, owner: true }))
+  expect(result.current.isOwner).toBe(true)
+})
+
 it("late spectators never request a camera or publish life/counters", async () => {
   const { result } = await joinedRoom({ ...saved, spectator: true })
   expect(result.current.spectating).toBe(true)

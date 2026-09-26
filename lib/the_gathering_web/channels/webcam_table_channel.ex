@@ -21,8 +21,9 @@ defmodule TheGatheringWeb.WebcamTableChannel do
          {:ok, participant} <- participant(params, socket.assigns.user.id),
          {:ok, state, participant, room_monitor} <- WebcamTables.join(room_id, participant) do
       send(self(), :after_join)
+      owner? = room_owner?(state, participant, socket.assigns.user)
 
-      {:ok, %{participant: participant, table_state: state},
+      {:ok, %{participant: participant, table_state: state, owner: owner?},
        socket
        |> assign(:participant, participant)
        |> assign(:room_id, room_id)
@@ -31,7 +32,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
          events: ChannelRateLimit.new(:webcam_table_events),
          signals: ChannelRateLimit.new(:webcam_table_signals)
        })
-       |> assign(:owner?, state.owner_id == participant.player_id)}
+       |> assign(:owner?, owner?)}
     else
       # Only an invalid room id fails `valid_room_id?/1`; a full room is reported by the room.
       false -> {:error, %{reason: "invalid room"}}
@@ -311,13 +312,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
        )
        when map_size(payload) == 2 and is_integer(team) and team >= 0 and is_integer(delta) and
               delta in -1998..1998 do
-    {:reply,
-     WebcamTables.adjust_team_life(
-       socket.assigns.room_id,
-       socket.assigns.participant.player_id,
-       team,
-       delta
-     ), socket}
+    actor = if socket.assigns.owner?, do: :owner, else: socket.assigns.participant.player_id
+    {:reply, WebcamTables.adjust_team_life(socket.assigns.room_id, actor, team, delta), socket}
   end
 
   defp handle_event("adjust_team_life", _payload, socket),
@@ -510,6 +506,12 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   end
 
   defp participant(_params, _user_id), do: {:error, "account is not linked to a player"}
+
+  # Admins run every table they sit at, alongside the player who opened it.
+  # Spectators never hold table controls.
+  defp room_owner?(_state, %{spectator: true}, _user), do: false
+  defp room_owner?(_state, _participant, %{role: "admin"}), do: true
+  defp room_owner?(state, participant, _user), do: state.owner_id == participant.player_id
 
   # Clients generate peer IDs with crypto.randomUUID(); accept only that canonical form.
   defp uuid?(value), do: is_binary(value) and match?({:ok, ^value}, Ecto.UUID.cast(value))
