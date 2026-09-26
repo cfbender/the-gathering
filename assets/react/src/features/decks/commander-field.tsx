@@ -9,7 +9,7 @@ interface CommanderFieldProps {
   required?: boolean
   label?: string
   allowPrintings?: boolean
-  /** `"partner"` filters paired cards; `"all"` also permits companions and casual pairings. */
+  /** `"partner"` allows any commander-eligible card or Background; `"all"` allows any card. */
   mode?: CardSearchMode
 }
 

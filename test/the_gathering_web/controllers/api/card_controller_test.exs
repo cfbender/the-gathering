@@ -65,6 +65,36 @@ defmodule TheGatheringWeb.API.CardControllerTest do
     assert %{"data" => []} = json_response(conn, 200)
   end
 
+  test "GET /api/cards partner mode allows any legendary creature for rule 0 pairings", %{
+    conn: conn
+  } do
+    insert_card!(%{
+      "id" => "clara",
+      "oracle_id" => "oracle-clara",
+      "name" => "Clara Oswald",
+      "type_line" => "Legendary Creature — Human Advisor",
+      "oracle_text" =>
+        "If a triggered ability of a Doctor you control triggers, that ability triggers an additional time.\nDoctor's companion (You can have two commanders if the other is the Doctor.)"
+    })
+
+    insert_card!(%{
+      "id" => "krenko",
+      "oracle_id" => "oracle-krenko",
+      "name" => "Krenko, Mob Boss",
+      "type_line" => "Legendary Creature — Goblin Warrior",
+      "oracle_text" => "{T}: Create X 1/1 red Goblin creature tokens."
+    })
+
+    assert %{"data" => [%{"id" => "clara"}]} =
+             conn |> get(~p"/api/cards?q=Clara&partner=true") |> json_response(200)
+
+    assert %{"data" => [%{"id" => "krenko"}]} =
+             conn |> get(~p"/api/cards?q=Krenko&partner=true") |> json_response(200)
+
+    assert %{"data" => []} =
+             conn |> get(~p"/api/cards?q=Jotun&partner=true") |> json_response(200)
+  end
+
   test "GET /api/cards/:id returns detail and 404s missing cards", %{conn: conn} do
     conn = get(conn, ~p"/api/cards/printing-latest")
 
