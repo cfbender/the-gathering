@@ -20,6 +20,21 @@ defmodule TheGathering.Catalog.CardImages do
   def url(nil), do: nil
   def urls(images), do: Map.new(images || %{}, fn {variant, source} -> {variant, url(source)} end)
 
+  @doc """
+  Cached `small` and `normal` front images of one exact printing, derived from its Scryfall id
+  (Scryfall's CDN serves `/<variant>/front/<a>/<b>/<id>.jpg` without the cache-busting query).
+  `nil` for anything that is not a printing UUID.
+  """
+  def printing_urls(<<a, b, _::binary>> = id) do
+    if Regex.match?(~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/, id) do
+      Map.new(~w(small normal), fn variant ->
+        {variant, url("https://cards.scryfall.io/#{variant}/front/#{<<a>>}/#{<<b>>}/#{id}.jpg")}
+      end)
+    end
+  end
+
+  def printing_urls(_id), do: nil
+
   @doc "Inverse of `url/1`: the Scryfall source behind a `/api/card-images` URL, or the input unchanged."
   def source("/api/card-images?" <> query) do
     case URI.decode_query(query) do

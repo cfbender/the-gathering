@@ -167,7 +167,13 @@ export function useRecognizer(preload = false) {
     [request],
   )
 
-  return { state, ready: state.status === "ready", identify, search, printings }
+  const locate = useCallback(
+    (printingIds: string[]) =>
+      request<GalleryArt[]>((id) => ({ type: "locate", id, printingIds }), []),
+    [request],
+  )
+
+  return { state, ready: state.status === "ready", identify, search, printings, locate }
 }
 
 function post(worker: Worker, message: WorkerRequest) {

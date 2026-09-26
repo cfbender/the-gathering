@@ -17,6 +17,7 @@ import { decksFor, useTableView } from "./table-view"
 import { useCardIdentificationFlow } from "./use-card-identification-flow"
 import { useCorrectionUpload } from "./use-correction-upload"
 import { useRoomHotkeys } from "./use-room-hotkeys"
+import { useSeatDecklists } from "./seat-decklists"
 import { useTurnSound } from "./use-turn-sound"
 import { useVideoStats } from "./video-stats"
 import { useWebcamRoom } from "./use-webcam-room"
@@ -83,10 +84,12 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     turnId(room.participants, playerId, room.mode) ?? playerId,
   )
   const corrections = useCorrectionUpload()
+  const decklists = useSeatDecklists(view.seated, decks)
   const flow = useCardIdentificationFlow({
     room,
     seated: view.seated,
     decks,
+    decklists,
     playerName,
     corrections,
     blocked: dialog?.kind === "help" || dialog?.kind === "finish",

@@ -27,6 +27,8 @@ export type WorkerRequest =
     }
   | { type: "search"; id: number; query: string }
   | { type: "printings"; id: number; artId: string }
+  /** Arts holding any of these printing IDs, each with `printings` narrowed to those hits. */
+  | { type: "locate"; id: number; printingIds: string[] }
 
 export interface Identification {
   quad: Quad

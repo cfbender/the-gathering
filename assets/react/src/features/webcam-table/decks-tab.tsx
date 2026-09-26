@@ -3,17 +3,30 @@ import type { DeckSummary } from "@/features/decks/decks"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "@/components/card-hover"
+import { deckNames } from "./deck-hint"
+import { DecklistButton } from "./decklist-dialog"
 import { CommanderActions } from "./new-commander-dialog"
 import { PanelSection } from "./panel-section"
-import type { TableParticipant } from "./room-types"
+import type { BoardCard, TableParticipant } from "./room-types"
 
 export interface DecksTabProps {
   playerDecks: DeckSummary[]
   localParticipant: TableParticipant
+  identifiedCards: BoardCard[]
   onChooseDeck: (deckId: number) => void
 }
 
-export function DecksTab({ playerDecks, localParticipant: local, onChooseDeck }: DecksTabProps) {
+export function DecksTab({
+  playerDecks,
+  localParticipant: local,
+  identifiedCards,
+  onChooseDeck,
+}: DecksTabProps) {
+  const boardNames = deckNames({
+    cards: identifiedCards
+      .filter((entry) => entry.ownerPeerId === local.peer_id)
+      .map((entry) => ({ name: entry.card.name })),
+  })
   return (
     <PanelSection title="Your commanders" icon={Layers}>
       {playerDecks.length === 0 ? (
@@ -50,6 +63,10 @@ export function DecksTab({ playerDecks, localParticipant: local, onChooseDeck }:
           })}
         </ul>
       )}
+      <DecklistButton
+        deck={playerDecks.find((deck) => deck.id === local.deck_id)}
+        boardNames={boardNames}
+      />
       <CommanderActions
         playerId={local.player_id}
         deck={playerDecks.find((deck) => deck.id === local.deck_id)}

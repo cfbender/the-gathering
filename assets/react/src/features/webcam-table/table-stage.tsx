@@ -149,9 +149,10 @@ function IdentificationOverlays({ view, flow }: { view: TableView; flow: CardIde
           gallerySearchable
           onChooseCard={flow.chooseCard}
           onChooseDeck={flow.chooseDeckForCapture}
-          onSearch={recognizer.search}
+          onSearch={flow.search}
           onPrintings={recognizer.printings}
           galleryVersion={"version" in recognizer.state ? recognizer.state.version : undefined}
+          deckNames={flow.ownerDeckNames}
           onDismiss={flow.dismissPicker}
         />
       )}

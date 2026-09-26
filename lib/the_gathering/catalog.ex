@@ -204,6 +204,31 @@ defmodule TheGathering.Catalog do
       (is_binary(name) && Map.get(urls, {:image, {:name, CardData.normalize_name(name)}})) || nil
   end
 
+  @doc """
+  Catalog cards for printed names, in one query plus a face lookup per name the exact match
+  missed (deck lists sometimes name only the front of a double-faced card). Returns a map from
+  each given name to its `%Card{}`; unknown names are absent.
+  """
+  def cards_by_name(names) do
+    wanted = Map.new(Enum.uniq(names), &{&1, CardData.normalize_name(&1)})
+    normalized = wanted |> Map.values() |> Enum.uniq()
+
+    exact =
+      Card
+      |> where([card], card.normalized_name in ^normalized)
+      |> order_by([card], asc: card.released_at)
+      |> Repo.all()
+      # Latest release wins when several catalog rows share a name.
+      |> Map.new(&{&1.normalized_name, &1})
+
+    Enum.reduce(wanted, %{}, fn {name, key}, found ->
+      case Map.get(exact, key) || Repo.one(face_query(key)) do
+        nil -> found
+        card -> Map.put(found, name, card)
+      end
+    end)
+  end
+
   def sync_status do
     Repo.one(from state in SyncState, order_by: [desc: state.id], limit: 1) || %SyncState{}
   end

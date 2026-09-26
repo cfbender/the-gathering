@@ -72,6 +72,33 @@ defmodule TheGathering.DecklistsTest do
     assert deck.color_identity == ~w(U R)
     assert deck.author == "Goodybarsco"
     assert deck.card_count == 100
+
+    assert deck.cards == [
+             %{
+               name: "Kraum, Ludevic's Opus",
+               quantity: 1,
+               zone: :commander,
+               printing_id: "5b4d8b79-7a17-4f07-9dd5-4bb3ee0d3a5d"
+             },
+             %{
+               name: "Malcolm, Keen-Eyed Navigator",
+               quantity: 1,
+               zone: :commander,
+               printing_id: "9d5b2c1e-3e77-4a4f-9d52-1b4a3c8e6f10"
+             },
+             %{
+               name: "Island",
+               quantity: 12,
+               zone: :mainboard,
+               printing_id: "a1b2c3d4-0000-4000-8000-000000000001"
+             },
+             %{
+               name: "Sol Ring",
+               quantity: 1,
+               zone: :mainboard,
+               printing_id: "7e0c2f04-1d50-4fcd-9f1c-3c2a1b0e9d8f"
+             }
+           ]
   end
 
   test "resolves an Archidekt deck with a Background" do
@@ -81,7 +108,22 @@ defmodule TheGathering.DecklistsTest do
     assert deck.commanders == [%{name: "Noble Heritage"}, %{name: "Wilson, Refined Grizzly"}]
     assert deck.color_identity == ~w(W G)
     assert deck.author == "Will3545"
+    # The Maybeboard is excluded from the deck, so neither the count nor the list has Cultivate.
     assert deck.card_count == 100
+
+    assert Enum.map(deck.cards, &{&1.name, &1.quantity, &1.zone}) == [
+             {"Noble Heritage", 1, :commander},
+             {"Wilson, Refined Grizzly", 1, :commander},
+             {"Forest", 38, :mainboard},
+             {"Other cards", 60, :mainboard}
+           ]
+
+    assert Enum.map(deck.cards, & &1.printing_id) == [
+             "0c4b3e5a-8f5d-4a32-9f6e-2b1d7c9a4e01",
+             "0c4b3e5a-8f5d-4a32-9f6e-2b1d7c9a4e02",
+             "0c4b3e5a-8f5d-4a32-9f6e-2b1d7c9a4e03",
+             nil
+           ]
   end
 
   test "resolves a ManaVault shared deck" do
@@ -94,6 +136,67 @@ defmodule TheGathering.DecklistsTest do
     assert deck.color_identity == ~w(W U)
     assert deck.author == nil
     assert deck.card_count == 100
+
+    # `considering` is left out; the preferred printing wins over the fallback.
+    assert deck.cards == [
+             %{
+               name: "Shorikai, Genesis Engine",
+               quantity: 1,
+               zone: :commander,
+               printing_id: "b3a0e8d4-1f2c-4c4e-9a55-6f1d2e3c4b01"
+             },
+             %{
+               name: "Sol Ring",
+               quantity: 1,
+               zone: :mainboard,
+               printing_id: "b3a0e8d4-1f2c-4c4e-9a55-6f1d2e3c4b02"
+             }
+           ]
+  end
+
+  test "follows ManaVault deck-card pages" do
+    parent = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      after_cursor = Jason.decode!(body)["variables"]["after"]
+      send(parent, {:page, after_cursor})
+
+      {edges, page_info} =
+        case after_cursor do
+          nil ->
+            {[node("commander", "Shorikai, Genesis Engine")],
+             %{"endCursor" => "c1", "hasNextPage" => true}}
+
+          "c1" ->
+            {[node("mainboard", "Sol Ring", 1), node("mainboard", "Island", 30)],
+             %{"endCursor" => "c2", "hasNextPage" => false}}
+        end
+
+      Req.Test.json(conn, %{
+        "data" => %{
+          "deck" => %{
+            "name" => "Paged",
+            "cardCount" => 32,
+            "commanderColorIdentity" => ~w(W U),
+            "deckCards" => %{"pageInfo" => page_info, "edges" => edges}
+          }
+        }
+      })
+    end)
+
+    url = "https://manavault.example.com/share/decks/PagedPagedPagedPagedPaged"
+    assert {:ok, deck} = Decklists.resolve(url)
+    assert_receive {:page, nil}
+    assert_receive {:page, "c1"}
+
+    assert Enum.map(deck.cards, &{&1.name, &1.quantity}) == [
+             {"Shorikai, Genesis Engine", 1},
+             {"Sol Ring", 1},
+             {"Island", 30}
+           ]
+
+    assert deck.commanders == [%{name: "Shorikai, Genesis Engine"}]
   end
 
   test "maps missing and private upstream responses" do
@@ -120,6 +223,10 @@ defmodule TheGathering.DecklistsTest do
     assert first == second
     assert_receive :requested
     refute_receive :requested
+  end
+
+  defp node(zone, name, quantity \\ 1) do
+    %{"node" => %{"zone" => zone, "quantity" => quantity, "card" => %{"name" => name}}}
   end
 
   defp stub_fixture(name) do

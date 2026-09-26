@@ -38,8 +38,25 @@ defmodule TheGathering.Decklists.Sources.Moxfield do
         get_in(body, ["createdByUser", "displayName"]) ||
           get_in(body, ["createdByUser", "userName"]),
       card_count: board_count(body, "mainboard") + board_count(body, "commanders"),
+      cards: board_cards(commanders, :commander) ++ board_cards(mainboard(body), :mainboard),
       fetched_at: DateTime.utc_now()
     }
+  end
+
+  defp mainboard(body), do: get_in(body, ["boards", "mainboard", "cards"]) || %{}
+
+  defp board_cards(cards, zone) do
+    cards
+    |> Enum.map(fn {_id, entry} ->
+      Decklist.card(
+        get_in(entry, ["card", "name"]),
+        entry["quantity"],
+        zone,
+        get_in(entry, ["card", "scryfall_id"])
+      )
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.sort_by(& &1.name)
   end
 
   defp commander_names(cards) do
