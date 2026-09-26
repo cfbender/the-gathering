@@ -110,6 +110,27 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     corrections,
     blocked: dialog?.kind === "help" || dialog?.kind === "finish",
   })
+  const superAiTarget = view.activeGroup[0]?.peer_id
+  const { request: requestSuperAi, cancel: cancelSuperAi } = room.superAi
+  useEffect(() => {
+    if (!preferences.superAi || !superAiTarget || superAiTarget === room.peerId) {
+      cancelSuperAi()
+      return
+    }
+    let cancelled = false
+    let timer: number | undefined
+    const scan = () => {
+      if (cancelled) return
+      requestSuperAi(superAiTarget)
+      timer = window.setTimeout(scan, 10_000)
+    }
+    scan()
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+      cancelSuperAi()
+    }
+  }, [cancelSuperAi, preferences.superAi, requestSuperAi, room.peerId, superAiTarget])
   useRoomHotkeys(view, flow, {
     togglePanel: () => setPanelOpen((open) => !open),
     showTab: (tab) => {
