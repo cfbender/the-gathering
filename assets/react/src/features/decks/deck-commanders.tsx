@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { Fragment, type ReactNode } from "react"
 import { CardHover } from "@/components/card-hover"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { cn } from "@/lib/cn"
@@ -18,19 +18,68 @@ type CommanderFields = Pick<
     >
   >
 
+interface Commander {
+  name: string
+  gameChanger?: boolean
+  imageUrl?: string | null
+  artCropUrl?: string | null
+}
+
+function commandersOf(deck: CommanderFields): Commander[] {
+  const commander = {
+    name: deck.commander_name,
+    gameChanger: deck.commander_game_changer,
+    imageUrl: deck.commander_image_url,
+    artCropUrl: deck.commander_art_crop_url,
+  }
+  if (!deck.partner_name) return [commander]
+  return [
+    commander,
+    {
+      name: deck.partner_name,
+      gameChanger: deck.partner_game_changer,
+      imageUrl: deck.partner_image_url,
+      artCropUrl: deck.partner_art_crop_url,
+    },
+  ]
+}
+
 /**
  * Commander and partner names. With `hover`, each name previews its full card; leave it off
- * where a parent already wraps the whole pairing in a `CommanderHover`.
+ * where a parent already wraps the whole pairing in a `CommanderHover`. `stacked` puts each
+ * commander on its own centered line, for narrow columns where a wrapped "A / B" row reads badly.
  */
 export function DeckCommanders({
   deck,
   compact = false,
   hover = false,
+  stacked = false,
 }: {
   compact?: boolean
   hover?: boolean
+  stacked?: boolean
   deck: CommanderFields
 }) {
+  const commanders = commandersOf(deck)
+
+  if (stacked) {
+    return (
+      <span className="flex min-w-0 flex-col items-center gap-0.5">
+        {commanders.map((commander) => (
+          <span
+            key={commander.name}
+            className="inline-flex max-w-full flex-wrap items-center justify-center gap-1"
+          >
+            <CommanderName hover={hover} commander={commander}>
+              <span>{commander.name}</span>
+            </CommanderName>
+            <GameChangerBadge gameChanger={commander.gameChanger} compact />
+          </span>
+        ))}
+      </span>
+    )
+  }
+
   const nameClass = compact ? "min-w-0 truncate" : undefined
   return (
     <span
@@ -39,58 +88,36 @@ export function DeckCommanders({
         !compact && "flex-wrap",
       )}
     >
-      <CommanderName
-        hover={hover}
-        name={deck.commander_name}
-        gameChanger={deck.commander_game_changer}
-        imageUrl={deck.commander_image_url}
-        artCropUrl={deck.commander_art_crop_url}
-      >
-        <span className={nameClass}>{deck.commander_name}</span>
-      </CommanderName>
-      <GameChangerBadge gameChanger={deck.commander_game_changer} compact={compact} />
-      {deck.partner_name && (
-        <>
-          <span aria-hidden="true">/</span>
-          <CommanderName
-            hover={hover}
-            name={deck.partner_name}
-            gameChanger={deck.partner_game_changer}
-            imageUrl={deck.partner_image_url}
-            artCropUrl={deck.partner_art_crop_url}
-          >
-            <span className={nameClass}>{deck.partner_name}</span>
+      {commanders.map((commander, index) => (
+        <Fragment key={commander.name}>
+          {index > 0 && <span aria-hidden="true">/</span>}
+          <CommanderName hover={hover} commander={commander}>
+            <span className={nameClass}>{commander.name}</span>
           </CommanderName>
-          <GameChangerBadge gameChanger={deck.partner_game_changer} compact={compact} />
-        </>
-      )}
+          <GameChangerBadge gameChanger={commander.gameChanger} compact={compact} />
+        </Fragment>
+      ))}
     </span>
   )
 }
 
 function CommanderName({
   hover,
-  name,
-  gameChanger,
-  imageUrl,
-  artCropUrl,
+  commander,
   children,
 }: {
   hover: boolean
-  name: string
-  gameChanger?: boolean
-  imageUrl?: string | null
-  artCropUrl?: string | null
+  commander: Commander
   children: ReactNode
 }) {
   if (!hover) return children
   return (
     <CardHover
       id={null}
-      name={name}
-      gameChanger={gameChanger}
-      imageUrl={imageUrl}
-      artCropUrl={artCropUrl}
+      name={commander.name}
+      gameChanger={commander.gameChanger}
+      imageUrl={commander.imageUrl}
+      artCropUrl={commander.artCropUrl}
     >
       {children}
     </CardHover>

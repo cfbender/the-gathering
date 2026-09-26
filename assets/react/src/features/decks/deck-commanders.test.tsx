@@ -36,3 +36,10 @@ it("renders plain names without hover", () => {
   fireEvent.mouseEnter(screen.getByText("Tymna the Weaver"))
   expect(screen.queryByRole("img")).toBeNull()
 })
+
+it("stacks each commander on its own line without a separator", () => {
+  const { container } = render(<DeckCommanders deck={deck} stacked />)
+  expect(screen.getByText("Thrasios, Triton Hero")).toBeTruthy()
+  expect(screen.getByText("Tymna the Weaver")).toBeTruthy()
+  expect(container.textContent).not.toContain("/")
+})
