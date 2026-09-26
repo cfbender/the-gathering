@@ -60,22 +60,43 @@ export function EloChart({
             strokeDasharray="5 5"
             vectorEffect="non-scaling-stroke"
           />
-          {orderedLines.map(({ player, color }) => (
-            <polyline
-              key={player.id}
-              data-player-id={player.id}
-              points={buildEloPath(player.history, bounds, PLOT_WIDTH, PLOT_HEIGHT)}
-              transform={`translate(${PADDING_X} ${PADDING_Y})`}
-              fill="none"
-              stroke={color}
-              strokeOpacity={highlighted && highlightedId !== player.id ? 0.15 : 1}
-              className="transition-[stroke-opacity] duration-150"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
+          {orderedLines.map(({ player, color }) => {
+            const points = buildEloPath(player.history, bounds, PLOT_WIDTH, PLOT_HEIGHT)
+            return (
+              <g
+                key={player.id}
+                data-player-id={player.id}
+                transform={`translate(${PADDING_X} ${PADDING_Y})`}
+                onMouseEnter={() => onHighlightChange?.(player.id)}
+                onMouseLeave={() => onHighlightChange?.(null)}
+              >
+                <polyline
+                  data-elo-line
+                  points={points}
+                  fill="none"
+                  stroke={color}
+                  strokeOpacity={highlighted && highlightedId !== player.id ? 0.15 : 1}
+                  className="pointer-events-none transition-[stroke-opacity] duration-150"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+                {/* A wider invisible stroke makes the thin line easy to hover. */}
+                <polyline
+                  data-elo-hit-area
+                  points={points}
+                  fill="none"
+                  stroke="transparent"
+                  pointerEvents="stroke"
+                  strokeWidth="14"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            )
+          })}
         </svg>
         <span
           className="text-base-content/45 pointer-events-none absolute right-3 -translate-y-full text-[10px] leading-none"
