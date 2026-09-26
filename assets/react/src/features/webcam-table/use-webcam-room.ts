@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import type { PublisherQuality } from "./media-policy"
 import { useRoomLink } from "./room-link"
 import type { IdentifiedCard } from "./room-types"
@@ -39,6 +39,9 @@ export function useWebcamRoom(
   const captures = useCardCapture(link, playerId, camera, peers, setStatus)
   const cards = useBoardCards(link)
   const game = useTableGameState(link, playerId, setError)
+  // Set while this seat ends the table, so its own `table_closed` is not reported back to it.
+  const endingRef = useRef(false)
+  const [closedByOwner, setClosedByOwner] = useState(false)
 
   const { spectating } = useRoomChannel(link, roomId, playerId, deckId, {
     setStatus,
@@ -70,11 +73,25 @@ export function useWebcamRoom(
       captures.cancelAll()
       peers.reset()
     },
+    onClosed() {
+      captures.cancelAll()
+      setStatus("This table has ended.")
+      // The seat that ended it navigates on its own; everyone else is told.
+      if (!endingRef.current) setClosedByOwner(true)
+    },
     onDispose() {
       peers.closeAll()
       camera.stop()
     },
   })
+
+  /** Owner ends the table for everyone (after recording it or instead of recording it). */
+  async function endGame() {
+    endingRef.current = true
+    const ended = await game.endGame()
+    if (!ended) endingRef.current = false
+    return ended
+  }
 
   function toggleCamera() {
     const off = camera.toggleCamera()
@@ -113,6 +130,9 @@ export function useWebcamRoom(
     adjustTurn: game.adjustTurn,
     roll: game.roll,
     changeTimer: game.changeTimer,
+    endGame,
+    /** Another seat (the room owner) ended the table while this one was connected. */
+    closedByOwner,
     rollDice: game.rollDice,
     events: game.events,
     streams: peers.streams,

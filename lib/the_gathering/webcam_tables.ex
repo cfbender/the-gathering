@@ -59,8 +59,10 @@ defmodule TheGathering.WebcamTables do
   @doc "Running rooms, connected or not, as `%{id: id, opened_at: ms_since_epoch}`."
   def rooms do
     TheGathering.WebcamTables.Registry
-    |> Registry.select([{{:"$1", :_, :"$2"}, [], [{{:"$1", :"$2"}}]}])
-    |> Enum.map(fn {id, opened_at} -> %{id: id, opened_at: opened_at} end)
+    |> Registry.select([{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2", :"$3"}}]}])
+    # The registry forgets a stopped room asynchronously; a just-closed table is not open.
+    |> Enum.filter(fn {_id, pid, _opened_at} -> Process.alive?(pid) end)
+    |> Enum.map(fn {id, _pid, opened_at} -> %{id: id, opened_at: opened_at} end)
   end
 
   @doc """
@@ -99,6 +101,13 @@ defmodule TheGathering.WebcamTables do
       end
     end)
   end
+
+  @doc """
+  Ends the table for everyone, whether or not the game was recorded. The saved
+  session is deleted and the room stops; joined connections receive `:DOWN`
+  with reason `{:shutdown, :closed}` on their room monitor.
+  """
+  def close(room), do: call(room, :close)
 
   @doc "Whether `pid` is `player_id`'s current connection."
   def current?(room, player_id, pid), do: call(room, {:current?, player_id, pid})

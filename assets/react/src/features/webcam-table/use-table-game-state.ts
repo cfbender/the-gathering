@@ -304,6 +304,30 @@ export function useTableGameState(
     })
   }
 
+  /** Owner closes the table for every seat; resolves whether the server accepted. The server
+   * then sends each connection, this one included, `table_closed`. */
+  function endGame(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const channel = link.channel
+      if (channel?.state !== "joined") {
+        setError("Reconnect to the table before ending the game")
+        resolve(false)
+        return
+      }
+      channel
+        .push("end_game", {})
+        .receive("ok", () => resolve(true))
+        .receive("error", ({ reason }: ErrorReply) => {
+          setError(reason)
+          resolve(false)
+        })
+        .receive("timeout", () => {
+          setError("Ending the game timed out; try again")
+          resolve(false)
+        })
+    })
+  }
+
   function setEliminated(peerId: string, eliminated: boolean) {
     link.channel
       ?.push("set_eliminated", { peer_id: peerId, eliminated })
@@ -350,6 +374,7 @@ export function useTableGameState(
     adjustTeamLife,
     moveSeat,
     changeTimer,
+    endGame,
     setEliminated,
     rollDice,
   }

@@ -109,6 +109,12 @@ defmodule TheGathering.WebcamTables.Room do
     end
   end
 
+  # Connected channels monitor the room and treat this exit reason as the end of the table.
+  def handle_call(:close, _from, state) do
+    :ok = Session.delete(state.id)
+    {:stop, {:shutdown, :closed}, :ok, state}
+  end
+
   def handle_call({:monarch, participant}, _from, %{entry: entry} = state) do
     holder = Map.take(participant, [:peer_id, :player_name])
 

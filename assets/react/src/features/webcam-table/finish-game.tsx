@@ -24,14 +24,18 @@ interface Props {
   participants: TableParticipant[]
   playedAt: Date
   timer: GameTimerState
+  /** Closes the table for every seat; resolves whether the server accepted. */
+  onEndTable: () => Promise<boolean>
   onOpenChange: (open: boolean) => void
 }
 
-/** End game → result form → POST /api/games, so the table lands in normal history. */
+/** End game → result form → POST /api/games, so the table lands in normal history. Either way
+ * (recorded or not) the table then closes for everyone. */
 export function FinishGame({
   participants,
   playedAt,
   timer,
+  onEndTable,
   onOpenChange,
   mode = "commander",
 }: Props) {
@@ -54,6 +58,7 @@ export function FinishGame({
   const [turns, setTurns] = useState("")
   const [winCondition, setWinCondition] = useState("")
   const [notes, setNotes] = useState("")
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
   const mutation = useMutation({
     mutationFn: () =>
       api<{ data: Game }>("/api/games", {
@@ -74,11 +79,24 @@ export function FinishGame({
         ),
       }).then((body) => body.data),
     onSuccess: async (game) => {
-      await invalidateGameRelated(queryClient)
+      // The game is saved; a table that fails to close is still pruned once everyone leaves.
+      await Promise.all([invalidateGameRelated(queryClient), onEndTable()])
       void navigate({ to: "/games/$gameId", params: { gameId: String(game.id) } })
     },
   })
-  const error = mutation.error instanceof ApiError ? mutation.error.detail : null
+  const discard = useMutation({
+    mutationFn: onEndTable,
+    onSuccess: (ended) => {
+      if (ended) void navigate({ to: "/games" })
+    },
+  })
+  const busy = mutation.isPending || discard.isPending
+  const error =
+    mutation.error instanceof ApiError
+      ? mutation.error.detail
+      : discard.data === false
+        ? "Could not end the game. Check your connection to the table and try again."
+        : null
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
@@ -202,17 +220,54 @@ export function FinishGame({
               At least two players must be in the room to record a game.
             </p>
           )}
-          <div className="flex justify-end gap-2 md:col-span-2">
-            <button type="button" className="btn btn-ghost" onClick={() => onOpenChange(false)}>
-              Back to game
-            </button>
-            <button
-              className="btn btn-primary min-w-36"
-              disabled={participants.length < 2 || !winner || mutation.isPending}
+          {confirmDiscard ? (
+            <div
+              role="alert"
+              className="rounded-box border-warning/50 bg-warning/10 flex flex-wrap items-center justify-between gap-3 border p-3 md:col-span-2"
             >
-              {mutation.isPending ? "Recording…" : "Record result"}
-            </button>
-          </div>
+              <span className="text-sm">
+                End the game for everyone without adding it to history?
+              </span>
+              <div className="ml-auto flex gap-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => setConfirmDiscard(false)}
+                  disabled={discard.isPending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-error"
+                  onClick={() => discard.mutate()}
+                  disabled={busy}
+                >
+                  {discard.isPending ? "Ending…" : "End without recording"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap justify-end gap-2 md:col-span-2">
+              <button
+                type="button"
+                className="btn btn-ghost text-error sm:mr-auto"
+                onClick={() => setConfirmDiscard(true)}
+                disabled={busy}
+              >
+                End without recording
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => onOpenChange(false)}>
+                Back to game
+              </button>
+              <button
+                className="btn btn-primary min-w-36"
+                disabled={participants.length < 2 || !winner || busy}
+              >
+                {mutation.isPending ? "Recording…" : "Record result"}
+              </button>
+            </div>
+          )}
           {timer.started_at !== null && (
             <p className="text-base-content/50 text-xs md:col-span-2">
               The table timer is paused. If you go back, use Resume timer to keep playing.

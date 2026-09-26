@@ -155,11 +155,14 @@ Games page Play / Join button ────▶ /table/:roomId
                                          │
                                  click End game
                                          │
-                               complete result form
+                ╭────────────────────────┴───────────────────────╮
+       complete result form                             End without recording
+                │                                                │
+POST /api/games → Games.create_game/2                            │
+                │                                                │
+                ╰──────────────▶ end_game: room closes ◀─────────╯
                                          │
-                       POST /api/games → Games.create_game/2
-                                         │
-                              existing history + stats
+                   recorded: saved game page · otherwise: games list
 ```
 
 Rooms are UUID-addressed and durable in SQLite's `webcam_table_sessions`. The serialized state
@@ -168,6 +171,13 @@ each mutation. Seats, life/counters/damage, selected commanders, elimination, mo
 turn counts/times, timer, identified card lists and the table log survive reloads and server
 restarts. Media is not stored. Immediate writes avoid a debounce data-loss window;
 this remains a single-server design, not a distributed room coordinator.
+
+Ending the game closes the room. After the owner records the result, or chooses End without
+recording (confirmed inline), the browser sends `end_game`. `WebcamTables.close/1` deletes the
+snapshot and stops the room with `{:shutdown, :closed}`. Every joined channel sees that exit on its
+room monitor, pushes `table_closed`, and stops normally, so browsers leave instead of rejoining a
+fresh room under the same id. Other seats return to the games list with a notice. The table drops
+off the Play/Join list at once, and its seats no longer count as taken.
 
 Rooms keep running after their last seat leaves. `TheGathering.WebcamTables.Pruner` runs every
 minute: it closes rooms that have had no connections and no activity (joins, saved changes or
@@ -522,7 +532,8 @@ can still save or share what they saw; this feature cannot revoke frames already
   published and the UI falls back to deck suggestions.
 - `features/webcam-table/side-panel.tsx` — icon strip and Table/Decks/Cards/Log tabs
   (`cards-tab.tsx` holds the Cards tab; `panel-section.tsx` the collapsible section).
-- `features/webcam-table/finish-game.tsx` — the End game result dialog.
+- `features/webcam-table/finish-game.tsx` — the End game dialog: record the result or end without
+  recording; both close the table.
 - `features/webcam-table/game-result.ts` — winner suggestion and normal recorded-game payload,
   including eliminated seats (`game-result.test.ts`).
 - `features/webcam-table/table-timer.tsx` — elapsed-time badge in the Table tab header plus the
