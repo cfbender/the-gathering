@@ -1077,6 +1077,47 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert_reply push(spectator, "set_mode", %{"mode" => "commander"}), :error
   end
 
+  test "admins hold table controls in rooms they did not open", %{room_id: room} do
+    join_admin = fn peer_id ->
+      user = AccountsFixtures.admin_fixture()
+      {:ok, player} = Games.create_player(%{name: "Admin #{peer_id}"}, user.id)
+
+      {:ok, reply, socket} =
+        UserSocket
+        |> socket(peer_id, %{user: user})
+        |> subscribe_and_join(WebcamTableChannel, "webcam_table:#{room}", %{
+          "peer_id" => peer_id,
+          "player_id" => player.id
+        })
+
+      {reply, socket}
+    end
+
+    {%{owner: true}, admin} = join_admin.(@peer_b)
+    member = join_seat(room, @peer_c)
+    join_seat(room, @peer_d)
+
+    assert_reply push(member, "set_mode", %{"mode" => "two_headed_giant"}), :error
+    assert_reply push(admin, "set_mode", %{"mode" => "two_headed_giant"}), :ok
+
+    # Teams are adjacent pairs: Alice and C, then the admin and D.
+    peers = [@peer_a, @peer_c, @peer_b, @peer_d]
+    assert_reply push(admin, "arrange_seats", %{"peer_ids" => peers}), :ok
+    assert_reply push(admin, "turn_settings", %{"auto_randomize" => false}), :ok
+    assert_reply push(admin, "start_game", %{}), :ok
+
+    assert_reply push(member, "adjust_team_life", %{"team_index" => 1, "delta" => -1}), :error
+    assert_reply push(admin, "adjust_team_life", %{"team_index" => 0, "delta" => -1}), :ok
+    assert WebcamTables.snapshot(room).team_life[0] == 59
+
+    assert_reply push(admin, "set_eliminated", %{"peer_id" => @peer_c, "eliminated" => true}),
+                 :ok
+
+    # A late admin spectates, and spectators never hold table controls.
+    {%{owner: false}, spectator} = join_admin.(@spectator_peer)
+    assert_reply push(spectator, "timer", %{"action" => "pause"}), :error
+  end
+
   test "2HG validates teams, serializes shared life and eliminates offline teammates", %{
     socket: owner,
     room_id: room,

@@ -114,8 +114,13 @@ defmodule TheGathering.WebcamTables do
 
   def mode(room, mode), do: call(room, {:mode, mode})
 
-  def adjust_team_life(room, player_id, team_index, delta),
-    do: call(room, {:team_life, player_id, team_index, delta})
+  @doc """
+  Changes a started Two-Headed Giant team's shared life. `actor` is `:owner`
+  for a seat holding table controls, otherwise the acting player's id, which
+  must belong to the team.
+  """
+  def adjust_team_life(room, actor, team_index, delta),
+    do: call(room, {:team_life, actor, team_index, delta})
 
   def eliminate(room, peer_id, eliminated), do: call(room, {:eliminate, peer_id, eliminated})
 

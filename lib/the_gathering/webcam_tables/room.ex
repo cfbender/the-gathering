@@ -181,11 +181,11 @@ defmodule TheGathering.WebcamTables.Room do
       else: {:reply, {:error, %{reason: "game mode is fixed after start"}}, state}
   end
 
-  def handle_call({:team_life, player_id, team_index, delta}, _from, %{entry: entry} = state) do
+  def handle_call({:team_life, actor, team_index, delta}, _from, %{entry: entry} = state) do
     team = entry |> ordered_seats() |> Enum.chunk_every(2) |> Enum.at(team_index, [])
 
     if entry.mode == "two_headed_giant" and Map.has_key?(entry.team_life, team_index) and
-         (entry.owner_id == player_id or Enum.any?(team, &(&1.player_id == player_id))) do
+         (actor == :owner or Enum.any?(team, &(&1.player_id == actor))) do
       life = entry.team_life[team_index] |> Kernel.+(delta) |> max(-999) |> min(999)
       entry = put_in(entry, [:team_life, team_index], life)
 

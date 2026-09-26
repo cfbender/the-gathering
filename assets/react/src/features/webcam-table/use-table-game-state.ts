@@ -33,7 +33,6 @@ interface TableState {
   turns: TurnState
   mode: GameFormat
   team_life: Record<number, number>
-  owner_id: number
   monarch: MonarchEvent
   cards: BoardCard[]
 }
@@ -58,7 +57,7 @@ export function useTableGameState(
   const [turns, setTurns] = useState<TurnState>(EMPTY_TURNS)
   const [mode, setModeState] = useState<GameFormat>("commander")
   const [teamLife, setTeamLife] = useState<Record<number, number>>({})
-  const [ownerId, setOwnerId] = useState<number | null>(null)
+  const [isOwner, setIsOwner] = useState(false)
   const [roll, setRoll] = useState<TableRoll | null>(null)
   const [monarch, setMonarch] = useState<Monarch | null>(null)
   // Your own life is tracked locally so rapid ± clicks compound before presence
@@ -125,7 +124,6 @@ export function useTableGameState(
         setTurns(state.turns)
         setModeState(state.mode)
         setTeamLife(state.team_life)
-        setOwnerId(state.owner_id)
         syncMonarch(state.monarch)
       })
       room.on(
@@ -150,8 +148,9 @@ export function useTableGameState(
   )
 
   /** Restores this seat from the server's copy on every (re)join, before any edits. */
-  const hydrate = useCallback((participant: TableParticipant | undefined) => {
+  const hydrate = useCallback((participant: TableParticipant | undefined, owner: boolean) => {
     monarchRevisionRef.current = -1
+    setIsOwner(owner)
     if (!participant) return
     lifeRef.current = participant.life
     setLife(participant.life)
@@ -322,7 +321,7 @@ export function useTableGameState(
   }
 
   return {
-    isOwner: ownerId === playerId,
+    isOwner,
     participants: seatedParticipants,
     events,
     shuffleVersion,

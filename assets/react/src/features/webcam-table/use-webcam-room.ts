@@ -56,8 +56,8 @@ export function useWebcamRoom(
       peers.syncPeers(everyone)
     },
     onSignal: peers.receiveSignal,
-    onJoined(participant) {
-      game.hydrate(participant)
+    onJoined(participant, owner) {
+      game.hydrate(participant, owner)
       if (participant) peers.restoreReveal(participant.reveal_to ?? null)
       game.syncTimer()
       if (!link.spectator) {

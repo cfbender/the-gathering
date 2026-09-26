@@ -28,11 +28,17 @@ export interface RoomChannelHandlers {
   /** Everyone present after a presence sync, spectators included. */
   onPresence: (everyone: TableParticipant[]) => void
   onSignal: (from: string, signal: Signal) => void
-  /** Every successful (re)join, after `link.spectator` is set. */
-  onJoined: (participant: TableParticipant | undefined) => void
+  /** Every successful (re)join, after `link.spectator` is set. `owner` is the server's
+   * decision that this seat holds the table controls (room creator or an admin). */
+  onJoined: (participant: TableParticipant | undefined, owner: boolean) => void
   /** The channel dropped; `link.peerId` is already a new media generation. */
   onChannelError: () => void
   onDispose: () => void
+}
+
+interface JoinReply {
+  participant?: TableParticipant
+  owner?: boolean
 }
 
 /** The Phoenix socket, `webcam_table:<roomId>` channel, and presence for one seat. */
@@ -118,12 +124,12 @@ export function useRoomChannel(
         })
         room
           .join()
-          .receive("ok", ({ participant }: { participant?: TableParticipant }) => {
+          .receive("ok", ({ participant, owner = false }: JoinReply) => {
             on().setError(null)
             link.spectator = participant?.spectator ?? false
             setSpectating(link.spectator)
             on().setStatus(liveStatus(link.spectator))
-            on().onJoined(participant)
+            on().onJoined(participant, owner)
           })
           .receive("error", ({ reason }: { reason: string }) => on().setError(reason))
       } catch (reason) {
