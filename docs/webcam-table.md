@@ -195,6 +195,8 @@ table audio), allowing spectators to autoplay without a camera grant or a prior 
 Disconnecting does not advance the turn. The first timer start (through `start_game` or legacy
 `seat_order`) locks the roster: returning players reclaim their seats, everyone else spectates.
 Spectators receive boards/cameras without requesting camera permission and cannot mutate the game.
+They stay in Presence (with `spectator: true`) but take no seat; the Table tab lists them under
+turn order, and the Setup header shows their count.
 The first seated player owns table setup, timer and turn-count corrections; players retain their
 own life/counter/commander controls. Any seated player can pass the turn.
 

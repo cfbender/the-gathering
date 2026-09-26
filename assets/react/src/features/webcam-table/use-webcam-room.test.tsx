@@ -186,6 +186,21 @@ it("late spectators never request a camera or publish life/counters", async () =
   expect(payloads("update_status")).toEqual([])
 })
 
+it("lists spectators from presence apart from the seats", async () => {
+  const { result } = await joinedRoom()
+  const self = { ...saved, peer_id: result.current.peerId }
+  const watchers = [
+    { ...saved, player_id: 11, player_name: "Wren", peer_id: "zz-wren", spectator: true },
+    { ...saved, player_id: 12, player_name: "Ada", peer_id: "zz-ada", spectator: true },
+  ]
+  act(() => wire.presence!.sync([self, ...watchers]))
+  expect(result.current.participants.map((seat) => seat.player_name)).toEqual(["Cody"])
+  expect(result.current.spectators.map((watcher) => watcher.player_name)).toEqual(["Ada", "Wren"])
+
+  act(() => wire.presence!.sync([self]))
+  expect(result.current.spectators).toEqual([])
+})
+
 it("keeps the hidden capture video playing after the camera replaces the placeholder", async () => {
   // Swapping srcObject pauses a media element; a paused capture video would hand every
   // click the same frozen first frame instead of what is on the table now.

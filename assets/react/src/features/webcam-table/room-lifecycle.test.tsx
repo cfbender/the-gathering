@@ -3,9 +3,14 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import type { ReactNode } from "react"
 import { afterEach, expect, it, vi } from "vite-plus/test"
 import { StreamVideo } from "./board"
+import type { TableParticipant } from "./room-types"
 import { WebcamTablePage } from "./webcam-table-page"
 
-const mode = vi.hoisted(() => ({ started: false, spectator: false }))
+const mode = vi.hoisted(() => ({
+  started: false,
+  spectator: false,
+  spectators: [] as TableParticipant[],
+}))
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
 }))
@@ -18,6 +23,10 @@ vi.mock("./use-webcam-room", async (importOriginal) => {
       return {
         ...room,
         spectating: mode.spectator,
+        // "self" stands in for this tab's peer ID, which is random per render.
+        spectators: mode.spectators.map((watcher) =>
+          watcher.peer_id === "self" ? { ...watcher, peer_id: room.peerId } : watcher,
+        ),
         isOwner: !mode.spectator,
         participants: [
           {
@@ -50,6 +59,7 @@ vi.mock("./use-webcam-room", async (importOriginal) => {
 
 afterEach(() => {
   cleanup()
+  mode.spectators = []
   vi.restoreAllMocks()
 })
 
@@ -111,6 +121,45 @@ it("renders a late joiner as a spectator without a phantom seat or game controls
   ).toBeNull()
   expect(screen.queryByRole("button", { name: /Add a turn|Remove a turn|Eliminated:/ })).toBeNull()
   expect(screen.queryByRole("button", { name: "Decks" })).toBeNull()
+})
+
+it("lists spectators in the Table tab for seated players and for the spectators themselves", () => {
+  renderTable(true)
+  expect(screen.queryByRole("list", { name: "Spectators" })).toBeNull()
+  cleanup()
+
+  const spectator = (
+    peer_id: string,
+    player_id: number,
+    player_name: string,
+  ): TableParticipant => ({
+    peer_id,
+    player_id,
+    player_name,
+    joined_at: 200,
+    life: 40,
+    poison: 0,
+    rad: 0,
+    commander_casts: {},
+    commander_damage: {},
+    camera_off: true,
+    eliminated: false,
+    spectator: true,
+  })
+  mode.spectators = [spectator("watcher", 3, "Wren")]
+  renderTable(true)
+  expect(screen.getByTitle("Spectators").textContent).toMatch(/1\s*spectating/)
+  let list = screen.getByRole("list", { name: "Spectators" })
+  expect(within(list).getByText("Wren")).toBeTruthy()
+  expect(within(list).queryByText("(you)")).toBeNull()
+  cleanup()
+
+  // A spectator sees themselves marked in the list; their fallback seat carries their peer ID.
+  mode.spectators = [spectator("self", 1, "Cody"), spectator("watcher", 3, "Wren")]
+  renderTable(true, true)
+  list = screen.getByRole("list", { name: "Spectators" })
+  expect(within(list).getAllByRole("listitem")).toHaveLength(2)
+  expect(within(list).getByText("(you)")).toBeTruthy()
 })
 
 it("allows video-only spectator autoplay without camera permission or a click", () => {

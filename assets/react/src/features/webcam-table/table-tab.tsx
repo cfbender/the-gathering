@@ -3,6 +3,7 @@ import {
   Check,
   Copy,
   DoorOpen,
+  Eye,
   Gamepad2,
   Layers,
   Play,
@@ -44,6 +45,8 @@ export interface TableTabProps {
   spectating?: boolean
   isOwner?: boolean
   participants: TableParticipant[]
+  /** Everyone watching without a seat, from presence. */
+  spectators: TableParticipant[]
   localParticipant: TableParticipant
   maxPlayers: number
   playerDecks: DeckSummary[]
@@ -243,6 +246,12 @@ function SetupSection(props: TableTabProps) {
           <span className="flex items-center gap-1">
             <Users className="size-3" /> {participants.length}/{props.maxPlayers}
           </span>
+          {props.spectators.length > 0 && (
+            <span className="flex items-center gap-1" title="Spectators">
+              <Eye className="size-3" aria-hidden /> {props.spectators.length}
+              <span className="sr-only">spectating</span>
+            </span>
+          )}
         </span>
       }
     >
@@ -287,6 +296,7 @@ function SetupSection(props: TableTabProps) {
         {props.mode !== "commander" ? " until the match starts" : ""}. Once playing, eliminate or
         restore a player from their seat menu; out players skip turns but keep their recorded seat.
       </p>
+      <SpectatorList spectators={props.spectators} localPeerId={local.peer_id} />
 
       <div className="mt-3 grid gap-1.5">
         <MatchControls {...props} />
@@ -368,6 +378,34 @@ function ConnectionSection(props: TableTabProps) {
   )
 }
 
+/** Late arrivals watching the match; they hold no seat, so they are listed apart from turn order. */
+function SpectatorList({
+  spectators,
+  localPeerId,
+}: {
+  spectators: TableParticipant[]
+  localPeerId: string
+}) {
+  if (spectators.length === 0) return null
+  return (
+    <>
+      <h3 className="text-base-content/50 mt-4 mb-1 flex items-center gap-1 text-[0.6rem] font-bold tracking-wider uppercase">
+        <Eye className="size-3" aria-hidden /> Spectators
+      </h3>
+      <ul className="grid gap-0.5 text-[0.7rem]" aria-label="Spectators">
+        {spectators.map((spectator) => (
+          <li key={spectator.peer_id} className="truncate pl-2">
+            {spectator.player_name}
+            {spectator.peer_id === localPeerId && (
+              <span className="text-base-content/50"> (you)</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
 export function TableTab(props: TableTabProps) {
   if (props.spectating)
     return (
@@ -377,6 +415,7 @@ export function TableTab(props: TableTabProps) {
         </p>
         <TimerBadge sample={props.timer} />
         <SeatOrderTable {...props} readOnly />
+        <SpectatorList spectators={props.spectators} localPeerId={props.localParticipant.peer_id} />
       </PanelSection>
     )
 
