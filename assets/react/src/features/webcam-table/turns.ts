@@ -21,6 +21,11 @@ export const EMPTY_TURNS: TurnState = {
   history: [],
 }
 
+/** The game's turn number: the most turns any player (or team) has started, or 0 before play. */
+export function highestTurn(turns: TurnState): number {
+  return Math.max(0, ...Object.values(turns.counts))
+}
+
 /** The player an un-pass would hand the turn back to, if the last pass led to the current turn.
  * The server still refuses when that player has since been eliminated or left. */
 export function unpassTarget(turns: TurnState): number | null {

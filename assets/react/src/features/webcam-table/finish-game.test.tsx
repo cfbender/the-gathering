@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import { FinishGame } from "./finish-game"
 import { EMPTY_COUNTERS } from "./seat-counters"
+import { EMPTY_TURNS, type TurnState } from "./turns"
 
 const navigate = vi.fn()
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }))
@@ -13,7 +14,7 @@ const participants = [
   { ...seat, peer_id: "peer-b", player_id: 27, player_name: "Bob", eliminated: true },
 ]
 
-function mount(onEndTable: () => Promise<boolean>) {
+function mount(onEndTable: () => Promise<boolean>, turns: TurnState = EMPTY_TURNS) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -23,6 +24,7 @@ function mount(onEndTable: () => Promise<boolean>) {
         participants={participants}
         playedAt={new Date("2026-09-26T19:00:00Z")}
         timer={{ started_at: null, paused_at: null, paused_ms: 0, server_now: 0 }}
+        turns={turns}
         onEndTable={onEndTable}
         onOpenChange={vi.fn()}
       />
@@ -79,5 +81,19 @@ describe("FinishGame", () => {
       expect(navigate).toHaveBeenCalledWith({ to: "/games/$gameId", params: { gameId: "42" } }),
     )
     expect(onEndTable).toHaveBeenCalledOnce()
+  })
+
+  it("records the highest turn any player reached as the game's turns", async () => {
+    const fetch = vi.fn((_url: string, _init: RequestInit) =>
+      Promise.resolve(Response.json({ data: { id: 42 } }, { status: 201 })),
+    )
+    vi.stubGlobal("fetch", fetch)
+    mount(() => Promise.resolve(true), { ...EMPTY_TURNS, counts: { 12: 9, 27: 8 } })
+
+    expect(screen.getByRole<HTMLInputElement>("spinbutton", { name: "Turns" }).value).toBe("9")
+    fireEvent.click(screen.getByRole("button", { name: "Record result" }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    expect(JSON.parse(fetch.mock.calls[0]![1].body as string).game.turns).toBe(9)
   })
 })
