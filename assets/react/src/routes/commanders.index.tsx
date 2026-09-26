@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { Crown } from "lucide-react"
-import { useState } from "react"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { CardArtBackground } from "@/components/card-art-background"
 import { GameChangerBadge } from "@/components/game-changer-badge"
@@ -9,8 +8,15 @@ import { ColorIdentity } from "@/components/mana-symbols"
 import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/cn"
-import { getCommanderStats, sortByMetric, statsQueryKey, type ColorMetric } from "@/lib/stats"
+import {
+  getCommanderStats,
+  isColorMetric,
+  sortByMetric,
+  statsQueryKey,
+  type ColorMetric,
+} from "@/lib/stats"
 import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
+import { useStoredChoice } from "@/lib/stored-choice"
 
 export const Route = createFileRoute("/commanders/")({ component: CommandersPage })
 
@@ -25,7 +31,11 @@ function CommandersPage() {
     queryKey: statsQueryKey(params, "commanders"),
     queryFn: () => getCommanderStats(params),
   })
-  const [metric, setMetric] = useState<ColorMetric>("games")
+  const [metric, setMetric] = useStoredChoice<ColorMetric>(
+    "the-gathering:stats-metric:commanders",
+    "games",
+    isColorMetric,
+  )
   const rows = sortByMetric(query.data ?? [], metric)
 
   return (

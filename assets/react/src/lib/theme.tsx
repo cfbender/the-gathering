@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { api } from "@/lib/api"
 import { sessionQueryOptions } from "@/lib/auth"
 import type { User } from "@/lib/auth"
+import { readStorage, useStoredChoice, writeStorage } from "@/lib/stored-choice"
 
 export type Theme = "light" | "dark"
 export type ThemePreference = Theme | "system"
@@ -40,13 +41,8 @@ function systemTheme(): Theme {
   return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
 }
 
-function storedPreference(): ThemePreference {
-  try {
-    const value = localStorage.getItem(STORAGE_KEY)
-    return value === "light" || value === "dark" ? value : "system"
-  } catch {
-    return "system"
-  }
+function isThemePreference(value: unknown): value is ThemePreference {
+  return value === "light" || value === "dark" || value === "system"
 }
 
 function isThemeStyle(value: string | null | undefined): value is ThemeStyle {
@@ -55,24 +51,6 @@ function isThemeStyle(value: string | null | undefined): value is ThemeStyle {
 
 function isPalette(value: string | null | undefined): value is Palette {
   return PALETTES.some((palette) => palette.id === value)
-}
-
-function readStorage(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-/** Stores a device value, removing the key for the default so only opt-outs persist. */
-function writeStorage(key: string, value: string, defaultValue: string) {
-  try {
-    if (value === defaultValue) localStorage.removeItem(key)
-    else localStorage.setItem(key, value)
-  } catch {
-    // Storage may be unavailable; the in-memory value still applies.
-  }
 }
 
 // The SPA shell has already resolved the account's (or this device's) style and palette onto
@@ -109,7 +87,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const user = useQuery(sessionQueryOptions).data
-  const [preference, setPreferenceState] = useState<ThemePreference>(storedPreference)
+  const [preference, setPreference] = useStoredChoice(STORAGE_KEY, "system", isThemePreference)
   const [deviceThemeStyle, setDeviceThemeStyle] = useState<ThemeStyle>(initialThemeStyle)
   const [devicePalette, setDevicePalette] = useState<Palette>(initialPalette)
   const [system, setSystem] = useState<Theme>(systemTheme)
@@ -148,11 +126,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.palette = palette
   }, [palette])
-
-  const setPreference = useCallback((next: ThemePreference) => {
-    setPreferenceState(next)
-    writeStorage(STORAGE_KEY, next, "system")
-  }, [])
 
   const updateAppearance = useCallback(
     (changes: Partial<Appearance>) => {
