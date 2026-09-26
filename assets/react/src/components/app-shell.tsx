@@ -11,6 +11,7 @@ export function PageHeader({
   actions,
   eyebrow,
   backgroundImageUrl,
+  backgroundPartnerImageUrl,
   children,
 }: {
   title: ReactNode
@@ -19,11 +20,16 @@ export function PageHeader({
   actions?: ReactNode
   eyebrow?: ReactNode
   backgroundImageUrl?: string | null
+  /** Splits the background diagonally with a partner commander's art. */
+  backgroundPartnerImageUrl?: string | null
   children?: ReactNode
 }) {
   return (
     <section className="card border-base-300 bg-base-200 relative overflow-hidden border">
-      <CardArtBackground imageUrl={backgroundImageUrl} />
+      <CardArtBackground
+        imageUrl={backgroundImageUrl}
+        partnerImageUrl={backgroundPartnerImageUrl}
+      />
       <div className="card-body text-base-content relative z-10 gap-5 p-6 sm:p-8">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">

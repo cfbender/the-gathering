@@ -42,7 +42,11 @@ export function BarChart({
         )
         const content = (
           <>
-            <CardArtBackground imageUrl={row.art_crop_url} interactive={Boolean(link)} />
+            <CardArtBackground
+              imageUrl={row.art_crop_url}
+              partnerImageUrl={row.partner_art_crop_url}
+              interactive={Boolean(link)}
+            />
             <div className="text-base-content relative z-10 mb-1 flex justify-between gap-3 text-sm">
               <span
                 className={cn(

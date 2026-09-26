@@ -5,6 +5,7 @@ import { GameChangerBadge } from "@/components/game-changer-badge"
 import { Popover, PopoverContent } from "@/components/ui/popover"
 import type { DeckSummary } from "@/features/decks/decks"
 import { printingPrices, usePrintingDetails } from "@/features/webcam-table/card-details"
+import { cn } from "@/lib/cn"
 
 /** Shared, non-focusing hover preview. Portalled so rail and list overflow cannot clip it. */
 export function CardHover({
@@ -20,6 +21,35 @@ export function CardHover({
   imageUrl?: string | null
   artCropUrl?: string | null
   gameChanger?: boolean
+  children: ReactNode
+}) {
+  return (
+    <HoverPopover
+      label={`${name} image preview`}
+      preview={
+        <CardHoverPreview
+          id={id}
+          name={name}
+          imageUrl={imageUrl}
+          artCropUrl={artCropUrl}
+          gameChanger={gameChanger}
+        />
+      }
+    >
+      {children}
+    </HoverPopover>
+  )
+}
+
+function HoverPopover({
+  label,
+  className,
+  preview,
+  children,
+}: {
+  label: string
+  className?: string
+  preview: ReactNode
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
@@ -39,18 +69,15 @@ export function CardHover({
       </Anchor>
       <PopoverContent
         side="right"
-        className="pointer-events-none w-64 max-w-[45vw] border-white/15 bg-black p-2 text-white"
-        aria-label={`${name} image preview`}
+        className={cn(
+          "pointer-events-none w-64 max-w-[45vw] border-white/15 bg-black p-2 text-white",
+          className,
+        )}
+        aria-label={label}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-        <CardHoverPreview
-          id={id}
-          name={name}
-          imageUrl={imageUrl}
-          artCropUrl={artCropUrl}
-          gameChanger={gameChanger}
-        />
+        {preview}
       </PopoverContent>
     </Popover>
   )
@@ -98,31 +125,62 @@ function CardHoverPreview({
   )
 }
 
+type CommanderHoverDeck = Pick<
+  DeckSummary,
+  "commander_name" | "commander_image_url" | "commander_art_crop_url" | "commander_game_changer"
+> &
+  Partial<
+    Pick<
+      DeckSummary,
+      "partner_name" | "partner_image_url" | "partner_art_crop_url" | "partner_game_changer"
+    >
+  >
+
+/** Previews a deck's commander, or both cards side by side for a partner pairing. */
 export function CommanderHover({
   deck,
   children,
 }: {
-  deck:
-    | Pick<
-        DeckSummary,
-        | "commander_name"
-        | "commander_image_url"
-        | "commander_art_crop_url"
-        | "commander_game_changer"
-      >
-    | undefined
+  deck: CommanderHoverDeck | undefined
   children: ReactNode
 }) {
   if (!deck) return children
-  return (
-    <CardHover
+  const commander = (
+    <CardHoverPreview
       id={null}
       name={deck.commander_name}
       gameChanger={deck.commander_game_changer}
       imageUrl={deck.commander_image_url}
       artCropUrl={deck.commander_art_crop_url}
+    />
+  )
+  if (!deck.partner_name) {
+    return (
+      <HoverPopover label={`${deck.commander_name} image preview`} preview={commander}>
+        {children}
+      </HoverPopover>
+    )
+  }
+  return (
+    <HoverPopover
+      label={`${deck.commander_name} and ${deck.partner_name} image preview`}
+      className="w-[32rem] max-w-[80vw]"
+      preview={
+        <div className="grid grid-cols-2 gap-2">
+          <div>{commander}</div>
+          <div>
+            <CardHoverPreview
+              id={null}
+              name={deck.partner_name}
+              gameChanger={deck.partner_game_changer}
+              imageUrl={deck.partner_image_url}
+              artCropUrl={deck.partner_art_crop_url}
+            />
+          </div>
+        </div>
+      }
     >
       {children}
-    </CardHover>
+    </HoverPopover>
   )
 }

@@ -145,7 +145,11 @@ function DeckGrid({ decks }: { decks: DeckSummary[] }) {
           params={{ deckId: String(deck.id) }}
           className="card group border-base-300 bg-base-200 hover:border-primary/40 relative overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-xl"
         >
-          <CardArtBackground imageUrl={deck.commander_art_crop_url} interactive />
+          <CardArtBackground
+            imageUrl={deck.commander_art_crop_url}
+            partnerImageUrl={deck.partner_art_crop_url}
+            interactive
+          />
           <div className="card-body text-base-content relative z-10 p-4">
             <span className="flex items-center justify-between gap-2">
               <strong>{deck.name}</strong>

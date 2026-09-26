@@ -17,7 +17,7 @@ defmodule TheGathering.Stats.Summaries do
       commanders =
         game.seats
         |> Enum.sort_by(&{&1.result != "win", &1.seat})
-        |> Enum.flat_map(&commander_portraits(&1, card_art))
+        |> Enum.map(&commander_portrait(&1, card_art))
 
       game |> recent_game() |> Map.put(:commanders, commanders)
     end)
@@ -37,16 +37,35 @@ defmodule TheGathering.Stats.Summaries do
     }
   end
 
-  defp commander_portraits(seat, card_art) do
-    Enum.map(commander_refs(seat.deck), fn {id, name, printing} ->
+  # One portrait per seat; a partner pairing carries both crops so the client can
+  # split the portrait between them.
+  defp commander_portrait(seat, card_art) do
+    [{id, name, printing} | partner] = commander_refs(seat.deck)
+
+    partner_fields =
+      case partner do
+        [{partner_id, partner_name, partner_printing}] ->
+          %{
+            partner_name: partner_name,
+            partner_art_crop_url:
+              Catalog.art_crop_url(card_art, partner_id, partner_name, partner_printing),
+            partner_game_changer: Catalog.game_changer?(card_art, partner_id, partner_name)
+          }
+
+        [] ->
+          %{partner_name: nil, partner_art_crop_url: nil, partner_game_changer: false}
+      end
+
+    Map.merge(
       %{
         player_name: seat.player.name,
         name: name,
         game_changer: Catalog.game_changer?(card_art, id, name),
         art_crop_url: Catalog.art_crop_url(card_art, id, name, printing),
         winner: seat.result == "win"
-      }
-    end)
+      },
+      partner_fields
+    )
   end
 
   defp commander_refs(nil), do: [{nil, nil, nil}]
@@ -115,13 +134,18 @@ defmodule TheGathering.Stats.Summaries do
   def deck(deck, card_summaries) do
     art = Catalog.card_summary(card_summaries, deck.commander_card_id, deck.commander_name)
 
+    partner_art =
+      deck.partner_name &&
+        Catalog.card_summary(card_summaries, deck.partner_card_id, deck.partner_name)
+
     %{
       id: deck.id,
       name: deck.name,
       commander_name: deck.commander_name,
       color_identity: deck.color_identity,
       game_changer: not is_nil(art) and art.game_changer,
-      art_crop_url: art && art.art_crop_url
+      art_crop_url: art && art.art_crop_url,
+      partner_art_crop_url: partner_art && partner_art.art_crop_url
     }
   end
 

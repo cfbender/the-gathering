@@ -130,7 +130,7 @@ defmodule TheGathering.StatsTest do
     assert %{games: 3, wins: 2, losses: 1} = kangee
   end
 
-  test "recent games include winner-first commander and partner portraits with catalog name fallback",
+  test "recent games include one winner-first portrait per seat, carrying partner art, with catalog name fallback",
        %{
          decks: decks
        } do
@@ -139,22 +139,24 @@ defmodule TheGathering.StatsTest do
 
     assert [game] = stats.recent_games
     assert game.players == 3
-    assert [bob, partner, cara, alice] = game.commanders
-    assert %{player_name: "Bob", name: "Krenko, Mob Boss", winner: true, art_crop_url: nil} = bob
+    assert [bob, cara, alice] = game.commanders
 
     assert %{
              player_name: "Bob",
-             name: "Kangee, Sky Warden",
+             name: "Krenko, Mob Boss",
              winner: true,
-             art_crop_url: "https://cards.example/kangee-art.jpg"
-           } = partner
+             art_crop_url: nil,
+             partner_name: "Kangee, Sky Warden",
+             partner_art_crop_url: "https://cards.example/kangee-art.jpg"
+           } = bob
 
-    assert %{player_name: "Cara", winner: false} = cara
+    assert %{player_name: "Cara", winner: false, partner_name: nil} = cara
 
     assert %{
              player_name: "Alice",
              winner: false,
-             art_crop_url: "https://cards.example/kangee-art.jpg"
+             art_crop_url: "https://cards.example/kangee-art.jpg",
+             partner_art_crop_url: nil
            } = alice
 
     assert hd(Stats.overview().recent_games).winner == nil
@@ -614,6 +616,12 @@ defmodule TheGathering.StatsTest do
     by_name = Stats.commander("krenko, mob boss")
     assert by_name.record.games == 7
     assert [%{name: "Kangee, Sky Warden", games: 1}] = by_name.partners
+
+    # Deck rows carry the partner's crop so the row art can split between both commanders.
+    assert %{art_crop_url: nil, partner_art_crop_url: "https://cards.example/kangee-art.jpg"} =
+             Enum.find(by_name.decks, &(&1.name == "Partners"))
+
+    assert %{partner_art_crop_url: nil} = Enum.find(by_name.decks, &(&1.name != "Partners"))
 
     assert Stats.commander("kangee", %{"date_from" => "2026-04-01"}).record.games == 2
     assert Stats.commander("00000000-0000-0000-0000-000000000000") == nil

@@ -102,7 +102,11 @@ function DecksPage() {
             params={{ deckId: String(deck.id) }}
             className="card group border-base-300 bg-base-200 hover:border-primary relative overflow-hidden border transition-all hover:-translate-y-0.5 hover:shadow-xl"
           >
-            <CardArtBackground imageUrl={deck.commander_art_crop_url} interactive />
+            <CardArtBackground
+              imageUrl={deck.commander_art_crop_url}
+              partnerImageUrl={deck.partner_art_crop_url}
+              interactive
+            />
             <div className="card-body text-base-content relative z-10 gap-2 p-5">
               <span className="text-primary text-xs font-bold uppercase">{deck.player?.name}</span>
               <h2 className="text-xl font-bold">{deck.name}</h2>

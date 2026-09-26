@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import { Trophy, UsersRound } from "lucide-react"
+import { CommanderArt } from "@/components/commander-art"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
@@ -29,16 +30,10 @@ function PlayerPortrait({ seat }: { seat: Seat }) {
                 )}
               >
                 <UsersRound aria-hidden="true" className="text-base-content/50 size-4" />
-                {seat.deck?.commander_art_crop_url && (
-                  <img
-                    src={seat.deck.commander_art_crop_url}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    className="absolute inset-0 size-full object-cover"
-                    onError={(event) => (event.currentTarget.hidden = true)}
-                  />
-                )}
+                <CommanderArt
+                  imageUrl={seat.deck?.commander_art_crop_url}
+                  partnerImageUrl={seat.deck?.partner_art_crop_url}
+                />
               </span>
               <span className="absolute -bottom-1 -left-1">
                 <GameChangerBadge gameChanger={seat.deck?.commander_game_changer} compact />

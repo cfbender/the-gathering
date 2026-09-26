@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vite-plus/test"
 import { CardHover, CommanderHover } from "./card-hover"
 
@@ -63,6 +63,36 @@ it.each(["https://img.example/selected-printing.jpg", null, undefined])(
     expect(fetch).not.toHaveBeenCalled()
   },
 )
+
+it("previews both commanders side by side for a partner pairing", () => {
+  const fetch = vi.spyOn(globalThis, "fetch")
+  const deck = {
+    commander_name: "Kraum, Ludevic's Opus",
+    commander_image_url: "https://img.example/kraum.jpg",
+    commander_art_crop_url: null,
+    partner_name: "Tymna the Weaver",
+    partner_image_url: "https://img.example/tymna.jpg",
+    partner_art_crop_url: null,
+  }
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <CommanderHover deck={deck}>
+        <button type="button">Commander</button>
+      </CommanderHover>
+    </QueryClientProvider>,
+  )
+  fireEvent.mouseEnter(screen.getByRole("button", { name: "Commander" }))
+  const preview = screen.getByRole("dialog", {
+    name: "Kraum, Ludevic's Opus and Tymna the Weaver image preview",
+  })
+  expect(within(preview).getByRole("img", { name: deck.commander_name }).getAttribute("src")).toBe(
+    "https://img.example/kraum.jpg",
+  )
+  expect(within(preview).getByRole("img", { name: deck.partner_name }).getAttribute("src")).toBe(
+    "https://img.example/tymna.jpg",
+  )
+  expect(fetch).not.toHaveBeenCalled()
+})
 
 it("shows printing prices on focus without moving focus into the hover card", () => {
   const client = new QueryClient()

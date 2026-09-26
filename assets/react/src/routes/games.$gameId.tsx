@@ -63,7 +63,10 @@ function GameDetailPage() {
             key={seat.id}
             className={`card relative overflow-hidden border ${seat.result === "win" ? "border-success bg-success/10" : "border-base-300 bg-base-200"}`}
           >
-            <CardArtBackground imageUrl={seat.deck?.commander_art_crop_url} />
+            <CardArtBackground
+              imageUrl={seat.deck?.commander_art_crop_url}
+              partnerImageUrl={seat.deck?.partner_art_crop_url}
+            />
             <div className="card-body text-base-content relative z-10 gap-2 p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">

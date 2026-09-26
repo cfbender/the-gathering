@@ -43,7 +43,10 @@ export function DeckChooserButton({ onChooseDeck }: { onChooseDeck: (deckId: num
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="relative w-72 overflow-hidden p-0">
-        <CardArtBackground imageUrl={candidate?.deck.commander_art_crop_url} />
+        <CardArtBackground
+          imageUrl={candidate?.deck.commander_art_crop_url}
+          partnerImageUrl={candidate?.deck.partner_art_crop_url}
+        />
         <div className="relative grid gap-3 p-3" aria-live="polite">
           <div className="text-base-content/55 flex items-center gap-1.5 text-[0.65rem] font-bold tracking-wider uppercase">
             <Dices className="size-3" /> Deck chooser

@@ -116,7 +116,10 @@ function DeckCandidate({
       aria-live="polite"
       className="card border-base-300 bg-base-200 relative min-h-96 overflow-hidden border shadow-xl"
     >
-      <CardArtBackground imageUrl={deck.commander_art_crop_url} />
+      <CardArtBackground
+        imageUrl={deck.commander_art_crop_url}
+        partnerImageUrl={deck.partner_art_crop_url}
+      />
       <div className="card-body text-base-content relative z-10 justify-end gap-5 p-6 sm:min-h-[32rem] sm:p-10">
         <div className="max-w-2xl">
           <div className="badge badge-primary badge-outline mb-3">Your pick</div>

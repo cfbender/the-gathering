@@ -1,23 +1,25 @@
+import { CommanderArt } from "@/components/commander-art"
 import { cn } from "@/lib/cn"
 
 export function CardArtBackground({
   imageUrl,
+  partnerImageUrl,
   interactive = false,
 }: {
   imageUrl?: string | null
+  /** A partner's crop splits the background diagonally with `imageUrl`. */
+  partnerImageUrl?: string | null
   interactive?: boolean
 }) {
-  if (!imageUrl) return null
+  if (!imageUrl && !partnerImageUrl) return null
 
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-      <img
-        src={imageUrl}
-        alt=""
-        loading="lazy"
-        decoding="async"
-        className={cn(
-          "absolute inset-0 h-full w-full object-cover opacity-75 transition duration-300",
+      <CommanderArt
+        imageUrl={imageUrl}
+        partnerImageUrl={partnerImageUrl}
+        imageClassName={cn(
+          "opacity-75 transition duration-300",
           interactive && "group-hover:opacity-45",
         )}
       />
