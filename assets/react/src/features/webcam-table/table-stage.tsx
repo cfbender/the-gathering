@@ -3,6 +3,7 @@ import { LayoutGrid, Undo2 } from "lucide-react"
 import { cn } from "@/lib/cn"
 import { ActiveBoard, capturePoint } from "./board"
 import { BoardCardTray } from "./board-cards"
+import { cameraGridLayout } from "./camera-grid"
 import { CardPreview } from "./card-preview"
 import { CardSuggestions } from "./card-suggestions"
 import type { TableParticipant } from "./room-types"
@@ -93,8 +94,7 @@ function CameraGrid({
   videoStats: ReturnType<typeof useVideoStats>
 }) {
   const teamsMode = view.room.mode === "two_headed_giant"
-  const columns = Math.ceil(Math.sqrt(view.groups.length))
-  const rows = Math.ceil(view.groups.length / columns)
+  const { columns, rows, cells } = cameraGridLayout(view.groups.length)
   return (
     <div
       className="grid min-h-0 flex-1 gap-1.5 p-1.5"
@@ -103,13 +103,14 @@ function CameraGrid({
         gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
       }}
     >
-      {view.groups.map((group) => (
+      {view.groups.map((group, index) => (
         <div
           key={group[0]!.peer_id}
           className={cn(
             "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-sm",
             teamsMode && "rounded-lg border border-primary/40",
           )}
+          style={{ gridRow: cells[index]!.row, gridColumn: cells[index]!.column }}
         >
           {teamsMode && <TeamHeader view={view} group={group} />}
           {group.map((participant) => (
