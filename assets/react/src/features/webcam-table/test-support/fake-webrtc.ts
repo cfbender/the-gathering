@@ -25,6 +25,21 @@ export class FakeDataChannel {
   }
 }
 
+/** A video sender that keeps its track and one encoding, like a negotiated RTCRtpSender. */
+export class FakeSender {
+  private encodings: RTCRtpEncodingParameters[] = [{}]
+
+  constructor(public track: unknown) {}
+
+  replaceTrack = vi.fn(async (track: unknown) => {
+    this.track = track
+  })
+  getParameters = vi.fn(() => ({ encodings: this.encodings.map((encoding) => ({ ...encoding })) }))
+  setParameters = vi.fn(async (parameters: { encodings: RTCRtpEncodingParameters[] }) => {
+    this.encodings = parameters.encodings
+  })
+}
+
 export class FakePeerConnection {
   static instances: FakePeerConnection[] = []
   /** Lets a test script a connection's behaviour as soon as the room creates it. */
@@ -56,12 +71,12 @@ export class FakePeerConnection {
     FakePeerConnection.onCreate?.(this)
   }
 
-  addTrack() {
-    return {
-      replaceTrack: async () => {},
-      getParameters: () => ({ encodings: [] }),
-      setParameters: async () => {},
-    }
+  readonly senders: FakeSender[] = []
+
+  addTrack(track: unknown) {
+    const sender = new FakeSender(track)
+    this.senders.push(sender)
+    return sender
   }
 
   createDataChannel(label: string) {

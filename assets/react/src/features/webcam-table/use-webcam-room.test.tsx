@@ -356,6 +356,36 @@ async function roomWithTheo() {
   return { ...view, self, channel }
 }
 
+/** Lets each peer's serialized sender updates run to completion. */
+async function flushSenderUpdates() {
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+}
+
+it("leaves video senders alone when a presence sync changes nothing they send", async () => {
+  // Chrome resets a sender's encoder on every replaceTrack, even with the same track, and
+  // each life tap at the table is a presence sync; re-attaching stalled every camera.
+  const { result, self } = await roomWithTheo()
+  const sender = FakePeerConnection.instances[0]!.senders[0]!
+  await flushSenderUpdates()
+  expect(sender.setParameters).toHaveBeenCalledOnce()
+  sender.replaceTrack.mockClear()
+  sender.setParameters.mockClear()
+
+  for (const life of [39, 38, 37]) act(() => wire.presence!.sync([self, { ...theo, life }]))
+  await flushSenderUpdates()
+  expect(sender.replaceTrack).not.toHaveBeenCalled()
+  expect(sender.setParameters).not.toHaveBeenCalled()
+
+  // A private reveal to someone else still detaches Theo's video.
+  const lee = { ...saved, player_id: 11, player_name: "Lee", peer_id: "zzz-lee" }
+  act(() => wire.presence!.sync([self, theo, lee]))
+  wire.onPush = (event, _payload, push) => {
+    if (event === "reveal") push.reply("ok")
+  }
+  await act(() => result.current.changeReveal(lee.peer_id))
+  expect(sender.replaceTrack).toHaveBeenCalledExactlyOnceWith(null)
+})
+
 const crop = {
   type: "capture_response",
   image: "data:image/jpeg;base64,/9j/4AAQ",

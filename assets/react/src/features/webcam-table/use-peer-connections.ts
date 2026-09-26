@@ -76,6 +76,9 @@ export function usePeerConnections(
 
   // Disable private clones synchronously, then detach senders. Never disable the shared
   // native track to hide just one peer: the target and native crop RPC still need it.
+  // This runs on every presence sync (each life tap at the table), so it only touches a
+  // sender when something changed: in Chrome, `replaceTrack` with the track the sender
+  // already has resets its encoder, and repeating that stalls every outgoing video.
   const syncVideo = useCallback(() => {
     const updates = [...peersRef.current].map(([id, peer]) => {
       peer.videoTrack.enabled = mayView(id) && videoEnabled()
@@ -83,20 +86,26 @@ export function usePeerConnections(
         .catch(() => {})
         .then(async () => {
           if (peer.connection.connectionState === "closed") return
-          await peer.videoSender.replaceTrack(mayView(id) ? peer.videoTrack : null)
+          const track = mayView(id) ? peer.videoTrack : null
+          if (peer.videoSender.track !== track) await peer.videoSender.replaceTrack(track)
           const parameters = peer.videoSender.getParameters()
-          if (parameters.encodings?.length) {
-            const encoding = videoEncoding(
-              link.participants.length,
-              qualityRef.current,
-              stream()?.getVideoTracks()[0]?.getSettings().height,
-            )
-            parameters.encodings = parameters.encodings.map((current) => ({
-              ...current,
-              ...encoding,
-            }))
-            await peer.videoSender.setParameters(parameters)
-          }
+          if (!parameters.encodings?.length) return
+          const encoding = videoEncoding(
+            link.participants.length,
+            qualityRef.current,
+            stream()?.getVideoTracks()[0]?.getSettings().height,
+          )
+          const unchanged = parameters.encodings.every(
+            (current) =>
+              current.scaleResolutionDownBy === encoding.scaleResolutionDownBy &&
+              current.maxBitrate === encoding.maxBitrate,
+          )
+          if (unchanged) return
+          parameters.encodings = parameters.encodings.map((current) => ({
+            ...current,
+            ...encoding,
+          }))
+          await peer.videoSender.setParameters(parameters)
         })
       return peer.mediaUpdate
     })
