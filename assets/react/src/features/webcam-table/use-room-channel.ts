@@ -33,6 +33,8 @@ export interface RoomChannelHandlers {
   onJoined: (participant: TableParticipant | undefined, owner: boolean) => void
   /** The channel dropped; `link.peerId` is already a new media generation. */
   onChannelError: () => void
+  /** The room owner ended the table; the channel and socket are already closed. */
+  onClosed: () => void
   onDispose: () => void
 }
 
@@ -108,6 +110,12 @@ export function useRoomChannel(
             if (target === link.peerId) on().onSignal(from, signal)
           },
         )
+        // The owner ended the table; the server closes this channel right after.
+        room.on("table_closed", () => {
+          room.leave()
+          socket?.disconnect()
+          on().onClosed()
+        })
         room.on("seat_replaced", () => {
           on().setError(
             "This seat is now open in another tab. Close this tab to keep playing there.",

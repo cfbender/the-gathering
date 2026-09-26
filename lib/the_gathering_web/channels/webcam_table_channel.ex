@@ -69,6 +69,16 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     {:noreply, assign(socket, :participant, participant)}
   end
 
+  # The owner ended the table. Stopping normally sends phx_close, so the client
+  # leaves instead of rejoining (which would open a fresh room under the same id).
+  def handle_info(
+        {:DOWN, ref, :process, _pid, {:shutdown, :closed}},
+        %{assigns: %{room_monitor: ref}} = socket
+      ) do
+    push(socket, "table_closed", %{})
+    {:stop, :normal, socket}
+  end
+
   # The room crashed. Stopping abnormally sends the client phx_error, so it
   # rejoins a fresh room process restored from the saved session.
   def handle_info(
@@ -123,7 +133,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
               "set_mode",
               "turn_settings",
               "adjust_turn",
-              "timer"
+              "timer",
+              "end_game"
             ] do
     {:reply, {:error, %{reason: "only the room owner can change table controls"}}, socket}
   end
@@ -318,6 +329,15 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   defp handle_event("adjust_team_life", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid team life adjustment"}}, socket}
+
+  # Closes the table for every seat, whether or not the result was recorded.
+  # Each connection, this one included, then receives `table_closed` and stops.
+  defp handle_event("end_game", payload, socket) when payload == %{} do
+    {:reply, WebcamTables.close(socket.assigns.room_id), socket}
+  end
+
+  defp handle_event("end_game", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid end game"}}, socket}
 
   # An explicit `randomize` overrides the room's auto-randomize setting for this start.
   defp handle_event("start_game", payload, socket) when payload == %{} do

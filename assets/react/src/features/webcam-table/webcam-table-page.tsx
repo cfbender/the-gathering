@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
-import { Link } from "@tanstack/react-router"
-import { useCallback, useEffect, useState, type CSSProperties } from "react"
+import { Link, useNavigate } from "@tanstack/react-router"
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
+import { useToast } from "@/components/ui/toast"
 import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { getPlayers } from "@/features/games/games"
 import { useCurrentUser } from "@/lib/auth"
@@ -46,6 +47,20 @@ function useInviteLink() {
       setCopied(true)
     },
   }
+}
+
+/** Sends a seat back to the games list after the room owner ends the table. */
+function TableEndedRedirect() {
+  const navigate = useNavigate()
+  const { toast } = useToast()
+  // Strict Mode runs effects twice; announce once.
+  const announced = useRef(false)
+  useEffect(() => {
+    if (!announced.current) toast({ message: "The room owner ended the game.", tone: "info" })
+    announced.current = true
+    void navigate({ to: "/games" })
+  }, [navigate, toast])
+  return null
 }
 
 /** The table layout: camera rail, active board, and side panel, with its dialogs. */
@@ -213,6 +228,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       />
 
       <TableDialogs view={view} dialog={dialog} onDialogChange={setDialog} />
+      {room.closedByOwner && <TableEndedRedirect />}
     </div>
   )
 }

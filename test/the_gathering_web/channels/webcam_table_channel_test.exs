@@ -914,6 +914,39 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert rejoin(room, player, @peer_a).assigns.participant.life == 21
   end
 
+  test "the owner ends the table for everyone, and its seats leave instead of rejoining", %{
+    socket: alice,
+    room_id: room
+  } do
+    bob = join_player(room, @peer_b, "Bob")
+    assert_reply push(alice, "start_game", %{"randomize" => false}), :ok
+
+    assert_reply push(bob, "end_game", %{}), :error, %{
+      reason: "only the room owner can change table controls"
+    }
+
+    assert_reply push(alice, "end_game", %{"extra" => true}), :error, %{
+      reason: "invalid end game"
+    }
+
+    refs =
+      for channel <- [alice, bob] do
+        Process.unlink(channel.channel_pid)
+        {channel.channel_pid, Process.monitor(channel.channel_pid)}
+      end
+
+    assert_reply push(alice, "end_game", %{}), :ok
+
+    for {pid, ref} <- refs do
+      assert_push "table_closed", %{}
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+    end
+
+    assert room_pid(room) == nil
+    refute Enum.any?(WebcamTables.rooms(), &(&1.id == room))
+    assert Session.load(room) == nil
+  end
+
   @tag :capture_log
   test "the shared log records seat changes and rolls, and survives reloads and room crashes", %{
     socket: original,

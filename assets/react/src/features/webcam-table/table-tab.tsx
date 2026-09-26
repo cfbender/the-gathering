@@ -307,7 +307,6 @@ function SetupSection(props: TableTabProps) {
             size="sm"
             className="w-full"
             onClick={props.onEndGame}
-            disabled={participants.length < 2}
           >
             <DoorOpen className="size-3.5" /> End game
           </Button>

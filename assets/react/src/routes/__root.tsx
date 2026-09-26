@@ -1,5 +1,11 @@
 import type { QueryClient } from "@tanstack/react-query"
-import { Link, Outlet, createRootRouteWithContext, useLocation } from "@tanstack/react-router"
+import {
+  Link,
+  Outlet,
+  createRootRouteWithContext,
+  useChildMatches,
+  useLocation,
+} from "@tanstack/react-router"
 import { Crown, Gamepad2, Layers, Menu, Palette, Upload, Users } from "lucide-react"
 import { useEffect, useState } from "react"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -63,6 +69,12 @@ function TableShell() {
 function RootLayout() {
   const session = useCurrentUser()
   const { pathname } = useLocation()
+  // Follow the rendered route, not the location: the location changes as soon as a navigation
+  // starts, while the outlet keeps rendering the table until the next route is ready. Switching
+  // shells early would remount the table under the app shell and rejoin (or reopen) its room.
+  const showingTable = useChildMatches({
+    select: (matches) => matches.some((match) => match.routeId === "/table/$roomId"),
+  })
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -72,7 +84,7 @@ function RootLayout() {
   const user = session.data
   const items = navItems.filter((item) => !item.adminOnly || user?.role === "admin")
 
-  if (pathname.startsWith("/table/")) return <TableShell />
+  if (showingTable) return <TableShell />
 
   return (
     <div className="app-shell-root bg-base-100 text-base-content flex min-h-dvh flex-col">
