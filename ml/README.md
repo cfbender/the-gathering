@@ -139,6 +139,19 @@ original module kept as the CLI and a re-exporting facade:
 - `constants` holds the detector/refine geometry the manifest ships to the browser;
   `training_runtime` holds device, worker/thread, seed, DataLoader and run-metadata setup for
   both trainers; `envfile` parses `~/.config/cardid.env`.
+- `table_scenes` writes seeded, multi-card full-table PNG scenes and JSONL labels.  The manifest
+  records printed-order quads, orientation, card identity, and later-card occlusion; complete
+  `setup` families are held out rather than randomly mixing spatial arrangements between train
+  and test. `evaluate_tables` reports multi-card matching/orientation metrics for the current
+  click-conditioned detector, and `bench_tables` measures CPU render throughput.
+
+Generate an ignored table dataset, then evaluate the held-out setup:
+
+```sh
+uv run python -m cardid.table_scenes --scenes 300 --held-out-setup cluster
+uv run python -m cardid.evaluate_tables data/table-scenes/manifest.jsonl --detector data/runs/det/best.pt
+uv run python -m cardid.bench_tables --scenes 20 --cards 8
+```
 
 ## Full catalog (bigger machine)
 
@@ -649,6 +662,115 @@ is the cap: batches are staged in pinned host memory on GPU runs, which is slow 
 some ROCm setups, so compare with `--no-pin` (both tools take it). The datasets ship uint8
 scenes and normalise on the device, so each sample is 196 KB through the queue rather than
 786 KB.
+
+## Table scenes and the Super AI mode strategy comparison
+
+`cardid.table_scenes` renders full-table scenes (0-20 independently labelled cards, not one
+clicked card) for Super AI mode's multi-card detection work
+(`.amp/in/super-ai-mode-plan.md`). A real board is organised, not a pile: every card in a
+scene shares one physical size (`camera_profile` -- how close/zoomed the rig is -- is the only
+thing that changes how big cards look), and cards are laid out on a non-overlapping grid sized
+to that card's on-screen footprint at any rotation; they touch only through the same rare
+aura/equipment/dice/finger occluder the click-window renderer already uses. `setup` picks the
+grid's shape (tidy rows, a scattered subset of the same grid, a small central cluster, a
+two-row battlefield, or two opposing duel zones); `train`/`val`/`test`/`challenge` each get
+their own arrangement(s), camera profile(s), and a disjoint pool of background art crops (see
+`partition_arts`), so none of the three can be solved by memorising a playmat or a fixed scale.
+`challenge` reuses `test`'s arrangement/camera/backgrounds at higher photometric severity and
+crowded density for glare/blur/tiny-card slices. Every scene is reproducible from its seed
+alone; the manifest records each card's quad, axis-aligned bbox, orientation, occluded
+fraction, and an `identifiable` flag (occluded or too small to carry recognisable art/text),
+and `dataset.json` records the renderer version, catalog fingerprint, and split rules.
+
+```sh
+uv run python -m cardid.table_scenes --out H:/the-gathering-cardid/table-scenes   # all 4 splits, defaults from DEFAULT_SCENES
+uv run python -m cardid.table_scenes --split test --test 500                      # regenerate just one split
+uv run python -m cardid.bench_tables --scenes 20 --cards 8                        # rendering throughput
+```
+
+Generated scenes and manifests are large and reproducible from their seed, so they are not
+committed; `--out` defaults to `H:\the-gathering-cardid\table-scenes` (override with
+`CARDID_TABLE_SCENES_DIR` or `--out`) instead of `data/` precisely so a full-scale run does not
+have to be excluded by hand.
+
+### The three strategies
+
+`table_strategies.py` implements the plan's three multi-card detection strategies behind one
+shared `Proposal` (quad + confidence + source) schema, so `evaluate_tables.evaluate_strategy`
+scores them identically:
+
+- **A** (`strategy_a_dense_detector`) is the plan's trained oriented-box detector:
+  `table_detector.TableCenterNet`, a dense CenterNet-style head (card-presence heatmap + per-cell
+  pose + up vector) over the same MobileNetV3-Small backbone/decoder shape the click-conditioned
+  `CornerNet` uses, so an ImageNet-pretrained backbone transfers the same way. Pass a loaded
+  `TableCenterNet` as `model`; without one it falls back to `dense_card_quads`, a classical
+  edge/contour proposal generator (`detect.find_card_quad` generalised from "the quad containing
+  this click" to "every quad like this anywhere"), so the strategy still runs before training
+  finishes or in tests. Train it with `train_table_detector.py` on a pre-rendered `table_scenes`
+  dataset (not rendered on the fly, unlike `train_detector.py`):
+
+  ```sh
+  uv run python -m cardid.train_table_detector --manifest-dir H:/the-gathering-cardid/table-scenes --run table-a-pretrained --epochs 80
+  uv run python -m cardid.train_table_detector --manifest-dir H:/the-gathering-cardid/table-scenes --run table-a-scratch --epochs 80 --no-pretrained
+  ```
+
+  Each epoch reports the training loss and, on a `val` subset, recall/precision at IoU 0.5
+  (`evaluate_tables.per_card_hits`) so the two variants stay comparable on the same metric the
+  report uses; checkpoints go to `data/runs/<run>/{last,best}.pt` with a `history.json`.
+- **B** (`strategy_b_grid_sweep`): the existing two-stage click-conditioned learned localizer
+  (`detector.Detector`) run at deterministic multi-scale grid points, clustered by IoU. The
+  plan's "no-new-detector-training baseline".
+- **C** (`strategy_c_hybrid`): a sparse grid of the cheap classical finder makes coarse
+  proposals, clustered by IoU, then the learned localizer refines each cluster's centroid once.
+
+None of the three identifies cards: that needs a trained `ArtIndex` embedding model this
+tooling does not have, so evaluation stops at detection geometry (exactly where the plan's own
+phase order stops before "export only the winner to ONNX/WASM").
+
+### Evaluating and comparing them
+
+`evaluate_tables.py` is the shared scoring harness (precision/recall/F1/AP at IoU 0.50/0.75,
+orientation accuracy, false-overlay rate, latency, and slices by occlusion/rotation/
+identifiable/setup/camera-profile); `bench_tables.py --strategy {a,b,c}` times one strategy
+against a manifest without scoring accuracy (`--table-model` swaps in a trained Strategy A);
+`report_tables.py` runs every strategy against the frozen `test` and `challenge` splits and
+writes `report.json` plus a visual `report.html` with comparison charts and an overlay gallery
+(ground truth vs. each strategy's proposals). `--strategy-a-model NAME CHECKPOINT` is repeatable,
+so the pretrained and from-scratch `TableCenterNet` runs above show up as separate rows next to
+the classical fallback and strategies B/C:
+
+```sh
+uv run python -m cardid.train_detector --run table-demo --epochs 10 --samples 1500 --val 100 --batch 32
+uv run python -m cardid.report_tables H:/the-gathering-cardid/table-scenes --detector data/runs/table-demo/best.pt \
+  --strategy-a-model pretrained data/runs/table-a-pretrained/best.pt \
+  --strategy-a-model scratch data/runs/table-a-scratch/best.pt
+```
+
+### Exporting the dense detector for the rest of the app
+
+`export_table_detector.py` exports a `TableCenterNet` checkpoint to a standalone ONNX artifact,
+mirroring `export.py`'s conventions (opset 17, a `manifest.json` with per-file sha256, a
+`SHA256SUMS` file) without touching the click-conditioned recogniser bundle that script owns --
+Super AI mode's frame transport and worker plumbing are separate frontend work this does not
+do. `graphs.TableDetectorGraph` bakes the whole CenterNet decode (peak-picking, per-cell pose
+reconstruction, orientation) into the graph the same way `DetectorGraph` already does for the
+click-conditioned model, batched to a fixed `--max-detections` (default 40) so the output shape
+does not depend on how many cards are on the table; real cards sort first by score; the rest is
+low-score padding for the caller to threshold away. `--verify` compares the exported graph
+(onnxruntime) against the torch reference on real `test`-split scenes by greedy IoU matching:
+
+```sh
+uv run python -m cardid.export_table_detector --checkpoint data/runs/table-a-pretrained/best.pt \
+  --verify-manifest-dir H:/the-gathering-cardid/table-scenes --verify 80
+```
+
+writes `data/table-detector-exports/<version>/{table_detector.onnx,manifest.json,SHA256SUMS}`.
+The manifest's `contract` field documents the input (`table`: HWC RGBA uint8, exactly
+`table_input` x `table_input`, 384 by default -- resize/letterbox to that size first, since the
+model's notion of card scale was learned at that resolution) and outputs (`quads`, `scores`) so
+the frontend/backend integration that consumes this does not need to read this file to know the
+shapes. A checkpoint mid-training (as long as it loads) exports fine; re-export as later epochs
+finish to ship an improved model without any other code changing.
 
 ## M0 results (2026-09-22, 6k-art gallery, 3,000 queries from 1,000 unseen arts)
 
