@@ -35,9 +35,9 @@ const players = [player(1, "Alice", 1040), player(2, "Bob", 980), player(3, "Car
 
 const lineOpacities = (container: HTMLElement) =>
   Object.fromEntries(
-    [...container.querySelectorAll("polyline")].map((line) => [
-      line.dataset.playerId,
-      line.getAttribute("stroke-opacity"),
+    [...container.querySelectorAll("g[data-player-id]")].map((group) => [
+      group.getAttribute("data-player-id"),
+      group.querySelector("[data-elo-line]")?.getAttribute("stroke-opacity"),
     ]),
   )
 
@@ -63,4 +63,15 @@ it("highlights a player's line from the chart legend", () => {
 
   fireEvent.mouseEnter(screen.getByText("Cara", { selector: "li span" }).closest("li")!)
   expect(lineOpacities(container)).toEqual({ "1": "0.15", "2": "0.15", "3": "1" })
+})
+
+it("highlights a player's line when hovering the line itself", () => {
+  const { container } = render(<EloSection players={players} />)
+  const aliceLine = container.querySelector('g[data-player-id="1"]')!
+
+  fireEvent.mouseEnter(aliceLine)
+  expect(lineOpacities(container)).toEqual({ "1": "1", "2": "0.15", "3": "0.15" })
+
+  fireEvent.mouseLeave(aliceLine)
+  expect(lineOpacities(container)).toEqual({ "1": "1", "2": "1", "3": "1" })
 })
