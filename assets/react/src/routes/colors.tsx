@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { Palette } from "lucide-react"
-import { useState } from "react"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart } from "@/components/stats/charts"
@@ -14,12 +13,14 @@ import { cn } from "@/lib/cn"
 import {
   LEADERBOARD_MIN_GAMES,
   getOverviewStats,
+  isColorMetric,
   sortByMetric,
   statsQueryKey,
   type ColorMetric,
   type NamedRecordRow,
 } from "@/lib/stats"
 import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
+import { useStoredChoice } from "@/lib/stored-choice"
 
 export const Route = createFileRoute("/colors")({ component: ColorsPage })
 
@@ -44,7 +45,11 @@ function ColorsPage() {
     queryKey: statsQueryKey(params, "overview"),
     queryFn: () => getOverviewStats(params),
   })
-  const [metric, setMetric] = useState<ColorMetric>("games")
+  const [metric, setMetric] = useStoredChoice<ColorMetric>(
+    "the-gathering:stats-metric:colors",
+    "games",
+    isColorMetric,
+  )
   const identities = query.data?.color_win_rates ?? []
   const ranked = sortByMetric(identities, metric)
   const games = { date_from: params.date_from }

@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react"
+import { createContext, useContext, useMemo } from "react"
 import type { ReactNode } from "react"
+import { useStoredChoice } from "@/lib/stored-choice"
 
 /** How far back the stats pages look. Shared across pages and remembered per browser. */
 export type StatsRange = "1m" | "6m" | "12m" | "all"
@@ -60,15 +61,6 @@ export function statsRangeParams(range: StatsRange, today = new Date()): StatsRa
   return { date_from: isoLocalDate(from) }
 }
 
-function storedRange(): StatsRange {
-  try {
-    const value = localStorage.getItem(STORAGE_KEY)
-    return isStatsRange(value) ? value : DEFAULT_STATS_RANGE
-  } catch {
-    return DEFAULT_STATS_RANGE
-  }
-}
-
 interface StatsRangeContextValue {
   range: StatsRange
   setRange: (range: StatsRange) => void
@@ -79,17 +71,7 @@ interface StatsRangeContextValue {
 const StatsRangeContext = createContext<StatsRangeContextValue | null>(null)
 
 export function StatsRangeProvider({ children }: { children: ReactNode }) {
-  const [range, setRangeState] = useState<StatsRange>(storedRange)
-
-  const setRange = useCallback((next: StatsRange) => {
-    setRangeState(next)
-    try {
-      if (next === DEFAULT_STATS_RANGE) localStorage.removeItem(STORAGE_KEY)
-      else localStorage.setItem(STORAGE_KEY, next)
-    } catch {
-      // Storage may be unavailable; the in-memory range still applies.
-    }
-  }, [])
+  const [range, setRange] = useStoredChoice(STORAGE_KEY, DEFAULT_STATS_RANGE, isStatsRange)
 
   const value = useMemo(
     () => ({ range, setRange, params: statsRangeParams(range) }),

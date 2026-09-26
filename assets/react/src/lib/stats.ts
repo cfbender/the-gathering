@@ -289,6 +289,10 @@ export function byWinRateThenName<T extends NamedRecordRow>(rows: T[]): T[] {
 
 export type ColorMetric = "games" | "win_rate"
 
+export function isColorMetric(value: unknown): value is ColorMetric {
+  return value === "games" || value === "win_rate"
+}
+
 /**
  * Rows ordered by the chosen metric, highest first; the other metric breaks ties.
  * Win-rate ranking skips rows below the game floor so a single win cannot top the chart.
