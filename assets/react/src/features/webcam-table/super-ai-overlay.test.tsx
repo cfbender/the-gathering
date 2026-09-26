@@ -1,0 +1,45 @@
+import { expect, it } from "vite-plus/test"
+import { render, screen } from "@testing-library/react"
+import type { FullFrameIdentification, Identification } from "./recognition/messages"
+import type { Candidate, Quad } from "./recognition/pipeline"
+import { mapSourceQuad, overlayCardsFromScan, quadTransform, SuperAiArt } from "./super-ai-overlay"
+
+const quad = [[100, 50], [300, 50], [300, 250], [100, 250]] as const
+
+function scannedCard(candidates: Candidate[], cardQuad: Quad = quad as unknown as Quad): Identification {
+  return { quad: cardQuad, upVote: 0.9, candidates, timings: { detector: 0, embed: 0, search: 0, total: 0 } }
+}
+
+function candidate(id: string): Candidate {
+  return { id, name: "Forest", set: "lea", frame: "1993", index: 0, score: 0.9 }
+}
+
+it("maps a source quad through object-contain letterboxing", () => {
+  expect(mapSourceQuad(quad, { width: 400, height: 300 }, { width: 800, height: 800 }, { horizontal: false, vertical: false })).toEqual([[200, 200], [600, 200], [600, 600], [200, 600]])
+})
+
+it("maps both viewer flips after sizing", () => {
+  expect(mapSourceQuad(quad, { width: 400, height: 300 }, { width: 800, height: 800 }, { horizontal: true, vertical: true })).toEqual([[600, 600], [200, 600], [200, 200], [600, 200]])
+})
+
+it("produces a projective transform and rejects degenerate quads", () => {
+  expect(quadTransform([[0, 0], [100, 0], [90, 140], [10, 100]])).toContain("matrix3d(")
+  expect(quadTransform([[0, 0], [1, 0], [2, 0], [3, 0]])).toBeNull()
+})
+
+it("keeps each scanned card's best match and drops cards with no candidates", () => {
+  const scan: FullFrameIdentification = {
+    cards: [scannedCard([candidate("forest"), candidate("island")]), scannedCard([])],
+    totalMs: 10,
+  }
+  expect(overlayCardsFromScan(scan)).toEqual([{ id: "forest", quad }])
+})
+
+it("renders art as a non-interactive projectively transformed image", () => {
+  const transform = "matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)"
+  render(<SuperAiArt src="https://cards.example/art.jpg" transform={transform} />)
+  const art = screen.getByRole("presentation")
+  expect(art.getAttribute("src")).toBe("https://cards.example/art.jpg")
+  expect(art.style.transform).toBe(transform)
+  expect(art.className).toContain("origin-top-left")
+})

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { PublisherQuality } from "./media-policy"
 import { useRoomLink } from "./room-link"
 import type { IdentifiedCard } from "./room-types"
@@ -31,6 +31,7 @@ export function useWebcamRoom(
   deviceId = "",
   quality: PublisherQuality = "auto",
   cameraEnabled = true,
+  onSuperAiFrame?: (frame: { bytes: Uint8Array; width: number; height: number }) => Promise<void>,
 ) {
   const link = useRoomLink()
   const [status, setStatus] = useState("Opening 1080p camera…")
@@ -38,7 +39,11 @@ export function useWebcamRoom(
   const camera = useLocalCamera(link, deviceId, cameraEnabled)
   const peers = usePeerConnections(link, camera, quality, setError)
   const captures = useCardCapture(link, playerId, camera, peers, setStatus)
-  const superAi = useSuperAi(link, camera, peers, async () => {})
+  const superAiFrameRef = useRef(onSuperAiFrame)
+  useEffect(() => {
+    superAiFrameRef.current = onSuperAiFrame
+  }, [onSuperAiFrame])
+  const superAi = useSuperAi(link, camera, peers, async (frame) => superAiFrameRef.current?.(frame))
   const cards = useBoardCards(link)
   const game = useTableGameState(link, playerId, setError)
   // Set while this seat ends the table, so its own `table_closed` is not reported back to it.

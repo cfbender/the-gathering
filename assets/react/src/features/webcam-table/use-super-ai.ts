@@ -16,6 +16,7 @@ interface Incoming {
   fromPeerId: string
   start: SuperAiFrameStart
   chunks: Map<number, string>
+  receivedBytes: number
   timeout: number
 }
 
@@ -44,6 +45,8 @@ export function useSuperAi(
 ) {
   const incomingRef = useRef<Incoming | null>(null)
   const pendingRef = useRef<{ target: string; requestId: string; timeout: number } | null>(null)
+  const lastRequestRef = useRef(new Map<string, number>())
+  const lastAnsweredRef = useRef(new Map<string, number>())
   const [status, setStatus] = useState<"idle" | "requesting" | "scanning" | "failed">("idle")
   const [lastCompleted, setLastCompleted] = useState<number | null>(null)
 
@@ -61,6 +64,10 @@ export function useSuperAi(
   const answer = useCallback(
     async (peerId: string, requestId: string) => {
       if (!videoEnabled() || !canViewBoard(link.peerId, peerId, revealTarget())) return
+      const now = Date.now()
+      if (now - (lastAnsweredRef.current.get(peerId) ?? -Infinity) < SUPER_AI_SCAN_INTERVAL_MS)
+        return
+      lastAnsweredRef.current.set(peerId, now)
       const captured = frame()
       if (!captured) return
       const data = bytes(captured.image.slice(captured.image.indexOf(",") + 1))
@@ -78,11 +85,15 @@ export function useSuperAi(
         digest: await digest(data),
         private: !!revealTarget(),
       }
+      // Capturing and hashing are asynchronous; consent may have been revoked while waiting.
+      if (!videoEnabled() || !canViewBoard(link.peerId, peerId, revealTarget())) return
       if (!send(peerId, start)) return
       for (let index = 0; index < chunks; index += 1) {
+        if (!videoEnabled() || !canViewBoard(link.peerId, peerId, revealTarget())) return
         if (!send(peerId, { type: "super_ai_frame_chunk", requestId, index, data: base64(data.slice(index * chunkSize, (index + 1) * chunkSize)) })) return
       }
-      send(peerId, { type: "super_ai_frame_end", requestId })
+      if (videoEnabled() && canViewBoard(link.peerId, peerId, revealTarget()))
+        send(peerId, { type: "super_ai_frame_end", requestId })
     },
     [frame, link, revealTarget, send, videoEnabled],
   )
@@ -94,9 +105,22 @@ export function useSuperAi(
         return
       const encoded = [...Array(incoming.start.chunks)].map((_, index) => incoming.chunks.get(index))
       if (encoded.some((chunk) => !chunk)) return clearIncoming()
-      const data = Uint8Array.from(encoded.flatMap((chunk) => [...bytes(chunk!)]))
+      let data: Uint8Array
+      try {
+        data = Uint8Array.from(encoded.flatMap((chunk) => [...bytes(chunk!)]))
+      } catch {
+        return clearIncoming()
+      }
       clearIncoming()
-      if (data.byteLength !== incoming.start.bytes || (await digest(data)) !== incoming.start.digest) return
+      const owner = link.participants.find((participant) => participant.peer_id === fromPeerId)
+      if (
+        data.byteLength !== incoming.start.bytes ||
+        !owner ||
+        owner.camera_off ||
+        !canViewBoard(fromPeerId, link.peerId, owner.reveal_to) ||
+        (await digest(data)) !== incoming.start.digest
+      )
+        return
       setStatus("scanning")
       try {
         await onFrame({ bytes: data, width: incoming.start.width, height: incoming.start.height })
@@ -106,7 +130,7 @@ export function useSuperAi(
         setStatus("failed")
       }
     },
-    [clearIncoming, onFrame],
+    [clearIncoming, link, onFrame],
   )
 
   const receive = useCallback(
@@ -124,29 +148,57 @@ export function useSuperAi(
           !canViewBoard(fromPeerId, link.peerId, owner.reveal_to)
         )
           return
+        clearPending()
         clearIncoming()
         incomingRef.current = {
           fromPeerId,
           start: message,
           chunks: new Map(),
+          receivedBytes: 0,
           timeout: window.setTimeout(clearIncoming, SUPER_AI_TIMEOUT_MS),
         }
       } else if (message.type === "super_ai_frame_chunk") {
         const incoming = incomingRef.current
         if (incoming?.fromPeerId !== fromPeerId || incoming.start.requestId !== message.requestId) return
-        if (message.index >= incoming.start.chunks || incoming.chunks.has(message.index)) return clearIncoming()
+        const owner = link.participants.find((participant) => participant.peer_id === fromPeerId)
+        if (!owner || owner.camera_off || !canViewBoard(fromPeerId, link.peerId, owner.reveal_to))
+          return clearIncoming()
+        let chunkBytes: Uint8Array
+        try {
+          chunkBytes = bytes(message.data)
+        } catch {
+          return clearIncoming()
+        }
+        if (message.index >= incoming.start.chunks) return clearIncoming()
+        const existing = incoming.chunks.get(message.index)
+        if (existing) {
+          if (existing !== message.data) clearIncoming()
+          return
+        }
+        if (incoming.receivedBytes + chunkBytes.byteLength > incoming.start.bytes) return clearIncoming()
         incoming.chunks.set(message.index, message.data)
+        incoming.receivedBytes += chunkBytes.byteLength
       } else if (message.type === "super_ai_frame_end") {
         void finish(fromPeerId)
       }
     },
-    [answer, clearIncoming, finish, link],
+    [answer, clearIncoming, clearPending, finish, link],
   )
 
-  useEffect(() => listen({ message: receive, left: (peerId) => {
-    if (pendingRef.current?.target === peerId) clearPending()
-    if (incomingRef.current?.fromPeerId === peerId) clearIncoming()
-  } }), [clearIncoming, clearPending, listen, receive])
+  useEffect(
+    () =>
+      listen({
+        message: receive,
+        left: (peerId) => {
+          if (pendingRef.current?.target === peerId) {
+            clearPending()
+            setStatus("failed")
+          }
+          if (incomingRef.current?.fromPeerId === peerId) clearIncoming()
+        },
+      }),
+    [clearIncoming, clearPending, listen, receive],
+  )
   useEffect(() => () => { clearIncoming(); clearPending() }, [clearIncoming, clearPending])
 
   const request = useCallback((target: string) => {
@@ -154,12 +206,22 @@ export function useSuperAi(
     const owner = link.participants.find((participant) => participant.peer_id === target)
     if (!owner || owner.camera_off || !canViewBoard(target, link.peerId, owner.reveal_to)) return false
     if (target === link.peerId) return false
+    const now = Date.now()
+    if (now - (lastRequestRef.current.get(target) ?? -Infinity) < SUPER_AI_SCAN_INTERVAL_MS)
+      return false
     const requestId = crypto.randomUUID()
     pendingRef.current = { target, requestId, timeout: window.setTimeout(() => { clearPending(); setStatus("failed") }, SUPER_AI_TIMEOUT_MS) }
     if (!send(target, { type: "super_ai_frame_request", requestId })) { clearPending(); return false }
+    lastRequestRef.current.set(target, now)
     setStatus("requesting")
     return true
   }, [clearPending, link, send])
 
-  return { request, status, lastCompleted, cancel: clearPending }
+  const cancel = useCallback(() => {
+    clearIncoming()
+    clearPending()
+    setStatus("idle")
+  }, [clearIncoming, clearPending])
+
+  return { request, status, lastCompleted, cancel }
 }

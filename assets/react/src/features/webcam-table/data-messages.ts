@@ -99,6 +99,16 @@ function isJpegDataUrl(value: unknown): value is string {
   )
 }
 
+function isBase64(value: unknown, maxLength: number): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= maxLength &&
+    value.length % 4 === 0 &&
+    BASE64.test(value)
+  )
+}
+
 function parseRequest(fields: Fields): CaptureRequest | null {
   const { requestId, x, y } = fields
   if (!isRequestId(requestId) || !inRange(x, 0, 1) || !inRange(y, 0, 1)) return null
@@ -141,12 +151,14 @@ function parseSuperAiRequest(fields: Fields): SuperAiFrameRequest | null {
 
 function parseSuperAiStart(fields: Fields): SuperAiFrameStart | null {
   const { requestId, width, height, bytes, chunks, digest } = fields
+  const maxChunkBytes = (SUPER_AI_MAX_CHUNK_LENGTH / 4) * 3
   if (
     !isRequestId(requestId) ||
     !isSize(width, MAX_FRAME_SIZE) ||
     !isSize(height, MAX_FRAME_SIZE) ||
     !isSize(bytes, SUPER_AI_MAX_FRAME_BYTES) ||
     !isSize(chunks, SUPER_AI_MAX_CHUNKS) ||
+    chunks < Math.ceil(bytes / maxChunkBytes) ||
     typeof digest !== "string" ||
     !DIGEST.test(digest) ||
     typeof fields.private !== "boolean"
@@ -161,10 +173,7 @@ function parseSuperAiChunk(fields: Fields): SuperAiFrameChunk | null {
     !isRequestId(requestId) ||
     !Number.isInteger(index) ||
     !inRange(index, 0, SUPER_AI_MAX_CHUNKS - 1) ||
-    typeof data !== "string" ||
-    data.length === 0 ||
-    data.length > SUPER_AI_MAX_CHUNK_LENGTH ||
-    !BASE64.test(data)
+    !isBase64(data, SUPER_AI_MAX_CHUNK_LENGTH)
   )
     return null
   return { type: "super_ai_frame_chunk", requestId, index, data }

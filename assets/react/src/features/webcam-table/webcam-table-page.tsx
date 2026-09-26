@@ -18,11 +18,14 @@ import { decksFor, useTableView } from "./table-view"
 import { useCameraRailWidth } from "./use-camera-rail-width"
 import { useCardIdentificationFlow } from "./use-card-identification-flow"
 import { useCorrectionUpload } from "./use-correction-upload"
+import type { RgbaImage } from "./recognition/pipeline"
+import { decodeJpeg } from "./recognition/use-recognizer"
 import { useRoomHotkeys } from "./use-room-hotkeys"
 import { useSeatDecklists } from "./seat-decklists"
 import { useTurnSound } from "./use-turn-sound"
 import { useVideoStats } from "./video-stats"
 import { useWebcamRoom } from "./use-webcam-room"
+import type { TableDetectionCard } from "./super-ai-overlay"
 
 interface Props {
   roomId: string
@@ -67,6 +70,13 @@ function TableEndedRedirect() {
 /** The table layout: camera rail, active board, and side panel, with its dialogs. */
 function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   const preferences = useTablePreferences(playerId)
+  const superAiFrameHandler = useRef<(frame: { bytes: Uint8Array; width: number; height: number }) => Promise<void>>(
+    async () => {},
+  )
+  const [tableDetections, setTableDetections] = useState<{
+    cards: TableDetectionCard[]
+    source: { width: number; height: number } | null
+  }>({ cards: [], source: null })
   const room = useWebcamRoom(
     roomId,
     playerId,
@@ -74,6 +84,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     preferences.deviceId,
     preferences.quality,
     preferences.cameraEnabled,
+    useCallback((frame) => superAiFrameHandler.current(frame), []),
   )
   const [dialog, setDialog] = useState<TableDialog>(null)
   const [panelOpen, setPanelOpen] = useState(true)
@@ -110,9 +121,23 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     corrections,
     blocked: dialog?.kind === "help" || dialog?.kind === "finish",
   })
+  useEffect(() => {
+    superAiFrameHandler.current = async (frame) => {
+      const image = await decodeJpeg(new Blob([frame.bytes.buffer], { type: "image/jpeg" }))
+      const result = await flow.recognizer.detectTable(image, AbortSignal.timeout(10_000))
+      setTableDetections({
+        cards: result.cards,
+        source: { width: frame.width, height: frame.height },
+      })
+    }
+    return () => {
+      superAiFrameHandler.current = async () => {}
+    }
+  }, [flow.recognizer.detectTable])
   const superAiTarget = view.activeGroup[0]?.peer_id
   const { request: requestSuperAi, cancel: cancelSuperAi } = room.superAi
   useEffect(() => {
+    setTableDetections({ cards: [], source: null })
     if (!preferences.superAi || !superAiTarget || superAiTarget === room.peerId) {
       cancelSuperAi()
       return
@@ -182,7 +207,13 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         </>
       )}
 
-      <TableStage ref={stageRef} view={view} flow={flow} videoStats={videoStats} />
+      <TableStage
+        ref={stageRef}
+        view={view}
+        flow={flow}
+        videoStats={videoStats}
+        tableDetections={tableDetections}
+      />
 
       {panelOpen ? (
         <RailResizeHandle
