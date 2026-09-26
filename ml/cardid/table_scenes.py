@@ -358,7 +358,12 @@ def write_dataset(output: Path, seed: int, scenes: dict[str, int], size: int = 1
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=Path(os.environ.get("CARDID_TABLE_SCENES_DIR", r"H:\the-gathering-cardid\table-scenes")))
+    default_out = (
+        Path(os.environ["CARDID_TABLE_SCENES_DIR"]) if "CARDID_TABLE_SCENES_DIR" in os.environ else Path.home() / "the-gathering-cardid" / "table-scenes"
+    )
+    parser.add_argument(
+        "--out", type=Path, default=default_out, help="output directory (default: ~/the-gathering-cardid/table-scenes, or $CARDID_TABLE_SCENES_DIR)"
+    )
     parser.add_argument("--split", choices=(*SPLITS, "all"), default="all", help="generate only this split; default generates all four")
     parser.add_argument("--train", type=int, default=DEFAULT_SCENES["train"])
     parser.add_argument("--val", type=int, default=DEFAULT_SCENES["val"])

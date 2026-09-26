@@ -4,7 +4,7 @@ comparison charts, slice breakdowns, and an overlay gallery of true vs. predicte
 including the false positives/misses/bad-geometry examples the plan asks a strategy
 comparison to show.
 
-    uv run python -m cardid.report_tables H:/the-gathering-cardid/table-scenes --detector data/runs/table-demo/best.pt
+    uv run python -m cardid.report_tables ~/the-gathering-cardid/table-scenes --detector data/runs/table-demo/best.pt
 
 This is offline, CPU, detection-only tooling (see `table_strategies.py`'s module docstring for
 what stops at detection and why); the report says so on every page, not just here.

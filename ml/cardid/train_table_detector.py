@@ -6,8 +6,8 @@ already wrote JPEGs and manifests to `--manifest-dir` (typically on a separate d
 IoU 0.5 (`evaluate_tables.per_card_hits`) so the two variants below stay comparable against the
 same metric `report_tables.py` uses:
 
-    uv run python -m cardid.train_table_detector --manifest-dir H:/the-gathering-cardid/table-scenes --run table-a-pretrained --epochs 40
-    uv run python -m cardid.train_table_detector --manifest-dir H:/the-gathering-cardid/table-scenes --run table-a-scratch --epochs 40 --no-pretrained
+    uv run python -m cardid.train_table_detector --manifest-dir ~/the-gathering-cardid/table-scenes --run table-a-pretrained --epochs 40
+    uv run python -m cardid.train_table_detector --manifest-dir ~/the-gathering-cardid/table-scenes --run table-a-scratch --epochs 40 --no-pretrained
 
 `--resume` is a warm start, not a full resume: it loads the checkpoint's model weights only.
 The optimizer, the `OneCycleLR` schedule, and the epoch count all start over from `--epochs`

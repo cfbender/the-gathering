@@ -676,15 +676,15 @@ fraction, and an `identifiable` flag (occluded or too small to carry recognisabl
 and `dataset.json` records the renderer version, catalog fingerprint, and split rules.
 
 ```sh
-uv run python -m cardid.table_scenes --out H:/the-gathering-cardid/table-scenes   # all 4 splits, defaults from DEFAULT_SCENES
+uv run python -m cardid.table_scenes --out ~/the-gathering-cardid/table-scenes   # all 4 splits, defaults from DEFAULT_SCENES
 uv run python -m cardid.table_scenes --split test --test 500                      # regenerate just one split
 uv run python -m cardid.bench_tables --scenes 20 --cards 8                        # rendering throughput
 ```
 
 Generated scenes and manifests are large and reproducible from their seed, so they are not
-committed; `--out` defaults to `H:\the-gathering-cardid\table-scenes` (override with
-`CARDID_TABLE_SCENES_DIR` or `--out`) instead of `data/` precisely so a full-scale run does not
-have to be excluded by hand.
+committed; `--out` defaults to `~/the-gathering-cardid/table-scenes` (override with
+`CARDID_TABLE_SCENES_DIR` or `--out` -- e.g. a dedicated data drive) instead of `data/` precisely
+so a full-scale run does not have to be excluded by hand.
 
 ### The three strategies
 
@@ -703,8 +703,8 @@ scores them identically:
   dataset (not rendered on the fly, unlike `train_detector.py`):
 
   ```sh
-  uv run python -m cardid.train_table_detector --manifest-dir H:/the-gathering-cardid/table-scenes --run table-a-pretrained --epochs 80
-  uv run python -m cardid.train_table_detector --manifest-dir H:/the-gathering-cardid/table-scenes --run table-a-scratch --epochs 80 --no-pretrained
+  uv run python -m cardid.train_table_detector --manifest-dir ~/the-gathering-cardid/table-scenes --run table-a-pretrained --epochs 80
+  uv run python -m cardid.train_table_detector --manifest-dir ~/the-gathering-cardid/table-scenes --run table-a-scratch --epochs 80 --no-pretrained
   ```
 
   Each epoch reports the training loss and, on a `val` subset, recall/precision at IoU 0.5
@@ -734,7 +734,7 @@ the classical fallback and strategies B/C:
 
 ```sh
 uv run python -m cardid.train_detector --run table-demo --epochs 10 --samples 1500 --val 100 --batch 32
-uv run python -m cardid.report_tables H:/the-gathering-cardid/table-scenes --detector data/runs/table-demo/best.pt \
+uv run python -m cardid.report_tables ~/the-gathering-cardid/table-scenes --detector data/runs/table-demo/best.pt \
   --strategy-a-model pretrained data/runs/table-a-pretrained/best.pt \
   --strategy-a-model scratch data/runs/table-a-scratch/best.pt
 ```
@@ -754,7 +754,7 @@ low-score padding for the caller to threshold away. `--verify` compares the expo
 
 ```sh
 uv run python -m cardid.export_table_detector --checkpoint data/runs/table-a-pretrained/best.pt \
-  --verify-manifest-dir H:/the-gathering-cardid/table-scenes --verify 80
+  --verify-manifest-dir ~/the-gathering-cardid/table-scenes --verify 80
 ```
 
 writes `data/table-detector-exports/<version>/{table_detector.onnx,manifest.json,SHA256SUMS}`.
