@@ -242,8 +242,10 @@ defmodule TheGathering.Catalog do
   defp commander_filter(query, false), do: where(query, [card], not card.can_be_commander)
   defp commander_filter(query, _value), do: query
 
+  # Any commander-eligible card may fill the second slot so tables can rule 0
+  # pairings; Backgrounds are included because they can't lead a deck themselves.
   defp partner_filter(query, true),
-    do: where(query, [card], not is_nil(card.commander_pairing))
+    do: where(query, [card], card.can_be_commander or not is_nil(card.commander_pairing))
 
   defp partner_filter(query, _value), do: query
 
