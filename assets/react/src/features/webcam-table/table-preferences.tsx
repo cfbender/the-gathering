@@ -2,8 +2,9 @@ import { useLayoutEffect, useRef, useState } from "react"
 import type { FlipAxis } from "./board"
 import { isPublisherQuality, type PublisherQuality } from "./media-policy"
 
+/** The camera rail's real limit is dynamic (see `useCameraRailWidth`); its `max` only bounds saved values. */
 export const RAIL_WIDTHS = {
-  camera: { min: 176, max: 360, initial: 240 },
+  camera: { min: 176, max: 1280, initial: 240 },
   panel: { min: 240, max: 480, initial: 288 },
 }
 type Rail = keyof typeof RAIL_WIDTHS
@@ -41,9 +42,9 @@ function savedPlayerIds(saved: object, key: string): number[] {
     : []
 }
 
-export function clampRailWidth(rail: Rail, width: number): number {
-  const { min, max, initial } = RAIL_WIDTHS[rail]
-  return Number.isFinite(width) ? Math.min(max, Math.max(min, width)) : initial
+export function clampRailWidth(rail: Rail, width: number, max = RAIL_WIDTHS[rail].max): number {
+  const { min, initial } = RAIL_WIDTHS[rail]
+  return Number.isFinite(width) ? Math.max(min, Math.min(max, width)) : initial
 }
 
 export function useTablePreferences(playerId: number) {
@@ -133,11 +134,14 @@ export function useTablePreferences(playerId: number) {
 export function RailResizeHandle({
   rail,
   width,
+  max = RAIL_WIDTHS[rail].max,
   reversed = false,
   onChange,
 }: {
   rail: Rail
   width: number
+  /** A layout-derived limit below the rail's hard maximum. */
+  max?: number
   reversed?: boolean
   onChange: (width: number) => void
 }) {
@@ -150,7 +154,7 @@ export function RailResizeHandle({
       aria-label={rail === "camera" ? "Camera rail width" : "Side panel width"}
       aria-orientation="vertical"
       aria-valuemin={RAIL_WIDTHS[rail].min}
-      aria-valuemax={RAIL_WIDTHS[rail].max}
+      aria-valuemax={Math.max(RAIL_WIDTHS[rail].min, Math.round(max))}
       aria-valuenow={Math.round(width)}
       title="Drag to resize · double-click to reset · arrow keys to adjust"
       style={reversed ? { order: rail === "camera" ? 4 : 2 } : undefined}
@@ -166,7 +170,11 @@ export function RailResizeHandle({
       onPointerMove={(event) => {
         if (drag.current)
           onChange(
-            clampRailWidth(rail, drag.current.width + direction * (event.clientX - drag.current.x)),
+            clampRailWidth(
+              rail,
+              drag.current.width + direction * (event.clientX - drag.current.x),
+              max,
+            ),
           )
       }}
       onPointerUp={(event) => {
@@ -182,7 +190,11 @@ export function RailResizeHandle({
         onChange(
           event.key === "Home"
             ? RAIL_WIDTHS[rail].initial
-            : clampRailWidth(rail, width + (event.key === "ArrowRight" ? 16 : -16) * direction),
+            : clampRailWidth(
+                rail,
+                width + (event.key === "ArrowRight" ? 16 : -16) * direction,
+                max,
+              ),
         )
       }}
     />

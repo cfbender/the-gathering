@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import { LayoutGrid, Undo2 } from "lucide-react"
+import type { Ref } from "react"
 import { cn } from "@/lib/cn"
 import { ActiveBoard, capturePoint } from "./board"
 import { BoardCardTray } from "./board-cards"
@@ -33,7 +34,7 @@ function StageBoard({
   const { room, preferences } = view
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1" data-stage-board>
         <ActiveBoard
           participant={participant}
           unattackable={view.protectedSeats.includes(participant.peer_id)}
@@ -182,10 +183,12 @@ function IdentificationOverlays({ view, flow }: { view: TableView; flow: CardIde
 
 /** The middle of the table: the active board (or team), or every camera in grid view. */
 export function TableStage({
+  ref,
   view,
   flow,
   videoStats,
 }: {
+  ref?: Ref<HTMLElement>
   view: TableView
   flow: CardIdentificationFlow
   videoStats: ReturnType<typeof useVideoStats>
@@ -193,6 +196,7 @@ export function TableStage({
   const { room } = view
   return (
     <section
+      ref={ref}
       className={cn(
         "relative flex min-h-0 min-w-0 flex-col",
         view.preferences.panelLeft && "lg:order-3",

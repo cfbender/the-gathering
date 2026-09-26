@@ -15,6 +15,7 @@ import { RailResizeHandle, useTablePreferences } from "./table-preferences"
 import { TableSettings } from "./table-settings"
 import { TableStage } from "./table-stage"
 import { decksFor, useTableView } from "./table-view"
+import { useCameraRailWidth } from "./use-camera-rail-width"
 import { useCardIdentificationFlow } from "./use-card-identification-flow"
 import { useCorrectionUpload } from "./use-correction-upload"
 import { useRoomHotkeys } from "./use-room-hotkeys"
@@ -120,6 +121,13 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
 
   // The grid already shows every camera, so the rail and its divider step aside.
   const railShown = !view.showGrid
+  // The rail may grow into the active board's pillarbox bars, but never shrink its camera.
+  const stageRef = useRef<HTMLElement>(null)
+  const cameraRail = useCameraRailWidth(
+    stageRef,
+    preferences.camera,
+    `${railShown}:${view.activeGroup.map((participant) => participant.peer_id).join(",")}`,
+  )
   return (
     <div
       className={cn(
@@ -135,7 +143,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
       )}
       style={
         {
-          "--table-camera-width": `min(${preferences.camera}px, 24vw)`,
+          "--table-camera-width": `${cameraRail.width}px`,
           "--table-panel-width": `min(${preferences.panel}px, 32vw)`,
         } as CSSProperties
       }
@@ -146,13 +154,14 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           <RailResizeHandle
             rail="camera"
             reversed={preferences.panelLeft}
-            width={preferences.camera}
+            width={cameraRail.width}
+            max={cameraRail.max}
             onChange={(width) => preferences.setWidth("camera", width)}
           />
         </>
       )}
 
-      <TableStage view={view} flow={flow} videoStats={videoStats} />
+      <TableStage ref={stageRef} view={view} flow={flow} videoStats={videoStats} />
 
       {panelOpen ? (
         <RailResizeHandle

@@ -44,7 +44,9 @@ it.each([null, {}, { turnSound: true }, { turnSound: false }])(
 it("clamps each rail independently and rejects nonfinite widths", () => {
   expect(clampRailWidth("camera", 175)).toBe(176)
   expect(clampRailWidth("camera", 237)).toBe(237)
-  expect(clampRailWidth("camera", 361)).toBe(360)
+  expect(clampRailWidth("camera", 1281)).toBe(1280)
+  expect(clampRailWidth("camera", 700, 520)).toBe(520)
+  expect(clampRailWidth("camera", 100, 520)).toBe(176)
   expect(clampRailWidth("panel", 239)).toBe(240)
   expect(clampRailWidth("panel", 417)).toBe(417)
   expect(clampRailWidth("panel", 481)).toBe(480)
