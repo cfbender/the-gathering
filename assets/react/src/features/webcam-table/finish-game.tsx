@@ -17,6 +17,7 @@ import { durationMinutes, type GameTimerState } from "./game-timer"
 import type { TableParticipant } from "./use-webcam-room"
 import type { GameFormat } from "@/features/games/game-format"
 import { teams } from "./game-modes"
+import { highestTurn, type TurnState } from "./turns"
 
 interface Props {
   mode?: GameFormat
@@ -24,6 +25,8 @@ interface Props {
   participants: TableParticipant[]
   playedAt: Date
   timer: GameTimerState
+  /** The table's turn counts; the highest one prefills the recorded turns. */
+  turns: TurnState
   /** Closes the table for every seat; resolves whether the server accepted. */
   onEndTable: () => Promise<boolean>
   onOpenChange: (open: boolean) => void
@@ -35,6 +38,7 @@ export function FinishGame({
   participants,
   playedAt,
   timer,
+  turns: turnState,
   onEndTable,
   onOpenChange,
   mode = "commander",
@@ -55,7 +59,10 @@ export function FinishGame({
         }))
       : participants
   const [duration, setDuration] = useState(() => durationMinutes(timer))
-  const [turns, setTurns] = useState("")
+  const [turns, setTurns] = useState(() => {
+    const highest = highestTurn(turnState)
+    return highest > 0 ? String(highest) : ""
+  })
   const [winCondition, setWinCondition] = useState("")
   const [notes, setNotes] = useState("")
   const [confirmDiscard, setConfirmDiscard] = useState(false)

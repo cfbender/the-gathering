@@ -3,6 +3,7 @@ import { elapsedMilliseconds } from "./game-timer"
 import {
   EMPTY_TURNS,
   formatTurnTime,
+  highestTurn,
   nextActiveSeat,
   turnDisplay,
   unpassTarget,
@@ -31,6 +32,11 @@ describe("next turn", () => {
     expect(nextActiveSeat([seats[1]!, seats[2]!], 2)).toBeUndefined()
     expect(nextActiveSeat([seats[0]!], 1)?.player_id).toBe(1)
     expect(nextActiveSeat([], null)).toBeUndefined()
+  })
+
+  it("reports the game's turn as the highest count any player has reached", () => {
+    expect(highestTurn(EMPTY_TURNS)).toBe(0)
+    expect(highestTurn({ ...EMPTY_TURNS, counts: { 1: 7, 2: 8, 4: 7 } })).toBe(8)
   })
 
   it("offers un-pass only when the last pass led to the current turn", () => {

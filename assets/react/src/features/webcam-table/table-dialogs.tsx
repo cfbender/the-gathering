@@ -65,6 +65,7 @@ export function TableDialogs({
             dialog.timer.started_at === null ? playedAt.current : new Date(dialog.timer.started_at)
           }
           timer={dialog.timer}
+          turns={room.turns}
           onEndTable={room.endGame}
           onOpenChange={close}
         />
