@@ -24,7 +24,11 @@ import { useSeatDecklists } from "./seat-decklists"
 import { useTurnSound } from "./use-turn-sound"
 import { useVideoStats } from "./video-stats"
 import { useWebcamRoom } from "./use-webcam-room"
-import { overlayCardsFromScan, type SuperAiOverlayCard } from "./super-ai-overlay"
+import {
+  overlayCardsFromScan,
+  stabilizeSuperAiCards,
+  type SuperAiOverlayCard,
+} from "./super-ai-overlay"
 
 interface Props {
   roomId: string
@@ -128,10 +132,13 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         undefined,
         AbortSignal.timeout(10_000),
       )
-      setSuperAiCards({
-        cards: overlayCardsFromScan(result),
+      setSuperAiCards((previous) => ({
+        cards:
+          previous.source?.width === frame.width && previous.source.height === frame.height
+            ? stabilizeSuperAiCards(previous.cards, overlayCardsFromScan(result))
+            : overlayCardsFromScan(result),
         source: { width: frame.width, height: frame.height },
-      })
+      }))
     }
     return () => {
       superAiFrameHandler.current = async () => {}
@@ -216,6 +223,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         flow={flow}
         videoStats={videoStats}
         superAiCards={superAiCards}
+        superAiEnabled={preferences.superAi}
+        onToggleSuperAi={() => preferences.update({ superAi: !preferences.superAi })}
       />
 
       {panelOpen ? (

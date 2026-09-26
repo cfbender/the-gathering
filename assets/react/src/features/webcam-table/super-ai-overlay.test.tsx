@@ -2,7 +2,7 @@ import { expect, it } from "vite-plus/test"
 import { render, screen } from "@testing-library/react"
 import type { FullFrameIdentification, Identification } from "./recognition/messages"
 import type { Candidate, Quad } from "./recognition/pipeline"
-import { mapSourceQuad, overlayCardsFromScan, quadTransform, SuperAiArt } from "./super-ai-overlay"
+import { mapSourceQuad, overlayCardsFromScan, quadTransform, stabilizeSuperAiCards, SuperAiArt } from "./super-ai-overlay"
 
 const quad = [[100, 50], [300, 50], [300, 250], [100, 250]] as const
 
@@ -33,6 +33,25 @@ it("keeps each scanned card's best match and drops cards with no candidates", ()
     totalMs: 10,
   }
   expect(overlayCardsFromScan(scan)).toEqual([{ id: "forest", quad }])
+})
+
+it("does not replace a card with an uncertain match", () => {
+  const scan: FullFrameIdentification = {
+    cards: [scannedCard([{ ...candidate("forest"), score: 0.79 }])],
+    totalMs: 10,
+  }
+  expect(overlayCardsFromScan(scan)).toEqual([])
+})
+
+it("keeps a matching card in its prior enlarged box and updates a real move", () => {
+  const previous = [{ id: "forest", quad: quad as unknown as Quad }]
+  const slightAdjustment = [[110, 55], [310, 55], [310, 255], [110, 255]] as unknown as Quad
+  const moved = [[250, 55], [450, 55], [450, 255], [250, 255]] as unknown as Quad
+
+  expect(stabilizeSuperAiCards(previous, [{ id: "forest", quad: slightAdjustment }])).toEqual(previous)
+  expect(stabilizeSuperAiCards(previous, [{ id: "forest", quad: moved }])).toEqual([
+    { id: "forest", quad: moved },
+  ])
 })
 
 it("renders art as a non-interactive projectively transformed image", () => {
