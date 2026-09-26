@@ -1013,10 +1013,16 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert WebcamTables.close_idle_rooms(:timer.minutes(30)) == []
     assert room_pid(room) == pid
 
-    ref = Process.monitor(pid)
-    assert WebcamTables.close_idle_rooms(0) == [room]
-    assert_receive {:DOWN, ^ref, :process, _, :normal}
-    refute room in Enum.map(WebcamTables.rooms(), & &1.id)
+    # Hold the registry's cleanup so the closed room's entry is still listed,
+    # as it may be for a moment after any room stops.
+    with_registry_cleanup_paused(fn ->
+      ref = Process.monitor(pid)
+      assert WebcamTables.close_idle_rooms(0) == [room]
+      assert_receive {:DOWN, ^ref, :process, _, :normal}
+      assert [{^pid, _opened_at}] = Registry.lookup(TheGathering.WebcamTables.Registry, room)
+      refute room in Enum.map(WebcamTables.rooms(), & &1.id)
+    end)
+
     assert Repo.get(Session, room) == nil
     assert rejoin(room, player, @fresh).assigns.participant.life == 40
   end
@@ -1311,6 +1317,19 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
 
   # Unlike Registry.lookup/2, whereis skips a registered pid that has already exited.
   defp room_pid(room), do: GenServer.whereis(Room.via(room))
+
+  # The registry removes a stopped room's entry when its (single) partition
+  # handles the room's exit; suspending the partition holds that cleanup.
+  defp with_registry_cleanup_paused(fun) do
+    partition = Module.concat(TheGathering.WebcamTables.Registry, "PIDPartition0")
+    :ok = :sys.suspend(partition)
+
+    try do
+      fun.()
+    after
+      :ok = :sys.resume(partition)
+    end
+  end
 
   # Waits until the room has handled earlier messages, such as a channel's DOWN.
   defp sync_room(room) do
