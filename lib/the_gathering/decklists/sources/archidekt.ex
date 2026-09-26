@@ -25,7 +25,8 @@ defmodule TheGathering.Decklists.Sources.Archidekt do
   end
 
   defp from_response(body, parsed) do
-    cards = body["cards"] || []
+    excluded = excluded_categories(body)
+    cards = Enum.reject(body["cards"] || [], &(List.first(&1["categories"] || []) in excluded))
     commanders = Enum.filter(cards, &("Commander" in (&1["categories"] || [])))
 
     %Decklist{
@@ -37,11 +38,29 @@ defmodule TheGathering.Decklists.Sources.Archidekt do
       color_identity: commander_colors(commanders),
       author: get_in(body, ["owner", "username"]),
       card_count: Enum.sum(Enum.map(cards, &(&1["quantity"] || 0))),
+      cards: deck_cards(cards),
       fetched_at: DateTime.utc_now()
     }
   end
 
   defp card_name(entry), do: get_in(entry, ["card", "oracleCard", "name"])
+
+  # Archidekt boards are categories: Maybeboard, Sideboard and custom ones can be marked as
+  # not part of the deck, and a card lives where its first (primary) category says.
+  defp excluded_categories(body) do
+    for %{"name" => name, "includedInDeck" => false} <- body["categories"] || [],
+        into: MapSet.new(),
+        do: name
+  end
+
+  defp deck_cards(cards) do
+    cards
+    |> Enum.map(fn entry ->
+      zone = if "Commander" in (entry["categories"] || []), do: :commander, else: :mainboard
+      Decklist.card(card_name(entry), entry["quantity"], zone, get_in(entry, ["card", "uid"]))
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
 
   defp commander_colors(commanders) do
     colors =

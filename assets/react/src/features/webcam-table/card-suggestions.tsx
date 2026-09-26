@@ -5,6 +5,7 @@ import type { DeckSummary } from "@/features/decks/decks"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { cn } from "@/lib/cn"
 import { CardHover, CommanderHover } from "@/components/card-hover"
+import { inDeck } from "./deck-hint"
 import type { Identification } from "./recognition/messages"
 import { galleryPrintingCaption, type GalleryArt } from "./recognition/pipeline"
 import type { CapturedCard } from "./use-webcam-room"
@@ -38,7 +39,17 @@ interface Props {
   onSearch: (query: string) => Promise<GalleryArt[]>
   onPrintings?: (artId: string) => Promise<GalleryArt[]>
   galleryVersion?: string
+  /** Names in the board owner's linked deck list; matching cards are marked "In deck". */
+  deckNames?: ReadonlySet<string>
   onDismiss: () => void
+}
+
+function InDeckBadge() {
+  return (
+    <span className="badge badge-xs badge-secondary shrink-0 font-semibold whitespace-nowrap">
+      In deck
+    </span>
+  )
 }
 
 function PrintingChoices({
@@ -113,6 +124,7 @@ export function CardSuggestions({
   onSearch,
   onPrintings,
   galleryVersion,
+  deckNames,
   onDismiss,
 }: Props) {
   const [query, setQuery] = useState("")
@@ -210,6 +222,7 @@ export function CardSuggestions({
                   >
                     <kbd className="kbd kbd-xs bg-white text-black">{index + 1}</kbd>
                     <span className="truncate font-semibold">{art.name}</span>
+                    {inDeck(art.name, deckNames) && <InDeckBadge />}
                     <span className="truncate text-white/50">{galleryPrintingCaption(art)}</span>
                     <span className="ml-auto tabular-nums text-white/40">
                       {art.score.toFixed(2)}
@@ -270,7 +283,10 @@ export function CardSuggestions({
                       className="w-full px-2 py-1.5 text-left hover:bg-white/15"
                       onClick={() => onChooseCard(art)}
                     >
-                      <span className="block truncate font-semibold">{art.name}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="truncate font-semibold">{art.name}</span>
+                        {inDeck(art.name, deckNames) && <InDeckBadge />}
+                      </span>
                       <span className="block text-white/50">{galleryPrintingCaption(art)}</span>
                     </button>
                   </CardHover>

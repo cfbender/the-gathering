@@ -191,6 +191,17 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         id: request.id,
         arts: loaded ? searchArts(await loaded.printings(), request.query) : [],
       })
+    } else if (request.type === "locate") {
+      const wanted = new Set(request.printingIds)
+      const arts = (await loaded?.printings()) ?? []
+      reply({
+        type: "matches",
+        id: request.id,
+        arts: arts.flatMap((art) => {
+          const hits = (art.printings ?? [art]).filter((printing) => wanted.has(printing.id))
+          return hits.length > 0 ? [{ ...art, printings: hits }] : []
+        }),
+      })
     } else if (request.type === "printings") {
       const art = (await loaded?.printings())?.find((art) => art.id === request.artId)
       reply({

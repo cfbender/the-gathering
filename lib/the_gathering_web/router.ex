@@ -107,6 +107,7 @@ defmodule TheGatheringWeb.Router do
     post "/discord/result-drafts/:id", DiscordResultDraftController, :create
     resources "/players", PlayerController, except: [:new, :edit]
     resources "/decks", DeckController, except: [:new, :edit]
+    get "/decks/:deck_id/decklist", DecklistController, :show
     get "/games/:id/summary", GameController, :summary
     resources "/games", GameController, except: [:new, :edit]
     post "/decklists/resolve", DecklistController, :resolve

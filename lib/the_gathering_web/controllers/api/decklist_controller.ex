@@ -1,9 +1,25 @@
 defmodule TheGatheringWeb.API.DecklistController do
   use TheGatheringWeb, :controller
 
-  alias TheGathering.Decklists
+  alias TheGathering.{Catalog, Decklists, Games}
 
   action_fallback TheGatheringWeb.API.FallbackController
+
+  @doc """
+  The playable card list behind a deck's linked Moxfield, Archidekt or ManaVault page, with
+  catalog type, cost and cached images for each card. 404 when the deck has no supported link
+  or the list is missing or private upstream.
+  """
+  def show(conn, %{"deck_id" => deck_id}) do
+    with %{decklist_url: url} when is_binary(url) <- Games.get_deck(deck_id),
+         {:ok, decklist} <- Decklists.resolve(url) do
+      catalog = Catalog.cards_by_name(Enum.map(decklist.cards, & &1.name))
+      render(conn, :cards, decklist: decklist, catalog: catalog)
+    else
+      {:error, :upstream_error} -> {:error, :bad_gateway}
+      _missing -> {:error, :not_found}
+    end
+  end
 
   def resolve(conn, %{"url" => url}) when is_binary(url) do
     case Decklists.resolve(url) do

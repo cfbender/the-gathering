@@ -60,6 +60,14 @@ URL, deck name, commanders, commander color identity, author when exposed, card
 count, and fetch timestamp under `data`. Successful lookups are cached in memory
 for five minutes; errors are never cached.
 
+`GET /api/decks/:id/decklist` returns the playable card list behind a deck's linked
+Moxfield, Archidekt, or ManaVault page: each card's name, quantity, zone
+(`commander` or `mainboard`; maybe-, side- and ManaVault "considering" boards are left
+out), the exact Scryfall printing when the list records one, and type, mana cost and
+cached images from the local catalog. It reuses the same live fetch and five-minute
+cache; decks without a supported link, and missing or private lists, return 404. The
+app keeps no copy of the list.
+
 Each user can also save a Moxfield username, Archidekt username, and ManaVault
 instance URL plus personal API key under **Settings → Profile → Deck hosts**.
 `PATCH /api/session/user` accepts these as `moxfield_username`, `archidekt_username`,
@@ -143,7 +151,11 @@ any board identifies it with the recognizer bundle published from `ml/` (see
 and the browser runs the models itself. A recognized card opens with its rules text (fetched
 from Scryfall per printing and cached) and lands in that board's card tray for every seat.
 Without a published bundle the table still works and offers the player's commanders as
-suggestions instead. Design notes are in
+suggestions instead. When a seated player's chosen deck links to a list, every seat loads it
+and warms its card images, **Decks → View decklist** shows your own list, and the recognizer
+favours cards in the clicked board owner's list (see `ml/README.md`, "Deck-list prior").
+Opponents' lists are not shown in the UI but are visible in the browser's network tab.
+Design notes are in
 [docs/webcam-table.md](docs/webcam-table.md).
 
 ### Environment variables

@@ -505,7 +505,12 @@ can still save or share what they saw; this feature cannot revoke frames already
 - `features/webcam-table/commander-picker.tsx` — popover listing your own decks; other seats see a
   read-only commander label, and the server rejects `choose_deck` for decks you do not own.
 - `features/webcam-table/card-suggestions.tsx` — the click-to-identify overlay: crop with the
-  detected quad, five numbered candidates, gallery search, timings.
+  detected quad, five numbered candidates, gallery search, timings, and "In deck" marks.
+- `features/webcam-table/seat-decklists.ts` — loads every seated deck's linked list and warms its
+  images through a small concurrency-limited queue; `deck-hint.ts` is the pure deck-list prior
+  (`applyDeckHint`, `deckFirst`, exact-printing lookup); `decklist-dialog.tsx` is **Decks →
+  View decklist**. `features/decks/decklist-cards.ts` holds the `GET /api/decks/:id/decklist`
+  query and deck-builder grouping.
 - `features/webcam-table/recognition/` — `use-recognizer.ts` (hook owning the worker and its
   checking/loading/ready/unavailable/failed state), `recognizer.worker.ts` (ONNX Runtime Web
   sessions, warm-up, identify and search), `pipeline.ts` (pure port of `ml/cardid/bundle.py`:
@@ -630,6 +635,30 @@ effects, borderless treatment and promos. The Cards tab searches the same printi
 Ranks/keyboard `1`–`5` remain one per artwork, not one per reprint. Identical art cannot tell
 printings apart automatically; the user chooses a sibling, and its own ID drives details,
 hover images, rulings and correction labels. Name-based board deduplication is unchanged.
+
+### Linked deck lists
+
+When a seat's chosen deck links to Moxfield, Archidekt or ManaVault, every seat fetches the
+list from `GET /api/decks/:id/decklist` (TanStack Query, 30-minute stale time) and preloads
+its `small` then `normal` images, four at a time, so neither the list nor a later preview waits on
+Scryfall. The server fetches the list live (five-minute cache) and joins it to the catalog; the
+app stores no copy. Images come from the list's own printing when the site records one.
+
+**Decks → View decklist** shows your own chosen deck's list, grouped like a deck builder, with
+a list/images toggle, a filter, and a check on cards already identified on your board.
+Opponents' lists are loaded only for recognition and are not shown, though anyone watching the
+network tab can read them.
+
+The clicked board owner's list nudges recognition after the bundle answers
+(`deck-hint.ts`): each top-5 candidate whose name, or either face name, is in the list gets
+`DECK_PRIOR` (0.03) added before re-ranking. The clear-answer rule, keys `1`–`5` and the picker
+all see the hinted order, and the picker marks those candidates "In deck". Gallery search from
+the picker lists deck cards first. A deck card outside the recognizer's top five is not
+recovered: a gallery-wide bias would need a new search-graph input and a new bundle. When a
+recognized art holds the list's exact printing, found once per list by the worker's `locate`
+request, that printing is recorded. A printing picked by hand is never replaced. Corrections
+keep the raw result, so training data is not biased by the hint. `ml/README.md`, "Deck-list
+prior", describes how to check the prior against real captures.
 
 Hover or keyboard-focus a candidate (including gallery search results) to see a larger card
 image beside the picker before choosing. The same hover preview shows a seat's commander in
