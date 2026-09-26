@@ -1,0 +1,83 @@
+{
+  "version": "2026-09-26-table-a-pretrained-ep9",
+  "created": "2026-09-26T17:50:11+00:00",
+  "checkpoint": {
+    "path": "data\\runs\\table-a-pretrained\\best.pt",
+    "sha256": "748b598a4fd6b18d59f34f2e2c9765b1dcbadd393eae602e6da25e8333846384",
+    "run_args": {
+      "manifest_dir": "H:\\the-gathering-cardid\\table-scenes",
+      "run": "table-a-pretrained",
+      "epochs": 80,
+      "batch": 8,
+      "lr": 0.001,
+      "backbone_lr": 0.0003,
+      "pose_weight": 1.0,
+      "up_weight": 1.0,
+      "input_size": 384,
+      "pretrained": true,
+      "train_limit": null,
+      "val_limit": 100,
+      "score_threshold": 0.3,
+      "resume": null,
+      "device": "auto",
+      "workers": 2,
+      "threads": 6,
+      "seed": 0
+    },
+    "training_history": {
+      "epoch": 9,
+      "loss": 0.1681889628271262,
+      "loss_heat": 0.07798608412593604,
+      "loss_pose": 0.07193428764740627,
+      "loss_up": 0.018268590409929553,
+      "seconds": 217.6,
+      "recall": 0.9725343320848939,
+      "precision": 0.9936224489795918,
+      "n_truth": 801,
+      "n_found": 784
+    }
+  },
+  "contract": {
+    "input": {
+      "name": "table",
+      "shape": [
+        384,
+        384,
+        4
+      ],
+      "dtype": "uint8",
+      "layout": "HWC RGBA"
+    },
+    "outputs": [
+      {
+        "name": "quads",
+        "shape": [
+          40,
+          4,
+          2
+        ],
+        "dtype": "float32",
+        "units": "input pixels, printed order (corner 0 = top-left)"
+      },
+      {
+        "name": "scores",
+        "shape": [
+          40
+        ],
+        "dtype": "float32",
+        "units": "sigmoid probability, descending; apply your own threshold"
+      }
+    ],
+    "table_input": 384,
+    "table_stride": 4,
+    "max_detections": 40,
+    "recommended_score_threshold": 0.3
+  },
+  "opset": 17,
+  "files": {
+    "table_detector.onnx": {
+      "bytes": 3990754,
+      "sha256": "49fa49fc7348615c967122e196f9a399f9adfaa94daca5a1089863c1efc00576"
+    }
+  }
+}
