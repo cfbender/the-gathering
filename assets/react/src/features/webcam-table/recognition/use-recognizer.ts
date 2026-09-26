@@ -180,14 +180,17 @@ export function useRecognizer(preload = false) {
   )
 
   const identifyFrame = useCallback(
-    (
-      image: RgbaImage,
-      options?: FullFrameOptions,
-      signal?: AbortSignal,
-    ) => {
+    (image: RgbaImage, options?: FullFrameOptions, signal?: AbortSignal) => {
       const rgba = image.data.buffer.slice(0) as ArrayBuffer
       return request<FullFrameIdentification>(
-        (id) => ({ type: "identify_frame", id, rgba, width: image.width, height: image.height, options }),
+        (id) => ({
+          type: "identify_frame",
+          id,
+          rgba,
+          width: image.width,
+          height: image.height,
+          options,
+        }),
         [rgba],
         undefined,
         signal,

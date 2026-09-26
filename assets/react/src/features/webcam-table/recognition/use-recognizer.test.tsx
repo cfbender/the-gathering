@@ -181,7 +181,20 @@ it("resolves a table-detection scan and cancels it through the same request path
       expect.any(Array),
     ),
   )
-  const result1 = { cards: [{ quad: [[0, 0], [1, 0], [1, 1], [0, 1]], score: 0.8 }], totalMs: 5 }
+  const result1 = {
+    cards: [
+      {
+        quad: [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+        ],
+        score: 0.8,
+      },
+    ],
+    totalMs: 5,
+  }
   act(() => worker.reply({ type: "table_detected", id: 1, result: result1 }))
   await expect(scan).resolves.toEqual(result1)
 

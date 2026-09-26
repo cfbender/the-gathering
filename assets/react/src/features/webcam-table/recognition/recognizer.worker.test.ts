@@ -141,7 +141,9 @@ it("loads a detection-only bundle and scans a table without any identity graphs"
   quads.set([96, 96, 192, 96, 192, 192, 96, 192], 0)
   const scores = new Float32Array(40)
   scores[0] = 0.9
-  const tableDetector = vi.fn().mockResolvedValue({ quads: { data: quads }, scores: { data: scores } })
+  const tableDetector = vi
+    .fn()
+    .mockResolvedValue({ quads: { data: quads }, scores: { data: scores } })
   runtime.create.mockResolvedValue({ run: tableDetector })
   vi.stubGlobal(
     "fetch",
@@ -181,7 +183,12 @@ it("loads a detection-only bundle and scans a table without any identity graphs"
   if (response?.type !== "table_detected") throw new Error("unreachable")
   // Detected in the 384x384 model space, then mapped back to the 200x100 source frame.
   expect(response.result.cards).toHaveLength(1)
-  expect(response.result.cards[0]?.quad).toEqual([[50, 0], [100, 0], [100, 50], [50, 50]])
+  expect(response.result.cards[0]?.quad).toEqual([
+    [50, 0],
+    [100, 0],
+    [100, 50],
+    [50, 50],
+  ])
   expect(response.result.cards[0]?.score).toBeCloseTo(0.9)
 
   await worker.onmessage!({
@@ -199,15 +206,30 @@ it("suppresses overlapping full-frame proposals by confidence", async () => {
   vi.stubGlobal("self", worker)
   const { nonMaximumSuppression, quadIou } = await import("./recognizer.worker")
   const first = {
-    quad: [[0, 0], [10, 0], [10, 10], [0, 10]] as Quad,
+    quad: [
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 10],
+    ] as Quad,
     confidence: 0.6,
   }
   const overlapping = {
-    quad: [[1, 1], [11, 1], [11, 11], [1, 11]] as Quad,
+    quad: [
+      [1, 1],
+      [11, 1],
+      [11, 11],
+      [1, 11],
+    ] as Quad,
     confidence: 0.9,
   }
   const separate = {
-    quad: [[20, 20], [30, 20], [30, 30], [20, 30]] as Quad,
+    quad: [
+      [20, 20],
+      [30, 20],
+      [30, 30],
+      [20, 30],
+    ] as Quad,
     confidence: 0.7,
   }
   expect(quadIou(first.quad, overlapping.quad)).toBeCloseTo(81 / 119)

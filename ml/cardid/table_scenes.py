@@ -135,7 +135,11 @@ def partition_arts(paths: list[Path], seed: int = 0) -> dict[str, list[Path]]:
 
 
 def _grid_capacity(usable_w: float, usable_h: float, footprint: float) -> tuple[int, int]:
-    return max(1, int(usable_w // footprint)), max(1, int(usable_h // footprint))
+    """Grid dimensions that fit whole `footprint`-sized cells in `usable_w` x `usable_h`.
+    Zero in either dimension when the footprint does not fit at all (a duel/battlefield band
+    half the canvas tall can be smaller than the footprint at a large camera-profile scale);
+    callers place zero cards there rather than forcing one that bleeds into the next band."""
+    return int(usable_w // footprint), int(usable_h // footprint)
 
 
 def _band_cells(

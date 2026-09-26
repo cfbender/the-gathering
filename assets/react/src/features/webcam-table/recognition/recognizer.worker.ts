@@ -258,7 +258,8 @@ export function quadIou(left: Quad, right: Quad): number {
   const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left))
   const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
   const intersection = width * height
-  const union = (a.right - a.left) * (a.bottom - a.top) + (b.right - b.left) * (b.bottom - b.top) - intersection
+  const union =
+    (a.right - a.left) * (a.bottom - a.top) + (b.right - b.left) * (b.bottom - b.top) - intersection
   return union > 0 ? intersection / union : 0
 }
 
@@ -268,7 +269,8 @@ export function nonMaximumSuppression<T extends { quad: Quad; confidence: number
 ): T[] {
   const kept: T[] = []
   for (const proposal of [...proposals].sort((a, b) => b.confidence - a.confidence)) {
-    if (kept.every((accepted) => quadIou(proposal.quad, accepted.quad) < threshold)) kept.push(proposal)
+    if (kept.every((accepted) => quadIou(proposal.quad, accepted.quad) < threshold))
+      kept.push(proposal)
   }
   return kept
 }
@@ -310,10 +312,13 @@ async function identifyFrame(
   const cards: Identification[] = []
   for (const proposal of nonMaximumSuppression(proposals, settings.nmsIouThreshold)) {
     assertNotCancelled(id)
-    const point = settings.strategy === "hybrid" ? proposal.quad.reduce<[number, number]>(
-      ([x, y], point) => [x + point[0] / 4, y + point[1] / 4],
-      [0, 0],
-    ) : [proposal.x, proposal.y]
+    const point =
+      settings.strategy === "hybrid"
+        ? proposal.quad.reduce<[number, number]>(
+            ([x, y], point) => [x + point[0] / 4, y + point[1] / 4],
+            [0, 0],
+          )
+        : [proposal.x, proposal.y]
     const result = await identify(image, point[0], point[1])
     assertNotCancelled(id)
     if (

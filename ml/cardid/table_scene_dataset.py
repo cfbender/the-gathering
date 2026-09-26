@@ -41,7 +41,11 @@ class TableSceneDetectionDataset(Dataset):
 
     def __getitem__(self, i: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         row = self.rows[i]
-        image = cv2.cvtColor(cv2.imread(str(self.root / row["image"])), cv2.COLOR_BGR2RGB)
+        path = self.root / row["image"]
+        raw = cv2.imread(str(path))
+        if raw is None:
+            raise FileNotFoundError(path)
+        image = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
         scale = self.input_size / row["width"]
         interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
         image = cv2.resize(image, (self.input_size, self.input_size), interpolation=interp)

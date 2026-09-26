@@ -139,19 +139,12 @@ original module kept as the CLI and a re-exporting facade:
 - `constants` holds the detector/refine geometry the manifest ships to the browser;
   `training_runtime` holds device, worker/thread, seed, DataLoader and run-metadata setup for
   both trainers; `envfile` parses `~/.config/cardid.env`.
-- `table_scenes` writes seeded, multi-card full-table PNG scenes and JSONL labels.  The manifest
-  records printed-order quads, orientation, card identity, and later-card occlusion; complete
-  `setup` families are held out rather than randomly mixing spatial arrangements between train
-  and test. `evaluate_tables` reports multi-card matching/orientation metrics for the current
-  click-conditioned detector, and `bench_tables` measures CPU render throughput.
-
-Generate an ignored table dataset, then evaluate the held-out setup:
-
-```sh
-uv run python -m cardid.table_scenes --scenes 300 --held-out-setup cluster
-uv run python -m cardid.evaluate_tables data/table-scenes/manifest.jsonl --detector data/runs/det/best.pt
-uv run python -m cardid.bench_tables --scenes 20 --cards 8
-```
+- `table_scenes` (full-table synthetic scenes for Super AI mode's multi-card detector) over
+  `table_detector`/`table_scene_dataset`/`train_table_detector` (the dense detector, its
+  dataset, and training), `table_strategies` (the three detection strategies), and
+  `evaluate_tables`/`bench_tables`/`report_tables` (scoring, latency, and the HTML comparison
+  report) -- see "Table scenes and the Super AI mode strategy comparison" below for the full
+  walkthrough and commands.
 
 ## Full catalog (bigger machine)
 

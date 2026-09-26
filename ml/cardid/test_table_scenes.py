@@ -92,6 +92,20 @@ class SplitConfigTest(unittest.TestCase):
             self.assertEqual(hi + 1, lo2)
 
 
+class GridCapacityTest(unittest.TestCase):
+    def test_zero_rows_when_the_footprint_does_not_fit_the_band_height(self):
+        # Regression: duel/battlefield split the canvas into two half-height bands: forcing at
+        # least one row here (the old behaviour) let a card bleed past its band into the other.
+        cols, rows = table_scenes._grid_capacity(1000.0, 100.0, 150.0)
+        self.assertEqual(rows, 0)
+        self.assertGreater(cols, 0)  # the other dimension is unaffected
+
+    def test_nonzero_when_the_footprint_fits(self):
+        cols, rows = table_scenes._grid_capacity(1000.0, 300.0, 150.0)
+        self.assertGreaterEqual(cols, 6)
+        self.assertGreaterEqual(rows, 2)
+
+
 class PartitionArtsTest(unittest.TestCase):
     def test_pools_are_disjoint_and_cover_every_path(self):
         paths = [Path(f"art{i}.jpg") for i in range(40)]
@@ -170,6 +184,18 @@ class RenderTableSceneTest(unittest.TestCase):
                 for i, a in enumerate(quads):
                     for b in quads[i + 1 :]:
                         self.assertEqual(quad_iou(a, b), 0.0)
+
+    def test_duel_bands_never_overlap_even_at_closeup_scale(self):
+        # Regression: closeup_4k's largest short_frac makes the footprint bigger than half the
+        # canvas height, the exact case that used to let a duel band's row bleed into the other.
+        from .scene_geometry import quad_iou
+
+        for seed in range(20):
+            _, record = table_scenes.render_table_scene(seed, self.cards, self.arts, "duel", "closeup_4k", count=len(self.cards), size=1280, out=256)
+            quads = [np.float32(c["quad"]) for c in record["cards"]]
+            for i, a in enumerate(quads):
+                for b in quads[i + 1 :]:
+                    self.assertEqual(quad_iou(a, b), 0.0, f"seed {seed}: overlapping duel cards")
 
     def test_a_tight_canvas_clips_the_count_instead_of_overlapping_cards(self):
         _, record = table_scenes.render_table_scene(1, self.cards, self.arts, "cluster", "closeup_4k", count=len(self.cards), size=512, out=256)

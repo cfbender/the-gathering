@@ -101,12 +101,14 @@ def export(checkpoint: Path, out: Path, max_detections: int = MAX_DETECTIONS, in
     return net
 
 
-def verify(out: Path, net: TableCenterNet, manifest_dir: Path, n: int, score_threshold: float) -> bool:
+def verify(out: Path, net: TableCenterNet, manifest_dir: Path, n: int, score_threshold: float, input_size: int = TABLE_INPUT) -> bool:
     """Compare the exported graph (onnxruntime) against the torch reference
     (`table_detector.decode_detections`) on `n` real `test`-split scenes: same preprocessing
-    (resize to the model's input size), same score threshold, greedy IoU matching. The two can
-    differ slightly from onnxruntime's own kernel implementations (bilinear resize, argmax tie
-    order), so this checks they agree closely rather than bit-for-bit."""
+    (resize to `input_size`, the size the graph was actually exported for -- not necessarily
+    `TABLE_INPUT`, since `--input-size` can override it), same score threshold, greedy IoU
+    matching. The two can differ slightly from onnxruntime's own kernel implementations
+    (bilinear resize, argmax tie order), so this checks they agree closely rather than
+    bit-for-bit."""
     import cv2
     import onnxruntime as ort
 
@@ -121,8 +123,8 @@ def verify(out: Path, net: TableCenterNet, manifest_dir: Path, n: int, score_thr
     started = time.time()
     for row in rows:
         image = read_scene_image(row)
-        scale = TABLE_INPUT / row["width"]
-        resized = cv2.resize(image, (TABLE_INPUT, TABLE_INPUT))
+        scale = input_size / row["width"]
+        resized = cv2.resize(image, (input_size, input_size))
         rgba = np.concatenate([resized, np.full((*resized.shape[:2], 1), 255, np.uint8)], axis=-1)
         with torch.no_grad():
             heat, pose, up = net(_to_input(resized))
@@ -182,7 +184,7 @@ def main() -> None:
     if args.verify:
         if not args.verify_manifest_dir:
             raise SystemExit("--verify needs --verify-manifest-dir (a table_scenes dataset with a test/ split)")
-        if not verify(out, net, args.verify_manifest_dir, args.verify, args.score_threshold):
+        if not verify(out, net, args.verify_manifest_dir, args.verify, args.score_threshold, args.input_size):
             raise SystemExit(1)
 
 

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
   MAX_DATA_MESSAGE_LENGTH,
+  SUPER_AI_MAX_CHUNKS,
   SUPER_AI_MAX_CHUNK_LENGTH,
+  SUPER_AI_MAX_FRAME_BYTES,
   parseDataMessage,
 } from "./data-messages"
 
@@ -76,7 +78,9 @@ describe("data channel messages", () => {
         private: false,
       }),
     ).toMatchObject({ type: "super_ai_frame_start", digest })
-    expect(send({ type: "super_ai_frame_chunk", requestId: "frame", index: 0, data: "AQI=" })).toEqual({
+    expect(
+      send({ type: "super_ai_frame_chunk", requestId: "frame", index: 0, data: "AQI=" }),
+    ).toEqual({
       type: "super_ai_frame_chunk",
       requestId: "frame",
       index: 0,
@@ -88,6 +92,21 @@ describe("data channel messages", () => {
         requestId: "frame",
         index: 0,
         data: "A".repeat(SUPER_AI_MAX_CHUNK_LENGTH + 1),
+      }),
+    ).toBeNull()
+    expect(
+      send({ type: "super_ai_frame_chunk", requestId: "frame", index: 0, data: "A" }),
+    ).toBeNull()
+    expect(
+      send({
+        type: "super_ai_frame_start",
+        requestId: "frame",
+        width: 1280,
+        height: 720,
+        bytes: SUPER_AI_MAX_FRAME_BYTES,
+        chunks: SUPER_AI_MAX_CHUNKS - 1,
+        digest,
+        private: false,
       }),
     ).toBeNull()
     expect(send({ type: "super_ai_frame_start", requestId: "frame", digest: "bad" })).toBeNull()

@@ -8,6 +8,15 @@ same metric `report_tables.py` uses:
 
     uv run python -m cardid.train_table_detector --manifest-dir H:/the-gathering-cardid/table-scenes --run table-a-pretrained --epochs 40
     uv run python -m cardid.train_table_detector --manifest-dir H:/the-gathering-cardid/table-scenes --run table-a-scratch --epochs 40 --no-pretrained
+
+`--resume` is a warm start, not a full resume: it loads the checkpoint's model weights only.
+The optimizer, the `OneCycleLR` schedule, and the epoch count all start over from `--epochs`
+worth of fresh warmup, and `history.json`/`best.pt` in `--run`'s directory start over too
+(`best` resets to unset, so the first post-resume epoch is always written as the new best).
+This is deliberate for quick continuations (e.g. moving a checkpoint from a slower device to a
+faster one, as this project's CPU-to-GPU runs did) but means a resumed run's loss/LR curve is
+not a continuation of the original run's, and its history.json should not be concatenated with
+the original's.
 """
 
 from __future__ import annotations
@@ -73,7 +82,9 @@ def main() -> None:
     parser.add_argument("--train-limit", type=int, help="cap training scenes per epoch (smoke tests)")
     parser.add_argument("--val-limit", type=int, default=60, help="val scenes scored per epoch")
     parser.add_argument("--score-threshold", type=float, default=0.3)
-    parser.add_argument("--resume")
+    parser.add_argument(
+        "--resume", help="warm-start from a checkpoint's model weights only; optimizer/schedule/epoch/history all restart (see module docstring)"
+    )
     add_runtime_args(parser, "dataset-loading worker processes")
     args = parser.parse_args()
     runtime = setup(args, "loading")
@@ -96,6 +107,7 @@ def main() -> None:
     model = TableCenterNet(pretrained=args.pretrained).to(device)
     if args.resume:
         model.load_state_dict(torch.load(args.resume, map_location=device, weights_only=True))
+        print(f"warm-started from {args.resume} (weights only; optimizer/schedule/epoch/history all restart, see --help)")
     opt = torch.optim.AdamW(
         [{"params": model.backbone_parameters(), "lr": args.backbone_lr}, {"params": model.head_parameters(), "lr": args.lr}],
         weight_decay=1e-4,

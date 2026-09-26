@@ -7,7 +7,7 @@ import { BoardCardTray } from "./board-cards"
 import { cameraGridLayout } from "./camera-grid"
 import { CardPreview } from "./card-preview"
 import { CardSuggestions } from "./card-suggestions"
-import { TableDetectionOverlay, type TableDetectionCard } from "./super-ai-overlay"
+import { SuperAiOverlay, type SuperAiOverlayCard } from "./super-ai-overlay"
 import type { TableParticipant } from "./room-types"
 import { describeRoll } from "./table-rolls"
 import { SeatActions, SeatLife, SeatTile, TeamHeader } from "./table-seat"
@@ -27,12 +27,12 @@ function StageBoard({
   view,
   participant,
   flow,
-  tableDetections,
+  superAiCards,
 }: {
   view: TableView
   participant: TableParticipant
   flow: CardIdentificationFlow
-  tableDetections: { cards: TableDetectionCard[]; source: { width: number; height: number } | null }
+  superAiCards: { cards: SuperAiOverlayCard[]; source: { width: number; height: number } | null }
 }) {
   const { room, preferences } = view
   return (
@@ -73,9 +73,9 @@ function StageBoard({
               room.requestCapture(participant.peer_id, point.x, point.y, event.shiftKey, flip)
           }}
         />
-        <TableDetectionOverlay
-          cards={tableDetections.cards}
-          source={tableDetections.source}
+        <SuperAiOverlay
+          cards={participant.peer_id === view.activeGroup[0]?.peer_id ? superAiCards.cards : []}
+          source={superAiCards.source}
           flip={videoFlip(view, participant)}
         />
         <BoardCardTray
@@ -195,13 +195,13 @@ export function TableStage({
   view,
   flow,
   videoStats,
-  tableDetections,
+  superAiCards,
 }: {
   ref?: Ref<HTMLElement>
   view: TableView
   flow: CardIdentificationFlow
   videoStats: ReturnType<typeof useVideoStats>
-  tableDetections: { cards: TableDetectionCard[]; source: { width: number; height: number } | null }
+  superAiCards: { cards: SuperAiOverlayCard[]; source: { width: number; height: number } | null }
 }) {
   const { room } = view
   return (
@@ -242,7 +242,7 @@ export function TableStage({
               view={view}
               participant={participant}
               flow={flow}
-              tableDetections={tableDetections}
+              superAiCards={superAiCards}
             />
           ))
         )}

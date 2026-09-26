@@ -66,9 +66,10 @@ export const CAPTURE_IMAGE_PREFIX = "data:image/jpeg;base64,"
 export const MAX_DATA_MESSAGE_LENGTH = 256 * 1024
 const MAX_REQUEST_ID_LENGTH = 64
 const MAX_FRAME_SIZE = 8192
-export const SUPER_AI_MAX_FRAME_BYTES = 4 * 1024 * 1024
 export const SUPER_AI_MAX_CHUNKS = 128
 export const SUPER_AI_MAX_CHUNK_LENGTH = 32 * 1024
+/** 128 chunks of 32 KiB base64 carry at most 3 MiB of decoded JPEG bytes. */
+export const SUPER_AI_MAX_FRAME_BYTES = SUPER_AI_MAX_CHUNKS * ((SUPER_AI_MAX_CHUNK_LENGTH / 4) * 3)
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
 const DIGEST = /^[a-f0-9]{64}$/
 
@@ -164,7 +165,16 @@ function parseSuperAiStart(fields: Fields): SuperAiFrameStart | null {
     typeof fields.private !== "boolean"
   )
     return null
-  return { type: "super_ai_frame_start", requestId, width, height, bytes, chunks, digest, private: fields.private }
+  return {
+    type: "super_ai_frame_start",
+    requestId,
+    width,
+    height,
+    bytes,
+    chunks,
+    digest,
+    private: fields.private,
+  }
 }
 
 function parseSuperAiChunk(fields: Fields): SuperAiFrameChunk | null {
@@ -180,7 +190,9 @@ function parseSuperAiChunk(fields: Fields): SuperAiFrameChunk | null {
 }
 
 function parseSuperAiEnd(fields: Fields): SuperAiFrameEnd | null {
-  return isRequestId(fields.requestId) ? { type: "super_ai_frame_end", requestId: fields.requestId } : null
+  return isRequestId(fields.requestId)
+    ? { type: "super_ai_frame_end", requestId: fields.requestId }
+    : null
 }
 
 /** Returns a well-formed message with only its known fields, or null for anything else. */
