@@ -23,11 +23,8 @@ function TablePlayer({ seat }: { seat: Seat }) {
           </strong>
           {seat.deck && <ColorIdentity colors={seat.deck.color_identity} className="text-xs" />}
         </div>
-        <p
-          className="text-base-content/80 mt-0.5 text-xs break-words"
-          title={seat.deck?.commander_name}
-        >
-          {seat.deck ? <DeckCommanders deck={seat.deck} hover /> : "Unknown commander"}
+        <p className="text-base-content/80 mt-0.5 text-xs leading-snug break-words">
+          {seat.deck ? <DeckCommanders deck={seat.deck} hover stacked /> : "Unknown commander"}
         </p>
       </div>
     </li>
