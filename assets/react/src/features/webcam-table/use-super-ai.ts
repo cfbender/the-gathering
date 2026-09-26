@@ -65,7 +65,9 @@ export function useSuperAi(
     async (peerId: string, requestId: string) => {
       if (!videoEnabled() || !canViewBoard(link.peerId, peerId, revealTarget())) return
       const now = Date.now()
-      if (now - (lastAnsweredRef.current.get(peerId) ?? -Infinity) < SUPER_AI_SCAN_INTERVAL_MS)
+      // A little under the viewer's own polling interval: jitter in data-channel delivery
+      // between consecutive requests should never make an on-time request look "too soon".
+      if (now - (lastAnsweredRef.current.get(peerId) ?? -Infinity) < SUPER_AI_SCAN_INTERVAL_MS - 2_000)
         return
       lastAnsweredRef.current.set(peerId, now)
       const captured = frame()

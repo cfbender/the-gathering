@@ -25,9 +25,10 @@ defmodule TheGatheringWeb.API.CardIdBundleController do
 
   def show(conn, _params) do
     with {:ok, manifest} <- CardId.current_manifest() do
-      # Only files this version actually shipped: the table detector may ship years before the
-      # embedding pipeline (arts.json/detector.onnx/embed.onnx/search.onnx) exists, or the other
-      # way around, and printings.json is always sibling-file optional.
+      # Only files this version actually has on disk (not just named in the manifest's own
+      # `files` key): the table detector may ship years before the embedding pipeline
+      # (arts.json/detector.onnx/embed.onnx/search.onnx) exists, or the other way around, and
+      # printings.json is always sibling-file optional.
       files =
         CardId.files()
         |> Enum.filter(&match?({:ok, _}, CardId.file_path(manifest["version"], &1)))

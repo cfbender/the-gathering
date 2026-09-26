@@ -50,7 +50,7 @@ defmodule TheGatheringWeb.API.CardIdBundleControllerTest do
     assert conn |> get(~p"/api/cardid/bundles/v1/embed.onnx") |> response(200)
   end
 
-  test "only advertises the optional sibling file when the manifest includes it", %{
+  test "only advertises the optional sibling file once it exists on disk", %{
     conn: conn,
     root: root
   } do
