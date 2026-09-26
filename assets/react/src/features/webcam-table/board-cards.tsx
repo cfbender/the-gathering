@@ -68,14 +68,25 @@ interface TrayProps {
   onRemove: (id: string) => void
   /** Present only for the local seat: clearing a whole board is the owner's call. */
   onClear?: () => void
+  /** Open state when this board first appears on the stage. */
+  defaultExpanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
 }
 
 /** Convoke-style tray docked to the bottom of the active board: a chevron tab that unfolds a
  * translucent shelf of the cards identified on this board, newest last. Nothing here is a
  * game event: it is the table's shared, ephemeral notion of what is on that board, and a
  * wrong entry can be removed by any seat. Rulings live in the card preview, not here. */
-export function BoardCardTray({ participant, cards, onPreview, onRemove, onClear }: TrayProps) {
-  const [expanded, setExpanded] = useState(false)
+export function BoardCardTray({
+  participant,
+  cards,
+  onPreview,
+  onRemove,
+  onClear,
+  defaultExpanded = false,
+  onExpandedChange,
+}: TrayProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
   const mine = cards.filter((entry) => entry.ownerPeerId === participant.peer_id)
   const Chevron = expanded ? ChevronDown : ChevronUp
 
@@ -87,7 +98,10 @@ export function BoardCardTray({ participant, cards, onPreview, onRemove, onClear
       <button
         type="button"
         className="flex h-6 items-center gap-1.5 rounded-t-lg border border-b-0 border-white/15 bg-black/70 px-4 text-[0.65rem] font-bold text-white/85 backdrop-blur hover:bg-black/85"
-        onClick={() => setExpanded((value) => !value)}
+        onClick={() => {
+          setExpanded(!expanded)
+          onExpandedChange?.(!expanded)
+        }}
         aria-expanded={expanded}
         aria-controls={`tray-${participant.peer_id}`}
       >
