@@ -1,11 +1,15 @@
 defmodule TheGathering.Catalog.CardData do
   @moduledoc false
 
+  # Oracle keyword lines, optionally followed by reminder text. Current Oracle
+  # wording groups the pairing variants under Partner ("Partner—Friends forever",
+  # "Partner—Survivors"); older wording printed "Friends forever" alone.
   @pairing_rules [
-    {"friends_forever", ~r/(?:^|\n)Friends forever(?:\n|$)/i},
-    {"choose_a_background", ~r/(?:^|\n)Choose a Background(?:\n|$)/i},
+    {"friends_forever", ~r/(?:^|\n)(?:Partner—)?Friends forever\b/i},
+    {"choose_a_background", ~r/(?:^|\n)Choose a Background\b/i},
     {"partner_with", ~r/(?:^|\n)Partner with /i},
-    {"partner", ~r/(?:^|\n)Partner(?:\s|\n|$)/i}
+    {"doctors_companion", ~r/(?:^|\n)Doctor['’]s companion\b/i},
+    {"partner", ~r/(?:^|\n)Partner(?:—|\s|$)/i}
   ]
 
   def from_scryfall(%{"set_type" => set_type}) when set_type in ["token", "memorabilia"],
@@ -66,10 +70,23 @@ defmodule TheGathering.Catalog.CardData do
   end
 
   def commander_pairing(type_line, oracle_text) do
-    if Regex.match?(~r/(?:^|\s|—)Background(?:\s|$)/i, type_line) do
-      "background"
-    else
-      Enum.find_value(@pairing_rules, &pairing_value(&1, oracle_text))
+    cond do
+      Regex.match?(~r/(?:^|\s|—)Background(?:\s|$)/i, type_line) -> "background"
+      pairing = Enum.find_value(@pairing_rules, &pairing_value(&1, oracle_text)) -> pairing
+      doctor?(type_line) -> "doctor"
+      true -> nil
+    end
+  end
+
+  # A Doctor's companion pairs with a legendary creature that is both a Time Lord and a Doctor.
+  defp doctor?(type_line) do
+    case String.split(type_line, "—", parts: 2) do
+      [types, subtypes] ->
+        String.contains?(types, "Legendary") and String.contains?(types, "Creature") and
+          Regex.match?(~r/\bTime Lord\b/, subtypes) and Regex.match?(~r/\bDoctor\b/, subtypes)
+
+      _no_subtypes ->
+        false
     end
   end
 
