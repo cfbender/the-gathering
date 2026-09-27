@@ -6,6 +6,7 @@ defmodule TheGathering.Accounts do
   alias Ecto.Multi
 
   alias TheGathering.Accounts.{
+    ApiKey,
     RegistrationInvite,
     ServerSettings,
     SignInWithDiscord,
@@ -134,6 +135,63 @@ defmodule TheGathering.Accounts do
     {:ok, user}
   end
 
+  def list_api_keys(%User{id: user_id}) do
+    Repo.all(
+      from key in ApiKey,
+        where: key.user_id == ^user_id,
+        order_by: [desc: key.inserted_at, desc: key.id]
+    )
+  end
+
+  @doc "Creates a personal API key, returning the one-time secret alongside the stored key."
+  def create_api_key(%User{} = user, attrs) do
+    {token, changeset} = ApiKey.build(user, attrs)
+
+    with {:ok, api_key} <- Repo.insert(changeset), do: {:ok, {token, api_key}}
+  end
+
+  def delete_api_key(%User{id: user_id}, id) do
+    case Repo.get_by(ApiKey, id: id, user_id: user_id) do
+      nil -> {:error, :not_found}
+      api_key -> Repo.delete(api_key)
+    end
+  end
+
+  @doc """
+  Returns the enabled owner of an API key, or `nil`.
+
+  The key carries no permissions of its own: callers get the owner's current
+  record, so role changes and disabling apply immediately. Records use at most
+  once a minute so polling clients do not write on every request.
+  """
+  def authenticate_api_key(token) do
+    with hash when is_binary(hash) <- ApiKey.hash(token),
+         {api_key, user} <-
+           Repo.one(
+             from key in ApiKey,
+               join: user in assoc(key, :user),
+               where: key.token_hash == ^hash and is_nil(user.disabled_at),
+               select: {key, user}
+           ) do
+      touch_api_key(api_key)
+      user
+    else
+      _missing -> nil
+    end
+  end
+
+  defp touch_api_key(%ApiKey{id: id}) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    stale = DateTime.add(now, -60)
+
+    Repo.update_all(
+      from(key in ApiKey,
+        where: key.id == ^id and (is_nil(key.last_used_at) or key.last_used_at < ^stale)
+      ),
+      set: [last_used_at: now]
+    )
+  end
+
   def update_user(user, attrs) do
     changeset = User.admin_update_changeset(user, attrs)
 
@@ -188,6 +246,7 @@ defmodule TheGathering.Accounts do
       set: [created_by_user_id: nil]
     )
     |> Multi.delete_all(:tokens, all_user_tokens_query(user))
+    |> Multi.delete_all(:api_keys, from(key in ApiKey, where: key.user_id == ^user.id))
     |> Multi.delete(:user, user)
     |> Repo.transaction()
     |> case do

@@ -26,6 +26,8 @@ config :the_gathering, TheGathering.Repo,
 config :the_gathering, TheGatheringWeb.RateLimit,
   credentials: [limit: 10, scale: :timer.minutes(5)],
   corrections: [limit: 30, scale: :timer.minutes(1)],
+  # Requests authenticated with a personal API key, counted per owner.
+  api_keys: [limit: 120, scale: :timer.minutes(1)],
   sudo: [limit: 5, global_limit: 100, scale: :timer.minutes(5)],
   # Each webcam table config request mints fresh 6-hour Cloudflare TURN
   # credentials; clients fetch it on page load and after socket errors.

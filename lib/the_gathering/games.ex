@@ -52,6 +52,9 @@ defmodule TheGathering.Games do
 
   def get_player(id), do: Repo.get(Player, id)
 
+  @doc "The player linked to `user`, or `nil` when an admin has not linked one."
+  def get_player_for_user(%User{id: user_id}), do: Repo.get_by(Player, user_id: user_id)
+
   def list_player_identities(opts \\ %{}) do
     page = positive_integer(value(opts, :page), 1)
     per_page = value(opts, :per_page) |> positive_integer(50) |> min(100)

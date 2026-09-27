@@ -243,6 +243,10 @@ address, so set `TRUST_PROXY_HEADERS=true` when your proxy sets `x-real-ip` or
 `x-forwarded-for`. Password reauthentication is separately limited by account and client address,
 with a server-wide attempt budget. Discord sign-in is not rate limited here.
 
+Members can create personal API keys under **Settings → API keys** to list games from scripts
+(`GET /api/v1/games`, filterable by player and date). A key acts as its owner with the same
+permissions and stops working when the account is disabled. See [Personal API keys](docs/api.md).
+
 See [Discord integration](docs/discord-integration.md) for bot creation, permissions, and current tracking behavior.
 See [CSV game import](docs/csv-import.md) for the spreadsheet format and admin import flow, and [Mythic Track import](docs/mythic-track-import.md) for moving an existing Mythic Track playgroup over.
 

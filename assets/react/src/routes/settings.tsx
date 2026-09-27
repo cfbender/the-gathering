@@ -5,6 +5,7 @@ import { KeyRound, Library, UserRound } from "lucide-react"
 import { PageHeader } from "@/components/app-shell"
 import { AppearanceSection } from "@/components/appearance-section"
 import { SudoPrompt } from "@/components/sudo-prompt"
+import { ApiKeysSection } from "@/features/api-keys/api-keys-section"
 import { invalidateGameRelated } from "@/features/games/games"
 import { api } from "@/lib/api"
 import { errorMessage, requireUser, useCurrentUser } from "@/lib/auth"
@@ -101,7 +102,7 @@ function SettingsPage() {
       <PageHeader
         eyebrow="Account"
         title="Settings"
-        description={`Manage your profile${user.has_password ? ", password," : ""} and appearance.`}
+        description={`Manage your profile${user.has_password ? ", password" : ""}, appearance, and API keys.`}
       />
 
       <AppearanceSection />
@@ -278,6 +279,8 @@ function SettingsPage() {
           </div>
         </form>
       )}
+
+      <ApiKeysSection />
     </div>
   )
 }

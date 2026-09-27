@@ -18,6 +18,14 @@ defmodule TheGatheringWeb.Router do
     plug TheGatheringWeb.UserAuth, :fetch_current_scope_for_user
   end
 
+  # External clients authenticate with a personal API key instead of the session
+  # cookie, so there is no session or CSRF token. The key acts as its owner.
+  pipeline :api_key do
+    plug :accepts, ["json"]
+    plug TheGatheringWeb.ApiKeyAuth
+    plug TheGatheringWeb.RateLimit, bucket: :api_keys
+  end
+
   pipeline :require_authenticated_user do
     plug TheGatheringWeb.UserAuth, :require_authenticated_user
   end
@@ -83,6 +91,9 @@ defmodule TheGatheringWeb.Router do
     patch "/session/appearance", SessionController, :update_appearance
     get "/session/remote-decks", RemoteDeckController, :index
     post "/session/remote-decks/sync", RemoteDeckController, :sync
+    get "/session/api-keys", ApiKeyController, :index
+    post "/session/api-keys", ApiKeyController, :create
+    delete "/session/api-keys/:id", ApiKeyController, :delete
 
     get "/cards", CardController, :index
     get "/cards/:id", CardController, :show
@@ -163,6 +174,13 @@ defmodule TheGatheringWeb.Router do
     delete "/discord/pending/:id", AdminDiscordPendingController, :delete
     post "/catalog/sync", CatalogController, :sync
     post "/catalog/backfill", CatalogController, :backfill
+  end
+
+  # Read-only, versioned API for personal API keys.
+  scope "/api/v1", TheGatheringWeb.API.V1 do
+    pipe_through :api_key
+
+    get "/games", GameController, :index
   end
 
   scope "/api", TheGatheringWeb.API do
