@@ -1,5 +1,6 @@
-import { Eraser, Search, Sparkles, WalletCards, X } from "lucide-react"
+import { ChevronDown, Eraser, Search, Sparkles, WalletCards, X } from "lucide-react"
 import { useEffect, useState } from "react"
+import { CardHover } from "@/components/card-hover"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { ManaCost } from "@/components/mana-symbols"
 import { cn } from "@/lib/cn"
@@ -31,8 +32,8 @@ function CardMeta({ card }: { card: IdentifiedCard }) {
       <span className="flex min-w-0 items-center gap-1.5">
         <span className="truncate font-semibold">{card.name}</span>
         {data?.mana_cost && <ManaCost cost={data.mana_cost} className="shrink-0 text-[0.65rem]" />}
+        <GameChangerBadge gameChanger={data?.game_changer} compact />
       </span>
-      <GameChangerBadge gameChanger={data?.game_changer} />
       <span className="text-base-content/55 block truncate text-[0.65rem]">
         {data
           ? printingCaption({ ...data, set: data.set_code })
@@ -52,19 +53,23 @@ function CardRow({
   onRemove?: () => void
 }) {
   return (
-    <li className="flex items-center gap-2">
-      <CardThumb card={card} onClick={onPreview} className="w-8 shrink-0" />
-      <button
-        type="button"
-        className="min-w-0 flex-1 text-left text-xs hover:underline"
-        onClick={onPreview}
-      >
-        <CardMeta card={card} />
-      </button>
+    <li className="flex min-w-0 items-center gap-2">
+      <CardHover id={card.id} name={card.name}>
+        <span className="flex min-w-0 items-center gap-2">
+          <CardThumb card={card} onClick={onPreview} className="w-8 shrink-0" />
+          <button
+            type="button"
+            className="min-w-0 flex-1 text-left text-xs hover:underline"
+            onClick={onPreview}
+          >
+            <CardMeta card={card} />
+          </button>
+        </span>
+      </CardHover>
       {onRemove && (
         <button
           type="button"
-          className="text-base-content/50 hover:text-error grid size-6 shrink-0 place-items-center rounded-full hover:bg-white/10"
+          className="text-base-content/50 hover:text-error ml-auto grid size-6 shrink-0 place-items-center rounded-full hover:bg-white/10"
           onClick={onRemove}
           aria-label={`Remove ${card.name}`}
         >
@@ -90,13 +95,17 @@ function LatestCard({
   const data = details.data
   return (
     <div className="flex gap-3">
-      <CardThumb card={entry.card} onClick={onPreview} className="w-20 shrink-0" />
+      <CardHover id={entry.card.id} name={entry.card.name}>
+        <CardThumb card={entry.card} onClick={onPreview} className="w-20 shrink-0" />
+      </CardHover>
       <div className="min-w-0 flex-1 text-xs">
         {data?.mana_cost && <ManaCost cost={data.mana_cost} className="text-sm" />}
-        <button type="button" className="block text-left hover:underline" onClick={onPreview}>
-          <span className="block font-bold">{entry.card.name}</span>
-        </button>
-        <GameChangerBadge gameChanger={data?.game_changer} />
+        <span className="flex items-center gap-1.5">
+          <button type="button" className="text-left hover:underline" onClick={onPreview}>
+            <span className="font-bold">{entry.card.name}</span>
+          </button>
+          <GameChangerBadge gameChanger={data?.game_changer} compact />
+        </span>
         <p className="text-base-content/70 truncate">{data?.type_line ?? "Loading…"}</p>
         <p className="text-base-content/55 truncate text-[0.65rem]">
           {data
@@ -117,6 +126,61 @@ function LatestCard({
         </button>
       </div>
     </div>
+  )
+}
+
+/** One player's detected cards, collapsible by its header. Clearing is offered to the owner only. */
+function PlayerCards({
+  playerName,
+  entries,
+  onPreviewCard,
+  onRemoveCard,
+  onClear,
+}: {
+  playerName: string
+  entries: BoardCard[]
+  onPreviewCard: (entry: BoardCard) => void
+  onRemoveCard: (id: string) => void
+  onClear?: () => void
+}) {
+  const [expanded, setExpanded] = useState(true)
+  return (
+    <section className="min-w-0" aria-label={`Cards on ${playerName}'s board`}>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="text-base-content/50 hover:text-base-content -mx-1 flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-1 text-left text-[0.6rem] font-bold tracking-wider uppercase hover:bg-white/5"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+        >
+          <ChevronDown className={cn("size-3 shrink-0 transition", !expanded && "-rotate-90")} />
+          <span className="truncate">
+            {playerName} ({entries.length})
+          </span>
+        </button>
+        {onClear && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs -my-1 gap-1 text-[0.6rem] hover:text-error"
+            onClick={onClear}
+          >
+            <Eraser className="size-3" /> Clear cards
+          </button>
+        )}
+      </div>
+      {expanded && (
+        <ul className="mt-1 grid gap-1.5">
+          {entries.map((entry) => (
+            <CardRow
+              key={entry.id}
+              card={entry.card}
+              onPreview={() => onPreviewCard(entry)}
+              onRemove={() => onRemoveCard(entry.id)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -291,34 +355,16 @@ export function CardsTab({
               : "Nothing has been identified at this table yet."}
           </p>
         ) : (
-          <div className="grid gap-3">
+          <div className="grid gap-2">
             {[...groups.entries()].map(([peerId, entries]) => (
-              <section key={peerId} aria-label={`Cards on ${nameFor(peerId)}'s board`}>
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <h3 className="text-base-content/50 text-[0.6rem] font-bold tracking-wider uppercase">
-                    {nameFor(peerId)} ({entries.length})
-                  </h3>
-                  {peerId === localParticipant.peer_id && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-xs -my-1 gap-1 text-[0.6rem] hover:text-error"
-                      onClick={onClearOwnCards}
-                    >
-                      <Eraser className="size-3" /> Clear cards
-                    </button>
-                  )}
-                </div>
-                <ul className="grid gap-1.5">
-                  {entries.map((entry) => (
-                    <CardRow
-                      key={entry.id}
-                      card={entry.card}
-                      onPreview={() => onPreviewCard(entry)}
-                      onRemove={() => onRemoveCard(entry.id)}
-                    />
-                  ))}
-                </ul>
-              </section>
+              <PlayerCards
+                key={peerId}
+                playerName={nameFor(peerId)}
+                entries={entries}
+                onPreviewCard={onPreviewCard}
+                onRemoveCard={onRemoveCard}
+                onClear={peerId === localParticipant.peer_id ? onClearOwnCards : undefined}
+              />
             ))}
           </div>
         )}

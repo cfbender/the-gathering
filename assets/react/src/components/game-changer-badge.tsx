@@ -12,7 +12,11 @@ export function GameChangerBadge({
   return (
     <span
       className="badge badge-warning badge-sm h-auto min-h-5 shrink-0 gap-1 whitespace-nowrap px-1.5 py-0.5 text-[0.65rem] font-semibold normal-case tracking-normal"
-      title="On the Commander Brackets Game Changers list (Scryfall)"
+      title={
+        compact
+          ? "Game Changer: on the Commander Brackets Game Changers list (Scryfall)"
+          : "On the Commander Brackets Game Changers list (Scryfall)"
+      }
     >
       <Sparkles className="size-3 shrink-0" aria-hidden="true" />
       <span className={compact ? "sr-only" : undefined}>Game Changer</span>
