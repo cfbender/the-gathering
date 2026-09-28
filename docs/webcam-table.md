@@ -112,8 +112,30 @@ transfer already solves the resolution problem, each browser loads the bundle on
 result needs no second round trip before it can be shown, corrected, and announced. ONNX Runtime
 Web (`onnxruntime-web`) executes the three exported graphs on its single-threaded WASM backend;
 the glue around them (`recognition/pipeline.ts`) is a line-for-line port of the Python
-`cardid.bundle` reference runtime, and the two give the same top five on rendered scenes. WebGPU
-is a later optimisation. References:
+`cardid.bundle` reference runtime, and the two give the same top five on rendered scenes.
+
+WebGPU was evaluated with onnxruntime-web 1.30 and rejected for now; the recognizer stays on
+WASM. Findings, from the three graphs exported with the production operator set:
+
+- The default `onnxruntime-web` import uses the older JSEP WebGPU backend, which fails in the
+  detector (`[Concat] /Concat failed: non concat dimensions must match`).
+  `onnxruntime-web/webgpu` (asyncify) and `onnxruntime-web/jspi` load the native WebGPU EP, which
+  runs all three graphs and matches WASM output.
+- The native WebGPU EP has no `Round`, `Mod` or `Or` kernel. Those nodes fall back to the CPU
+  EP; in `embed.onnx` that means 15 full-image GPU→CPU→GPU copies. Rewriting them at export
+  (round-half-to-even from `Floor`/`Where`, a table lookup for the corner roll, float
+  arithmetic for `peak % size`) leaves only uint8 input slices and a few int64 index ops on the
+  CPU and does not change WASM output.
+- Measured on Firefox 156 / Linux (WebGPU behind `dom.webgpu.enabled`): WASM ~146 ms per click
+  (2 × detector + embed + search), WebGPU ~1,900 ms even with the rewritten export. Times sat
+  near multiples of 100–200 ms regardless of graph size, which points to per-readback latency
+  rather than compute.
+- WebGPU is on by default only in Chromium, Safari 26, and Firefox on Windows and Apple Silicon
+  macOS, so WASM must remain the fallback anyway. Revisit only with per-device backend
+  selection (for example, timing the load-time warm-up on both) and measurements from those
+  browsers.
+
+References:
 
 - <https://onnxruntime.ai/docs/tutorials/web/>
 - <https://onnxruntime.ai/docs/tutorials/web/ep-webgpu.html>

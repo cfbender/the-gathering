@@ -4,8 +4,10 @@
  *
  * Mirrors `ml/cardid/bundle.py` step for step (see `pipeline.ts` for the maths): two detector
  * passes, one embed pass, one gallery search. Uses the WASM backend so results match the
- * Python parity check bit-for-bit modulo float rounding; WebGPU is a later switch
- * (`onnxruntime-web/webgpu` + the jsep wasm pair) once its per-op coverage is measured.
+ * Python parity check bit-for-bit modulo float rounding. WebGPU was measured and is not used:
+ * the default (JSEP) build fails on the detector, and the native EP (`onnxruntime-web/webgpu`)
+ * lacks Round/Mod/Or and was far slower than WASM on Firefox/Linux. See docs/webcam-table.md,
+ * "Browser inference in the clicking browser".
  */
 import * as ort from "onnxruntime-web/wasm"
 import mjsUrl from "onnxruntime-web/ort-wasm-simd-threaded.mjs?url"
