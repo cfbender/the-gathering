@@ -11,6 +11,12 @@ export interface TimerSample {
   receivedAt: number
 }
 
+/** The game has started but its clock has never run: the mulligan window before the first turn.
+ * Mirrors `Timer.awaiting_start?/1` on the server. */
+export function awaitingStart(timer: GameTimerState | undefined): boolean {
+  return timer?.started_at != null && timer.paused_at === timer.started_at
+}
+
 export function elapsedMilliseconds(timer: GameTimerState, serverNow = timer.server_now): number {
   if (timer.started_at === null) return 0
   return Math.max(0, (timer.paused_at ?? serverNow) - timer.started_at - timer.paused_ms)

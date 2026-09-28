@@ -9,6 +9,7 @@ import { CardPreview } from "./card-preview"
 import { CardSuggestions } from "./card-suggestions"
 import type { TableParticipant } from "./room-types"
 import { describeRoll } from "./table-rolls"
+import { StartOverlay } from "./start-overlay"
 import { SeatActions, SeatLife, SeatTile, TeamHeader } from "./table-seat"
 import {
   isCurrentTurn,
@@ -236,6 +237,7 @@ export function TableStage({
           ))
         )}
         <IdentificationOverlays view={view} flow={flow} />
+        <StartOverlay view={view} />
       </div>
     </section>
   )

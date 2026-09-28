@@ -228,6 +228,22 @@ defmodule TheGathering.WebcamTables.Room do
     {:reply, timer, commit(state, entry, [{"timer_state", timer}])}
   end
 
+  def handle_call({:begin_play, actor}, _from, %{entry: entry} = state) do
+    cond do
+      not Timer.awaiting_start?(entry.timer) ->
+        {:reply, {:ok, timer_snapshot(entry)}, state}
+
+      actor != :owner and
+          Turns.turn_id(ordered_seats(entry), actor, entry.mode) != entry.turns.active_player_id ->
+        {:reply, {:error, %{reason: "only the first player can start the game"}}, state}
+
+      true ->
+        entry = %{entry | timer: Timer.update(entry.timer, "resume", now())}
+        timer = timer_snapshot(entry)
+        {:reply, {:ok, timer}, commit(state, entry, [{"timer_state", timer}])}
+    end
+  end
+
   def handle_call({:start_game, randomize}, _from, %{entry: entry} = state) do
     randomize = if is_nil(randomize), do: entry.auto_randomize, else: randomize
 
@@ -260,15 +276,26 @@ defmodule TheGathering.WebcamTables.Room do
 
   def handle_call({:pass_turn, revision}, _from, %{entry: entry} = state) do
     if entry.turns.revision == revision and not is_nil(entry.turns.active_player_id) do
+      # Passing the first turn before pressing Start still begins the clock.
+      awaiting? = Timer.awaiting_start?(entry.timer)
+      timer = if awaiting?, do: Timer.update(entry.timer, "resume", now()), else: entry.timer
+
       turns =
         Turns.pass(
           entry.turns,
           ordered_seats(entry),
-          Timer.elapsed(entry.timer, now()),
+          Timer.elapsed(timer, now()),
           entry.mode
         )
 
-      {:reply, :ok, commit(state, %{entry | turns: turns})}
+      entry = %{entry | timer: timer, turns: turns}
+
+      events =
+        if awaiting?,
+          do: [{"timer_state", timer_snapshot(entry)}, :table_state],
+          else: [:table_state]
+
+      {:reply, :ok, commit(state, entry, events)}
     else
       {:reply, {:error, %{reason: "turn has changed or the game has not started"}}, state}
     end

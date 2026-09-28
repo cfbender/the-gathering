@@ -1,7 +1,7 @@
 import { Pause, Play, Timer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/cn"
-import { formatElapsed, type TimerSample } from "./game-timer"
+import { awaitingStart, formatElapsed, type TimerSample } from "./game-timer"
 import { useTimerElapsed } from "./use-timer-elapsed"
 
 /** Compact elapsed-time badge for the Table tab header. Non-interactive because the section
@@ -26,7 +26,8 @@ export function TimerBadge({ sample }: { sample: TimerSample | null }) {
   )
 }
 
-/** Pause/resume action for the Table tab; hidden until the match has started. */
+/** Pause/resume action for the Table tab; hidden until the match has started. During the
+ * mulligan window resuming starts the clock, so it reads as Start. */
 export function TimerToggle({
   sample,
   onChange,
@@ -46,7 +47,7 @@ export function TimerToggle({
       onClick={() => onChange(paused ? "resume" : "pause")}
     >
       {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
-      {paused ? "Resume timer" : "Pause timer"}
+      {awaitingStart(sample?.state) ? "Start timer" : paused ? "Resume timer" : "Pause timer"}
     </Button>
   )
 }

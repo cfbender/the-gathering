@@ -450,9 +450,12 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert_push "table_state", %{timer: %{started_at: nil}, peer_ids: []}
     before_start = System.system_time(:millisecond)
     assert_reply push(socket, "seat_order", %{"peer_ids" => [@peer_a]}), :ok
-    assert_broadcast "timer_state", %{started_at: started, paused_at: nil, paused_ms: 0}
+    # Starting holds the clock at zero for mulligans until the first player begins play.
+    assert_broadcast "timer_state", %{started_at: started, paused_at: started, paused_ms: 0}
     assert started >= before_start
     assert started <= System.system_time(:millisecond)
+    assert_reply push(socket, "begin_play", %{}), :ok, running
+    assert %{started_at: ^started, paused_at: nil} = running
 
     assert_reply push(socket, "timer", %{"action" => "pause"}), :ok, paused
     assert paused.started_at == started
@@ -512,6 +515,32 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
 
     join_player(Ecto.UUID.generate(), @peer_c, "Cara")
     assert_push "table_state", %{timer: %{started_at: nil, paused_ms: 0}, peer_ids: []}
+  end
+
+  test "only the first player or the owner can end the mulligan window", %{
+    socket: socket,
+    room_id: room_id,
+    player: player
+  } do
+    other = join_player(room_id, @peer_b, "Bob")
+    assert_reply push(socket, "begin_play", %{}), :ok, %{started_at: nil}
+    assert_reply push(socket, "turn_settings", %{"auto_randomize" => false}), :ok
+    assert_reply push(socket, "arrange_seats", %{"peer_ids" => [@peer_b, @peer_a]}), :ok
+    assert_reply push(socket, "start_game", %{}), :ok
+    bob = other.assigns.participant.player_id
+    assert %{turns: %{active_player_id: ^bob}} = WebcamTables.snapshot(room_id)
+
+    # Bob goes first, so Alice acting as a plain seat (not as owner) is refused.
+    assert {:error, %{reason: "only the first player can start the game"}} =
+             WebcamTables.begin_play(room_id, player.id)
+
+    assert_reply push(socket, "begin_play", %{"at" => 1}), :error, %{reason: "invalid start"}
+    assert_reply push(other, "begin_play", %{}), :ok, %{paused_at: nil} = running
+    assert_broadcast "timer_state", %{paused_at: nil}
+
+    # Once running, repeated starts change nothing.
+    assert_reply push(socket, "begin_play", %{}), :ok, again
+    assert Map.drop(again, [:server_now]) == Map.drop(running, [:server_now])
   end
 
   test "rejects forged timestamps, unknown timer actions and invalid sync payloads", %{
@@ -718,8 +747,11 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     }
 
     first = WebcamTables.snapshot(room_id)
+    assert first.timer.paused_at == first.timer.started_at
     assert_reply push(other, "pass_turn", %{"revision" => 1}), :ok
     assert_reply push(socket, "pass_turn", %{"revision" => 1}), :error
+    # Passing the first turn before pressing Start still begins the clock.
+    assert_broadcast "timer_state", %{paused_at: nil}
 
     assert_broadcast "table_state", %{
       turns: %{active_player_id: ^bob, counts: %{^alice => 1, ^bob => 1}, revision: 2}

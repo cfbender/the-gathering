@@ -20,7 +20,7 @@ defmodule TheGathering.WebcamTables.TurnsTest do
 
   test "turn times exclude pauses, including passing while paused" do
     seats = [seat(1), seat(2)]
-    timer = Timer.update(Timer.new(), "start", 1000)
+    timer = Timer.new() |> Timer.update("start", 500) |> Timer.update("resume", 1000)
     turns = Turns.pass(Turns.new(), seats, 0)
     timer = Timer.update(timer, "pause", 13_000)
     turns = Turns.pass(turns, seats, Timer.elapsed(timer, 19_000))

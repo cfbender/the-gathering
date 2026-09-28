@@ -3,6 +3,9 @@ defmodule TheGathering.WebcamTables.Timer do
   Pure shared game clock. The server stamps every transition, so clients
   cannot forge times. Repeated actions are idempotent: starting again never
   resets and resuming a running clock changes nothing.
+
+  Starting stamps the game as begun but holds the clock at zero, so players
+  can mulligan; the first resume begins play.
   """
 
   def new, do: %{started_at: nil, paused_at: nil, paused_ms: 0}
@@ -13,7 +16,15 @@ defmodule TheGathering.WebcamTables.Timer do
   def elapsed(timer, now),
     do: max(0, (timer.paused_at || now) - timer.started_at - timer.paused_ms)
 
-  def update(%{started_at: nil} = timer, "start", now), do: %{timer | started_at: now}
+  @doc "True between the start of the game and the first time its clock runs."
+  def awaiting_start?(%{started_at: started, paused_at: started}) when not is_nil(started),
+    do: true
+
+  def awaiting_start?(_timer), do: false
+
+  def update(%{started_at: nil} = timer, "start", now),
+    do: %{timer | started_at: now, paused_at: now}
+
   def update(%{started_at: nil} = timer, _action, _now), do: timer
   def update(%{paused_at: nil} = timer, "pause", now), do: %{timer | paused_at: now}
 

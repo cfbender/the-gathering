@@ -135,6 +135,13 @@ defmodule TheGathering.WebcamTables do
 
   def timer(room, action), do: call(room, {:timer, action})
 
+  @doc """
+  Ends the mulligan window by starting the game clock. `actor` is `:owner`
+  for a seat holding table controls, otherwise the acting player's id, which
+  must hold the first turn. Once the clock runs this changes nothing.
+  """
+  def begin_play(room, actor), do: call(room, {:begin_play, actor})
+
   @doc "Starts the game; `randomize` overrides the room's auto-randomize setting."
   def start_game(room, randomize \\ nil), do: call(room, {:start_game, randomize})
 

@@ -166,6 +166,7 @@ export function useWebcamRoom(
     takeMonarch: game.takeMonarch,
     toggleCamera,
     startGame: game.startGame,
+    beginPlay: game.beginPlay,
     dismissCapture: captures.dismissCapture,
   }
 }

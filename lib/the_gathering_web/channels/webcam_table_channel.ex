@@ -397,6 +397,14 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   defp handle_event("timer", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid timer action"}}, socket}
 
+  defp handle_event("begin_play", payload, socket) when payload == %{} do
+    actor = if socket.assigns.owner?, do: :owner, else: socket.assigns.participant.player_id
+    {:reply, WebcamTables.begin_play(socket.assigns.room_id, actor), socket}
+  end
+
+  defp handle_event("begin_play", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid start"}}, socket}
+
   defp handle_event("timer_sync", payload, socket) when payload == %{} do
     {:reply, {:ok, WebcamTables.snapshot(socket.assigns.room_id).timer}, socket}
   end

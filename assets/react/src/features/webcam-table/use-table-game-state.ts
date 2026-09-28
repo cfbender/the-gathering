@@ -244,6 +244,18 @@ export function useTableGameState(
       .receive("error", reportError)
   }
 
+  /** First player (or the owner) ends the mulligan window and starts the game clock. */
+  function beginPlay() {
+    link.channel
+      ?.push("begin_play", {})
+      .receive("ok", (state: GameTimerState) => {
+        setError(null)
+        setTimer({ state, receivedAt: performance.now() })
+      })
+      .receive("error", reportError)
+      .receive("timeout", () => setError("Start request timed out; try again"))
+  }
+
   const turnRevision = turns.revision
   const passTurn = useCallback(() => {
     link.channel
@@ -374,6 +386,7 @@ export function useTableGameState(
     adjustCounter,
     takeMonarch,
     startGame,
+    beginPlay,
     passTurn,
     unpassTurn,
     adjustTurn,

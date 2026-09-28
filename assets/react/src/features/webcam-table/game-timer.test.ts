@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
+  awaitingStart,
   durationMinutes,
   elapsedMilliseconds,
   formatElapsed,
@@ -34,6 +35,14 @@ describe("game timer", () => {
     expect(durationMinutes({ ...timer, server_now: 108000 })).toBe("2")
     expect(durationMinutes({ ...timer, server_now: 1000, paused_ms: 0 })).toBe("1")
     expect(durationMinutes({ ...timer, started_at: null })).toBe("")
+  })
+
+  it("treats a started clock that has never run as the mulligan window", () => {
+    expect(awaitingStart(undefined)).toBe(false)
+    expect(awaitingStart({ ...timer, started_at: null, paused_at: null })).toBe(false)
+    expect(awaitingStart({ ...timer, paused_at: 1000, paused_ms: 0 })).toBe(true)
+    expect(awaitingStart(timer)).toBe(false)
+    expect(awaitingStart({ ...timer, paused_at: 90000 })).toBe(false)
   })
 
   it("formats hours, minutes, and seconds without rounding up", () => {
