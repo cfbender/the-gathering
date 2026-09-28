@@ -5,8 +5,8 @@ import type { Candidate, GalleryArt } from "./recognition/pipeline"
  * Cosine bonus for a candidate that is in the clicked board owner's linked deck list. It can
  * reorder the recognizer's top five and settle a near-tie, but a non-deck card that leads a
  * deck card by more than this still wins (stolen cards, copies, an outdated list).
- * Checked against the gallery-wide margin (`CLEAR_MARGIN`) in `ml/` evaluation; see
- * `ml/README.md` "Deck-list prior".
+ * Checked against the gallery-wide margin (`CLEAR_MARGIN`) in Oracle evaluation; see
+ * Oracle's README (https://github.com/cfbender/oracle) "Deck-list prior".
  */
 export const DECK_PRIOR = 0.03
 

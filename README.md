@@ -146,14 +146,14 @@ response's `errors`.
 board cameras over an adaptive-resolution WebRTC mesh and record the result when the game ends.
 **Reveal hand to** privately sends your camera to one chosen player; everyone else receives no
 video until you end the reveal or the target leaves. Clicking a card on
-any board identifies it with the recognizer bundle published from `ml/` (see
-`ml/README.md`, "Shipping"): Phoenix serves `DATA_DIR/cardid/current/*` at `/api/cardid/*`
+any board identifies it with the recognizer bundle published from [Oracle](https://github.com/cfbender/oracle) (see
+its README, "Shipping"): Phoenix serves `DATA_DIR/cardid/current/*` at `/api/cardid/*`
 and the browser runs the models itself. A recognized card opens with its rules text (fetched
 from Scryfall per printing and cached) and lands in that board's card tray for every seat.
 Without a published bundle the table still works and offers the player's commanders as
 suggestions instead. When a seated player's chosen deck links to a list, every seat loads it
 and warms its card images, **Decks → View decklist** shows your own list, and the recognizer
-favours cards in the clicked board owner's list (see `ml/README.md`, "Deck-list prior").
+favours cards in the clicked board owner's list (see Oracle's README, "Deck-list prior").
 Opponents' lists are not shown in the UI but are visible in the browser's network tab.
 Design notes are in
 [docs/webcam-table.md](docs/webcam-table.md).

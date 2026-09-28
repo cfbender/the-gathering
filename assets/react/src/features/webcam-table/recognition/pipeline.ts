@@ -1,5 +1,5 @@
 /**
- * The glue around the three bundle graphs, ported from `ml/cardid/bundle.py` (the reference
+ * The glue around the three bundle graphs, ported from Oracle's `cardid/bundle.py` (the reference
  * runtime). Everything here is pure so it can be unit-tested; onnxruntime calls live in
  * `recognizer.worker.ts`.
  *

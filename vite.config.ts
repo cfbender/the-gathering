@@ -19,7 +19,6 @@ export default defineConfig({
       "aube-lock.yaml",
       "assets/react/src/routeTree.gen.ts",
       "priv/static/**",
-      "ml/**",
       "deps/**",
       "_build/**",
       "*.md",
@@ -29,7 +28,6 @@ export default defineConfig({
     ignorePatterns: [
       "assets/react/src/routeTree.gen.ts",
       "priv/static/**",
-      "ml/**",
       "deps/**",
       "_build/**",
     ],

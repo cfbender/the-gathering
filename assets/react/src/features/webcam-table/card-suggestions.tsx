@@ -18,7 +18,7 @@ export type Recognition =
   | { status: "skipped"; reason: string }
 
 /** Top-1 leads the runner-up by at least this cosine margin: it is the answer, not a guess,
- * and a plain click records it on the board without showing this panel. From `ml/` evaluation: the margin for
+ * and a plain click records it on the board without showing this panel. From Oracle evaluation: the margin for
  * ~99% precision on real captures with the detector. */
 export const CLEAR_MARGIN = 0.08
 

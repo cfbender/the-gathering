@@ -2,7 +2,8 @@ defmodule TheGathering.CardId do
   @moduledoc """
   Locates the published card-recognition bundle that the webcam table loads in the browser.
 
-  Bundles are built by `ml/` (`python -m cardid.export`) and copied to the server with
+  Bundles are built by Oracle (https://github.com/cfbender/oracle, `python -m cardid.export`)
+  and copied to the server with
   `python -m cardid.publish <bundle> --to host:DATA_DIR/cardid`, which leaves this layout:
 
       DATA_DIR/cardid/<version>/{manifest.json,arts.json,detector.onnx,embed.onnx,search.onnx}

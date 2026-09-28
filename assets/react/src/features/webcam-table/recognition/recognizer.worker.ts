@@ -2,7 +2,7 @@
 /**
  * Runs the published card-recognition bundle with onnxruntime-web off the main thread.
  *
- * Mirrors `ml/cardid/bundle.py` step for step (see `pipeline.ts` for the maths): two detector
+ * Mirrors Oracle's `cardid/bundle.py` step for step (see `pipeline.ts` for the maths): two detector
  * passes, one embed pass, one gallery search. Uses the WASM backend so results match the
  * Python parity check bit-for-bit modulo float rounding. WebGPU was measured and is not used:
  * the default (JSEP) build fails on the detector, and the native EP (`onnxruntime-web/webgpu`)

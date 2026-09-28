@@ -31,7 +31,7 @@ Card clicks assist the room rather than define its durable record. A click on an
 a native-resolution crop from the camera owner's browser, runs the card recognizer in the
 clicking browser, and shows five numbered candidates plus a gallery search; confirming one posts
 an "identified" line to every seat's log. The recognizer bundle is published to the server from
-`ml/` (see **Recognition** and `ml/README.md`); when the server has none, the panel falls back
+[Oracle](https://github.com/cfbender/oracle) (see **Recognition** and Oracle's README); when the server has none, the panel falls back
 to your own known commanders as deck-based suggestions (only on clicks over your own board, since
 only a seat's owner may choose its commander).
 
@@ -547,7 +547,7 @@ can still save or share what they saw; this feature cannot revoke frames already
   query and deck-builder grouping.
 - `features/webcam-table/recognition/` — `use-recognizer.ts` (hook owning the worker and its
   checking/loading/ready/unavailable/failed state), `recognizer.worker.ts` (ONNX Runtime Web
-  sessions, warm-up, identify and search), `pipeline.ts` (pure port of `ml/cardid/bundle.py`:
+  sessions, warm-up, identify and search), `pipeline.ts` (pure port of Oracle's `cardid/bundle.py`:
   window resample, detector refine pass, upright vote, gallery search parsing; unit-tested in
   `pipeline.test.ts`), and `messages.ts` (worker protocol types).
 - `TheGathering.CardId` + `CardIdBundleController` serve the published bundle from
@@ -591,8 +591,8 @@ render every participant in the shared order.
 
 ## Recognition
 
-The recognizer ships as a **bundle** exported and published from `ml/` (`cardid.export`,
-`cardid.publish`; see `ml/README.md`, "Shipping"). Phoenix serves whatever
+The recognizer ships as a **bundle** exported and published from [Oracle](https://github.com/cfbender/oracle) (`cardid.export`,
+`cardid.publish`; see its README, "Shipping"). Phoenix serves whatever
 `DATA_DIR/cardid/current` points at; nothing model-related is committed to this repository or
 baked into the container image, so a new bundle (new model, or the same model with a refreshed
 gallery after a set release) is a `publish` away and browsers pick it up on their next table
@@ -608,7 +608,7 @@ embedding. Both visible halves can appear as candidates; this does not infer unl
 doors or a flip card's active rules. Details show the chosen half's rules with the shared
 whole-card image, not a fictitious reverse image. Cycling alternate printings keeps the same
 split/flip half selected; full-card deck-picker requests retain combined names. Art series, battles and novelty splits
-with more than two parts remain excluded. See `ml/README.md`, **Gallery coverage,
+with more than two parts remain excluded. See Oracle's README, **Gallery coverage,
 printings and face IDs**, for crop geometry and the refresh/export/publish commands. Deploying this
 code alone does not rebuild the gallery bundle.
 
@@ -637,7 +637,7 @@ ordinary image identification needs only `arts.json`. The optional file is share
 search/expansion requests and cached by bundle version. Expanding displays loading/retry
 states, and choosing a sibling preserves its exact face, language, set and collector number.
 Old bundles (embedded siblings or representative-only) still work. Re-export/publish a new
-version on the training box to get the split; see `ml/README.md`. No room protocol changes.
+version on the training box to get the split; see Oracle's README. No room protocol changes.
 
 Each capture runs identify with a two second timeout: detector pass over the 640 px crop, a
 refine pass on the detected card, upright vote, embed all bundled art cuts (14 in new bundles;
@@ -692,7 +692,7 @@ the picker lists deck cards first. A deck card outside the recognizer's top five
 recovered: a gallery-wide bias would need a new search-graph input and a new bundle. When a
 recognized art holds the list's exact printing, found once per list by the worker's `locate`
 request, that printing is recorded. A printing picked by hand is never replaced. Corrections
-keep the raw result, so training data is not biased by the hint. `ml/README.md`, "Deck-list
+keep the raw result, so training data is not biased by the hint. Oracle's README, "Deck-list
 prior", describes how to check the prior against real captures.
 
 Hover or keyboard-focus a candidate (including gallery search results) to see a larger card
@@ -780,6 +780,6 @@ localStorage; the camera owner's preference also travels with each crop. The sav
 appears after server acknowledgement and failures never interrupt identification.
 
 Phoenix stores the private, bounded samples under `DATA_DIR/cardid/corrections`. The offline
-desktop importer creates the card warp and merges captures into `ml/data/real`; the NUC never
+desktop importer creates the card warp and merges captures into Oracle's `data/real`; the NUC never
 trains or runs Python. Admin-only export, filesystem import, manual training and optional
-guarded nightly runs are documented in `ml/README.md`, **Training from in-app corrections**.
+guarded nightly runs are documented in Oracle's README, **Training from in-app corrections**.
