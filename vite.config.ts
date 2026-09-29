@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url"
 import { defineConfig } from "vite-plus"
 
 const phoenixOrigin = `http://127.0.0.1:${process.env.PORT || "4000"}`
+// VITE_PORT moves the dev server off 5173, for example beside another app's in the same orb.
+const vitePort = Number(process.env.VITE_PORT || 5173)
 
 // Paths the Vite dev server owns. Everything else (the SPA shell, /api, static
 // files under priv/static) is proxied to Phoenix so one origin serves it all.
@@ -58,7 +60,7 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1",
-    port: 5173,
+    port: vitePort,
     strictPort: true,
     allowedHosts: [".onamp.dev"],
     proxy: {

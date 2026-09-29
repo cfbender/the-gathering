@@ -38,7 +38,7 @@ mise exec -- aube exec vp test run
 
 Use `mise exec -- aube` instead of invoking `aube` or npm directly. Fresh orbs do not expose aube on `PATH`. Note that `vp check` is a Vite Plus built-in, so call it via `aube exec vp check` rather than the npm script.
 
-In development the Vite dev server (port 5173) is the browser entry point; it proxies everything except its own assets to Phoenix. In an orb, `.amp/services.yaml` already runs this stack as the `the-gathering-review` service, so check `amp orb service status the-gathering-review` (or `ss -ltnp`) before starting another Phoenix server, and reuse the existing one.
+In development the Vite dev server (port 5173, or `VITE_PORT`) is the browser entry point; it proxies everything except its own assets to Phoenix. In an orb, `.amp/services.yaml` already runs this stack as the `the-gathering-review` service, so check `amp orb service status the-gathering-review` (or `ss -ltnp`) before starting another Phoenix server, and reuse the existing one.
 
 After creating a new Ecto migration, run it before reporting the change complete:
 

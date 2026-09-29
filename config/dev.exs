@@ -28,7 +28,9 @@ config :the_gathering, TheGatheringWeb.Endpoint,
   ]
 
 # Point the SPA shell at the Vite dev server instead of the build manifest.
-config :the_gathering, TheGatheringWeb.ViteAssets, mode: :dev_server
+config :the_gathering, TheGatheringWeb.ViteAssets,
+  mode: :dev_server,
+  dev_server_origin: "http://127.0.0.1:#{System.get_env("VITE_PORT", "5173")}"
 
 # Runtime data that is not the database, for example the published card-recognition bundle
 # (`data/cardid/current`). Production reads DATA_DIR in runtime.exs instead.
