@@ -67,6 +67,7 @@ export function TableDialogs({
           timer={dialog.timer}
           turns={room.turns}
           onEndTable={room.endGame}
+          onRematch={room.rematch}
           onOpenChange={close}
         />
       )}

@@ -100,6 +100,30 @@ export function useTableGameState(
     return () => window.clearInterval(interval)
   }, [syncTimer])
 
+  /** Adopts the server's copy of this seat's life and counters into the local controls. */
+  const restoreSeat = useCallback((participant: TableParticipant) => {
+    lifeRef.current = participant.life
+    setLife(participant.life)
+    const restored = {
+      poison: participant.poison,
+      rad: participant.rad,
+      commander_casts: participant.commander_casts,
+      commander_damage: participant.commander_damage,
+    }
+    countersRef.current = restored
+    setCounters(restored)
+  }, [])
+
+  /** Restores this seat from the server's copy on every (re)join, before any edits. */
+  const hydrate = useCallback(
+    (participant: TableParticipant | undefined, owner: boolean) => {
+      monarchRevisionRef.current = -1
+      setIsOwner(owner)
+      if (participant) restoreSeat(participant)
+    },
+    [restoreSeat],
+  )
+
   const bindChannel = useCallback(
     (room: Channel) => {
       // The server owns the log: the full history on every (re)join, then each new or merged entry.
@@ -134,8 +158,12 @@ export function useTableGameState(
       )
       room.on("timer_state", receiveTimer)
       room.on("roll", setRoll)
+      // A rematch reset this seat; the new table_state and table_log arrive as broadcasts.
+      room.on("seat_reset", ({ participant }: { participant: TableParticipant }) =>
+        restoreSeat(participant),
+      )
     },
-    [queryClient, receiveTimer, syncMonarch],
+    [queryClient, receiveTimer, restoreSeat, syncMonarch],
   )
 
   /** Everyone present, from presence; spectators do not take seats but are listed apart. */
@@ -152,23 +180,6 @@ export function useTableGameState(
     },
     [link],
   )
-
-  /** Restores this seat from the server's copy on every (re)join, before any edits. */
-  const hydrate = useCallback((participant: TableParticipant | undefined, owner: boolean) => {
-    monarchRevisionRef.current = -1
-    setIsOwner(owner)
-    if (!participant) return
-    lifeRef.current = participant.life
-    setLife(participant.life)
-    const restored = {
-      poison: participant.poison,
-      rad: participant.rad,
-      commander_casts: participant.commander_casts,
-      commander_damage: participant.commander_damage,
-    }
-    countersRef.current = restored
-    setCounters(restored)
-  }, [])
 
   /** Participants in shared seat order; the End game form records seats in this order. */
   const seatedParticipants = useMemo(
@@ -322,29 +333,47 @@ export function useTableGameState(
     })
   }
 
-  /** Owner closes the table for every seat; resolves whether the server accepted. The server
-   * then sends each connection, this one included, `table_closed`. */
-  function endGame(): Promise<boolean> {
+  /** Sends an owner command that finishes the game; resolves whether the server accepted. */
+  function finishGame(
+    event: "end_game" | "rematch",
+    messages: { offline: string; timeout: string },
+  ): Promise<boolean> {
     return new Promise((resolve) => {
       const channel = link.channel
       if (channel?.state !== "joined") {
-        setError("Reconnect to the table before ending the game")
+        setError(messages.offline)
         resolve(false)
         return
       }
       channel
-        .push("end_game", {})
+        .push(event, {})
         .receive("ok", () => resolve(true))
         .receive("error", ({ reason }: ErrorReply) => {
           setError(reason)
           resolve(false)
         })
         .receive("timeout", () => {
-          setError("Ending the game timed out; try again")
+          setError(messages.timeout)
           resolve(false)
         })
     })
   }
+
+  /** Owner closes the table for every seat; resolves whether the server accepted. The server
+   * then sends each connection, this one included, `table_closed`. */
+  const endGame = () =>
+    finishGame("end_game", {
+      offline: "Reconnect to the table before ending the game",
+      timeout: "Ending the game timed out; try again",
+    })
+
+  /** Owner resets the same room to a fresh lobby for a rematch; resolves whether the server
+   * accepted. Every seat stays connected and receives the reset table state. */
+  const rematch = () =>
+    finishGame("rematch", {
+      offline: "Reconnect to the table before starting the rematch",
+      timeout: "Starting the rematch timed out; try again",
+    })
 
   function setEliminated(peerId: string, eliminated: boolean) {
     link.channel
@@ -395,6 +424,7 @@ export function useTableGameState(
     moveSeat,
     changeTimer,
     endGame,
+    rematch,
     setEliminated,
     rollDice,
   }

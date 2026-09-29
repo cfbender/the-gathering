@@ -69,6 +69,14 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     {:noreply, assign(socket, :participant, participant)}
   end
 
+  # A rematch reset this seat. Adopting the room's copy keeps later status updates from
+  # restoring the old game's life and counters; the client rehydrates its local controls.
+  def handle_info({:seat_reset, participant}, socket) do
+    {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
+    push(socket, "seat_reset", %{participant: participant})
+    {:noreply, assign(socket, :participant, participant)}
+  end
+
   # The owner ended the table. Stopping normally sends phx_close, so the client
   # leaves instead of rejoining (which would open a fresh room under the same id).
   def handle_info(
@@ -134,7 +142,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
               "turn_settings",
               "adjust_turn",
               "timer",
-              "end_game"
+              "end_game",
+              "rematch"
             ] do
     {:reply, {:error, %{reason: "only the room owner can change table controls"}}, socket}
   end
@@ -338,6 +347,16 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   defp handle_event("end_game", _payload, socket),
     do: {:reply, {:error, %{reason: "invalid end game"}}, socket}
+
+  # Resets the same room to a fresh lobby, whether or not the result was recorded. Every
+  # seat receives the new `table_state` and `table_log`; each seated connection also gets
+  # `seat_reset` with its reset seat. Nobody leaves, so the table stays open.
+  defp handle_event("rematch", payload, socket) when payload == %{} do
+    {:reply, WebcamTables.rematch(socket.assigns.room_id), socket}
+  end
+
+  defp handle_event("rematch", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid rematch"}}, socket}
 
   # An explicit `randomize` overrides the room's auto-randomize setting for this start.
   defp handle_event("start_game", payload, socket) when payload == %{} do

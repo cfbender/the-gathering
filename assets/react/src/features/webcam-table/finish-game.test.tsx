@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
+import { ToastProvider } from "@/components/ui/toast"
 import { FinishGame } from "./finish-game"
 import { EMPTY_COUNTERS } from "./seat-counters"
 import { EMPTY_TURNS, type TurnState } from "./turns"
@@ -14,23 +15,34 @@ const participants = [
   { ...seat, peer_id: "peer-b", player_id: 27, player_name: "Bob", eliminated: true },
 ]
 
-function mount(onEndTable: () => Promise<boolean>, turns: TurnState = EMPTY_TURNS) {
+function mount(
+  onEndTable: () => Promise<boolean>,
+  turns: TurnState = EMPTY_TURNS,
+  onRematch: () => Promise<boolean> = () => Promise.resolve(true),
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
+  const onOpenChange = vi.fn()
   render(
     <QueryClientProvider client={client}>
-      <FinishGame
-        participants={participants}
-        playedAt={new Date("2026-09-26T19:00:00Z")}
-        timer={{ started_at: null, paused_at: null, paused_ms: 0, server_now: 0 }}
-        turns={turns}
-        onEndTable={onEndTable}
-        onOpenChange={vi.fn()}
-      />
+      <ToastProvider>
+        <FinishGame
+          participants={participants}
+          playedAt={new Date("2026-09-26T19:00:00Z")}
+          timer={{ started_at: null, paused_at: null, paused_ms: 0, server_now: 0 }}
+          turns={turns}
+          onEndTable={onEndTable}
+          onRematch={onRematch}
+          onOpenChange={onOpenChange}
+        />
+      </ToastProvider>
     </QueryClientProvider>,
   )
+  return { onOpenChange }
 }
+
+const savedGame = () => Promise.resolve(Response.json({ data: { id: 42 } }, { status: 201 }))
 
 afterEach(() => {
   cleanup()
@@ -95,5 +107,69 @@ describe("FinishGame", () => {
 
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce())
     expect(JSON.parse(fetch.mock.calls[0]![1].body as string).game.turns).toBe(9)
+  })
+
+  it("records the result, then resets the room for a rematch without navigating", async () => {
+    const fetch = vi.fn(savedGame)
+    vi.stubGlobal("fetch", fetch)
+    const onEndTable = vi.fn(() => Promise.resolve(true))
+    const onRematch = vi.fn(() => Promise.resolve(true))
+    const { onOpenChange } = mount(onEndTable, EMPTY_TURNS, onRematch)
+
+    fireEvent.click(screen.getByRole("radio", { name: /End and rematch/ }))
+    expect(screen.queryByRole("button", { name: "Record result" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Record and rematch" }))
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(onRematch).toHaveBeenCalledOnce()
+    expect(onEndTable).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+    // The open dialog hides the toast stack from the accessibility tree, so find it by text.
+    expect(screen.getByText(/rematch is ready/)).toBeTruthy()
+  })
+
+  it("closes after recording even when the rematch fails, so the game is not recorded twice", async () => {
+    vi.stubGlobal("fetch", vi.fn(savedGame))
+    const { onOpenChange } = mount(vi.fn(), EMPTY_TURNS, () => Promise.resolve(false))
+
+    fireEvent.click(screen.getByRole("radio", { name: /End and rematch/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Record and rematch" }))
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(screen.getByText(/rematch did not start/)).toBeTruthy()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it("starts a rematch without posting a game once confirmed", async () => {
+    const fetch = vi.fn()
+    vi.stubGlobal("fetch", fetch)
+    const onEndTable = vi.fn(() => Promise.resolve(true))
+    const onRematch = vi.fn(() => Promise.resolve(true))
+    const { onOpenChange } = mount(onEndTable, EMPTY_TURNS, onRematch)
+
+    fireEvent.click(screen.getByRole("radio", { name: /End and rematch/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Rematch without recording" }))
+    expect(onRematch).not.toHaveBeenCalled()
+    expect(screen.getByRole("alert").textContent).toContain("rematch for everyone")
+    fireEvent.click(screen.getByRole("button", { name: "Rematch without recording" }))
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(onRematch).toHaveBeenCalledOnce()
+    expect(onEndTable).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it("stays open with an error when the rematch could not start", async () => {
+    const { onOpenChange } = mount(vi.fn(), EMPTY_TURNS, () => Promise.resolve(false))
+
+    fireEvent.click(screen.getByRole("radio", { name: /End and rematch/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Rematch without recording" }))
+    fireEvent.click(screen.getByRole("button", { name: "Rematch without recording" }))
+
+    expect(await screen.findByText(/Could not start the rematch/)).toBeTruthy()
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
   })
 })

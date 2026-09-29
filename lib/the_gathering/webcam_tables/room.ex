@@ -11,9 +11,10 @@ defmodule TheGathering.WebcamTables.Room do
   before it is broadcast and acknowledged, and broadcasts preserve update order.
 
   Connection processes receive `:seat_replaced` when a newer connection takes
-  their seat and `{:seat_eliminated, boolean}` when their seat is knocked out
-  or restored. Use the `TheGathering.WebcamTables` API rather than calling
-  this module directly.
+  their seat, `{:seat_eliminated, boolean}` when their seat is knocked out
+  or restored, and `{:seat_reset, seat}` when a rematch resets their seat.
+  Use the `TheGathering.WebcamTables` API rather than calling this module
+  directly.
   """
   use GenServer, restart: :temporary
 
@@ -21,6 +22,7 @@ defmodule TheGathering.WebcamTables.Room do
   alias TheGatheringWeb.Endpoint
 
   @max_seats 10
+  @starting_life 40
   # Keeps an idle but connected room (a long pause) from expiring.
   @refresh_interval :timer.hours(1)
   # A reload drops and rejoins within this window; only a longer absence is a leave.
@@ -113,6 +115,44 @@ defmodule TheGathering.WebcamTables.Room do
   def handle_call(:close, _from, state) do
     :ok = Session.delete(state.id)
     {:stop, {:shutdown, :closed}, :ok, state}
+  end
+
+  # A rematch keeps the room, owner, mode, randomize setting and the seats of players still
+  # here (in their last order, with their decks, cameras and reveals) and puts everything else
+  # back to a fresh lobby. Seats whose player has left are dropped, so the lobby holds exactly
+  # who is present. Connected seats are sent their reset seat to adopt.
+  def handle_call(:rematch, _from, %{entry: entry} = state) do
+    present = Map.keys(state.connections) ++ Map.keys(state.departing)
+
+    seats =
+      Map.new(Map.take(entry.all_seats, present), fn {id, seat} ->
+        {id, Map.merge(seat, fresh_seat())}
+      end)
+
+    kept = MapSet.new(Map.values(seats), & &1.peer_id)
+
+    entry = %{
+      entry
+      | timer: Timer.new(),
+        turns: Turns.new(),
+        team_life: %{},
+        # A higher revision, so clients drop the old crown rather than ignore a stale event.
+        monarch: nil,
+        monarch_revision: entry.monarch_revision + 1,
+        cards: [],
+        eliminated_seats: %{},
+        all_seats: seats,
+        peer_ids: Enum.filter(entry.peer_ids, &MapSet.member?(kept, &1)),
+        log: Log.append([], Log.rematch(), now())
+    }
+
+    state = commit(state, entry, [:table_state, {"table_log", %{entries: entry.log}}])
+
+    for {id, seat} <- seats,
+        {pid, _ref} <- [state.connections[id]],
+        do: send(pid, {:seat_reset, seat})
+
+    {:reply, :ok, state}
   end
 
   def handle_call({:monarch, participant}, _from, %{entry: entry} = state) do
@@ -457,6 +497,18 @@ defmodule TheGathering.WebcamTables.Room do
       cards: [],
       log: [],
       owner_id: owner_id
+    }
+  end
+
+  # What a seat starts a game with; the channel admits new seats with the same values.
+  defp fresh_seat do
+    %{
+      life: @starting_life,
+      poison: 0,
+      rad: 0,
+      commander_casts: %{},
+      commander_damage: %{},
+      eliminated: false
     }
   end
 

@@ -132,6 +132,8 @@ export function useWebcamRoom(
     roll: game.roll,
     changeTimer: game.changeTimer,
     endGame,
+    /** Owner resets this room to a fresh lobby with the same seats; nobody leaves. */
+    rematch: game.rematch,
     /** Another seat (the room owner) ended the table while this one was connected. */
     closedByOwner,
     rollDice: game.rollDice,

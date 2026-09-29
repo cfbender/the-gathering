@@ -56,6 +56,7 @@ defmodule TheGathering.WebcamTables.Log do
     end
   end
 
+  def rematch, do: %{text: "Rematch: back to setup with the same seats"}
   def joined(name), do: %{text: "#{name} joined the table"}
   def left(name), do: %{text: "#{name} left the table"}
 

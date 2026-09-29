@@ -212,13 +212,17 @@ Games page Play / Join button ────▶ /table/:roomId
                                  click End game
                                          │
                 ╭────────────────────────┴───────────────────────╮
-       complete result form                             End without recording
+       complete result form                  End (or Rematch) without recording
                 │                                                │
 POST /api/games → Games.create_game/2                            │
                 │                                                │
-                ╰──────────────▶ end_game: room closes ◀─────────╯
+                ╰───────────── After this game? ─────────────────╯
                                          │
-                   recorded: saved game page · otherwise: games list
+                ╭────────────────────────┴───────────────────────╮
+     Close the table: end_game                     End and rematch: rematch
+       room closes for everyone               same room resets to a fresh lobby
+                │                                                │
+ recorded: saved game page · otherwise: games list      nobody navigates
 ```
 
 Rooms are UUID-addressed and durable in SQLite's `webcam_table_sessions`. The serialized state
@@ -234,6 +238,22 @@ snapshot and stops the room with `{:shutdown, :closed}`. Every joined channel se
 room monitor, pushes `table_closed`, and stops normally, so browsers leave instead of rejoining a
 fresh room under the same id. Other seats return to the games list with a notice. The table drops
 off the Play/Join list at once, and its seats no longer count as taken.
+
+**End and rematch** is the form's other *After this game* choice. It records the result (**Record
+and rematch**) or skips it (**Rematch without recording**, confirmed inline), then sends `rematch`
+instead of `end_game`. `WebcamTables.rematch/1` resets the same room to a fresh lobby and nobody
+navigates, so the table keeps its cross-origin-isolated document. What persists: the room id,
+owner, game mode, auto-randomize setting, and the seats of players still connected (or within the
+ten-second reload grace), in their last seat order with their decks, commanders, camera and reveal
+state. What resets: the timer (back to setup, not started), turns and turn times, each seat's life
+(40), poison, rad, commander tax and damage, eliminations, Two-Headed Giant team life, the monarch,
+identified cards, and the log (which restarts with one "Rematch" line). Seats of players who have
+left are dropped, so the lobby holds exactly who is present; spectators keep watching and take a
+seat by reloading while the new lobby is open. The room broadcasts `table_state` and `table_log`
+to every seat and sends each seated connection `{:seat_reset, seat}`; the channel adopts that seat
+in its assigns and presence and pushes `seat_reset` so the browser rehydrates its local life and
+counters. If recording succeeds but the rematch does not, the form still closes (the game is saved)
+and the owner can retry with Rematch without recording.
 
 Rooms keep running after their last seat leaves. `TheGathering.WebcamTables.Pruner` runs every
 minute: it closes rooms that have had no connections and no activity (joins, saved changes or
@@ -590,8 +610,8 @@ can still save or share what they saw; this feature cannot revoke frames already
   published and the UI falls back to deck suggestions.
 - `features/webcam-table/side-panel.tsx` — icon strip and Table/Decks/Cards/Log tabs
   (`cards-tab.tsx` holds the Cards tab; `panel-section.tsx` the collapsible section).
-- `features/webcam-table/finish-game.tsx` — the End game dialog: record the result or end without
-  recording; both close the table.
+- `features/webcam-table/finish-game.tsx` — the End game dialog: record the result or skip it, then
+  either close the table or reset the same room for a rematch.
 - `features/webcam-table/game-result.ts` — winner suggestion and normal recorded-game payload,
   including eliminated seats (`game-result.test.ts`).
 - `features/webcam-table/table-timer.tsx` — elapsed-time badge in the Table tab header plus the

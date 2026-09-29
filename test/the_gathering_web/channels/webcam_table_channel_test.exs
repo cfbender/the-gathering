@@ -979,6 +979,105 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert Session.load(room) == nil
   end
 
+  test "a rematch resets the same room to a lobby, keeping present seats connected", %{
+    socket: alice,
+    room_id: room,
+    player: player,
+    deck: deck
+  } do
+    bob = join_player(room, @peer_b, "Bob")
+    cara = join_player(room, @peer_c, "Cara")
+    assert_reply push(alice, "choose_deck", %{"deck_id" => deck.id}), :ok
+    assert_reply push(alice, "set_mode", %{"mode" => "commander"}), :ok
+    assert_reply push(alice, "arrange_seats", %{"peer_ids" => [@peer_b, @peer_c, @peer_a]}), :ok
+    assert_reply push(alice, "start_game", %{"randomize" => false}), :ok
+    dave = join_player(room, @peer_d, "Dave")
+    assert dave.assigns.participant.spectator
+
+    # Play a little: life, counters, a turn, an elimination, the crown, a card and a roll.
+    counters = %{"life" => 31, "poison" => 3, "commander_casts" => %{"Kangee" => 2}}
+    assert_reply push(alice, "update_status", counters), :ok
+    assert_reply push(bob, "pass_turn", %{"revision" => 1}), :ok
+    assert_reply push(alice, "set_eliminated", %{"peer_id" => @peer_c, "eliminated" => true}), :ok
+    assert_reply push(bob, "take_monarch", %{}), :ok
+
+    card = %{
+      "id" => Ecto.UUID.generate(),
+      "ownerPeerId" => @peer_a,
+      "at" => 1,
+      "card" => %{"id" => "art-1", "name" => "Forest", "set" => "lea"}
+    }
+
+    assert_reply push(bob, "cards", %{"type" => "card_identified", "entry" => card}), :ok
+    assert_reply push(bob, "roll", %{"kind" => "coin"}), :ok
+
+    # Cara leaves for good, so her seat does not carry into the new lobby.
+    cara_id = cara.assigns.participant.player_id
+    disconnect(cara)
+    %{departing: %{^cara_id => {"Cara", token}}} = :sys.get_state(room_pid(room))
+    send(room_pid(room), {:departed, cara_id, token})
+    sync_room(room)
+
+    assert_reply push(bob, "rematch", %{}), :error, %{
+      reason: "only the room owner can change table controls"
+    }
+
+    assert_reply push(dave, "rematch", %{}), :error, %{
+      reason: "spectators cannot change the game"
+    }
+
+    assert_reply push(alice, "rematch", %{"extra" => true}), :error, %{reason: "invalid rematch"}
+    assert [_card] = WebcamTables.snapshot(room).cards
+
+    assert_reply push(alice, "rematch", %{}), :ok
+
+    assert_broadcast "table_state", %{
+      timer: %{started_at: nil, paused_at: nil, paused_ms: 0},
+      peer_ids: [@peer_b, @peer_a],
+      turns: %{active_player_id: nil, counts: counts, revision: 0},
+      monarch: %{holder: nil},
+      cards: [],
+      eliminated_seats: [],
+      mode: "commander",
+      team_life: %{}
+    }
+
+    assert counts == %{}
+    assert_broadcast "table_log", %{entries: [%{text: "Rematch: back to setup" <> _}]}
+    assert [%{text: "Rematch: back to setup" <> _}] = WebcamTables.log(room)
+
+    alice_id = player.id
+    deck_id = deck.id
+
+    snapshot = WebcamTables.snapshot(room)
+    assert snapshot.owner_id == alice_id
+    assert Enum.sort(Enum.map(snapshot.seats, & &1.peer_id)) == [@peer_a, @peer_b]
+
+    assert %{life: 40, poison: 0, commander_casts: %{}, eliminated: false, deck_id: ^deck_id} =
+             Enum.find(snapshot.seats, &(&1.player_id == alice_id))
+
+    # Each seated connection adopts its reset seat: presence, assigns and the client push.
+    assert_push "seat_reset", %{participant: %{peer_id: @peer_a, life: 40, poison: 0}}
+    assert_push "seat_reset", %{participant: %{peer_id: @peer_b, life: 40}}
+    _ = :sys.get_state(alice.channel_pid)
+
+    assert %{metas: [%{life: 40, poison: 0, deck_id: ^deck_id}]} =
+             Presence.get_by_key(alice.topic, @peer_a)
+
+    # A later status change builds on the reset seat, not the old game's.
+    assert_reply push(alice, "update_status", %{"rad" => 1}), :ok
+
+    assert %{life: 40, poison: 0, rad: 1} =
+             Enum.find(WebcamTables.snapshot(room).seats, &(&1.player_id == alice_id))
+
+    # Nobody was disconnected, spectators still watch, and the new lobby starts like any other.
+    refute_push "table_closed", _
+    assert_reply push(bob, "update_status", %{"life" => 38}), :ok
+    assert_reply push(dave, "update_status", %{"life" => 7}), :error
+    assert_reply push(alice, "start_game", %{"randomize" => false}), :ok
+    assert_broadcast "seat_order", %{peer_ids: [@peer_b, @peer_a], shuffled: false}
+  end
+
   @tag :capture_log
   test "the shared log records seat changes and rolls, and survives reloads and room crashes", %{
     socket: original,

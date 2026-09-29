@@ -12,7 +12,7 @@ defmodule TheGathering.WebcamTables do
 
   Mutations must be called from the joined connection process: the room
   monitors it, identifies the seat's current connection by it, and messages
-  it (`:seat_replaced`, `{:seat_eliminated, boolean}`).
+  it (`:seat_replaced`, `{:seat_eliminated, boolean}`, `{:seat_reset, seat}`).
   """
 
   alias TheGathering.WebcamTables.Room
@@ -108,6 +108,15 @@ defmodule TheGathering.WebcamTables do
   with reason `{:shutdown, :closed}` on their room monitor.
   """
   def close(room), do: call(room, :close)
+
+  @doc """
+  Resets the table to a fresh lobby for a rematch, whether or not the game was
+  recorded. The room, owner, mode and present seats (in order, with their
+  decks) stay; the timer, turns, life and counters, eliminations, monarch,
+  identified cards and log start over. Seats whose player has left are
+  dropped. Each connected seat's connection receives `{:seat_reset, seat}`.
+  """
+  def rematch(room), do: call(room, :rematch)
 
   @doc "Whether `pid` is `player_id`'s current connection."
   def current?(room, player_id, pid), do: call(room, {:current?, player_id, pid})

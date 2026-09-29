@@ -174,6 +174,53 @@ it("takes table controls from the join reply, not the room's creator id", async 
   expect(result.current.isOwner).toBe(true)
 })
 
+it("a rematch keeps the seat connected and resets its local life, counters and table state", async () => {
+  const { result } = await joinedRoom()
+  const self = { ...saved, peer_id: result.current.peerId }
+  act(() => wire.presence!.sync([self]))
+  act(() =>
+    wire.channel!.emit("table_state", tableState({ peer_ids: [self.peer_id], seats: [self] })),
+  )
+  act(() => wire.channel!.emit("table_log", { entries: [{ id: 9, at: 1, text: "Cody: 25 → 23" }] }))
+  let rematched: Promise<boolean> = Promise.resolve(false)
+  act(() => {
+    rematched = result.current.rematch()
+  })
+  const push = wire.pushes.at(-1)!
+  expect(push).toMatchObject({ event: "rematch", payload: {} })
+
+  // The server broadcasts the fresh lobby, then tells this seat its reset copy, then replies.
+  const fresh = { ...self, life: 40, poison: 0, rad: 0, commander_casts: {}, commander_damage: {} }
+  act(() => {
+    wire.channel!.emit(
+      "table_state",
+      tableState({
+        timer: { started_at: null, paused_at: null, paused_ms: 0, server_now: 2000 },
+        peer_ids: [self.peer_id],
+        seats: [fresh],
+        monarch: { holder: null, revision: 1 },
+      }),
+    )
+    wire.channel!.emit("table_log", { entries: [{ id: 1, at: 2, text: "Rematch" }] })
+    wire.channel!.emit("seat_reset", { participant: fresh })
+    push.push.reply("ok")
+  })
+  await expect(rematched).resolves.toBe(true)
+
+  expect(result.current.life).toBe(40)
+  expect(result.current.counters).toEqual({
+    poison: 0,
+    rad: 0,
+    commander_casts: {},
+    commander_damage: {},
+  })
+  expect(result.current.timer?.state.started_at).toBeNull()
+  expect(result.current.events.map((event) => event.text)).toEqual(["Rematch"])
+  expect(result.current.closedByOwner).toBe(false)
+  act(() => result.current.changeLife(-1))
+  expect(payloads("update_status").at(-1)).toEqual({ life: 39 })
+})
+
 it("late spectators never request a camera or publish life/counters", async () => {
   const { result } = await joinedRoom({ ...saved, spectator: true })
   expect(result.current.spectating).toBe(true)

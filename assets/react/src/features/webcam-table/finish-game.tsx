@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useToast } from "@/components/ui/toast"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { invalidateGameRelated, WIN_CONDITIONS, type Game } from "@/features/games/games"
 import { api, ApiError } from "@/lib/api"
@@ -29,22 +30,32 @@ interface Props {
   turns: TurnState
   /** Closes the table for every seat; resolves whether the server accepted. */
   onEndTable: () => Promise<boolean>
+  /** Resets the room to a fresh lobby with the same seats; resolves whether the server accepted. */
+  onRematch: () => Promise<boolean>
   onOpenChange: (open: boolean) => void
 }
 
+/** What happens to the room once the game is recorded or skipped. */
+type AfterGame = "close" | "rematch"
+
 /** End game → result form → POST /api/games, so the table lands in normal history. Either way
- * (recorded or not) the table then closes for everyone. */
+ * (recorded or not) the table then either closes for everyone, sending this seat to the game
+ * or the games list, or resets to a fresh lobby for a rematch without navigating anywhere. */
 export function FinishGame({
   participants,
   playedAt,
   timer,
   turns: turnState,
   onEndTable,
+  onRematch,
   onOpenChange,
   mode = "commander",
 }: Props) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const [after, setAfter] = useState<AfterGame>("close")
+  const rematch = after === "rematch"
   const [winner, setWinner] = useState(() => suggestedWinner(participants, mode))
   const choices =
     mode === "two_headed_giant"
@@ -67,7 +78,7 @@ export function FinishGame({
   const [notes, setNotes] = useState("")
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const mutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (_after: AfterGame) =>
       api<{ data: Game }>("/api/games", {
         method: "POST",
         body: JSON.stringify(
@@ -85,16 +96,36 @@ export function FinishGame({
           ),
         ),
       }).then((body) => body.data),
-    onSuccess: async (game) => {
+    onSuccess: async (game, next) => {
+      if (next === "rematch") {
+        // The game is saved either way, so the form closes rather than offer to record it twice.
+        const [, started] = await Promise.all([invalidateGameRelated(queryClient), onRematch()])
+        toast(
+          started
+            ? { message: "Game recorded. The rematch is ready in the same room.", tone: "success" }
+            : {
+                message:
+                  "Game recorded, but the rematch did not start. Try End game → Rematch without recording.",
+              },
+        )
+        onOpenChange(false)
+        return
+      }
       // The game is saved; a table that fails to close is still pruned once everyone leaves.
       await Promise.all([invalidateGameRelated(queryClient), onEndTable()])
       void navigate({ to: "/games/$gameId", params: { gameId: String(game.id) } })
     },
   })
   const discard = useMutation({
-    mutationFn: onEndTable,
-    onSuccess: (ended) => {
-      if (ended) void navigate({ to: "/games" })
+    mutationFn: (next: AfterGame) => (next === "rematch" ? onRematch() : onEndTable()),
+    onSuccess: (done, next) => {
+      if (!done) return
+      if (next === "close") {
+        void navigate({ to: "/games" })
+        return
+      }
+      toast({ message: "The rematch is ready in the same room.", tone: "success" })
+      onOpenChange(false)
     },
   })
   const busy = mutation.isPending || discard.isPending
@@ -102,7 +133,9 @@ export function FinishGame({
     mutation.error instanceof ApiError
       ? mutation.error.detail
       : discard.data === false
-        ? "Could not end the game. Check your connection to the table and try again."
+        ? discard.variables === "rematch"
+          ? "Could not start the rematch. Check your connection to the table and try again."
+          : "Could not end the game. Check your connection to the table and try again."
         : null
 
   return (
@@ -121,7 +154,7 @@ export function FinishGame({
           className="grid gap-5 p-5 sm:p-6 md:grid-cols-2"
           onSubmit={(event) => {
             event.preventDefault()
-            mutation.mutate()
+            mutation.mutate(after)
           }}
         >
           <fieldset className="md:col-span-2">
@@ -221,6 +254,40 @@ export function FinishGame({
               onChange={(event) => setNotes(event.target.value)}
             />
           </label>
+          <fieldset className="md:col-span-2">
+            <legend className="mb-2 text-sm font-bold">After this game</legend>
+            <ToggleGroup
+              type="single"
+              value={after}
+              onValueChange={(value) => {
+                if (!value) return
+                setAfter(value as AfterGame)
+                discard.reset()
+              }}
+              aria-label="After this game"
+              className="grid gap-2 sm:grid-cols-2"
+            >
+              {(
+                [
+                  ["close", "Close the table", "Everyone leaves the room"],
+                  ["rematch", "End and rematch", "Same room and seats, back to setup"],
+                ] as const
+              ).map(([value, label, hint]) => (
+                <ToggleGroupItem
+                  key={value}
+                  value={value}
+                  disabled={busy}
+                  className={cn(
+                    "btn h-auto min-h-12 flex-col items-start gap-0.5 px-4 py-2 text-left",
+                    after === value ? "btn-primary" : "btn-outline",
+                  )}
+                >
+                  {label}
+                  <span className="text-xs font-normal opacity-65">{hint}</span>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </fieldset>
           {error && <div className="alert alert-error md:col-span-2">{error}</div>}
           {participants.length < 2 && (
             <p className="text-base-content/60 text-sm md:col-span-2">
@@ -233,7 +300,9 @@ export function FinishGame({
               className="rounded-box border-warning/50 bg-warning/10 flex flex-wrap items-center justify-between gap-3 border p-3 md:col-span-2"
             >
               <span className="text-sm">
-                End the game for everyone without adding it to history?
+                {rematch
+                  ? "Start a rematch for everyone without adding this game to history?"
+                  : "End the game for everyone without adding it to history?"}
               </span>
               <div className="ml-auto flex gap-2">
                 <button
@@ -247,10 +316,16 @@ export function FinishGame({
                 <button
                   type="button"
                   className="btn btn-sm btn-error"
-                  onClick={() => discard.mutate()}
+                  onClick={() => discard.mutate(after)}
                   disabled={busy}
                 >
-                  {discard.isPending ? "Ending…" : "End without recording"}
+                  {discard.isPending
+                    ? rematch
+                      ? "Starting…"
+                      : "Ending…"
+                    : rematch
+                      ? "Rematch without recording"
+                      : "End without recording"}
                 </button>
               </div>
             </div>
@@ -262,7 +337,7 @@ export function FinishGame({
                 onClick={() => setConfirmDiscard(true)}
                 disabled={busy}
               >
-                End without recording
+                {rematch ? "Rematch without recording" : "End without recording"}
               </button>
               <button type="button" className="btn btn-ghost" onClick={() => onOpenChange(false)}>
                 Back to game
@@ -271,7 +346,11 @@ export function FinishGame({
                 className="btn btn-primary min-w-36"
                 disabled={participants.length < 2 || !winner || busy}
               >
-                {mutation.isPending ? "Recording…" : "Record result"}
+                {mutation.isPending
+                  ? "Recording…"
+                  : rematch
+                    ? "Record and rematch"
+                    : "Record result"}
               </button>
             </div>
           )}
