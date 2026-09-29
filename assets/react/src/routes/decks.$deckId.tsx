@@ -206,6 +206,8 @@ function DeckEditFormReady({
       }).then((body) => body.data),
     onSuccess: (saved) => {
       queryClient.setQueryData(["decks", String(deck.id)], saved)
+      // The server always adds the commanders' colors, so show what was stored.
+      setDetails((current) => ({ ...current, colorIdentity: saved.color_identity }))
       void invalidateGameRelated(queryClient)
     },
   })

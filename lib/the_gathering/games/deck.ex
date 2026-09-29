@@ -2,9 +2,11 @@ defmodule TheGathering.Games.Deck do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias TheGathering.Games.DeckPrintings
+  alias TheGathering.Catalog
+  alias TheGathering.Games.{ColorIdentity, DeckPrintings}
 
   @sources ~w(moxfield archidekt manavault other)
+  @identity_fields ~w(color_identity commander_card_id commander_name partner_card_id partner_name)a
 
   schema "decks" do
     field :name, :string
@@ -113,9 +115,40 @@ defmodule TheGathering.Games.Deck do
     value = get_field(changeset, :color_identity) || ""
 
     if Regex.match?(~r/^(?!.*(.).*\1)[WUBRG]*$/, value) do
-      changeset
+      include_commander_colors(changeset, value)
     else
       add_error(changeset, :color_identity, "must contain each of W, U, B, R, and G at most once")
     end
+  end
+
+  # A deck's identity always covers every commander card's identity, so a partner
+  # can never be dropped by whichever client or import wrote the deck. Colors beyond
+  # that are kept: they are how owners record chosen colors (Clara Oswald).
+  defp include_commander_colors(changeset, value) do
+    if Enum.any?(@identity_fields, &changed?(changeset, &1)) do
+      put_change(
+        changeset,
+        :color_identity,
+        ColorIdentity.canonical(value <> commander_colors(changeset))
+      )
+    else
+      changeset
+    end
+  end
+
+  defp commander_colors(changeset) do
+    refs =
+      [
+        {get_field(changeset, :commander_card_id), get_field(changeset, :commander_name)},
+        {get_field(changeset, :partner_card_id), get_field(changeset, :partner_name)}
+      ]
+      |> Enum.reject(&(&1 == {nil, nil}))
+
+    summaries = Catalog.card_summaries(refs)
+
+    refs
+    |> Enum.map(fn {id, name} -> Catalog.card_summary(summaries, id, name) end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map_join(& &1.color_identity)
   end
 end

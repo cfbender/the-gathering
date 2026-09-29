@@ -76,6 +76,10 @@ export function DeckFormFields({
             className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-lg"
           />
         </span>
+        <span className="text-base-content/60 mt-1 block text-xs">
+          Always includes your commanders&apos; colors. Add any color a commander lets you choose,
+          like Clara Oswald.
+        </span>
       </label>
       <div className="min-w-0 sm:col-span-2">
         <RemoteDeckPicker onPick={applyDecklist.apply} />

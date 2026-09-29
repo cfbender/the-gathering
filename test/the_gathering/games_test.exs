@@ -3,6 +3,7 @@ defmodule TheGathering.GamesTest do
 
   alias TheGathering.Accounts.User
   alias TheGathering.AccountsFixtures
+  alias TheGathering.Catalog.{Card, CardData}
   alias TheGathering.Games
   alias TheGathering.Games.{Deck, GamePlayer}
   alias TheGathering.Repo
@@ -189,6 +190,57 @@ defmodule TheGathering.GamesTest do
              })
 
     assert "has already been taken" in errors_on(changeset).name
+  end
+
+  test "deck identities always include both commanders' colors and keep chosen extras" do
+    insert_card("doctor", "The Tenth Doctor", ~w(R U))
+    insert_card("clara", "Clara Oswald", [])
+    insert_card("tymna", "Tymna the Weaver", ~w(W B))
+    doctor = player("Doctor Who")
+
+    # A writer that only knew the primary commander's colors still stores the pair.
+    assert {:ok, deck} =
+             Games.create_deck(%{
+               player_id: doctor.id,
+               name: "Allons-y",
+               commander_card_id: "doctor",
+               commander_name: "The Tenth Doctor",
+               partner_name: "Tymna the Weaver",
+               color_identity: "UR"
+             })
+
+    assert deck.color_identity == "WUBR"
+
+    # Clara Oswald's chosen color is kept, and the Doctor's colors cannot be dropped.
+    assert {:ok, deck} =
+             Games.update_deck(deck, %{
+               partner_card_id: "clara",
+               partner_name: "Clara Oswald",
+               color_identity: "G"
+             })
+
+    assert deck.color_identity == "URG"
+
+    assert {:error, changeset} = Games.update_deck(deck, %{color_identity: "UURG"})
+
+    assert "must contain each of W, U, B, R, and G at most once" in errors_on(changeset).color_identity
+  end
+
+  defp insert_card(id, name, colors) do
+    Repo.insert!(%Card{
+      id: id,
+      oracle_id: "oracle-#{id}",
+      name: name,
+      normalized_name: CardData.normalize_name(name),
+      color_identity: colors,
+      image_uris: %{},
+      type_line: "Legendary Creature",
+      set_code: "tst",
+      collector_number: id,
+      layout: "normal",
+      rarity: "rare",
+      can_be_commander: true
+    })
   end
 
   test "players carry the linked user's avatar, and nil when unlinked or the user has none" do
