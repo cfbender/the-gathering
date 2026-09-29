@@ -156,7 +156,8 @@ and warms its card images, **Decks → View decklist** shows your own list, and 
 favours cards in the clicked board owner's list (see Oracle's README, "Deck-list prior").
 Opponents' lists are not shown in the UI but are visible in the browser's network tab.
 Design notes are in
-[docs/webcam-table.md](docs/webcam-table.md).
+[docs/webcam-table.md](docs/webcam-table.md); to improve recognition or contribute training data,
+see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONTRIBUTING.md).
 
 ### Environment variables
 

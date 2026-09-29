@@ -598,6 +598,11 @@ baked into the container image, so a new bundle (new model, or the same model wi
 gallery after a set release) is a `publish` away and browsers pick it up on their next table
 because they cache bundle files by version.
 
+To train a better model, try one at a local table, or contribute crops and Shift+click outlines,
+see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONTRIBUTING.md).
+A bundle published with `--to ../the-gathering/data/cardid` from a sibling Oracle checkout is
+served by a local dev server as-is.
+
 Gallery coverage includes paper artwork in any language (including Japanese-only alternate
 art), prepare cards, meld cards, and both scanned sides of transform/MDFC/reversible cards
 and double-faced tokens. Separate sides use face names and IDs `<scryfall UUID>` (front)
