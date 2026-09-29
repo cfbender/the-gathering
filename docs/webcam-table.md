@@ -595,7 +595,7 @@ The recognizer ships as a **bundle** exported and published from [Oracle](https:
 `cardid.publish`; see its README, "Shipping"). Phoenix serves whatever
 `DATA_DIR/cardid/current` points at; nothing model-related is committed to this repository or
 baked into the container image, so a new bundle (new model, or the same model with a refreshed
-gallery after a set release) is a `publish` away and browsers pick it up on their next table
+gallery after a set release: `mise run new-set` in Oracle) is a `publish` away and browsers pick it up on their next table
 because they cache bundle files by version.
 
 To train a better model, try one at a local table, or contribute crops and Shift+click outlines,
