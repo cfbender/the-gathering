@@ -13,7 +13,8 @@ export interface BundleInfo {
 }
 
 export type WorkerRequest =
-  | { type: "load"; bundle: BundleInfo }
+  /** `threads`: onnxruntime-web WASM threads, 0 for its default (used only when isolated). */
+  | { type: "load"; bundle: BundleInfo; threads: number }
   | {
       type: "identify"
       id: number
@@ -43,7 +44,8 @@ export interface Identification {
 }
 
 export type WorkerResponse =
-  | { type: "ready"; version: string; arts: number; ms: number }
+  /** `threads`: WASM threads the runtime was initialized with (0 = its default, several). */
+  | { type: "ready"; version: string; arts: number; ms: number; threads: number }
   | { type: "load_failed"; message: string }
   | { type: "identified"; id: number; result: Identification }
   | { type: "identify_failed"; id: number; message: string }

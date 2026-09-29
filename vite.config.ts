@@ -63,6 +63,10 @@ export default defineConfig({
     port: vitePort,
     strictPort: true,
     allowedHosts: [".onamp.dev"],
+    // Dedicated workers (the card recognizer and onnxruntime's pthreads) only start inside the
+    // cross-origin-isolated webcam table when their scripts carry COEP too. Applies to files
+    // Vite serves, not to responses proxied from Phoenix.
+    headers: { "Cross-Origin-Embedder-Policy": "require-corp" },
     proxy: {
       "/socket": {
         target: phoenixOrigin,

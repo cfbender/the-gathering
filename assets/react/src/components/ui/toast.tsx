@@ -1,5 +1,5 @@
 import { X } from "lucide-react"
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import { cn } from "@/lib/cn"
 import { overlayLayers } from "./overlay-layers"
@@ -26,6 +26,26 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null)
 
 const DEFAULT_DURATION = 6_000
+const FLASH_KEY = "the-gathering:flash-toast"
+
+/** Shows a toast after the next page load, for a message sent just before a full navigation. */
+export function flashToast(options: ToastOptions) {
+  try {
+    sessionStorage.setItem(FLASH_KEY, JSON.stringify(options))
+  } catch {
+    // Storage is unavailable; the message is lost with the page.
+  }
+}
+
+function takeFlashToast(): ToastOptions | null {
+  try {
+    const stored = sessionStorage.getItem(FLASH_KEY)
+    sessionStorage.removeItem(FLASH_KEY)
+    return stored ? (JSON.parse(stored) as ToastOptions) : null
+  } catch {
+    return null
+  }
+}
 
 /** Bottom-right stack of daisyUI alerts; mount once above the router so error
  * boundaries and mutations anywhere can announce failures. */
@@ -46,6 +66,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     },
     [dismiss],
   )
+
+  useEffect(() => {
+    const flashed = takeFlashToast()
+    if (flashed) toast(flashed)
+  }, [toast])
 
   const value = useMemo(() => ({ toast, dismiss }), [toast, dismiss])
 

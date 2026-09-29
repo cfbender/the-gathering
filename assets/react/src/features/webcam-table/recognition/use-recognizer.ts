@@ -9,7 +9,8 @@ export type RecognizerState =
   /** No bundle has been published to the server yet (`/api/cardid/bundle` → 404). */
   | { status: "unavailable" }
   | { status: "loading"; version: string }
-  | { status: "ready"; version: string; arts: number; loadMs: number }
+  /** `threads`: WASM threads the recognizer runs on (several only on an isolated page). */
+  | { status: "ready"; version: string; arts: number; loadMs: number; threads: number }
   | { status: "failed"; message: string }
 
 /** Clicks wait at most this long for a result before the UI falls back to deck suggestions. */
@@ -46,61 +47,87 @@ export function useRecognizer(preload = false) {
       resolveLoad = resolve
       rejectLoadRef.current = reject
     })
-    let worker: Worker
-    try {
-      worker = new Worker(new URL("./recognizer.worker.ts", import.meta.url), { type: "module" })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      setState({ status: "failed", message })
-      rejectLoadRef.current(new Error(message))
-      return loadingRef.current
-    }
-    workerRef.current = worker
     const pending = pendingRef.current
 
-    worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-      const message = event.data
-      if (message.type === "ready") {
-        setState({
-          status: "ready",
-          version: message.version,
-          arts: message.arts,
-          loadMs: message.ms,
-        })
-        resolveLoad()
-      } else if (message.type === "load_failed") {
-        setState({ status: "failed", message: message.message })
-        rejectLoadRef.current(new Error(message.message))
-      } else if (message.type === "identified" || message.type === "matches") {
-        settle(pending, message.id)?.resolve(
-          message.type === "identified" ? message.result : message.arts,
-        )
-      } else {
-        settle(pending, message.id)?.reject(new Error(message.message))
+    // `threads` 0 lets onnxruntime pick several; only the cross-origin-isolated table page can
+    // share memory with WASM threads, anywhere else the worker gets one.
+    const launch = (threads: number) => {
+      let worker: Worker
+      try {
+        worker = new Worker(new URL("./recognizer.worker.ts", import.meta.url), { type: "module" })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        setState({ status: "failed", message })
+        rejectLoadRef.current(new Error(message))
+        return
       }
-    }
-    worker.onerror = (event) => {
-      setState({ status: "failed", message: event.message || "worker crashed" })
-      rejectLoadRef.current(new Error(event.message || "worker crashed"))
-      for (const id of pending.keys()) settle(pending, id)?.reject(new Error("worker crashed"))
+      workerRef.current = worker
+      let ready = false
+
+      // onnxruntime cannot initialize twice in one worker, so a threaded start that fails gets
+      // a fresh worker on one thread instead of a dead recognizer.
+      const retryOnOneThread = (message: string) => {
+        if (ready || threads === 1 || workerRef.current !== worker) return false
+        console.warn(
+          `Recognizer failed to start with ${threads || "auto"} threads; retrying with 1:`,
+          message,
+        )
+        worker.terminate()
+        launch(1)
+        return true
+      }
+
+      worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+        const message = event.data
+        if (message.type === "ready") {
+          ready = true
+          setState({
+            status: "ready",
+            version: message.version,
+            arts: message.arts,
+            loadMs: message.ms,
+            threads: message.threads,
+          })
+          resolveLoad()
+        } else if (message.type === "load_failed") {
+          if (retryOnOneThread(message.message)) return
+          setState({ status: "failed", message: message.message })
+          rejectLoadRef.current(new Error(message.message))
+        } else if (message.type === "identified" || message.type === "matches") {
+          settle(pending, message.id)?.resolve(
+            message.type === "identified" ? message.result : message.arts,
+          )
+        } else {
+          settle(pending, message.id)?.reject(new Error(message.message))
+        }
+      }
+      worker.onerror = (event) => {
+        const message = event.message || "worker crashed"
+        if (retryOnOneThread(message)) return
+        setState({ status: "failed", message })
+        rejectLoadRef.current(new Error(message))
+        for (const id of pending.keys()) settle(pending, id)?.reject(new Error("worker crashed"))
+      }
+
+      api<{ data: BundleInfo }>("/api/cardid/bundle")
+        .then(({ data }) => {
+          if (workerRef.current !== worker) return
+          setState({ status: "loading", version: data.version })
+          post(worker, { type: "load", bundle: data, threads })
+        })
+        .catch((error: unknown) => {
+          if (workerRef.current !== worker) return
+          rejectLoadRef.current(error instanceof Error ? error : new Error(String(error)))
+          if (error instanceof ApiError && error.status === 404) setState({ status: "unavailable" })
+          else
+            setState({
+              status: "failed",
+              message: error instanceof Error ? error.message : String(error),
+            })
+        })
     }
 
-    api<{ data: BundleInfo }>("/api/cardid/bundle")
-      .then(({ data }) => {
-        if (workerRef.current !== worker) return
-        setState({ status: "loading", version: data.version })
-        post(worker, { type: "load", bundle: data })
-      })
-      .catch((error: unknown) => {
-        if (workerRef.current !== worker) return
-        rejectLoadRef.current(error instanceof Error ? error : new Error(String(error)))
-        if (error instanceof ApiError && error.status === 404) setState({ status: "unavailable" })
-        else
-          setState({
-            status: "failed",
-            message: error instanceof Error ? error.message : String(error),
-          })
-      })
+    launch(window.crossOriginIsolated ? 0 : 1)
     return loadingRef.current
   }, [])
 

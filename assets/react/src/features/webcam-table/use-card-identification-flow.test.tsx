@@ -21,7 +21,7 @@ vi.mock("./recognition/use-recognizer", () => ({
   decodeImage: async () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
   useRecognizer: () => ({
     ready: true,
-    state: { status: "ready", version: "v1", arts: 3, loadMs: 1 },
+    state: { status: "ready", version: "v1", arts: 3, loadMs: 1, threads: 1 },
     ...recognizer,
   }),
 }))

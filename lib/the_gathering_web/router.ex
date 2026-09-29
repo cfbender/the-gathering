@@ -26,6 +26,12 @@ defmodule TheGatheringWeb.Router do
     plug TheGatheringWeb.RateLimit, bucket: :api_keys
   end
 
+  # The webcam table's document is cross-origin isolated so its card recognizer can use
+  # WASM threads; the SPA crosses into and out of it with full page loads.
+  pipeline :cross_origin_isolated do
+    plug TheGatheringWeb.CrossOriginIsolation
+  end
+
   pipeline :require_authenticated_user do
     plug TheGatheringWeb.UserAuth, :require_authenticated_user
   end
@@ -188,6 +194,12 @@ defmodule TheGatheringWeb.Router do
 
     # Keep unknown API paths out of the SPA catch-all below.
     match :*, "/*path", FallbackController, :not_found
+  end
+
+  scope "/", TheGatheringWeb do
+    pipe_through [:browser, :cross_origin_isolated]
+
+    get "/table/*path", AppController, :index
   end
 
   # Everything that is not an API route or a static file is a client-side

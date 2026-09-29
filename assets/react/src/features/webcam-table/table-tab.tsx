@@ -322,7 +322,9 @@ function SetupSection(props: TableTabProps) {
           </Button>
         )}
         <Button asChild variant="ghost" size="sm" className="w-full">
-          <Link to="/games">Leave table</Link>
+          <Link to="/games" reloadDocument>
+            Leave table
+          </Link>
         </Button>
       </div>
     </PanelSection>

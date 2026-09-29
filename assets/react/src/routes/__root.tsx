@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { UserMenu } from "@/components/user-menu"
 import { requireUser, useCurrentUser } from "@/lib/auth"
 import { cn } from "@/lib/cn"
+import { crossesIsolation } from "@/lib/cross-origin-isolation"
 import { useTheme } from "@/lib/theme"
 
 /** Router context available to every route's `loader` and `beforeLoad`. */
@@ -24,7 +25,12 @@ export interface RouterContext {
 const publicPaths = new Set(["/login", "/register", "/invite"])
 
 export const Route = createRootRouteWithContext<RouterContext>()({
-  beforeLoad: async ({ context, location }) => {
+  beforeLoad: async ({ context, location, preload }) => {
+    if (!preload && crossesIsolation(location.pathname)) {
+      window.location.assign(location.href)
+      // The page is unloading; do not render the other side in the wrong document meanwhile.
+      return new Promise<never>(() => {})
+    }
     if (!publicPaths.has(location.pathname)) {
       await requireUser(context.queryClient, location.href)
     }

@@ -30,10 +30,9 @@ import {
   type RgbaImage,
 } from "./pipeline"
 
-// Same-origin copies of the runtime (Vite emits them as assets); the page is not
-// cross-origin isolated, so a single wasm thread.
+// Same-origin copies of the runtime (Vite emits them as assets). The standalone `.mjs` gives
+// onnxruntime a real script URL to start its pthread workers from.
 ort.env.wasm.wasmPaths = { wasm: wasmUrl, mjs: mjsUrl }
-ort.env.wasm.numThreads = 1
 ort.env.logLevel = "warning"
 
 interface Loaded {
@@ -65,8 +64,12 @@ async function session(url: string): Promise<ort.InferenceSession> {
   })
 }
 
-async function load(bundle: BundleInfo) {
+async function load(bundle: BundleInfo, threads: number) {
   const started = performance.now()
+  // WASM threads need SharedArrayBuffer, which only a cross-origin-isolated page (the webcam
+  // table, see TheGatheringWeb.CrossOriginIsolation) provides. 0 lets onnxruntime pick
+  // min(4, ceil(cores / 2)). The runtime initializes once, on the first session below.
+  ort.env.wasm.numThreads = self.crossOriginIsolated ? threads : 1
   const [detector, embed, search, artsBytes] = await Promise.all([
     session(bundle.files["detector.onnx"]),
     session(bundle.files["embed.onnx"]),
@@ -96,6 +99,7 @@ async function load(bundle: BundleInfo) {
     version: bundle.version,
     arts: arts.length,
     ms: performance.now() - started,
+    threads: ort.env.wasm.numThreads,
   })
 }
 
@@ -215,7 +219,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const request = event.data
   try {
     if (request.type === "load") {
-      await load(request.bundle)
+      await load(request.bundle, request.threads)
     } else if (request.type === "identify") {
       const image: RgbaImage = {
         data: new Uint8ClampedArray(request.rgba),

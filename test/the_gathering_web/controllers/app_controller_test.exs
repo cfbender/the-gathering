@@ -32,6 +32,22 @@ defmodule TheGatheringWeb.AppControllerTest do
     assert html_response(conn, 200) =~ ~s(<div id="root"></div>)
   end
 
+  test "only webcam table documents are cross-origin isolated", %{conn: conn} do
+    table = get(conn, "/table/#{Ecto.UUID.generate()}")
+
+    assert html_response(table, 200) =~ ~s(<div id="root"></div>)
+    assert get_resp_header(table, "cross-origin-opener-policy") == ["same-origin"]
+    assert get_resp_header(table, "cross-origin-embedder-policy") == ["require-corp"]
+
+    for path <- ["/", "/games"] do
+      conn = get(conn, path)
+
+      assert html_response(conn, 200) =~ ~s(<div id="root"></div>)
+      assert get_resp_header(conn, "cross-origin-opener-policy") == []
+      assert get_resp_header(conn, "cross-origin-embedder-policy") == []
+    end
+  end
+
   test "requests proxied by the Vite dev server get relative script URLs", %{conn: conn} do
     direct = conn |> get(~p"/") |> html_response(200)
     assert direct =~ ~s(src="http://127.0.0.1:5173/@vite/client")

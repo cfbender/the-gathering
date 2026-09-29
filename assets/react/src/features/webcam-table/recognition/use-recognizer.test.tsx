@@ -43,7 +43,11 @@ it("downloads nothing on mount and shares warmup across first actions, before ti
   })
   const worker = FakeWorker.instances[0]!
   await waitFor(() =>
-    expect(worker.postMessage).toHaveBeenCalledWith({ type: "load", bundle: { version: "v1" } }),
+    expect(worker.postMessage).toHaveBeenCalledWith({
+      type: "load",
+      bundle: { version: "v1" },
+      threads: 1,
+    }),
   )
   expect(FakeWorker.instances).toHaveLength(1)
   expect(fetch).toHaveBeenCalledTimes(1)
@@ -53,7 +57,7 @@ it("downloads nothing on mount and shares warmup across first actions, before ti
   })
   expect(worker.postMessage).toHaveBeenCalledTimes(1)
   await act(async () => {
-    worker.reply({ type: "ready", version: "v1", arts: 2, ms: 10_000 })
+    worker.reply({ type: "ready", version: "v1", arts: 2, ms: 10_000, threads: 1 })
   })
   expect(worker.postMessage).toHaveBeenCalledTimes(3)
   worker.reply({ type: "matches", id: 2, arts: [] })
@@ -108,12 +112,16 @@ it("warms the bundle once preload turns on and reuses that worker for the first 
   await waitFor(() => expect(result.current.state.status).toBe("loading"))
   expect(fetch).toHaveBeenCalledTimes(1)
   const worker = FakeWorker.instances[0]!
-  expect(worker.postMessage).toHaveBeenCalledWith({ type: "load", bundle: { version: "v1" } })
+  expect(worker.postMessage).toHaveBeenCalledWith({
+    type: "load",
+    bundle: { version: "v1" },
+    threads: 1,
+  })
   rerender(true)
   rerender(false)
   rerender(true)
   await act(async () => {
-    worker.reply({ type: "ready", version: "v1", arts: 2, ms: 10 })
+    worker.reply({ type: "ready", version: "v1", arts: 2, ms: 10, threads: 1 })
   })
   expect(result.current.state.status).toBe("ready")
   let search!: ReturnType<typeof result.current.search>
@@ -125,4 +133,37 @@ it("warms the bundle once preload turns on and reuses that worker for the first 
   expect(fetch).toHaveBeenCalledTimes(1)
   worker.reply({ type: "matches", id: 1, arts: [] })
   await expect(search).resolves.toEqual([])
+})
+
+it("retries a failed threaded start in a fresh single-threaded worker", async () => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ data: { version: "v1" } })))
+  vi.stubGlobal("fetch", fetch)
+  vi.stubGlobal("Worker", FakeWorker)
+  vi.stubGlobal("crossOriginIsolated", true)
+  vi.spyOn(console, "warn").mockImplementation(() => {})
+  const { result } = renderHook(() => useRecognizer(true))
+  await waitFor(() => expect(FakeWorker.instances[0]?.postMessage).toHaveBeenCalled())
+  const threaded = FakeWorker.instances[0]!
+  expect(threaded.postMessage).toHaveBeenCalledWith({
+    type: "load",
+    bundle: { version: "v1" },
+    threads: 0,
+  })
+  await act(async () => {
+    threaded.reply({ type: "load_failed", message: "no SharedArrayBuffer" })
+  })
+  expect(threaded.terminate).toHaveBeenCalledOnce()
+  const single = FakeWorker.instances[1]!
+  await waitFor(() =>
+    expect(single.postMessage).toHaveBeenCalledWith({
+      type: "load",
+      bundle: { version: "v1" },
+      threads: 1,
+    }),
+  )
+  expect(result.current.state.status).toBe("loading")
+  await act(async () => {
+    single.reply({ type: "ready", version: "v1", arts: 2, ms: 10, threads: 1 })
+  })
+  expect(result.current.state).toMatchObject({ status: "ready", threads: 1 })
 })

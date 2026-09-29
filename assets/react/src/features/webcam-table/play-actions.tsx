@@ -13,21 +13,22 @@ import { MAX_PLAYERS, activeTablesQuery, tablePlayerNames, type ActiveTable } fr
 /** Games-page header actions for the webcam table. With no open table it is one Play button
  * that opens a new room. While a table is open (even one everyone has left, until the server
  * closes it after 30 idle minutes) the primary action becomes Join (a menu when several tables
- * are open) and starting another table steps back to a smaller button. */
+ * are open) and starting another table steps back to a smaller button. Every link is a full
+ * page load, since only table documents are cross-origin isolated (lib/cross-origin-isolation). */
 export function PlayActions() {
   const tables = useQuery(activeTablesQuery)
   const live = tables.data ?? []
 
   if (live.length === 0) {
     return (
-      <Link to="/table/new" className="btn btn-secondary">
+      <Link to="/table/new" reloadDocument className="btn btn-secondary">
         <Play className="size-4" fill="currentColor" /> Play
       </Link>
     )
   }
 
   const newTable = (
-    <Link to="/table/new" className="btn btn-ghost btn-sm">
+    <Link to="/table/new" reloadDocument className="btn btn-ghost btn-sm">
       <Plus className="size-3.5" /> New table
     </Link>
   )
@@ -40,6 +41,7 @@ export function PlayActions() {
         <Link
           to="/table/$roomId"
           params={{ roomId: table.id }}
+          reloadDocument
           className="btn btn-secondary"
           aria-disabled={table.full || undefined}
           title={tablePlayerNames(table)}
@@ -65,7 +67,7 @@ export function PlayActions() {
           <DropdownMenuLabel>Open tables</DropdownMenuLabel>
           {live.map((table) => (
             <DropdownMenuItem key={table.id} asChild disabled={table.full}>
-              <Link to="/table/$roomId" params={{ roomId: table.id }}>
+              <Link to="/table/$roomId" params={{ roomId: table.id }} reloadDocument>
                 <Users className="size-4 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{tablePlayerNames(table)}</span>
                 <span className="text-base-content/60 shrink-0 text-xs tabular-nums">

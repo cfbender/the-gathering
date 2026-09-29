@@ -112,7 +112,7 @@ it.each([
       "search.onnx": "search.onnx",
     },
   }
-  await worker.onmessage!({ data: { type: "load", bundle } })
+  await worker.onmessage!({ data: { type: "load", bundle, threads: 1 } })
   expect(messages[0]?.type).toBe("ready")
   await worker.onmessage!({
     data: {
@@ -206,6 +206,7 @@ it("identifies inside a drawn outline without the detector, keeping the better u
           "search.onnx": "search.onnx",
         },
       },
+      threads: 1,
     },
   })
   detector.mockClear()

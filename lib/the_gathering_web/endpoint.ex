@@ -17,12 +17,15 @@ defmodule TheGatheringWeb.Endpoint do
     websocket: [max_frame_size: 131_072],
     longpoll: false
 
-  # Vite output (hashed filenames) is safe to cache forever.
+  # Vite output (hashed filenames) is safe to cache forever. COEP lets the recognizer worker
+  # and onnxruntime's pthread workers start inside the cross-origin-isolated webcam table
+  # (a dedicated worker in an isolated document must itself be served with COEP).
   plug Plug.Static,
     at: "/assets/react",
     from: {:the_gathering, "priv/static/assets/react"},
     gzip: not code_reloading?,
-    cache_control_for_etags: "public, max-age=31536000, immutable"
+    cache_control_for_etags: "public, max-age=31536000, immutable",
+    headers: %{"cross-origin-embedder-policy" => "require-corp"}
 
   # Serve at "/" the static files from "priv/static" directory.
   #

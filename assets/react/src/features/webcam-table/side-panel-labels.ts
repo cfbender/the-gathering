@@ -24,7 +24,7 @@ export function describeRecognizer(state: RecognizerState): string {
     case "loading":
       return `Loading bundle ${state.version}…`
     case "ready":
-      return `Bundle ${state.version}: ${state.arts.toLocaleString()} artworks, loaded in ${(state.loadMs / 1000).toFixed(1)} s.`
+      return `Bundle ${state.version}: ${state.arts.toLocaleString()} artworks, loaded in ${(state.loadMs / 1000).toFixed(1)} s, ${state.threads === 1 ? "1 thread" : `${state.threads} threads`}.`
     case "failed":
       return `Recognizer failed to start: ${state.message}`
   }

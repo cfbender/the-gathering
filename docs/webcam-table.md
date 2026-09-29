@@ -110,9 +110,43 @@ player who clicked, on the crop the camera owner already returns over the data c
 next section). Running it there rather than in the owner's browser costs nothing extra: the crop
 transfer already solves the resolution problem, each browser loads the bundle once, and the
 result needs no second round trip before it can be shown, corrected, and announced. ONNX Runtime
-Web (`onnxruntime-web`) executes the three exported graphs on its single-threaded WASM backend;
-the glue around them (`recognition/pipeline.ts`) is a line-for-line port of the Python
-`cardid.bundle` reference runtime, and the two give the same top five on rendered scenes.
+Web (`onnxruntime-web`) executes the three exported graphs on its WASM backend; the glue around
+them (`recognition/pipeline.ts`) is a line-for-line port of the Python `cardid.bundle` reference
+runtime, and the two give the same top five on rendered scenes.
+
+#### WASM threads and cross-origin isolation
+
+onnxruntime-web 1.30 runs WASM on several threads (pthreads over `SharedArrayBuffer`) only when
+the worker is `crossOriginIsolated`. A 640 px card frame (two detector passes, embed, search)
+went from 252 ms on one thread to 99 ms on four in headless Chromium on an 8-core machine, and
+ManaVault's identical change took a phone from ~190 ms to 50–70 ms.
+The worker sets `ort.env.wasm.numThreads` to 0 (onnxruntime picks `min(4, ceil(cores / 2))`)
+when isolated and 1 otherwise, reports the count it initialized with in its `ready` message,
+and the Connection panel shows it (`… loaded in 0.8 s, 4 threads.`). onnxruntime cannot
+initialize twice in one worker, so if a threaded start fails (`load_failed` or a worker
+`error`), `use-recognizer.ts` terminates that worker and starts a fresh one on one thread.
+
+Isolation is scoped to the table and needs three things to hold:
+
+- **The table document** (`GET /table/*`, before the SPA catch-all in `router.ex`) is served
+  with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy:
+  require-corp` by `TheGatheringWeb.CrossOriginIsolation`. `require-corp`, not
+  `credentialless`, because Safari/iOS lacks the latter. Nothing else is isolated: the rest of
+  the app shows Discord avatars and other third-party images that COEP would block. The table
+  loads nothing cross-origin (card images come through `/api/card-images`, captures are data
+  URLs, and WebRTC media is not a subresource); keep it that way, or give new cross-origin
+  resources CORS (`crossorigin`) or a `Cross-Origin-Resource-Policy` header.
+- **Worker scripts** must carry `Cross-Origin-Embedder-Policy: require-corp` too, or the
+  browser refuses to start a dedicated worker inside the isolated document and reports only an
+  `ErrorEvent` with an empty message ("worker crashed"). Vite's `server.headers` adds it in
+  development (to files Vite serves, not responses proxied from Phoenix) and the
+  `/assets/react` `Plug.Static` adds it in production. That covers the recognizer worker and the
+  pthread workers onnxruntime spawns from the standalone `ort-wasm-simd-threaded.mjs`.
+- **Navigation across `/table/`** must load a new document, because the headers belong to the
+  document: a client-side hop in would not be isolated, and one out would leave the games list
+  isolated. Links across it use `reloadDocument`, and the root route's `beforeLoad` turns any
+  other crossing (for example the End game redirect or a sign-in `returnTo`) into a full load
+  (`lib/cross-origin-isolation.ts`).
 
 WebGPU was evaluated with onnxruntime-web 1.30 and rejected for now; the recognizer stays on
 WASM. Findings, from the three graphs exported with the production operator set:

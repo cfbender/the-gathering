@@ -229,7 +229,7 @@ export function TableStage({
       {room.spectating && (
         <p role="status" className="bg-base-200 px-4 py-2 text-sm font-semibold text-base-content">
           Spectating — this game has already started. Your camera is not shared.
-          <Link to="/games" className="link ml-3">
+          <Link to="/games" reloadDocument className="link ml-3">
             Leave table
           </Link>
         </p>

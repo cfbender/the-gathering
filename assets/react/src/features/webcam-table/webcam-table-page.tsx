@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
-import { Link, useNavigate } from "@tanstack/react-router"
+import { Link } from "@tanstack/react-router"
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
-import { useToast } from "@/components/ui/toast"
+import { flashToast } from "@/components/ui/toast"
 import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { getPlayers } from "@/features/games/games"
 import { useCurrentUser } from "@/lib/auth"
@@ -50,17 +50,13 @@ function useInviteLink() {
   }
 }
 
-/** Sends a seat back to the games list after the room owner ends the table. */
+/** Sends a seat back to the games list after the room owner ends the table. A full page load,
+ * so the games list does not inherit the table's cross-origin isolation; the toast rides along. */
 function TableEndedRedirect() {
-  const navigate = useNavigate()
-  const { toast } = useToast()
-  // Strict Mode runs effects twice; announce once.
-  const announced = useRef(false)
   useEffect(() => {
-    if (!announced.current) toast({ message: "The room owner ended the game.", tone: "info" })
-    announced.current = true
-    void navigate({ to: "/games" })
-  }, [navigate, toast])
+    flashToast({ message: "The room owner ended the game.", tone: "info" })
+    window.location.assign("/games")
+  }, [])
   return null
 }
 
@@ -265,7 +261,7 @@ export function WebcamTablePage({ roomId }: Props) {
             <h1 className="font-bold">No linked player</h1>
             <p>Your account must be linked to a player before joining a table.</p>
           </div>
-          <Link to="/games" className="btn btn-sm">
+          <Link to="/games" reloadDocument className="btn btn-sm">
             Back to games
           </Link>
         </div>
