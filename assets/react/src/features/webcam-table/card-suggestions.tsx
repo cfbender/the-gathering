@@ -110,7 +110,7 @@ function PrintingChoices({
 }
 
 /** Floating panel over the board when a click needs a human: the recognizer was unsure (or
- * off), or the clicker held Shift to choose for themselves. Shows the native crop with the
+ * off), or the clicker outlined the card (Shift+click corners) and picks it themselves. Shows the native crop with the
  * detected card outlined, the numbered top five (keys 1–5), and a gallery search for the
  * "that's not it" case. Without a published bundle the seat's decks stand in. */
 export function CardSuggestions({
@@ -298,7 +298,7 @@ export function CardSuggestions({
           <p className="mt-2 text-[0.65rem] text-white/45">
             {capture.cropSize} px crop of {capture.nativeWidth}×{capture.nativeHeight}
             {recognition.status === "done" &&
-              ` · detector ${recognition.result.timings.detector.toFixed(0)} ms · embed ${recognition.result.timings.embed.toFixed(0)} ms · search ${recognition.result.timings.search.toFixed(0)} ms · upright ${Math.round(recognition.result.upVote * 100)}%`}
+              ` · detector ${recognition.result.timings.detector.toFixed(0)} ms · embed ${recognition.result.timings.embed.toFixed(0)} ms · search ${recognition.result.timings.search.toFixed(0)} ms · ${recognition.result.upVote === null ? "drawn outline" : `upright ${Math.round(recognition.result.upVote * 100)}%`}`}
             {recognition.status === "identifying" &&
               (recognition.loading ? " · loading card scanner…" : " · identifying…")}
             {recognition.status === "skipped" &&

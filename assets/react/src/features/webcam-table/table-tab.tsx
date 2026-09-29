@@ -341,10 +341,14 @@ function IdentifyCardsSection({ recognizer }: { recognizer: RecognizerState }) {
         Click a card on any board. The camera owner returns a native 640 px crop, the recognizer
         runs in your browser, and a clear match opens the card with its rules text and lands in that
         board's tray (the tab at the bottom of the video) at every seat. Say "Wrong card?" on the
-        preview, or Shift+click, to pick from its top five instead: press{" "}
-        <kbd className="kbd kbd-xs">1</kbd>–<kbd className="kbd kbd-xs">5</kbd> or{" "}
-        <kbd className="kbd kbd-xs">/</kbd> to search by name, set code or collector number. The
-        Cards tab lists everything identified at the table.
+        preview to pick from its top five instead: press <kbd className="kbd kbd-xs">1</kbd>–
+        <kbd className="kbd kbd-xs">5</kbd> or <kbd className="kbd kbd-xs">/</kbd> to search by
+        name, set code or collector number. The Cards tab lists everything identified at the table.
+      </p>
+      <p className="text-base-content/70 mt-2 text-xs leading-relaxed">
+        To teach the scanner to find cards, Shift+click a card's four corners (any order;{" "}
+        <kbd className="kbd kbd-xs">Esc</kbd> cancels), then pick it. With sharing on, the crop,
+        your pick and that outline are saved for training.
       </p>
       <p className="text-base-content/50 mt-2 text-xs">{describeRecognizer(recognizer)}</p>
     </PanelSection>

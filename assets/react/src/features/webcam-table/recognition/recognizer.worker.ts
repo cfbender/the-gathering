@@ -16,9 +16,11 @@ import { galleryPrintings } from "./gallery"
 import type { BundleInfo, Identification, WorkerRequest, WorkerResponse } from "./messages"
 import {
   fromWindow,
+  portraitQuad,
   refineSide,
   resampleWindow,
   searchArts,
+  turnedHalf,
   upVote,
   type BundleConstants,
   type Candidate,
@@ -123,26 +125,18 @@ async function detect(
   }
 }
 
-async function identify(image: RgbaImage, x: number, y: number): Promise<Identification> {
+/** Gallery candidates for the card at `quad` (image px, printed order), with stage timings. */
+async function embedAndSearch(image: RgbaImage, quad: Quad) {
   if (!loaded) throw new Error("bundle not loaded")
-  const { constants, embed, search, arts } = loaded
+  const { embed, search, arts } = loaded
   const started = performance.now()
-  const coarse = await detect(image, x, y, constants.scene)
-  const fine = await detect(
-    image,
-    coarse.centre[0],
-    coarse.centre[1],
-    refineSide(coarse.short, constants),
-  )
-  const detected = performance.now()
-
   const embeddings = await embed.run({
     scene: new ort.Tensor("uint8", new Uint8Array(image.data.buffer), [
       image.height,
       image.width,
       4,
     ]),
-    quad: new ort.Tensor("float32", Float32Array.from(fine.quad.flat()), [4, 2]),
+    quad: new ort.Tensor("float32", Float32Array.from(quad.flat()), [4, 2]),
   })
   const embedded = performance.now()
   const vectors = Object.values(embeddings)[0]
@@ -158,15 +152,61 @@ async function identify(image: RgbaImage, x: number, y: number): Promise<Identif
     const art = arts[index]
     if (art) candidates.push({ ...art, index, score: scores[k] ?? 0 })
   }
+  return { candidates, embed: embedded - started, search: finished - embedded }
+}
+
+async function identify(image: RgbaImage, x: number, y: number): Promise<Identification> {
+  if (!loaded) throw new Error("bundle not loaded")
+  const { constants } = loaded
+  const started = performance.now()
+  const coarse = await detect(image, x, y, constants.scene)
+  const fine = await detect(
+    image,
+    coarse.centre[0],
+    coarse.centre[1],
+    refineSide(coarse.short, constants),
+  )
+  const detected = performance.now()
+  const { candidates, embed, search } = await embedAndSearch(image, fine.quad)
   return {
     quad: fine.quad,
     upVote: upVote(fine.up, constants),
     candidates,
     timings: {
       detector: detected - started,
-      embed: embedded - detected,
-      search: finished - embedded,
-      total: finished - started,
+      embed,
+      search,
+      total: performance.now() - started,
+    },
+  }
+}
+
+/**
+ * The card inside an outline the user drew (Shift+click corners, any order): no detector.
+ * Which short edge is the top is unknown, so both upright readings are searched and the one
+ * with the better top match wins; its quad is returned in printed order for the correction.
+ */
+async function identifyOutline(image: RgbaImage, corners: Quad): Promise<Identification> {
+  const started = performance.now()
+  const upright = portraitQuad(corners)
+  const readings = []
+  for (const quad of [upright, turnedHalf(upright)]) {
+    readings.push({ quad, ...(await embedAndSearch(image, quad)) })
+  }
+  const [first, second] = readings as [(typeof readings)[0], (typeof readings)[0]]
+  const best =
+    (second.candidates[0]?.score ?? -Infinity) > (first.candidates[0]?.score ?? -Infinity)
+      ? second
+      : first
+  return {
+    quad: best.quad,
+    upVote: null,
+    candidates: best.candidates,
+    timings: {
+      detector: 0,
+      embed: first.embed + second.embed,
+      search: first.search + second.search,
+      total: performance.now() - started,
     },
   }
 }
@@ -185,7 +225,9 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       reply({
         type: "identified",
         id: request.id,
-        result: await identify(image, request.x, request.y),
+        result: request.quad
+          ? await identifyOutline(image, request.quad)
+          : await identify(image, request.x, request.y),
       })
     } else if (request.type === "search") {
       reply({

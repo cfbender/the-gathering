@@ -1,7 +1,8 @@
 import type { VideoFlip } from "./board"
+import type { Quad } from "./recognition/pipeline"
 import type { CapturedCard } from "./room-types"
 
-type Crop = Pick<CapturedCard, "image" | "cropSize" | "clickX" | "clickY">
+type Crop = Pick<CapturedCard, "image" | "cropSize" | "clickX" | "clickY" | "outline">
 
 /** Mirrors a native crop the way the viewer flips that board, so recognition, the picker, and
  * correction uploads all see the card as it appears on screen. Unflipped crops pass through. */
@@ -30,5 +31,13 @@ export async function orientCrop<T extends Crop>(crop: T, flip: VideoFlip): Prom
     image: canvas.toDataURL("image/jpeg", 0.92),
     clickX: flip.horizontal ? size - crop.clickX : crop.clickX,
     clickY: flip.vertical ? size - crop.clickY : crop.clickY,
+    ...(crop.outline
+      ? {
+          outline: crop.outline.map(([x, y]) => [
+            flip.horizontal ? size - x : x,
+            flip.vertical ? size - y : y,
+          ]) as Quad,
+        }
+      : {}),
   }
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api, ApiError } from "@/lib/api"
 import type { BundleInfo, Identification, WorkerRequest, WorkerResponse } from "./messages"
-import type { GalleryArt, RgbaImage } from "./pipeline"
+import type { GalleryArt, Quad, RgbaImage } from "./pipeline"
 
 export type RecognizerState =
   | { status: "idle" }
@@ -145,11 +145,21 @@ export function useRecognizer(preload = false) {
     [start],
   )
 
+  /** Identifies the card under the click, or inside `quad` when the user drew its corners. */
   const identify = useCallback(
-    (image: RgbaImage, x: number, y: number, timeoutMs = IDENTIFY_TIMEOUT_MS) => {
+    (image: RgbaImage, x: number, y: number, timeoutMs = IDENTIFY_TIMEOUT_MS, quad?: Quad) => {
       const rgba = image.data.buffer.slice(0) as ArrayBuffer
       return request<Identification>(
-        (id) => ({ type: "identify", id, rgba, width: image.width, height: image.height, x, y }),
+        (id) => ({
+          type: "identify",
+          id,
+          rgba,
+          width: image.width,
+          height: image.height,
+          x,
+          y,
+          ...(quad ? { quad } : {}),
+        }),
         [rgba],
         timeoutMs,
       )

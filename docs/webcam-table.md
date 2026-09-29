@@ -658,8 +658,8 @@ face after details has populated it. Rulings use the base card's shared ruling l
 face-keyed cache rows. Malformed gallery IDs return HTTP 400 from details/rulings.
 
 The **picker** (`card-suggestions.tsx`) is user-initiated only: it opens for a near-tie, when
-no bundle is published (deck suggestions stand in), on "Wrong card?", or when the clicker
-Shift+clicks to choose for themselves. It shows five numbered candidates (`1`–`5`), the crop
+no bundle is published (deck suggestions stand in), on "Wrong card?", or for an outlined card.
+It shows five numbered candidates (`1`–`5`), the crop
 with the detected quad and per-stage timings; low similarity never suppresses results. `/`
 focuses a gallery search that understands names, set codes (`forest fin`, `set:fin`),
 collector numbers (`#280`) and language (`lang:ja`). A bare word that is also a set code is
@@ -670,6 +670,16 @@ effects, borderless treatment and promos. The Cards tab searches the same printi
 Ranks/keyboard `1`–`5` remain one per artwork, not one per reprint. Identical art cannot tell
 printings apart automatically; the user chooses a sibling, and its own ID drives details,
 hover images, rulings and correction labels. Name-based board deduplication is unchanged.
+
+**Outlining a card** (`outline-drawing.ts`) is for when the detector misses, and to teach it:
+Shift+click one corner of a card, then click the other three in any order (`Esc` or a click on
+another board abandons it). The board shows the placed corners. The fourth click requests one
+crop centred on the outline, which carries the corners in crop pixels (`CapturedCard.outline`,
+mirrored by `orientCrop` with the image). The worker then skips the detector: it orders the
+corners into a portrait quad, embeds both upright readings and keeps the one with the better
+top match, so the returned quad starts at the printed top-left. The picker always opens, and
+the chosen card uploads with that quad and `quad_source: "manual"`, which Oracle trusts as
+detector ground truth. An outline too big for one 640 px crop is refused with a status message.
 
 ### Linked deck lists
 
@@ -770,12 +780,12 @@ transformations. `x-card-image-cache: hit|miss` distinguishes server disk reuse 
 Backlog:
 
 - record identified cards against the historical game (currently retained only with the room session);
-- WebGPU execution provider with WASM fallback;
-- shift-click manual four-corner capture when the detector misses.
+- WebGPU execution provider with WASM fallback.
 
 Explicit picker choices (including an explicitly confirmed top-1, but never an automatic
 answer) POST their native JPEG, click, quad/up vote, chosen gallery ID and original ranking
-metadata to `/api/cardid/corrections`. The small checkbox below the active board opts out in
+metadata to `/api/cardid/corrections`; an outlined card adds `quad_source: "manual"` (the
+server accepts `detector` or `manual`, and `manual` only with a quad). The small checkbox below the active board opts out in
 localStorage; the camera owner's preference also travels with each crop. The save note only
 appears after server acknowledgement and failures never interrupt identification.
 

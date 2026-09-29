@@ -1,4 +1,4 @@
-import type { GalleryArt } from "./recognition/pipeline"
+import type { GalleryArt, Quad } from "./recognition/pipeline"
 import type { SeatCounters } from "./seat-counters"
 
 export interface TableParticipant extends SeatCounters {
@@ -42,9 +42,13 @@ export interface CapturedCard {
   clickY: number
   /** Camera owner's consent to share corrections, carried with the crop. */
   shareCorrections: boolean
-  /** Shift+click: the clicker wants to see and choose among the candidates even when the
-   * recognizer is sure. A plain click logs a clear answer silently. */
+  /** The clicker wants to see and choose among the candidates even when the recognizer is
+   * sure (an outlined card). A plain click logs a clear answer silently. */
   inspect: boolean
+  /** Corners the clicker drew around the card (Shift+click), in crop pixels and drawing
+   * order. Recognition then skips the detector, and the chosen card uploads this outline as
+   * detector ground truth. */
+  outline?: Quad
   /** Keep reveal captures private even if identification finishes after the reveal ends. */
   private: boolean
 }

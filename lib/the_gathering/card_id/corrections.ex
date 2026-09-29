@@ -1,6 +1,8 @@
 defmodule TheGathering.CardId.Corrections do
   @moduledoc """
   Human-labelled click crops. JPEGs stay native; the offline importer creates card.png.
+  An outline drawn with Shift+click arrives as `quad_source: "manual"` and is detector ground
+  truth for Oracle; otherwise the quad is the detector's own.
   Writes are serialized on this single-container application, with the append-only label
   log as the commit point. Repeated capture/label submissions are idempotent.
   """
@@ -8,7 +10,9 @@ defmodule TheGathering.CardId.Corrections do
   alias TheGathering.Catalog.PrintingId
 
   @uuid ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
-  @fields ~w(capture_id label click quad up_vote bundle_version top1 similarity margin)
+  @fields ~w(capture_id label click quad quad_source up_vote bundle_version top1 similarity margin)
+  # `manual`: the clicker drew the outline, so Oracle may train the detector on it.
+  @quad_sources ~w(detector manual)
 
   def directory, do: Path.join(CardId.bundle_dir(), "corrections")
 
@@ -37,6 +41,7 @@ defmodule TheGathering.CardId.Corrections do
          {:ok, _, _} <- PrintingId.parse(p["label"]),
          true <- point?(p["click"], 0, 640),
          true <- quad?(p["quad"]),
+         true <- quad_source?(p["quad_source"], p["quad"]),
          true <- optional_number?(p["up_vote"], 0, 2),
          true <- optional_number?(p["similarity"], -2, 2),
          true <- optional_number?(p["margin"], 0, 4),
@@ -63,6 +68,9 @@ defmodule TheGathering.CardId.Corrections do
   defp quad?(nil), do: true
   defp quad?(q) when is_list(q), do: length(q) == 4 and Enum.all?(q, &point?(&1, -2048, 2048))
   defp quad?(_), do: false
+  defp quad_source?(nil, _), do: true
+  defp quad_source?("manual", nil), do: false
+  defp quad_source?(source, _), do: source in @quad_sources
 
   # Read baseline/progressive JPEG frame dimensions without decoding pixels in Phoenix.
   # Full image validation and the warp happen in the bounded offline importer.

@@ -2,12 +2,17 @@ import { describe, expect, it } from "vite-plus/test"
 import {
   clickInCrop,
   fromWindow,
+  outlineInCrop,
+  portraitQuad,
   refineSide,
   resampleWindow,
   searchArts,
+  turnedHalf,
   upVote,
   type BundleConstants,
   type GalleryArt,
+  type Point,
+  type Quad,
   type RgbaImage,
 } from "./pipeline"
 
@@ -214,5 +219,55 @@ describe("clickInCrop", () => {
         y: 0.5,
       }),
     ).toEqual([448, 320])
+  })
+})
+
+describe("drawn outlines", () => {
+  // A card 250 wide and 350 tall on screen, its printed top-left at (40, 20).
+  const card: Quad = [
+    [40, 20],
+    [290, 20],
+    [290, 370],
+    [40, 370],
+  ]
+
+  it("orders corners clicked in any order clockwise from a short edge", () => {
+    expect(portraitQuad([card[2], card[0], card[3], card[1]])).toEqual(card)
+    // A card lying sideways still starts on a short edge, so the embed sees a portrait card.
+    const sideways: Quad = [
+      [20, 40],
+      [370, 40],
+      [370, 290],
+      [20, 290],
+    ]
+    const ordered = portraitQuad([sideways[3], sideways[1], sideways[0], sideways[2]])
+    const edge = (a: Point, b: Point) => Math.hypot(b[0] - a[0], b[1] - a[1])
+    expect(edge(ordered[0], ordered[1])).toBeLessThan(edge(ordered[1], ordered[2]))
+    expect(turnedHalf(card)).toEqual([card[2], card[3], card[0], card[1]])
+  })
+
+  it("maps frame fractions into the crop, refusing corners outside it", () => {
+    const capture = {
+      nativeWidth: 1920,
+      nativeHeight: 1080,
+      cropSize: 640,
+      clickX: 320,
+      clickY: 320,
+    }
+    const at = { x: 0.5, y: 0.5 } // crop spans x 640–1280, y 220–860 of the frame
+    const corners: Point[] = [
+      [700 / 1920, 300 / 1080],
+      [900 / 1920, 300 / 1080],
+      [900 / 1920, 580 / 1080],
+      [700 / 1920, 580 / 1080],
+    ]
+    const quad = outlineInCrop(corners, capture, at)!
+    expect(quad.map(([x, y]) => [Math.round(x), Math.round(y)])).toEqual([
+      [60, 80],
+      [260, 80],
+      [260, 360],
+      [60, 360],
+    ])
+    expect(outlineInCrop([...corners.slice(0, 3), [0.1, 0.5]], capture, at)).toBeNull()
   })
 })

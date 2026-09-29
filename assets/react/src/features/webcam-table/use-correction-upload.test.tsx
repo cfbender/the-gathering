@@ -67,6 +67,21 @@ describe("correction labels", () => {
     expect(payload?.margin).toBeCloseTo(0.03)
   })
 
+  it("marks a drawn outline as manual only once the recognizer ordered it", () => {
+    expect(correctionPayload("id", capture, result, "right", "v3", true)?.quad_source).toBeNull()
+    const outlined = { ...capture, outline: result.quad }
+    const drawn = { ...result, upVote: null }
+    expect(correctionPayload("id", outlined, drawn, "right", "v3", true)).toMatchObject({
+      quad: result.quad,
+      quad_source: "manual",
+      up_vote: null,
+    })
+    // Recognition timed out: the pick is still a label, the outline's orientation is unknown.
+    expect(
+      correctionPayload("id", outlined, undefined, "right", "v3", true)?.quad_source,
+    ).toBeNull()
+  })
+
   it("requires both clicker and camera owner consent", () => {
     expect(
       correctionPayload("id", { ...capture, shareCorrections: false }, result, "right", "v3", true),

@@ -89,6 +89,14 @@ defmodule TheGatheringWeb.API.CardIdCorrectionControllerTest do
     assert Enum.all?(rows, &(&1["top1"] == p["top1"]))
   end
 
+  test "keeps a drawn outline's manual source for the exporter", %{conn: conn, payload: p} do
+    drawn = Map.put(p, "quad_source", "manual")
+    assert conn |> post(~p"/api/cardid/corrections", drawn) |> json_response(201)
+    assert %{corrections: [row]} = Corrections.page(0)
+    assert row["quad_source"] == "manual"
+    assert row["quad"] == p["quad"]
+  end
+
   test "rejects malformed, oversized, and traversing payloads", %{conn: conn, payload: p} do
     for change <- [
           %{"capture_id" => "../escape"},
@@ -103,6 +111,8 @@ defmodule TheGatheringWeb.API.CardIdCorrectionControllerTest do
           %{"image" => "data:image/jpeg;base64,AAAA"},
           %{"image" => "data:image/jpeg;base64," <> Base.encode64(<<255, 216, 255, 217>>)},
           %{"quad" => [[1, 2]]},
+          %{"quad_source" => "guessed"},
+          %{"quad_source" => "manual", "quad" => nil},
           %{"click" => [641, 10]},
           %{"similarity" => "0.5"},
           %{"bundle_version" => String.duplicate("a", 121)}

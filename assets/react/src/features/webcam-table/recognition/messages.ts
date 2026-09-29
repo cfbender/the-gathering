@@ -24,6 +24,9 @@ export type WorkerRequest =
       /** The click, in crop pixels. */
       x: number
       y: number
+      /** Corners the user drew around the card, in crop pixels and any order: skips the
+       * detector and identifies the card inside them. */
+      quad?: Quad
     }
   | { type: "search"; id: number; query: string }
   | { type: "printings"; id: number; artId: string }
@@ -32,8 +35,8 @@ export type WorkerRequest =
 
 export interface Identification {
   quad: Quad
-  /** Share of detector views that agreed the card is upright, 0–1. */
-  upVote: number
+  /** Share of detector views that agreed the card is upright, 0–1; null for a drawn outline. */
+  upVote: number | null
   candidates: Candidate[]
   /** Milliseconds per stage, for the Connection panel and telemetry. */
   timings: { detector: number; embed: number; search: number; total: number }

@@ -32,7 +32,9 @@ function useRecognition(capture: CapturedCard | null, connected: boolean) {
     if (!capture) return
     let stale = false
     decodeImage(capture.image)
-      .then((image) => recognizer.identify(image, capture.clickX, capture.clickY))
+      .then((image) =>
+        recognizer.identify(image, capture.clickX, capture.clickY, undefined, capture.outline),
+      )
       .then((result) => {
         if (!stale) setOutcome({ capture, recognition: { status: "done", result } })
       })
@@ -142,8 +144,8 @@ export function useCardIdentificationFlow({
     [raw, ownerHint],
   )
   const candidates = recognition.status === "done" ? recognition.result.candidates : []
-  // The picker is for the cases a human has to settle: no recognizer, a near-tie, a
-  // Shift+click asking to choose, or "Wrong card?" on a result. A clear answer to a plain
+  // The picker is for the cases a human has to settle: no recognizer, a near-tie, an
+  // outlined card (Shift+click corners), or "Wrong card?" on a result. A clear answer to a plain
   // click is recorded without it and shown as the card itself.
   const needsChoice =
     room.capture !== null &&

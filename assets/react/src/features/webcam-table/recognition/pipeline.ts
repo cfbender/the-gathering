@@ -249,3 +249,67 @@ export function clickInCrop(capture: {
     capture.y * capture.nativeHeight - capture.cropTop,
   ]
 }
+
+/**
+ * Corners placed by hand, in any order, as the portrait quad the embed graph expects:
+ * clockwise on screen, starting with a short edge. Which short edge is the card's top is
+ * unknown, so recognition also tries `turnedHalf` of it.
+ */
+export function portraitQuad(corners: Quad): Quad {
+  const cx = corners.reduce((sum, [x]) => sum + x, 0) / 4
+  const cy = corners.reduce((sum, [, y]) => sum + y, 0) / 4
+  const around = [...corners].sort(
+    (a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx),
+  )
+  const length = (k: number) => {
+    const [a, b] = [around[k]!, around[(k + 1) % 4]!]
+    return Math.hypot(b[0] - a[0], b[1] - a[1])
+  }
+  // Start at the top-left-most corner, then step one corner on if that makes a long edge first.
+  let start = around.reduce(
+    (best, [x, y], k) => (x + y < around[best]![0] + around[best]![1] ? k : best),
+    0,
+  )
+  if (length(start) + length((start + 2) % 4) > length((start + 1) % 4) + length((start + 3) % 4))
+    start = (start + 1) % 4
+  return [0, 1, 2, 3].map((k) => around[(start + k) % 4]!) as Quad
+}
+
+/** The same outline read upside down: its printed top-left is the opposite corner. */
+export function turnedHalf([a, b, c, d]: Quad): Quad {
+  return [c, d, a, b]
+}
+
+/**
+ * Corners given as fractions of the camera frame, in pixels of the crop cut around the click
+ * at (`x`, `y`); null when a corner falls outside the crop (the card is too big for one crop).
+ */
+export function outlineInCrop(
+  corners: Point[],
+  capture: {
+    nativeWidth: number
+    nativeHeight: number
+    cropSize: number
+    clickX: number
+    clickY: number
+  },
+  at: { x: number; y: number },
+): Quad | null {
+  if (corners.length !== 4) return null
+  const cropLeft = at.x * capture.nativeWidth - capture.clickX
+  const cropTop = at.y * capture.nativeHeight - capture.clickY
+  const quad = corners.map(([x, y]) =>
+    clickInCrop({
+      nativeWidth: capture.nativeWidth,
+      nativeHeight: capture.nativeHeight,
+      cropLeft,
+      cropTop,
+      x,
+      y,
+    }),
+  )
+  const inside = quad.every(
+    ([x, y]) => x >= 0 && y >= 0 && x <= capture.cropSize && y <= capture.cropSize,
+  )
+  return inside ? (quad as Quad) : null
+}

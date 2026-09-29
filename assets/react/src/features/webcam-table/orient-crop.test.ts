@@ -39,3 +39,26 @@ it.each([
   expect(context.setTransform).toHaveBeenCalledWith(...transform)
   expect(context.drawImage).toHaveBeenCalledWith(expect.any(HTMLImageElement), 0, 0, 640, 640)
 })
+
+it("mirrors a drawn outline with the crop", async () => {
+  fakeCanvas()
+  const outline: [number, number][] = [
+    [40, 20],
+    [290, 20],
+    [290, 370],
+    [40, 370],
+  ]
+  const oriented = await orientCrop(
+    {
+      ...crop,
+      outline: outline as [[number, number], [number, number], [number, number], [number, number]],
+    },
+    { vertical: false, horizontal: true },
+  )
+  expect(oriented.outline).toEqual([
+    [600, 20],
+    [350, 20],
+    [350, 370],
+    [600, 370],
+  ])
+})

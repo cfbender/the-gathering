@@ -4,6 +4,7 @@ import type { CaptureRequest, CaptureResponse } from "./data-messages"
 import { canViewBoard } from "./media-policy"
 import { orientCrop } from "./orient-crop"
 import { liveStatus, type RoomLink } from "./room-link"
+import { outlineInCrop, type Point } from "./recognition/pipeline"
 import type { CapturedCard } from "./room-types"
 import type { LocalCamera } from "./use-local-camera"
 import type { PeerConnections } from "./use-peer-connections"
@@ -14,10 +15,17 @@ export const CAPTURE_TIMEOUT_MS = 8000
 interface PendingCapture {
   targetPeerId: string
   inspect: boolean
+  /** Where the crop was requested and the drawn corners, as fractions of the frame. */
+  at: { x: number; y: number }
+  corners?: Point[]
   /** The clicker's flip of that board; the owner crops native pixels, so it is applied here. */
   flip: VideoFlip
   timeout: number
 }
+
+/** A drawn card outline too big for one crop: the corners cannot be kept. */
+const OUTLINE_TOO_BIG =
+  "That card is too big to outline in one crop; zoom out or outline a smaller card"
 
 /** Native camera crops for card identification. Your own board is cropped locally; another
  * board's owner is asked over the data channel and answers with a crop of their camera. */
@@ -95,8 +103,16 @@ export function useCardCapture(
       if (!owner || owner.camera_off || !canViewBoard(fromPeerId, link.peerId, owner.reveal_to))
         return
       const { type: _type, requestId: _requestId, ...image } = response
+      const outline = pending.corners && outlineInCrop(pending.corners, image, pending.at)
+      if (pending.corners && !outline) return setStatus(OUTLINE_TOO_BIG)
       show(
-        { peerId: fromPeerId, playerId: owner.player_id, inspect: pending.inspect, ...image },
+        {
+          peerId: fromPeerId,
+          playerId: owner.player_id,
+          inspect: pending.inspect,
+          ...image,
+          ...(outline ? { outline } : {}),
+        },
         pending.flip,
       )
     },
@@ -117,18 +133,36 @@ export function useCardCapture(
 
   useEffect(() => () => cancel(null, false), [cancel])
 
+  /** Asks for a crop at (`x`, `y`), fractions of the board's frame. With `corners` (a drawn
+   * outline, same units), the crop carries them in crop pixels as `outline`. */
   const requestCapture = useCallback(
-    (targetPeerId: string, x: number, y: number, inspect = false, flip: VideoFlip = NO_FLIP) => {
+    (
+      targetPeerId: string,
+      x: number,
+      y: number,
+      inspect = false,
+      flip: VideoFlip = NO_FLIP,
+      corners?: Point[],
+    ) => {
       const owner = link.participants.find((item) => item.peer_id === targetPeerId)
       if (!owner || owner.camera_off || !canViewBoard(targetPeerId, link.peerId, owner.reveal_to))
         return
       if (targetPeerId === link.peerId) {
         const result = crop(x, y)
-        if (result)
-          show(
-            { peerId: targetPeerId, playerId, inspect, private: !!revealTarget(), ...result },
-            flip,
-          )
+        if (!result) return
+        const outline = corners && outlineInCrop(corners, result, { x, y })
+        if (corners && !outline) return setStatus(OUTLINE_TOO_BIG)
+        show(
+          {
+            peerId: targetPeerId,
+            playerId,
+            inspect,
+            private: !!revealTarget(),
+            ...result,
+            ...(outline ? { outline } : {}),
+          },
+          flip,
+        )
         return
       }
       const requestId = crypto.randomUUID()
@@ -136,7 +170,14 @@ export function useCardCapture(
         if (!pendingRef.current.delete(requestId)) return
         setStatus(`${owner.player_name}'s camera did not send a crop; click the card again`)
       }, CAPTURE_TIMEOUT_MS)
-      pendingRef.current.set(requestId, { targetPeerId, inspect, flip, timeout })
+      pendingRef.current.set(requestId, {
+        targetPeerId,
+        inspect,
+        flip,
+        timeout,
+        at: { x, y },
+        ...(corners ? { corners } : {}),
+      })
       if (!send(targetPeerId, { type: "capture_request", requestId, x, y })) {
         window.clearTimeout(timeout)
         pendingRef.current.delete(requestId)

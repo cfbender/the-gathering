@@ -174,8 +174,8 @@ it("maps inspection clicks back to the unflipped source, including letterbox edg
     horizontal: false,
   })
   await toggleFlip("Flip")
-  fireEvent.click(board, { clientX: 100, clientY: 180, shiftKey: true })
-  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0.75, true, {
+  fireEvent.click(board, { clientX: 100, clientY: 180 })
+  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0.75, false, {
     vertical: true,
     horizontal: false,
   })
@@ -186,6 +186,44 @@ it("maps inspection clicks back to the unflipped source, including letterbox edg
   })
   fireEvent.click(board, { clientX: 100, clientY: 420 })
   expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0, false, {
+    vertical: true,
+    horizontal: false,
+  })
+})
+
+it("Shift+click outlines a card: four corners, then one inspecting capture at their centre", async () => {
+  renderTable()
+  fireEvent.click(screen.getByRole("button", { name: "Show Theo's board" }))
+  const board = screen.getByRole("button", { name: "Inspect Theo's board" })
+  const video = board.querySelector("video")!
+  Object.defineProperties(video, { videoWidth: { value: 800 }, videoHeight: { value: 400 } })
+  vi.spyOn(board, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 400, 400))
+  await toggleFlip("Flip")
+  remote.requestCapture.mockClear()
+  fireEvent.click(board, { clientX: 100, clientY: 180, shiftKey: true })
+  expect(screen.getByText("Outline: click corner 2 of 4 · Esc cancels")).toBeTruthy()
+  fireEvent.click(board, { clientX: 180, clientY: 180 })
+  fireEvent.click(board, { clientX: 180, clientY: 260 })
+  expect(remote.requestCapture).not.toHaveBeenCalled()
+  fireEvent.click(board, { clientX: 100, clientY: 260 })
+  // Corners come back in unflipped source fractions, like a plain click.
+  const [peer, x, y, inspect, , corners] = remote.requestCapture.mock.lastCall!
+  expect([peer, x, inspect]).toEqual(["first-connection", 0.3, true])
+  expect(y).toBeCloseTo(0.55)
+  expect(corners.map(([cx, cy]: [number, number]) => [cx, Math.round(cy * 100) / 100])).toEqual([
+    [0.2, 0.75],
+    [0.4, 0.75],
+    [0.4, 0.35],
+    [0.2, 0.35],
+  ])
+  expect(screen.queryByText(/Outline: click corner/)).toBeNull()
+
+  // Escape abandons an outline; the next plain click identifies as usual.
+  fireEvent.click(board, { clientX: 100, clientY: 180, shiftKey: true })
+  fireEvent.keyDown(window, { key: "Escape" })
+  expect(screen.queryByText(/Outline: click corner/)).toBeNull()
+  fireEvent.click(board, { clientX: 100, clientY: 180 })
+  expect(remote.requestCapture).toHaveBeenLastCalledWith("first-connection", 0.2, 0.75, false, {
     vertical: true,
     horizontal: false,
   })

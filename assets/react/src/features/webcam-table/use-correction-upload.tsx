@@ -29,6 +29,8 @@ export function correctionPayload(
     image: capture.image,
     click: [capture.clickX, capture.clickY],
     quad: result?.quad ?? null,
+    // A drawn outline, ordered by the recognizer's upright reading, is detector ground truth.
+    quad_source: capture.outline && result ? "manual" : null,
     up_vote: result?.upVote ?? null,
     label,
     top1: top?.id ?? null,

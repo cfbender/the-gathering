@@ -2,11 +2,12 @@ import { Link } from "@tanstack/react-router"
 import { LayoutGrid, Undo2 } from "lucide-react"
 import type { Ref } from "react"
 import { cn } from "@/lib/cn"
-import { ActiveBoard, capturePoint } from "./board"
+import { ActiveBoard, capturePoint, videoAspect } from "./board"
 import { BoardCardTray } from "./board-cards"
 import { cameraGridLayout } from "./camera-grid"
 import { CardPreview } from "./card-preview"
 import { CardSuggestions } from "./card-suggestions"
+import { useOutlineDrawing, type OutlineDrawing } from "./outline-drawing"
 import type { TableParticipant } from "./room-types"
 import { describeRoll } from "./table-rolls"
 import { StartOverlay } from "./start-overlay"
@@ -27,10 +28,12 @@ function StageBoard({
   view,
   participant,
   flow,
+  drawing,
 }: {
   view: TableView
   participant: TableParticipant
   flow: CardIdentificationFlow
+  drawing: OutlineDrawing
 }) {
   const { room, preferences } = view
   return (
@@ -64,11 +67,29 @@ function StageBoard({
                     onClick: view.releaseBoard,
                   }
           }
+          outline={drawing.draft?.peerId === participant.peer_id ? drawing.draft : undefined}
           onInspect={(event) => {
             const flip = videoFlip(view, participant)
             const point = capturePoint(event, flip)
-            if (point)
-              room.requestCapture(participant.peer_id, point.x, point.y, event.shiftKey, flip)
+            if (!point) return
+            const step = drawing.place(
+              participant.peer_id,
+              [point.x, point.y],
+              videoAspect(event),
+              event.shiftKey,
+            )
+            if (step.kind === "click")
+              room.requestCapture(participant.peer_id, point.x, point.y, false, flip)
+            // An outlined card always opens the picker: choosing it labels the drawn outline.
+            else if (step.kind === "done")
+              room.requestCapture(
+                participant.peer_id,
+                step.centre[0],
+                step.centre[1],
+                true,
+                flip,
+                step.corners,
+              )
           }}
         />
         <BoardCardTray
@@ -195,6 +216,7 @@ export function TableStage({
   videoStats: ReturnType<typeof useVideoStats>
 }) {
   const { room } = view
+  const drawing = useOutlineDrawing()
   return (
     <section
       ref={ref}
@@ -233,6 +255,7 @@ export function TableStage({
               view={view}
               participant={participant}
               flow={flow}
+              drawing={drawing}
             />
           ))
         )}

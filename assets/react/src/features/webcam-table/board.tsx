@@ -1,6 +1,7 @@
 import { Crown, UserPlus, Video, VideoOff, type LucideIcon } from "lucide-react"
 import type { MouseEvent, ReactNode } from "react"
 import { cn } from "@/lib/cn"
+import type { OutlineDraft } from "./outline-drawing"
 import { describeConnection, type TableParticipant } from "./use-webcam-room"
 
 export function StreamVideo({ stream, className }: { stream: MediaStream; className?: string }) {
@@ -98,6 +99,53 @@ export function capturePoint(event: MouseEvent<HTMLElement>, flip: VideoFlip = N
   return { x: flip.horizontal ? 1 - x : x, y: flip.vertical ? 1 - y : y }
 }
 
+/** The clicked video's width / height, for drawing over it in frame fractions. */
+export function videoAspect(event: MouseEvent<HTMLElement>) {
+  const video = event.currentTarget.querySelector("video")
+  return video?.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9
+}
+
+/** The corners placed so far of an outline being drawn on this board. The SVG letterboxes
+ * like the `object-contain` video and mirrors with it, so corners sit where they were clicked. */
+function OutlineMarks({ draft, flip }: { draft: OutlineDraft; flip: VideoFlip }) {
+  const points = draft.corners.map(([x, y]) => `${x * draft.aspect},${y}`).join(" ")
+  return (
+    <>
+      <svg
+        aria-hidden="true"
+        className={cn("pointer-events-none absolute inset-0 h-full w-full", flipClasses(flip))}
+        viewBox={`0 0 ${draft.aspect} 1`}
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <polyline
+          points={points}
+          fill="none"
+          className="stroke-primary"
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
+        {draft.corners.map(([x, y]) => (
+          <circle
+            key={`${x},${y}`}
+            cx={x * draft.aspect}
+            cy={y}
+            r={0.008}
+            className="fill-primary stroke-white"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </svg>
+      <span
+        role="status"
+        className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded-full bg-black/80 px-3 py-1 text-xs text-white"
+      >
+        Outline: click corner {draft.corners.length + 1} of 4 · Esc cancels
+      </span>
+    </>
+  )
+}
+
 export function ActiveBoard({
   participant,
   unattackable = false,
@@ -110,6 +158,7 @@ export function ActiveBoard({
   hiddenLabel,
   revealBadge,
   release,
+  outline,
   onInspect,
   lifeControl,
 }: {
@@ -125,6 +174,8 @@ export function ActiveBoard({
   revealBadge?: string
   /** Shown while the viewer has pinned this board: returns to the turn or the grid. */
   release?: { label: string; title: string; icon: LucideIcon; onClick: () => void }
+  /** An outline being drawn on this board (Shift+click corners). */
+  outline?: OutlineDraft
   onInspect: (event: MouseEvent<HTMLButtonElement>) => void
   lifeControl: ReactNode
 }) {
@@ -153,13 +204,14 @@ export function ActiveBoard({
           />
         )}
         {participant.camera_off && <CameraOffOverlay />}
+        {outline && <OutlineMarks draft={outline} flip={flip} />}
         {revealBadge && (
           <span className="absolute top-28 left-2 rounded bg-primary px-2 py-1 text-xs text-primary-content">
             {revealBadge}
           </span>
         )}
         <span className="pointer-events-none absolute bottom-9 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-3 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-          Click a card to identify it · Shift+click to choose
+          Click a card to identify it · Shift+click its four corners to outline it
         </span>
       </button>
       {participant.eliminated && <EliminatedOverlay />}
