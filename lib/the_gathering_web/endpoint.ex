@@ -4,11 +4,17 @@ defmodule TheGatheringWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
+  #
+  # Without :max_age the browser drops the cookie when it closes, so members had
+  # to sign in again far sooner than the 14-day server-side token allows. Match
+  # UserToken's session validity; UserAuth reissues the token (and cookie) after
+  # 7 days, so active members stay signed in indefinitely.
   @session_options [
     store: :cookie,
     key: "_the_gathering_key",
     signing_salt: "sQwWhYdP",
-    same_site: "Lax"
+    same_site: "Lax",
+    max_age: 60 * 60 * 24 * 14
   ]
 
   # The largest legitimate client frame is a WebRTC signal, capped at 64 KB by

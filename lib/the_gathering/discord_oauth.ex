@@ -28,10 +28,16 @@ defmodule TheGathering.DiscordOAuth do
     :ok
   end
 
+  # Discord defaults to `prompt=consent`, which re-shows the permissions screen on
+  # every sign-in. `prompt=none` skips it once the member has already authorized
+  # these scopes; first-time members still see the consent screen.
+  @authorization_params [scope: "identify email", prompt: "none"]
+
   def config do
     Application.get_env(:the_gathering, :discord_oauth, [])
     |> Keyword.put_new(:redirect_uri, Endpoint.url() <> "/auth/discord/callback")
     |> Keyword.put_new(:http_adapter, Assent.HTTPAdapter.Req)
+    |> Keyword.put_new(:authorization_params, @authorization_params)
   end
 
   defp present?(value), do: is_binary(value) and value != ""

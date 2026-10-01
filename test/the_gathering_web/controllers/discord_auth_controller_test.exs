@@ -316,6 +316,29 @@ defmodule TheGatheringWeb.DiscordAuthControllerTest do
     assert signed_in_user.id == user.id
   end
 
+  test "request skips Discord's consent screen for members who already authorized", %{conn: conn} do
+    conn = get(conn, "/auth/discord")
+
+    %{host: host, query: query} = conn |> redirected_to() |> URI.parse()
+    params = URI.decode_query(query)
+
+    assert host =~ "discord"
+    assert params["prompt"] == "none"
+    assert params["scope"] == "identify email"
+  end
+
+  test "signing in issues a persistent cookie matching the session token validity", %{conn: conn} do
+    create_admin()
+    open_registration()
+    user = create_discord_user("100000000000000003")
+
+    conn = discord_callback(conn, user.discord_id)
+
+    assert redirected_to(conn) == "/"
+    fourteen_days = 60 * 60 * 24 * 14
+    assert %{max_age: ^fourteen_days} = conn.resp_cookies["_the_gathering_key"]
+  end
+
   test "callback rejects a disabled linked member", %{conn: conn} do
     create_admin()
     open_registration()

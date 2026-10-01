@@ -230,10 +230,13 @@ a future sign-in or import may create a separate player. Use **Admin → Users**
 to the correct player. Identity management requires recent administrator authentication.
 
 Sessions use random tokens stored in the `users_tokens` table, following Phoenix's generated-auth
-design. Signing out ends only the current device's session. Changing the administrator password
-expires every session for that account, and expired session rows are pruned when a new session is
-issued. Sensitive actions—including import commits and player merges—require authentication within
-the previous ten minutes; previews and sample downloads remain available without reauthentication.
+design. The session cookie and its token last 14 days and are reissued after 7, so members who
+visit at least every two weeks stay signed in; Discord sign-in skips the consent screen once a
+member has authorized the app. Signing out ends only the current device's session. Changing the
+administrator password expires every session for that account, and expired session rows are pruned
+when a new session is issued. Sensitive actions—including import commits and player merges—require
+authentication within the previous ten minutes; previews and sample downloads remain available
+without reauthentication.
 The SPA prompts the administrator for a password and Discord members to authorize with Discord
 again. Passwords must be 12–72 characters.
 
