@@ -39,3 +39,7 @@ for (const name of ["localStorage", "sessionStorage"] as const) {
     })
   }
 }
+
+// jsdom logs "Not implemented: Window's scrollTo() method" whenever Radix Select
+// restores scroll position. Layout does not exist in jsdom, so make it a no-op.
+Object.defineProperty(window, "scrollTo", { value: () => {}, configurable: true, writable: true })

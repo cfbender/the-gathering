@@ -54,7 +54,7 @@ export default defineConfig({
     emptyOutDir: true,
     manifest: true,
     outDir: "priv/static/assets/react",
-    rollupOptions: {
+    rolldownOptions: {
       input: "assets/react/src/main.tsx",
     },
   },

@@ -1,15 +1,16 @@
 # syntax=docker/dockerfile:1
 
 ARG ELIXIR_VERSION=1.20.4
-# OTP 29.1 fixes alternate signal stack sizing on Alpine/AMX hosts (OTP-20292).
-ARG OTP_VERSION=29.1
+# OTP 29.1.1 fixes the ssl/ssh/public_key advisories CVE-2026-65634,
+# CVE-2026-68956, and CVE-2026-89422 (and keeps the 29.1 OTP-20292 Alpine fix).
+ARG OTP_VERSION=29.1.1
 ARG ALPINE_VERSION=3.24
 ARG NODE_VERSION=26.9.0
 ARG AUBE_VERSION=1.21.0
 
 # Hex images pin the OTP patch release as well as Elixir. Keep the builder's
 # Alpine minor version aligned with the runner for native release dependencies.
-ARG BUILDER_IMAGE=hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-alpine-${ALPINE_VERSION}.1
+ARG BUILDER_IMAGE=hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-alpine-${ALPINE_VERSION}.2
 ARG RUNNER_IMAGE=alpine:${ALPINE_VERSION}
 
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS node-runtime
