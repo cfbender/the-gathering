@@ -77,6 +77,7 @@ die() {
 require_pve() {
   command -v pct >/dev/null || die "pct not found: run this on a Proxmox VE host"
   [[ $EUID -eq 0 ]] || die "run as root"
+  [[ "$(dpkg --print-architecture)" == amd64 ]] || die "release tarballs are built for amd64 only"
 }
 
 in_ct() {
@@ -85,9 +86,14 @@ in_ct() {
   pct exec "$ctid" -- bash -lc "$*"
 }
 
+# Newest Debian 13 template for the host's architecture. pveam also lists arm64 templates,
+# which an x86 host cannot run.
 latest_debian_template() {
+  local arch
+  arch="$(dpkg --print-architecture)"
   pveam update >/dev/null
-  pveam available --section system | awk '{print $2}' | grep '^debian-13-standard' | sort -V | tail -n1
+  pveam available --section system | awk '{print $2}' |
+    grep "^debian-13-standard_.*_${arch}\.tar" | sort -V | tail -n1
 }
 
 # Resolves VERSION to a release tag, defaulting to the newest GitHub release.
