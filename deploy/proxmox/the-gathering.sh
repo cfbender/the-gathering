@@ -14,13 +14,18 @@
 #   CORES             vCPUs (4)
 #   RAM_MB            memory in MiB (2048)
 #   BRIDGE            network bridge (vmbr0)
-#   IP                dhcp, or CIDR such as 192.168.1.50/24 (dhcp)
+#   IP                dhcp, or CIDR such as 192.168.1.50/24 (dhcp; the IP is printed at the end,
+#                     so give the container a DHCP reservation if your reverse proxy points at it)
 #   GATEWAY           gateway for a static IP (empty)
 #   SSH_KEYS          public keys to authorize for root (the PVE host's /root/.ssh/authorized_keys)
 #   PASSWORD          root password; leave empty to rely on keys and `pct enter`
 #   VERSION           release tag to install, e.g. v0.1.0 (latest GitHub release)
-#   ADMIN_USERNAME    with ADMIN_PASSWORD, create the first administrator (empty)
-#   ADMIN_PASSWORD
+#
+# When run from a terminal the script asks for these; set them to skip the questions:
+#
+#   PUBLIC_URL        address players use, e.g. https://games.example.com (http://<container-ip>:4000)
+#   ADMIN_USERNAME    first administrator account (blank skips; the app then offers its setup page)
+#   ADMIN_PASSWORD    at least 12 characters
 #
 # Inside the container:
 #   /opt/the-gathering/releases/<tag>   Elixir releases from GitHub; `current` points at the live one
@@ -53,8 +58,10 @@ GATEWAY="${GATEWAY:-}"
 SSH_KEYS="${SSH_KEYS:-/root/.ssh/authorized_keys}"
 PASSWORD="${PASSWORD:-}"
 VERSION="${VERSION:-}"
+PUBLIC_URL="${PUBLIC_URL:-}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+PHX_HOST="" PHX_SCHEME="" PHX_URL_PORT=""
 
 info() { printf '\033[1;34m->\033[0m %s\n' "$*"; }
 ok() { printf '\033[1;32mok\033[0m %s\n' "$*"; }
@@ -90,6 +97,56 @@ resolve_version() {
     sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
   [[ -n "$tag" ]] || die "could not determine the latest release of ${REPO}; set VERSION=vX.Y.Z"
   printf '%s\n' "$tag"
+}
+
+# Splits PUBLIC_URL into PHX_HOST/PHX_SCHEME/PHX_URL_PORT. Empty PUBLIC_URL leaves them
+# empty, and the .env.example defaults (http://localhost:4000) are patched with the
+# container IP after it is known.
+parse_public_url() {
+  [[ -n "$PUBLIC_URL" ]] || return 0
+  local rest
+  case "$PUBLIC_URL" in
+  https://*) PHX_SCHEME=https rest="${PUBLIC_URL#https://}" ;;
+  http://*) PHX_SCHEME=http rest="${PUBLIC_URL#http://}" ;;
+  *) die "PUBLIC_URL must start with http:// or https:// (got '$PUBLIC_URL')" ;;
+  esac
+  rest="${rest%%/*}"
+  if [[ "$rest" == *:* ]]; then
+    PHX_HOST="${rest%%:*}"
+    PHX_URL_PORT="${rest##*:}"
+  else
+    PHX_HOST="$rest"
+    [[ "$PHX_SCHEME" == https ]] && PHX_URL_PORT=443 || PHX_URL_PORT=80
+  fi
+  [[ -n "$PHX_HOST" && "$PHX_URL_PORT" =~ ^[0-9]+$ ]] || die "could not parse PUBLIC_URL '$PUBLIC_URL'"
+}
+
+# Asks for the settings the installer cannot discover, unless they came in as env vars
+# or stdin is not a terminal.
+ask_settings() {
+  [[ -t 0 ]] || return 0
+  if [[ -z "$PUBLIC_URL" ]]; then
+    read -rp "Public URL players will use (e.g. https://games.example.com; blank for http://<container-ip>:4000): " PUBLIC_URL
+  fi
+  if [[ -z "$ADMIN_USERNAME" ]]; then
+    read -rp "First administrator username (blank to skip and use the in-app setup page): " ADMIN_USERNAME
+  fi
+  if [[ -n "$ADMIN_USERNAME" && -z "$ADMIN_PASSWORD" ]]; then
+    local confirm
+    while :; do
+      read -rsp "Administrator password (12+ characters): " ADMIN_PASSWORD
+      echo
+      read -rsp "Confirm password: " confirm
+      echo
+      if [[ ${#ADMIN_PASSWORD} -lt 12 ]]; then
+        echo "password must be at least 12 characters" >&2
+      elif [[ "$ADMIN_PASSWORD" != "$confirm" ]]; then
+        echo "passwords do not match" >&2
+      else
+        break
+      fi
+    done
+  fi
 }
 
 wait_for_network() {
@@ -155,9 +212,12 @@ create() {
   require_pve
   local ctid="${CTID:-$(pvesh get /cluster/nextid)}"
   pct status "$ctid" >/dev/null 2>&1 && die "container $ctid already exists; set CTID to a free id"
+  ask_settings
   if [[ -n "$ADMIN_USERNAME" || -n "$ADMIN_PASSWORD" ]]; then
     [[ -n "$ADMIN_USERNAME" && -n "$ADMIN_PASSWORD" ]] || die "ADMIN_USERNAME and ADMIN_PASSWORD must be set together"
+    [[ ${#ADMIN_PASSWORD} -ge 12 ]] || die "ADMIN_PASSWORD must be at least 12 characters"
   fi
+  parse_public_url
 
   local tag
   tag="$(resolve_version)"
@@ -190,7 +250,17 @@ create() {
     "${auth[@]}" >/dev/null
   pct start "$ctid"
   wait_for_network "$ctid"
-  ok "container $ctid is up"
+  local ip
+  ip="$(ct_ip "$ctid")"
+  ok "container $ctid is up at $ip"
+
+  local trust_proxy=""
+  if [[ -z "$PHX_HOST" ]]; then
+    PHX_HOST="$ip" PHX_SCHEME=http PHX_URL_PORT=4000
+  else
+    # A public URL implies a reverse proxy in front of the container.
+    trust_proxy=true
+  fi
 
   info "Installing runtime packages and $APP $tag"
   push_installer "$ctid"
@@ -216,6 +286,7 @@ if [ ! -f ${ENV_FILE} ]; then
   curl -fsSL https://raw.githubusercontent.com/${REPO}/${tag}/.env.example -o ${ENV_FILE}
   secret="\$(openssl rand -base64 64 | tr -d '\n')"
   sed -i "s|^SECRET_KEY_BASE=.*|SECRET_KEY_BASE=\${secret}|" ${ENV_FILE}
+  sed -i "s|^PHX_HOST=.*|PHX_HOST=${PHX_HOST}|; s|^PHX_SCHEME=.*|PHX_SCHEME=${PHX_SCHEME}|; s|^PHX_URL_PORT=.*|PHX_URL_PORT=${PHX_URL_PORT}|; s|^TRUST_PROXY_HEADERS=.*|TRUST_PROXY_HEADERS=${trust_proxy}|" ${ENV_FILE}
   chown root:${APP_USER} ${ENV_FILE}
   chmod 640 ${ENV_FILE}
 fi
@@ -271,16 +342,16 @@ EOF
   in_ct "$ctid" "systemctl start ${SERVICE}"
   ok "$APP $tag is starting"
 
-  local ip
-  ip="$(ct_ip "$ctid")"
   cat <<EOF
 
 ${APP} ${tag} is running in container ${ctid} at http://${ip}:4000
+EOF
+  [[ -n "$PUBLIC_URL" ]] && echo "Configured for ${PHX_SCHEME}://${PHX_HOST}:${PHX_URL_PORT}; point your reverse proxy at http://${ip}:4000."
+  cat <<EOF
 
 Next steps:
-  * Edit ${ENV_FILE} in the container (PHX_HOST, Discord, TURN), then
+  * Optional settings (Discord, TURN, ManaVault) live in ${ENV_FILE} in the container; after editing run
       pct exec ${ctid} -- systemctl restart ${SERVICE}
-  * Point your reverse proxy at http://${ip}:4000.
   * Logs:   pct exec ${ctid} -- journalctl -fu ${SERVICE}
   * Update: bash the-gathering.sh update ${ctid}
 EOF

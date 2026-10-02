@@ -44,9 +44,10 @@ Debian LXC that runs the app natively (no Docker): it installs the Elixir releas
 latest [GitHub release](https://github.com/cfbender/the-gathering/releases) into
 `/opt/the-gathering`, keeps data in `/var/lib/the-gathering`, reads settings from
 `/etc/the-gathering.env` (same keys as `.env.example`), and runs it as the `the-gathering`
-systemd service. Run it as root on the Proxmox host; settings such as `CTID`, `STORAGE`, `IP`,
-`CORES`, `RAM_MB`, `VERSION` and `ADMIN_USERNAME`/`ADMIN_PASSWORD` are environment variables
-documented at the top of the script.
+systemd service. Run it as root on the Proxmox host. It asks for the public URL and the first
+administrator account; container settings such as `CTID`, `STORAGE`, `IP`, `CORES`, `RAM_MB` and
+`VERSION` are environment variables documented at the top of the script (the defaults use DHCP
+and the next free container id).
 
 ```sh
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/cfbender/the-gathering/main/deploy/proxmox/the-gathering.sh)"
