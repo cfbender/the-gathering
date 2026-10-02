@@ -48,15 +48,23 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
             build-essential git curl ca-certificates xz-utils pkg-config libssl-dev >/dev/null
 
+      # The checksums are verified either way, so a cached tarball is as trusted as a fresh one.
+      - name: Cache Node and aube downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: downloads
+          key: release-tools-node-${{ env.NODE_VERSION }}-aube-${{ env.AUBE_VERSION }}
+
       - name: Install Node and aube
         run: |
           set -eu
-          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/node.tar.xz
-          echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c -
-          tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
-          curl -fsSL "https://github.com/aubepkg/aube/releases/download/v${AUBE_VERSION}/aube-v${AUBE_VERSION}-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/aube.tar.gz
-          echo "${AUBE_SHA256}  /tmp/aube.tar.gz" | sha256sum -c -
-          tar -xzf /tmp/aube.tar.gz -C /tmp aube
+          mkdir -p downloads
+          [ -f downloads/node.tar.xz ] || curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o downloads/node.tar.xz
+          echo "${NODE_SHA256}  downloads/node.tar.xz" | sha256sum -c -
+          tar -xJf downloads/node.tar.xz -C /usr/local --strip-components=1
+          [ -f downloads/aube.tar.gz ] || curl -fsSL "https://github.com/aubepkg/aube/releases/download/v${AUBE_VERSION}/aube-v${AUBE_VERSION}-x86_64-unknown-linux-gnu.tar.gz" -o downloads/aube.tar.gz
+          echo "${AUBE_SHA256}  downloads/aube.tar.gz" | sha256sum -c -
+          tar -xzf downloads/aube.tar.gz -C /tmp aube
           install /tmp/aube /usr/local/bin/aube
           node --version
           aube --version
