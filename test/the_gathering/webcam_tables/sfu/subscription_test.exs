@@ -62,6 +62,37 @@ defmodule TheGathering.WebcamTables.Sfu.SubscriptionTest do
     assert {_sub, false} = Subscription.request_layer(sub, "h")
   end
 
+  test "falling back moves only the pending layer and keeps the wanted one" do
+    sub = subscription("h")
+    {:forward, _packet, sub} = Subscription.route(sub, "h", packet(1), true)
+
+    assert {sub, true} = Subscription.fall_back(sub, "l")
+    assert %{wanted: "h", layer: "h", pending: "l"} = sub
+    assert {^sub, false} = Subscription.fall_back(sub, "l")
+
+    # The old layer keeps flowing until the new one's keyframe arrives, then the viewer is
+    # on the fallback but still wants the sharp layer.
+    assert {:forward, _packet, sub} = Subscription.route(sub, "h", packet(2), false)
+    assert {:forward, _packet, sub} = Subscription.route(sub, "l", packet(3), true)
+    assert %{wanted: "h", layer: "l", pending: nil} = sub
+
+    # Returning to the wanted layer once it is back clears the pending state on arrival.
+    assert {sub, true} = Subscription.fall_back(sub, "h")
+    assert {:forward, _packet, sub} = Subscription.route(sub, "h", packet(4), true)
+    assert %{wanted: "h", layer: "h", pending: nil} = sub
+    assert {^sub, false} = Subscription.fall_back(sub, "h")
+  end
+
+  test "the nearest live layer is the sharpest at or below the wanted one, else the softest" do
+    rids = ["l", "m", "h"]
+    assert Subscription.nearest_live("h", ["l", "m"], rids) == "m"
+    assert Subscription.nearest_live("h", ["l"], rids) == "l"
+    assert Subscription.nearest_live("m", ["l", "h"], rids) == "l"
+    assert Subscription.nearest_live("l", ["m", "h"], rids) == "m"
+    assert Subscription.nearest_live("m", ["m"], rids) == "m"
+    assert Subscription.nearest_live("h", [], rids) == nil
+  end
+
   test "a hidden board stops immediately and resumes only on a keyframe" do
     sub = subscription("m")
     {:forward, _packet, sub} = Subscription.route(sub, "m", packet(1), true)

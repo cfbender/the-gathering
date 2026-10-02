@@ -28,6 +28,14 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
   # PLI from several viewers at once would spend its whole bitrate on keyframes.
   @pli_interval_ms 300
 
+  # Browsers pause simulcast layers their uplink cannot carry and bring them back as the
+  # estimate recovers. A layer silent this long counts as paused, and a viewer on it is
+  # moved to one still arriving; it returns once the wanted layer has been back this long,
+  # so a layer that keeps flapping does not drag the viewer back and forth.
+  @adapt_interval_ms 500
+  @stale_ms 500
+  @recovered_ms 2_000
+
   def start_link(room_id), do: GenServer.start_link(__MODULE__, room_id, name: via(room_id))
 
   def via(room_id), do: {:via, Registry, {Sfu.Registry, room_id}}
@@ -35,6 +43,7 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
   @impl true
   def init(room_id) do
     Process.flag(:trap_exit, true)
+    Process.send_after(self(), :adapt_layers, @adapt_interval_ms)
     {:ok, %{id: room_id, peers: %{}, by_pc: %{}, by_monitor: %{}, plis: %{}}}
   end
 
@@ -179,6 +188,11 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
     end
   end
 
+  def handle_info(:adapt_layers, state) do
+    Process.send_after(self(), :adapt_layers, @adapt_interval_ms)
+    {:noreply, adapt_layers(state, System.monotonic_time(:millisecond))}
+  end
+
   # The channel left or crashed; its connection and everyone's copy of its video go too.
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
     case Map.pop(state.by_monitor, ref) do
@@ -218,7 +232,7 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
         |> PeerConnection.get_transceivers()
         |> Enum.find_value([], fn tr -> tr.receiver.track.id == track.id && tr.codecs end)
 
-      publisher = %{track_id: track.id, rids: track.rids, codec: nil, codecs: codecs}
+      publisher = %{track_id: track.id, rids: track.rids, codec: nil, codecs: codecs, layers: %{}}
       state = put_peer(state, %{peer | publisher: publisher})
 
       state.peers
@@ -232,12 +246,18 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
 
   defp handle_webrtc({:rtp, track_id, rid, packet}, peer_id, state) do
     case Map.fetch!(state.peers, peer_id) do
-      %{publisher: %{track_id: ^track_id} = publisher} ->
-        state = ensure_publisher_codec(state, peer_id, publisher, packet)
+      %{publisher: %{track_id: ^track_id} = publisher} = peer ->
+        rid = rid || :single
+        publisher = note_layer(publisher, rid, System.monotonic_time(:millisecond))
+
+        state =
+          state
+          |> put_peer(%{peer | publisher: publisher})
+          |> ensure_publisher_codec(peer_id, publisher, packet)
 
         case state.peers[peer_id].publisher do
           %{codec: nil} -> state
-          publisher -> forward(state, peer_id, publisher, rid || :single, packet)
+          publisher -> forward(state, peer_id, publisher, rid, packet)
         end
 
       _peer ->
@@ -277,6 +297,17 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
   end
 
   defp handle_webrtc(_message, _peer_id, state), do: state
+
+  # When the layer last sent a packet, and since when it has been sending without a pause.
+  defp note_layer(publisher, rid, now) do
+    since =
+      case publisher.layers[rid] do
+        %{last: last, since: since} when now - last < @stale_ms -> since
+        _paused_or_new -> now
+      end
+
+    put_in(publisher.layers[rid], %{last: now, since: since})
+  end
 
   # --- Subscriptions ------------------------------------------------------------------------
 
@@ -358,6 +389,58 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
     if keyframe?,
       do: request_keyframe(state, owner.id, owner.publisher, sub.pending),
       else: state
+  end
+
+  # --- Layer liveness -----------------------------------------------------------------------
+
+  # Moves viewers off publisher layers that have gone quiet and back once the wanted one
+  # has reliably returned. Only simulcast subscriptions that are already showing a layer
+  # take part; a blank one adopts whatever keyframe arrives first (see `Subscription.route/4`).
+  defp adapt_layers(state, now) do
+    Enum.reduce(state.peers, state, fn {viewer_id, viewer}, state ->
+      Enum.reduce(viewer.subs, state, fn
+        {owner_id, %{layer: layer} = sub}, state when is_binary(layer) ->
+          adapt_layer(state, viewer_id, owner_id, sub, now)
+
+        _blank_or_single, state ->
+          state
+      end)
+    end)
+  end
+
+  defp adapt_layer(state, viewer_id, owner_id, sub, now) do
+    %{publisher: %{rids: rids} = publisher} = Map.fetch!(state.peers, owner_id)
+    live = for {rid, %{last: last}} <- publisher.layers, now - last < @stale_ms, do: rid
+
+    target =
+      cond do
+        sub.layer not in live -> Subscription.nearest_live(sub.wanted, live, rids)
+        sub.layer != sub.wanted and recovered?(publisher, sub.wanted, now) -> sub.wanted
+        true -> nil
+      end
+
+    with rid when is_binary(rid) <- target,
+         {sub, true} <- Subscription.fall_back(sub, rid) do
+      Logger.info(
+        "SFU moving #{viewer_id} from #{owner_id}'s #{sub.layer} layer to #{rid} " <>
+          "(wants #{sub.wanted}; live: #{Enum.join(live, ",")})"
+      )
+
+      viewer = Map.fetch!(state.peers, viewer_id)
+
+      state
+      |> put_peer(put_in(viewer.subs[owner_id], sub))
+      |> request_keyframe(owner_id, publisher, rid)
+    else
+      _nothing_to_do -> state
+    end
+  end
+
+  defp recovered?(publisher, rid, now) do
+    case publisher.layers[rid] do
+      %{last: last, since: since} -> now - last < @stale_ms and now - since >= @recovered_ms
+      nil -> false
+    end
   end
 
   # --- Negotiation --------------------------------------------------------------------------

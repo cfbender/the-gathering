@@ -88,6 +88,39 @@ defmodule TheGathering.WebcamTables.Sfu.Subscription do
   end
 
   @doc """
+  Moves to `layer` without changing which one the viewer wants, for when the wanted layer
+  has stopped arriving (or started again). Returns the subscription and whether a keyframe
+  of `layer` must be requested.
+  """
+  def fall_back(%__MODULE__{} = sub, layer) do
+    cond do
+      sub.layer == layer -> {%{sub | pending: nil}, false}
+      sub.pending == layer -> {sub, false}
+      true -> {%{sub | pending: layer}, true}
+    end
+  end
+
+  @doc """
+  The layer in `live` a viewer wanting `wanted` should get: the sharpest live one no sharper
+  than `wanted`, else the softest live one. `rids` lists layers softest first.
+  """
+  @spec nearest_live(layer(), [layer()], [layer()]) :: layer() | nil
+  def nearest_live(wanted, live, rids) do
+    wanted_at = Enum.find_index(rids, &(&1 == wanted)) || length(rids)
+
+    rids
+    |> Enum.with_index()
+    |> Enum.filter(fn {rid, _index} -> rid in live end)
+    |> Enum.min_by(fn {_rid, index} -> {index > wanted_at, abs(index - wanted_at)} end, fn ->
+      nil
+    end)
+    |> case do
+      {rid, _index} -> rid
+      nil -> nil
+    end
+  end
+
+  @doc """
   Allows or blocks forwarding. Blocking stops packets immediately; allowing again waits for
   a keyframe of the wanted layer, so the result also says whether to request one.
   """
