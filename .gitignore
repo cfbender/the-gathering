@@ -16,6 +16,9 @@ the_gathering-*.tar
 /priv/static/assets/
 /priv/static/cache_manifest.json
 
+# Written by the release and container builds; absent in development
+/priv/VERSION
+
 # Local SQLite databases and runtime data
 *.db
 *.db-*

@@ -59,6 +59,10 @@ COPY package.json aube-lock.yaml ./
 RUN aube install --frozen-lockfile
 
 COPY priv priv
+# The admin UI shows this version and compares it with GitHub (vX.Y.Z for tags, nightly-<commit>
+# for main); container.yml passes it. Empty means a local development build.
+ARG APP_VERSION=""
+RUN printf '%s\n' "$APP_VERSION" > priv/VERSION
 COPY lib lib
 COPY vite.config.ts tsconfig.json ./
 COPY assets assets

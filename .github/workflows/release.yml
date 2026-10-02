@@ -79,8 +79,12 @@ jobs:
         id: release
         run: |
           set -eu
-          mix release --overwrite
           if [ "${GITHUB_REF_TYPE}" = tag ]; then tag="${GITHUB_REF_NAME}"; else tag=nightly; fi
+          # priv/VERSION ships inside the release: the admin UI shows it and compares it with
+          # GitHub (the nightly tag's commit, or the latest release). Same format as container.yml.
+          if [ "$tag" = nightly ]; then version="nightly-$(printf %s "$GITHUB_SHA" | cut -c1-7)"; else version="$tag"; fi
+          printf '%s\n' "$version" > priv/VERSION
+          mix release --overwrite
           archive="the_gathering-${tag}-linux-amd64.tar.gz"
           tar -C _build/prod/rel -czf "$archive" the_gathering
           sha256sum "$archive" > "${archive}.sha256"

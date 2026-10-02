@@ -43,6 +43,10 @@
 #                                       the community-scripts helpers: it runs the current copy of
 #                                       this script from GitHub, so updater fixes reach old containers
 #   /etc/cron.d/the-gathering-update    runs `update` on the AUTO_UPDATE schedule (absent when off)
+#   the-gathering-update.path           runs `update` when the app creates
+#                                       /var/lib/the-gathering/update-request, which is what the
+#                                       "Update now" button under Administration > Server settings
+#                                       does (the app itself may only write to its data directory)
 #
 # The container is unprivileged with nesting=1: Debian 13's systemd (257) needs it to boot in an
 # LXC (Proxmox warns "Systemd 257 detected. You may need to enable nesting" otherwise), and it is
@@ -67,6 +71,8 @@ SERVICE="the-gathering"
 APP_USER="the-gathering"
 UNIT_FILE="/etc/systemd/system/${SERVICE}.service"
 CRON_FILE="/etc/cron.d/${SERVICE}-update"
+REQUEST_FILE="${DATA_DIR}/update-request"
+HOOK_DROPIN="/etc/systemd/system/${SERVICE}.service.d/self-update.conf"
 AUTO_UPDATE_DEFAULT="0 4 * * *"
 
 CT_HOSTNAME="${CT_HOSTNAME:-the-gathering}"
@@ -259,8 +265,12 @@ pin_dhcp_ip() {
 #                                               its checksum, unpacks it next to the previous
 #                                               releases, repoints `current`, restarts the service
 #   /usr/local/bin/update [tag]                 runs this script's `update` from GitHub main
+#   the-gathering-update.path                   runs `update` when the app creates REQUEST_FILE
+#                                               (the admin UI's "Update now" button); a drop-in
+#                                               tells the app which file to create
 push_helpers() {
   local ctid="$1"
+  push_update_hook "$ctid"
   put_file "$ctid" /usr/local/bin/update 0755 <<EOF
 #!/usr/bin/env bash
 # Updates ${APP} in this container (usage: update [tag]). Runs the current
@@ -315,6 +325,42 @@ if systemctl is-enabled -q ${SERVICE} 2>/dev/null; then
 fi
 echo "installed \${tag}"
 EOF
+}
+
+# The service runs as an unprivileged user on a read-only system, so the app cannot run `update`
+# itself: it creates REQUEST_FILE in its data directory, the path unit notices, and systemd runs
+# `update` as root (following the installed channel, like the cron job). The file is removed when
+# `update` has finished, whatever the outcome, so the admin UI can tell the update is still running
+# and the path unit does not fire again for the same request.
+push_update_hook() {
+  local ctid="$1"
+  put_file "$ctid" "/etc/systemd/system/${SERVICE}-update.service" 0644 <<EOF
+[Unit]
+Description=${APP} update requested from the admin UI
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -o pipefail -c 'trap "rm -f ${REQUEST_FILE}" EXIT; update 2>&1 | logger -t ${SERVICE}-update'
+EOF
+  put_file "$ctid" "/etc/systemd/system/${SERVICE}-update.path" 0644 <<EOF
+[Unit]
+Description=Watches for update requests from the ${APP} admin UI
+
+[Path]
+PathExists=${REQUEST_FILE}
+Unit=${SERVICE}-update.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  in_ct "$ctid" "mkdir -p $(dirname "$HOOK_DROPIN")"
+  put_file "$ctid" "$HOOK_DROPIN" 0644 <<EOF
+# Written by deploy/proxmox/the-gathering.sh: lets the admin UI request updates through
+# ${SERVICE}-update.path.
+[Service]
+Environment=SELF_UPDATE_REQUEST_FILE=${REQUEST_FILE}
+EOF
+  in_ct "$ctid" "systemctl daemon-reload && systemctl enable -q --now ${SERVICE}-update.path"
 }
 
 # Writes (or, for "off", removes) the cron.d entry that runs `update` on a schedule. Output goes
@@ -518,7 +564,8 @@ Next steps:
   * Optional settings (Discord, TURN, ManaVault) live in ${ENV_FILE} in the container; after editing run
       pct exec ${ctid} -- systemctl restart ${SERVICE}
   * Logs:   pct exec ${ctid} -- journalctl -fu ${SERVICE}
-  * Update: run \`update\` inside the container, or bash the-gathering.sh update ${ctid}
+  * Update: the "Update now" button under Administration > Server settings, \`update\` inside
+            the container, or bash the-gathering.sh update ${ctid}
 EOF
   if [[ "$AUTO_UPDATE" == off ]]; then
     echo "  * Automatic updates are off; enable with bash the-gathering.sh auto-update ${ctid} '${AUTO_UPDATE_DEFAULT}'"
@@ -569,8 +616,18 @@ update() {
   local tag
   tag="$(resolve_version)"
   info "Installing $APP $tag"
+  # A container from before the admin UI could request updates gets the hook now; the app only
+  # sees it after a restart, which the install does anyway unless this version is already live.
+  local had_hook=true current_before current_after
+  in_ct "$TARGET" "test -f ${HOOK_DROPIN}" || had_hook=false
+  current_before="$(in_ct "$TARGET" "readlink -f ${APP_DIR}/current" || true)"
   push_helpers "$TARGET"
   in_ct "$TARGET" "the-gathering-install ${tag}"
+  current_after="$(in_ct "$TARGET" "readlink -f ${APP_DIR}/current")"
+  if [[ "$had_hook" == false && "$current_before" == "$current_after" ]]; then
+    in_ct "$TARGET" "systemctl try-restart ${SERVICE}"
+    ok "restarted $APP so the admin UI can request updates"
+  fi
   ok "$APP $tag is running${TARGET:+ in container $TARGET}"
   if ! in_ct "$TARGET" "test -f ${CRON_FILE}"; then
     info "Automatic updates are off; enable with the-gathering.sh auto-update ${TARGET:+$TARGET }'${AUTO_UPDATE_DEFAULT}'"

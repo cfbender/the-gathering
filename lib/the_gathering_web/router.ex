@@ -175,6 +175,8 @@ defmodule TheGatheringWeb.Router do
     patch "/settings", AdminSettingsController, :update
     get "/registration-invite", AdminRegistrationInviteController, :show
     post "/registration-invite", AdminRegistrationInviteController, :create
+    get "/software-update", AdminSoftwareUpdateController, :show
+    post "/software-update", AdminSoftwareUpdateController, :create
     get "/discord/pending", AdminDiscordPendingController, :index
     patch "/discord/pending/:id", AdminDiscordPendingController, :update
     delete "/discord/pending/:id", AdminDiscordPendingController, :delete

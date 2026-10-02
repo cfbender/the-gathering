@@ -37,6 +37,28 @@ The app listens on port 4000 and stores its SQLite database and files under `./d
 
 Health check: `GET /api/health` returns `{"status":"ok"}` when the database is reachable.
 
+### Updating from the admin UI
+
+**Administration → Server settings → Software update** shows the running version and whether
+GitHub has a newer one (the latest release for `vX.Y.Z` builds, the newest `main` commit for
+`nightly-<commit>` builds; the check is cached for 15 minutes). The **Update now** button installs
+the newest build of the channel the server already follows; it does not switch channels. The app
+never replaces itself, it asks whatever runs it:
+
+- Proxmox LXC: the installer (and every `update` run) sets up a `the-gathering-update.path`
+  systemd unit that runs `update` as root when the app writes
+  `/var/lib/the-gathering/update-request`. Containers created before this existed get it the next
+  time `update` runs.
+- Docker: an optional [Watchtower](https://watchtower.nickfedor.com) sidecar. In `.env` set
+  `COMPOSE_PROFILES=self-update` and `WATCHTOWER_HTTP_API_TOKEN` (`openssl rand -hex 32`), then
+  `docker compose up -d`. The button then asks Watchtower to pull the image tag the container was
+  started from (`latest` follows `main`; pin `0.1` or a `v0.1.0` tag for releases) and recreate
+  the container. Watchtower does not poll on its own in this setup.
+
+When neither is configured the section only shows the version and says the server has to be
+updated by hand. The version comes from `priv/VERSION`, which the release and container builds
+write; development builds have none.
+
 ### Proxmox VE
 
 [`deploy/proxmox/the-gathering.sh`](deploy/proxmox/the-gathering.sh) creates an unprivileged
@@ -58,7 +80,8 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/cfbender/the-gathering/m
 Updates work like the community-scripts helpers: inside the container, `update [tag]` is on `PATH`
 and installs the latest (or given) release and restarts the service (it runs the current copy of
 the script from GitHub, so fixes to the updater reach existing containers). From the Proxmox host,
-`bash the-gathering.sh update <CTID> [tag]` does the same. The previous release stays under
+`bash the-gathering.sh update <CTID> [tag]` does the same, as does **Update now** in the admin UI
+(see above; it logs to `journalctl -t the-gathering-update`). The previous release stays under
 `/opt/the-gathering/releases/` for rollback. Release tarballs are built by
 [`.github/workflows/release.yml`](.github/workflows/release.yml) for every `v*.*.*` tag, and every
 push to `main` republishes the rolling

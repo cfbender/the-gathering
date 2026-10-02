@@ -46,10 +46,24 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=ref,event=tag
 
+      # Shown under Administration -> Server settings -> Software update, and compared with the
+      # latest GitHub release (tags) or the nightly tag's commit (main). Keep in step with the
+      # VERSION file release.yml writes.
+      - name: Determine app version
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=nightly-$(printf %s "$GITHUB_SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
           # amd64 only: the image runs on an x86 Ubuntu server, and building arm64 under
           # QEMU emulation made every lib/assets change cost ~2.5 extra minutes.
           platforms: linux/amd64

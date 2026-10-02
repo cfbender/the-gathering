@@ -21,6 +21,7 @@ defmodule TheGathering.Application do
       {TheGathering.RateLimiter, clean_period: :timer.minutes(10)},
       TheGathering.Catalog.Supervisor,
       TheGathering.Decklists.Cache,
+      TheGathering.SelfUpdate,
       # Start a worker by calling: TheGathering.Worker.start_link(arg)
       # {TheGathering.Worker, arg},
       TheGatheringWeb.Endpoint,

@@ -100,6 +100,14 @@ config :the_gathering,
 config :the_gathering, TheGathering.Discord,
   default_timezone: System.get_env("DISCORD_DEFAULT_TIMEZONE", "America/New_York")
 
+# Updating from the admin UI. The LXC installer sets SELF_UPDATE_REQUEST_FILE (a systemd path
+# unit runs `update` when the file appears); Docker installs point at Watchtower's HTTP API.
+config :the_gathering, TheGathering.SelfUpdate,
+  request_file: System.get_env("SELF_UPDATE_REQUEST_FILE"),
+  watchtower_url: System.get_env("WATCHTOWER_URL"),
+  watchtower_token: System.get_env("WATCHTOWER_HTTP_API_TOKEN"),
+  watchtower_image: System.get_env("WATCHTOWER_IMAGE")
+
 if discord_bot_token = System.get_env("DISCORD_BOT_TOKEN") do
   config :nostrum,
     token: discord_bot_token,

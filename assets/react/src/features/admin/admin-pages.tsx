@@ -22,6 +22,7 @@ import { formValue } from "@/lib/form"
 import { getPlayers, invalidateGameRelated, linkUserPlayer } from "@/features/games/games"
 import type { PlayerSummary } from "@/features/games/games"
 import { RegistrationInvite } from "./registration-invite"
+import { SoftwareUpdate } from "./software-update"
 
 interface Data<T> {
   data: T
@@ -129,7 +130,7 @@ export function AdminSettingsPage() {
       <PageHeader
         eyebrow="Administration"
         title="Server settings"
-        description="Registration and statistics defaults for this server."
+        description="Registration, statistics defaults, and updates for this server."
         actions={
           <label className="bg-base-100/60 border-base-300 rounded-field flex cursor-pointer items-center gap-3 border px-4 py-3">
             <span className="text-sm font-medium">Open registration</span>
@@ -149,6 +150,7 @@ export function AdminSettingsPage() {
       />
       <RegistrationInvite />
       <StatsCutoff settings={settings.data} />
+      <SoftwareUpdate />
     </div>
   )
 }
