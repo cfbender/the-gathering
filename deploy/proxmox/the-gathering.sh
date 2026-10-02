@@ -33,6 +33,10 @@
 #   /var/lib/the-gathering              DATA_DIR: SQLite database, recognizer bundles, image cache
 #   the-gathering.service               systemd unit running bin/the_gathering as user the-gathering
 #
+# The container is unprivileged with nesting=1: Debian 13's systemd (257) needs it to boot in an
+# LXC (Proxmox warns "Systemd 257 detected. You may need to enable nesting" otherwise), and it is
+# the Proxmox GUI default for unprivileged containers. Docker-only keyctl is not enabled.
+#
 # Later, from the PVE host:
 #   bash the-gathering.sh update <CTID>             install the latest release and restart
 #   bash the-gathering.sh update <CTID> v0.2.0      install a specific release
@@ -240,6 +244,7 @@ create() {
     --hostname "$CT_HOSTNAME" \
     --ostype debian \
     --unprivileged 1 \
+    --features nesting=1 \
     --cores "$CORES" \
     --memory "$RAM_MB" \
     --swap 512 \
