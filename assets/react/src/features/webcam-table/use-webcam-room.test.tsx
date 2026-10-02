@@ -626,6 +626,41 @@ it("logs failed negotiation steps instead of leaving unhandled rejections", asyn
   expect(wire.sent("signal")).toEqual([])
 })
 
+it("ranks H.264 first on both the offering and the answering side before negotiating", async () => {
+  const { result } = await roomWithTheo()
+  const offering = FakePeerConnection.instances[0]!
+  await waitFor(() => expect(offering.createOffer).toHaveBeenCalled())
+  const [transceiver] = offering.transceivers
+  expect(transceiver!.setCodecPreferences).toHaveBeenCalledOnce()
+  expect(transceiver!.setCodecPreferences.mock.invocationCallOrder[0]).toBeLessThan(
+    offering.createOffer.mock.invocationCallOrder[0]!,
+  )
+  expect(transceiver!.codecPreferences!.map((codec) => codec.mimeType)).toEqual([
+    "video/H264",
+    "video/H264",
+    "video/VP8",
+    "video/rtx",
+    "video/VP9",
+    "video/red",
+    "video/ulpfec",
+  ])
+
+  act(() => {
+    wire.channel!.emit("signal", {
+      target: result.current.peerId,
+      from: "00-remote",
+      signal: { description: { type: "offer", sdp: "o" } },
+    })
+  })
+  const answering = FakePeerConnection.instances[1]!
+  await waitFor(() => expect(answering.createAnswer).toHaveBeenCalled())
+  const answerTransceiver = answering.transceivers[0]!
+  expect(answerTransceiver.setCodecPreferences.mock.invocationCallOrder[0]).toBeLessThan(
+    answering.setRemoteDescription.mock.invocationCallOrder[0]!,
+  )
+  expect(answerTransceiver.codecPreferences![0]!.mimeType).toBe("video/H264")
+})
+
 it("abandons an offer when its peer leaves mid-negotiation", async () => {
   let resolveOffer!: (offer: RTCSessionDescriptionInit) => void
   FakePeerConnection.onCreate = (connection) => {

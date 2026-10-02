@@ -3,6 +3,23 @@ export function canViewBoard(owner: string, viewer: string, revealTo?: string | 
   return owner === viewer || revealTo === undefined || revealTo === null || revealTo === viewer
 }
 
+/** The codec every WebRTC browser ships and the one hardware encoders and decoders cover
+ * (VideoToolbox, Media Foundation, VA-API); Chrome never hardware-encodes VP8. Even in
+ * software, OpenH264 + FFmpeg cost about half of libvpx: measured in Chrome 154 for a
+ * three-seat 1080p15 mesh, ~58% of a core per browser against ~105%. */
+export const PREFERRED_VIDEO_CODEC = "video/H264"
+
+/** Moves the preferred codec's entries to the front, keeping every other entry (including
+ * rtx/red/ulpfec, which setCodecPreferences expects to stay) in its original order. */
+export function orderVideoCodecs<T extends { mimeType: string }>(
+  codecs: readonly T[],
+  preferred = PREFERRED_VIDEO_CODEC,
+): T[] {
+  const wanted = preferred.toLowerCase()
+  const matches = (codec: T) => codec.mimeType.toLowerCase() === wanted
+  return [...codecs.filter(matches), ...codecs.filter((codec) => !matches(codec))]
+}
+
 export type PublisherQuality = "auto" | "1080p" | "720p" | "540p"
 
 export function isPublisherQuality(value: unknown): value is PublisherQuality {

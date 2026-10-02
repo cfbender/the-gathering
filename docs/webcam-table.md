@@ -62,16 +62,27 @@ sender before transport overhead, still nine encodes and potentially nine TURN r
 sender CPU, available outgoing bitrate, frame dimensions, packet loss, and TURN use; these
 tiers are budgets, not a guarantee of ten-seat performance on every device.
 
-CPU, not bandwidth, is the first limit of the mesh. Browsers encode WebRTC video in software
-here (Chromium picks libvpx VP8 without a hardware encoder; Firefox has no hardware WebRTC
-encoding at all), and every remote seat costs one encoder plus one decoder whose work scales
-with pixels × frames per second. Measured in headless Chromium on an 8-core orb with a synthetic
-1080p camera at 20 fps: a seat alone used ~20% of a core; each seat of a three-player table
-used ~130% at 1080p and ~83% at 720p; halving one seat's encode frame rate saved ~40% of a core
-on the sender and ~15% on each receiver. A four-player table from 30 fps cameras therefore needs
-about three cores per browser at full rate. The frame-rate column caps that cost from the third
-seat on while keeping the resolution a card needs to be readable; the Publisher quality setting
-still lowers resolution (and so decode cost on every receiver) further.
+CPU, not bandwidth, is the first limit of the mesh. Every remote seat costs one encoder plus
+one decoder whose work scales with pixels × frames per second, and browsers left to themselves
+pick libvpx VP8, which Chromium never hardware-accelerates. Measured in headless Chromium on an
+8-core orb with a synthetic 1080p camera at 20 fps: a seat alone used ~20% of a core; each seat
+of a three-player table used ~130% at 1080p and ~83% at 720p; halving one seat's encode frame
+rate saved ~40% of a core on the sender and ~15% on each receiver. A four-player table from
+30 fps cameras therefore needs about three cores per browser at full rate. The frame-rate
+column caps that cost from the third seat on while keeping the resolution a card needs to be
+readable; the Publisher quality setting still lowers resolution (and so decode cost on every
+receiver) further.
+
+`createPeer` also ranks H.264 first with `RTCRtpTransceiver.setCodecPreferences` on both the
+offering and the answering side (`orderVideoCodecs` in `media-policy.ts`). H.264 is the codec
+hardware encoders and decoders cover (VideoToolbox on macOS and iOS, Media Foundation on
+Windows, VA-API on Linux once Chrome's accelerated-video flags are on), and even in software
+it is cheaper: in the same three-seat 1080p/15 fps room in Chrome 154, each browser dropped from
+~105% of a core with libvpx to ~55% with OpenH264 encode and FFmpeg decode. The preference
+list keeps every other capability in order, so two browsers without a common H.264 profile
+fall back to VP8, and browsers without `setCodecPreferences` negotiate their default.
+`chrome://webrtc-internals` (`about:webrtc` in Firefox) shows the result as the codec and
+`encoderImplementation` / `decoderImplementation` of each stream.
 
 The SFU migration seam is `useWebcamRoom`: replace peer creation/signaling and stream delivery
 behind that hook, preserving participant, stream, capture, reveal, and result APIs. The SFU

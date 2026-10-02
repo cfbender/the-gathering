@@ -1,5 +1,32 @@
 import { describe, expect, it } from "vite-plus/test"
-import { canViewBoard, videoEncoding, videoFrameRate } from "./media-policy"
+import { canViewBoard, orderVideoCodecs, videoEncoding, videoFrameRate } from "./media-policy"
+
+describe("codec preference", () => {
+  it("moves every H.264 entry to the front and keeps the rest in place", () => {
+    const codecs = [
+      { mimeType: "video/VP8" },
+      { mimeType: "video/rtx" },
+      { mimeType: "video/h264", profile: "a" },
+      { mimeType: "video/AV1" },
+      { mimeType: "video/H264", profile: "b" },
+      { mimeType: "video/ulpfec" },
+    ]
+    expect(orderVideoCodecs(codecs)).toEqual([
+      { mimeType: "video/h264", profile: "a" },
+      { mimeType: "video/H264", profile: "b" },
+      { mimeType: "video/VP8" },
+      { mimeType: "video/rtx" },
+      { mimeType: "video/AV1" },
+      { mimeType: "video/ulpfec" },
+    ])
+    expect(orderVideoCodecs(codecs)).not.toBe(codecs)
+  })
+
+  it("leaves a browser without H.264 on its own order", () => {
+    const codecs = [{ mimeType: "video/VP8" }, { mimeType: "video/VP9" }]
+    expect(orderVideoCodecs(codecs)).toEqual(codecs)
+  })
+})
 
 describe("private reveal visibility", () => {
   it("allows the owner and target, but refuses third seats and late joiners", () => {

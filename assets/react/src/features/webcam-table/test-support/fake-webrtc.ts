@@ -40,6 +40,28 @@ export class FakeSender {
   })
 }
 
+/** Pairs a sender with the codec order the room asks for, like a negotiated transceiver. */
+export class FakeTransceiver {
+  codecPreferences: RTCRtpCodec[] | null = null
+
+  constructor(readonly sender: FakeSender) {}
+
+  setCodecPreferences = vi.fn((codecs: RTCRtpCodec[]) => {
+    this.codecPreferences = codecs
+  })
+}
+
+/** What Chrome reports for a camera track: VP8 first, H.264 in the middle, repair codecs last. */
+export const VIDEO_CAPABILITIES: RTCRtpCodec[] = [
+  { mimeType: "video/VP8", clockRate: 90000 },
+  { mimeType: "video/rtx", clockRate: 90000, sdpFmtpLine: "apt=96" },
+  { mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "profile-level-id=42001f" },
+  { mimeType: "video/VP9", clockRate: 90000, sdpFmtpLine: "profile-id=0" },
+  { mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "profile-level-id=42e01f" },
+  { mimeType: "video/red", clockRate: 90000 },
+  { mimeType: "video/ulpfec", clockRate: 90000 },
+]
+
 export class FakePeerConnection {
   static instances: FakePeerConnection[] = []
   /** Lets a test script a connection's behaviour as soon as the room creates it. */
@@ -72,11 +94,17 @@ export class FakePeerConnection {
   }
 
   readonly senders: FakeSender[] = []
+  readonly transceivers: FakeTransceiver[] = []
 
   addTrack(track: unknown) {
     const sender = new FakeSender(track)
     this.senders.push(sender)
+    this.transceivers.push(new FakeTransceiver(sender))
     return sender
+  }
+
+  getTransceivers() {
+    return this.transceivers
   }
 
   createDataChannel(label: string) {
@@ -112,6 +140,9 @@ export function installFakeWebRtc() {
   FakePeerConnection.instances = []
   FakePeerConnection.onCreate = null
   vi.stubGlobal("RTCPeerConnection", FakePeerConnection)
+  vi.stubGlobal("RTCRtpReceiver", {
+    getCapabilities: (kind: string) => (kind === "video" ? { codecs: VIDEO_CAPABILITIES } : null),
+  })
 }
 
 interface FakeTrack {

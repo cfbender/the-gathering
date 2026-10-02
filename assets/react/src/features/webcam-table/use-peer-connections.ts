@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { parseDataMessage, type DataMessage } from "./data-messages"
-import { canViewBoard, videoEncoding, type PublisherQuality } from "./media-policy"
+import {
+  canViewBoard,
+  orderVideoCodecs,
+  videoEncoding,
+  type PublisherQuality,
+} from "./media-policy"
 import type { RoomLink } from "./room-link"
 import type { TableParticipant } from "./room-types"
 import type { LocalCamera } from "./use-local-camera"
@@ -45,6 +50,16 @@ function withoutKey<T>(record: Record<string, T>, key: string) {
   const next = { ...record }
   delete next[key]
   return next
+}
+
+/** Asks for H.264 on the sender's transceiver before the offer or answer is created. Both
+ * sides call this, so whichever browser answers ranks it first too; a browser without H.264
+ * (or without setCodecPreferences) just negotiates the default codec. */
+function preferVideoCodec(connection: RTCPeerConnection, sender: RTCRtpSender) {
+  const transceiver = connection.getTransceivers().find((entry) => entry.sender === sender)
+  const capabilities = globalThis.RTCRtpReceiver?.getCapabilities("video")
+  if (!transceiver || !capabilities || typeof transceiver.setCodecPreferences !== "function") return
+  transceiver.setCodecPreferences(orderVideoCodecs(capabilities.codecs))
 }
 
 /** The WebRTC mesh: one connection per remote seat, its serialized signaling, the `table`
@@ -230,6 +245,7 @@ export function usePeerConnections(
       videoTrack.enabled = visible && media.getVideoTracks()[0]!.enabled
       // addTrack lets an incoming offer reuse this transceiver on the answering side.
       const videoSender = connection.addTrack(videoTrack, media)
+      preferVideoCodec(connection, videoSender)
       const peer: PeerState = {
         connection,
         videoSender,
