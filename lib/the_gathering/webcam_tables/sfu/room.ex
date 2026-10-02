@@ -22,7 +22,7 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
   alias ExWebRTC.{ICECandidate, MediaStreamTrack, PeerConnection, SessionDescription}
   alias ExWebRTC.RTP.{H264, VP8}
   alias TheGathering.WebcamTables.Sfu
-  alias TheGathering.WebcamTables.Sfu.{SimulcastSdp, Subscription}
+  alias TheGathering.WebcamTables.Sfu.{BrowserSdp, SimulcastSdp, Subscription}
 
   # A keyframe request per publisher layer at most this often; a browser answering every
   # PLI from several viewers at once would spend its whole bitrate on keyframes.
@@ -108,8 +108,13 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
 
       {:reply, :ok, state}
     else
-      {:ok, _peer} -> {:reply, {:error, :unexpected_answer}, state}
-      {:error, _reason} = error -> {:reply, error, state}
+      {:ok, _peer} ->
+        Logger.warning("SFU got an answer from #{peer_id} without an open offer")
+        {:reply, {:error, :unexpected_answer}, state}
+
+      {:error, reason} = error ->
+        Logger.warning("SFU rejected an answer from #{peer_id}: #{inspect(reason)}")
+        {:reply, error, state}
     end
   end
 
@@ -426,18 +431,23 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
     end)
   end
 
-  # The viewer's negotiated entry for the publisher's codec: same codec and format
-  # parameters, under whatever payload type that viewer assigned it.
+  # The viewer's negotiated entry for the publisher's codec, under whatever payload type that
+  # viewer assigned it. Only the format parameters that change the bitstream count: H.264
+  # profile and packetization mode. Browsers decorate the rest differently (Firefox's VP8
+  # carries `max-fs`/`max-fr`, Chrome's nothing), and a viewer decodes either just the same.
   defp matching_codec(codecs, codec) do
     Enum.find(codecs, fn candidate ->
       String.downcase(candidate.mime_type) == String.downcase(codec.mime_type) and
         candidate.clock_rate == codec.clock_rate and
-        fmtp_without_pt(candidate) == fmtp_without_pt(codec)
+        bitstream_params(candidate) == bitstream_params(codec)
     end)
   end
 
-  defp fmtp_without_pt(%{sdp_fmtp_line: nil}), do: nil
-  defp fmtp_without_pt(%{sdp_fmtp_line: fmtp}), do: %{fmtp | pt: nil}
+  defp bitstream_params(%{mime_type: mime, sdp_fmtp_line: fmtp}) do
+    if String.downcase(mime) == "video/h264" do
+      {fmtp && fmtp.profile_level_id, (fmtp && fmtp.packetization_mode) || 0}
+    end
+  end
 
   defp codec_name(state, owner_id) do
     case state.peers[owner_id] do
@@ -565,8 +575,10 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
 
   defp put_peer(state, peer), do: put_in(state.peers[peer.id], peer)
 
-  defp offer(sdp), do: %SessionDescription{type: :offer, sdp: sdp}
-  defp answer(sdp), do: %SessionDescription{type: :answer, sdp: sdp}
+  defp offer(sdp), do: %SessionDescription{type: :offer, sdp: BrowserSdp.unify_dtls_roles(sdp)}
+
+  defp answer(sdp),
+    do: %SessionDescription{type: :answer, sdp: BrowserSdp.unify_dtls_roles(sdp)}
 
   defp parse_candidate(%{"candidate" => candidate} = json) when is_binary(candidate) do
     {:ok,
