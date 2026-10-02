@@ -3,7 +3,13 @@ import type { BundleInfo, WorkerRequest, WorkerResponse } from "./messages"
 
 const runtime = vi.hoisted(() => ({
   create: vi.fn(),
-  env: { wasm: {} as { initTimeout?: number; wasmBinary?: Uint8Array } },
+  env: {
+    wasm: {} as {
+      initTimeout?: number
+      wasmBinary?: Uint8Array
+      wasmPaths?: { wasm: string; mjs: string }
+    },
+  },
 }))
 vi.mock("onnxruntime-web/wasm", () => ({
   env: runtime.env,
@@ -125,6 +131,8 @@ it.each([
   expect(wasmFetch).toBeDefined()
   expect(runtime.env.wasm.wasmBinary).toBeInstanceOf(Uint8Array)
   expect(runtime.env.wasm.initTimeout).toBeGreaterThan(0)
+  // The pthread worker script is keyed past copies cached before responses carried COEP.
+  expect(runtime.env.wasm.wasmPaths?.mjs).toMatch(/ort-wasm-simd-threaded\.mjs\?coep=1$/)
   await worker.onmessage!({
     data: {
       type: "identify",

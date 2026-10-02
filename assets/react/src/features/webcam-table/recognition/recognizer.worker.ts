@@ -33,7 +33,15 @@ import {
 // Same-origin copies of the runtime (Vite emits them as assets). The standalone `.mjs` gives
 // onnxruntime a real script URL to start its pthread workers from. The `.wasm` is fetched by
 // `load` below and handed over as `wasmBinary`, so the download is not on the init clock.
-ort.env.wasm.wasmPaths = { wasm: wasmUrl, mjs: mjsUrl }
+//
+// The `.mjs` carries a cache key because its hashed URL shipped before `/assets/react`
+// responses had the Cross-Origin-Embedder-Policy header, and browsers keep that copy for a
+// year (`immutable`). A worker script without COEP cannot start inside the isolated table:
+// Firefox reports it as blocked by policy and the threaded start hangs. A new URL is fetched
+// fresh, with the header. Bump the key if the asset headers ever change again.
+const COEP_CACHE_KEY = "coep=1"
+const runtimeScriptUrl = `${mjsUrl}${mjsUrl.includes("?") ? "&" : "?"}${COEP_CACHE_KEY}`
+ort.env.wasm.wasmPaths = { wasm: wasmUrl, mjs: runtimeScriptUrl }
 ort.env.logLevel = "warning"
 
 // Budget for compiling the runtime and starting its pthread workers once the binary is in

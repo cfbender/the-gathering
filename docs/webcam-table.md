@@ -150,6 +150,10 @@ Isolation is scoped to the table and needs three things to hold:
   development (to files Vite serves, not responses proxied from Phoenix) and the
   `/assets/react` `Plug.Static` adds it in production. That covers the recognizer worker and the
   pthread workers onnxruntime spawns from the standalone `ort-wasm-simd-threaded.mjs`.
+  Those assets are `immutable` for a year under content-hashed names, and the `.mjs` hash
+  predates the header, so browsers that visited earlier kept a copy without COEP and Firefox
+  refused to start pthread workers from it ("blocked by policy"). The worker therefore appends
+  a cache key (`?coep=1`) to the `.mjs` URL; bump it if these asset headers change again.
 - **Navigation across `/table/`** must load a new document, because the headers belong to the
   document: a client-side hop in would not be isolated, and one out would leave the games list
   isolated. Links across it use `reloadDocument`, and the root route's `beforeLoad` turns any
