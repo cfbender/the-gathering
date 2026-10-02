@@ -509,13 +509,10 @@ Type=exec
 User=${APP_USER}
 Group=${APP_USER}
 EnvironmentFile=${ENV_FILE}
-Environment=PHX_SERVER=true
-Environment=PORT=4000
-Environment=DATA_DIR=${DATA_DIR}
-Environment=RELEASE_TMP=${DATA_DIR}/tmp
-Environment=LANG=C.UTF-8 LC_ALL=C.UTF-8
 WorkingDirectory=${APP_DIR}/current
-ExecStart=${APP_DIR}/current/bin/the_gathering start
+# Paths are fixed here, after the env file, so a settings file copied from a Docker install
+# (DATA_DIR=/data, DATABASE_PATH=/data/..., PORT=...) cannot point the service elsewhere.
+ExecStart=/usr/bin/env PHX_SERVER=true PORT=4000 DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp LANG=C.UTF-8 LC_ALL=C.UTF-8 ${APP_DIR}/current/bin/the_gathering start
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -541,7 +538,7 @@ EOF
     in_ct "$ctid" "set -a; . ${ENV_FILE}; set +a; \
       THE_GATHERING_ADMIN_USERNAME=$(printf %q "$ADMIN_USERNAME") \
       THE_GATHERING_ADMIN_PASSWORD=$(printf %q "$ADMIN_PASSWORD") \
-      DATA_DIR=${DATA_DIR} RELEASE_TMP=${DATA_DIR}/tmp \
+      DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp \
       setpriv --reuid=${APP_USER} --regid=${APP_USER} --init-groups \
       ${APP_DIR}/current/bin/the_gathering eval 'TheGathering.Release.bootstrap_admin()'"
   fi
@@ -649,7 +646,7 @@ bootstrap_admin() {
   in_ct "$ctid" "set -a; . ${ENV_FILE}; set +a; \
     THE_GATHERING_ADMIN_USERNAME=$(printf %q "$ADMIN_USERNAME") \
     THE_GATHERING_ADMIN_PASSWORD=$(printf %q "$ADMIN_PASSWORD") \
-    DATA_DIR=${DATA_DIR} RELEASE_TMP=${DATA_DIR}/tmp \
+    DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp \
     setpriv --reuid=${APP_USER} --regid=${APP_USER} --init-groups \
     ${APP_DIR}/current/bin/the_gathering eval 'TheGathering.Release.bootstrap_admin()'"
   in_ct "$ctid" "systemctl start ${SERVICE}"
