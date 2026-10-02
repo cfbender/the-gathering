@@ -304,10 +304,14 @@ export function usePeerConnections(
       }
       for (const [id, peer] of peersRef.current) {
         if (activeIds.has(id)) continue
+        // `close()` fires no connectionstatechange, so the stream is dropped here; a peer
+        // that rejoins after a channel drop arrives under a new peer ID with a new stream.
+        peer.connection.onconnectionstatechange = null
         peer.videoTrack.stop()
         peer.connection.close()
         peersRef.current.delete(id)
         setConnectionStates((current) => withoutKey(current, id))
+        setStreams((current) => withoutKey(current, id))
         for (const listener of listenersRef.current) listener.left?.(id)
       }
       for (const participant of everyone) {

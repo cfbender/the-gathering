@@ -548,6 +548,27 @@ it("times out a crop request that a silent peer never answers", async () => {
   expect(result.current.capture).toBeNull()
 })
 
+it("drops a departed peer's stream so a rejoin under a new peer ID does not count twice", async () => {
+  const { result, self } = await roomWithTheo()
+  const first = FakePeerConnection.instances[0]!
+  const stream = { id: "theo-1" } as unknown as MediaStream
+  act(() => first.ontrack?.({ streams: [stream] }))
+  expect(result.current.streams).toEqual({ [theo.peer_id]: stream })
+
+  // Theo's channel drops; he rejoins with a new media generation. Closing the old
+  // connection fires no connectionstatechange, so presence is the only signal.
+  const rejoined = { ...theo, peer_id: "zz-remote-2" }
+  act(() => wire.presence!.sync([self, rejoined]))
+  expect(first.connectionState).toBe("closed")
+  expect(result.current.streams).toEqual({})
+  expect(result.current.connectionStates).toEqual({})
+
+  const second = FakePeerConnection.instances[1]!
+  const next = { id: "theo-2" } as unknown as MediaStream
+  act(() => second.ontrack?.({ streams: [next] }))
+  expect(result.current.streams).toEqual({ [rejoined.peer_id]: next })
+})
+
 it("cancels pending crops when their peer leaves or the room unmounts", async () => {
   const { result, self, unmount } = await roomWithTheo()
   vi.useFakeTimers()
