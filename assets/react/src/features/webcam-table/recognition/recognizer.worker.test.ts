@@ -1,9 +1,12 @@
 import { afterEach, expect, it, vi } from "vite-plus/test"
 import type { BundleInfo, WorkerRequest, WorkerResponse } from "./messages"
 
-const runtime = vi.hoisted(() => ({ create: vi.fn() }))
+const runtime = vi.hoisted(() => ({
+  create: vi.fn(),
+  env: { wasm: {} as { initTimeout?: number; wasmBinary?: Uint8Array } },
+}))
 vi.mock("onnxruntime-web/wasm", () => ({
-  env: { wasm: {} },
+  env: runtime.env,
   Tensor: class {
     constructor(
       public type: string,
@@ -114,6 +117,14 @@ it.each([
   }
   await worker.onmessage!({ data: { type: "load", bundle, threads: 1 } })
   expect(messages[0]?.type).toBe("ready")
+  // The runtime binary is downloaded up front and the start-up itself is on a deadline, so a
+  // blocked pthread worker script fails the load instead of hanging it.
+  const wasmFetch = vi
+    .mocked(fetch)
+    .mock.calls.find(([url]) => typeof url === "string" && url.endsWith(".wasm"))
+  expect(wasmFetch).toBeDefined()
+  expect(runtime.env.wasm.wasmBinary).toBeInstanceOf(Uint8Array)
+  expect(runtime.env.wasm.initTimeout).toBeGreaterThan(0)
   await worker.onmessage!({
     data: {
       type: "identify",

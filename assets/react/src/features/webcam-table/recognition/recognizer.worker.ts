@@ -31,9 +31,17 @@ import {
 } from "./pipeline"
 
 // Same-origin copies of the runtime (Vite emits them as assets). The standalone `.mjs` gives
-// onnxruntime a real script URL to start its pthread workers from.
+// onnxruntime a real script URL to start its pthread workers from. The `.wasm` is fetched by
+// `load` below and handed over as `wasmBinary`, so the download is not on the init clock.
 ort.env.wasm.wasmPaths = { wasm: wasmUrl, mjs: mjsUrl }
 ort.env.logLevel = "warning"
+
+// Budget for compiling the runtime and starting its pthread workers once the binary is in
+// hand. A worker script the browser blocks (an extension or policy on the `.mjs` URL) never
+// reports back, and Firefox does not fire `error` for it either, so the threaded start would
+// otherwise hang forever. Failing here lets useRecognizer retry on one thread, or show
+// "failed" instead of "Loading…".
+const INIT_TIMEOUT_MS = 20_000
 
 interface Loaded {
   version: string
@@ -57,8 +65,8 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer())
 }
 
-async function session(url: string): Promise<ort.InferenceSession> {
-  return ort.InferenceSession.create(await fetchBytes(url), {
+function session(model: Uint8Array): Promise<ort.InferenceSession> {
+  return ort.InferenceSession.create(model, {
     executionProviders: ["wasm"],
     graphOptimizationLevel: "all",
   })
@@ -70,11 +78,19 @@ async function load(bundle: BundleInfo, threads: number) {
   // table, see TheGatheringWeb.CrossOriginIsolation) provides. 0 lets onnxruntime pick
   // min(4, ceil(cores / 2)). The runtime initializes once, on the first session below.
   ort.env.wasm.numThreads = self.crossOriginIsolated ? threads : 1
-  const [detector, embed, search, artsBytes] = await Promise.all([
-    session(bundle.files["detector.onnx"]),
-    session(bundle.files["embed.onnx"]),
-    session(bundle.files["search.onnx"]),
+  ort.env.wasm.initTimeout = INIT_TIMEOUT_MS
+  const [wasmBinary, detectorBytes, embedBytes, searchBytes, artsBytes] = await Promise.all([
+    fetchBytes(wasmUrl),
+    fetchBytes(bundle.files["detector.onnx"]),
+    fetchBytes(bundle.files["embed.onnx"]),
+    fetchBytes(bundle.files["search.onnx"]),
     fetchBytes(bundle.files["arts.json"]),
+  ])
+  ort.env.wasm.wasmBinary = wasmBinary
+  const [detector, embed, search] = await Promise.all([
+    session(detectorBytes),
+    session(embedBytes),
+    session(searchBytes),
   ])
   const arts = JSON.parse(new TextDecoder().decode(artsBytes)) as GalleryArt[]
   loaded = {

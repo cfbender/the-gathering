@@ -125,6 +125,14 @@ when isolated and 1 otherwise, reports the count it initialized with in its `rea
 and the Connection panel shows it (`… loaded in 0.8 s, 4 threads.`). onnxruntime cannot
 initialize twice in one worker, so if a threaded start fails (`load_failed` or a worker
 `error`), `use-recognizer.ts` terminates that worker and starts a fresh one on one thread.
+A threaded start can also hang rather than fail: onnxruntime waits for a `loaded` message from
+every pthread worker, and a worker whose `.mjs` the browser refused (an extension or policy
+blocking the URL) never sends one; Chrome reports that as a worker `error`, Firefox reports
+nothing. The worker therefore fetches `ort-wasm-simd-threaded.wasm` itself alongside the model
+files and passes it as `ort.env.wasm.wasmBinary`, then starts the runtime under
+`ort.env.wasm.initTimeout` (20 s, compile and thread start-up only, not the 14 MB download).
+A timeout is a `load_failed`, so the same one-thread retry runs and the panel ends on
+"failed" instead of "Loading…" forever.
 
 Isolation is scoped to the table and needs three things to hold:
 
