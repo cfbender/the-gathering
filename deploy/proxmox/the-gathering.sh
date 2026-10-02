@@ -282,6 +282,8 @@ create() {
   cat >"$setup" <<EOF
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+# pct exec inherits the host's LANG, which the template has not generated; use the built-in locale.
+export LC_ALL=C.UTF-8 LANG=C.UTF-8
 apt-get update -qq
 apt-get install -y -qq curl ca-certificates openssl rsync openssh-server \\
   libstdc++6 libssl3t64 libncurses6 libsctp1 librsvg2-bin fonts-dejavu-core >/dev/null
