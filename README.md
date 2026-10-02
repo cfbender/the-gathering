@@ -37,6 +37,19 @@ The app listens on port 4000 and stores its SQLite database and files under `./d
 
 Health check: `GET /api/health` returns `{"status":"ok"}` when the database is reachable.
 
+### Proxmox VE
+
+[`deploy/proxmox/the-gathering.sh`](deploy/proxmox/the-gathering.sh) creates an unprivileged
+Debian LXC with Docker and the Compose stack above in `/opt/the-gathering`. Run it as root on the
+Proxmox host; settings such as `CTID`, `STORAGE`, `IP`, `CORES` and `RAM_MB` are environment
+variables documented at the top of the script.
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/cfbender/the-gathering/main/deploy/proxmox/the-gathering.sh)"
+```
+
+`bash the-gathering.sh update <CTID>` pulls the latest image into an existing container.
+
 ### Invite members while registration is closed
 
 Under **Administration → Server settings → Sign-up invitation**, create a reusable
