@@ -60,7 +60,11 @@ and installs the latest (or given) release and restarts the service (it runs the
 the script from GitHub, so fixes to the updater reach existing containers). From the Proxmox host,
 `bash the-gathering.sh update <CTID> [tag]` does the same. The previous release stays under
 `/opt/the-gathering/releases/` for rollback. Release tarballs are built by
-[`.github/workflows/release.yml`](.github/workflows/release.yml) for every `v*.*.*` tag.
+[`.github/workflows/release.yml`](.github/workflows/release.yml) for every `v*.*.*` tag, and every
+push to `main` republishes the rolling
+[`nightly`](https://github.com/cfbender/the-gathering/releases/tag/nightly) prerelease. `update
+nightly` (or `VERSION=nightly` at install time) switches a container to that channel: from then on
+untagged and automatic updates follow `main`, and `update vX.Y.Z` returns to tagged releases.
 
 The container also updates itself on a cron schedule: `AUTO_UPDATE` (asked at install time;
 default `0 4 * * *`, daily at 04:00 in the container's time zone; `off` disables it) is written to

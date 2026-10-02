@@ -1,16 +1,25 @@
 name: Release
 
 # Builds the Elixir release tarball that deploy/proxmox/the-gathering.sh installs
-# (bare-metal / LXC, no Docker). Runs on version tags only; the container image is
-# built separately by container.yml.
+# (bare-metal / LXC, no Docker). Version tags publish a GitHub release; every push to
+# main republishes the rolling "nightly" prerelease (tag moved to the commit) that
+# `update nightly` / VERSION=nightly install. The container image is built separately
+# by container.yml.
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*.*.*"
   workflow_dispatch:
 
 permissions:
   contents: write
+
+# Nightly builds share one tag and asset names, so never publish two at once.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   MIX_ENV: prod
@@ -71,14 +80,15 @@ jobs:
         run: |
           set -eu
           mix release --overwrite
-          tag="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then tag="${GITHUB_REF_NAME}"; else tag=nightly; fi
           archive="the_gathering-${tag}-linux-amd64.tar.gz"
           tar -C _build/prod/rel -czf "$archive" the_gathering
           sha256sum "$archive" > "${archive}.sha256"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "archive=${archive}" >> "$GITHUB_OUTPUT"
 
       - name: Upload tarball as workflow artifact (manual runs)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ steps.release.outputs.archive }}
@@ -86,11 +96,35 @@ jobs:
             ${{ steps.release.outputs.archive }}
             ${{ steps.release.outputs.archive }}.sha256
 
+      - name: Move the nightly tag to this commit
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f nightly "${GITHUB_SHA}"
+          git push --force origin refs/tags/nightly
+
       - name: Publish GitHub release
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           generate_release_notes: true
+          files: |
+            ${{ steps.release.outputs.archive }}
+            ${{ steps.release.outputs.archive }}.sha256
+
+      - name: Publish nightly prerelease
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: nightly
+          name: Nightly build
+          body: |
+            Rolling build of `main` at ${{ github.sha }}. Republished on every push, so the
+            assets change under the same names. Install with `VERSION=nightly` or
+            `update nightly`; `update vX.Y.Z` returns to tagged releases.
+          prerelease: true
+          make_latest: false
           files: |
             ${{ steps.release.outputs.archive }}
             ${{ steps.release.outputs.archive }}.sha256

@@ -24,7 +24,8 @@
 #   SSH_KEYS          public keys to authorize for root (the PVE host's /root/.ssh/authorized_keys)
 #   PASSWORD          root password; leave empty for automatic root login on the Proxmox web
 #                     console (plus SSH keys and `pct enter`)
-#   VERSION           release tag to install, e.g. v0.1.0 (latest GitHub release)
+#   VERSION           release tag to install, e.g. v0.1.0, or nightly for the newest build of main
+#                     (latest GitHub release)
 #
 # When run from a terminal the script asks for these; set them to skip the questions:
 #
@@ -48,8 +49,10 @@
 # the Proxmox GUI default for unprivileged containers. Docker-only keyctl is not enabled.
 #
 # Later, from the PVE host (or inside the container, without the <CTID>):
-#   bash the-gathering.sh update <CTID>                   install the latest release and restart
+#   bash the-gathering.sh update <CTID>                   install the latest release (or nightly build,
+#                                                         if that is what the container runs) and restart
 #   bash the-gathering.sh update <CTID> v0.2.0            install a specific release
+#   bash the-gathering.sh update <CTID> nightly           follow the newest build of main from now on
 #   bash the-gathering.sh auto-update <CTID> '0 3 * * 0'  change the automatic update schedule
 #   bash the-gathering.sh auto-update <CTID> off          disable automatic updates
 set -euo pipefail
@@ -142,7 +145,7 @@ latest_debian_template() {
     grep "^debian-13-standard_.*_${arch}\.tar" | sort -V | tail -n1
 }
 
-# Resolves VERSION to a release tag, defaulting to the newest GitHub release.
+# Resolves VERSION to a release tag (vX.Y.Z or nightly), defaulting to the newest GitHub release.
 resolve_version() {
   if [[ -n "$VERSION" ]]; then
     printf '%s\n' "$VERSION"
@@ -268,22 +271,32 @@ exec bash -c "\$script" the-gathering.sh update "\$@"
 EOF
   put_file "$ctid" /usr/local/bin/the-gathering-install 0755 <<EOF
 #!/usr/bin/env bash
-# Usage: the-gathering-install <tag>
+# Usage: the-gathering-install <tag>   (a vX.Y.Z release tag, or nightly for the latest main build)
 set -euo pipefail
 tag="\${1:?usage: the-gathering-install <tag>}"
 archive="the_gathering-\${tag}-linux-amd64.tar.gz"
 base="https://github.com/${REPO}/releases/download/\${tag}"
-release_dir="${APP_DIR}/releases/\${tag}"
-
-if [ -e "\$release_dir" ] && [ "\$(readlink -f ${APP_DIR}/current)" = "\$release_dir" ]; then
-  echo "\${tag} is already installed"
-  exit 0
-fi
 
 tmp="\$(mktemp -d)"
 trap 'rm -rf "\$tmp"' EXIT
-curl -fsSL "\${base}/\${archive}" -o "\${tmp}/\${archive}"
 curl -fsSL "\${base}/\${archive}.sha256" -o "\${tmp}/\${archive}.sha256"
+# The nightly tag is republished for every push to main, so its builds are told apart by
+# checksum; VERSION then reads nightly-<checksum prefix>, which is how \`update\` knows to
+# keep following nightly.
+if [ "\$tag" = nightly ]; then
+  sum="\$(awk '{print \$1}' "\${tmp}/\${archive}.sha256")"
+  version="nightly-\${sum:0:12}"
+else
+  version="\$tag"
+fi
+release_dir="${APP_DIR}/releases/\${version}"
+
+if [ -e "\$release_dir" ] && [ "\$(readlink -f ${APP_DIR}/current)" = "\$release_dir" ]; then
+  echo "\${version} is already installed"
+  exit 0
+fi
+
+curl -fsSL "\${base}/\${archive}" -o "\${tmp}/\${archive}"
 (cd "\$tmp" && sha256sum -c --quiet "\${archive}.sha256")
 
 rm -rf "\$release_dir"
@@ -292,7 +305,7 @@ tar -xzf "\${tmp}/\${archive}" -C "\$release_dir" --strip-components=1
 chown -R root:${APP_USER} "\$release_dir"
 ln -sfn "\$release_dir" "${APP_DIR}/current.new"
 mv -T "${APP_DIR}/current.new" "${APP_DIR}/current"
-echo "\$tag" >"${APP_DIR}/VERSION"
+echo "\$version" >"${APP_DIR}/VERSION"
 
 # Keep the previous release for a quick rollback (ln -sfn it back to current), drop older ones.
 ls -1dt ${APP_DIR}/releases/*/ | tail -n +3 | xargs -r rm -rf
@@ -538,9 +551,16 @@ target_container() {
   fi
 }
 
+# Prints "nightly" when the container runs a nightly build, so an untagged `update` follows the
+# installed channel instead of dropping back to the newest tagged release.
+installed_channel() {
+  if in_ct "$1" "grep -qs '^nightly' ${APP_DIR}/VERSION"; then echo nightly; fi
+}
+
 update() {
   target_container "update <CTID> [tag]" "$@"
   VERSION="${ARGS[0]:-$VERSION}"
+  [[ -n "$VERSION" ]] || VERSION="$(installed_channel "$TARGET")"
   local tag
   tag="$(resolve_version)"
   info "Installing $APP $tag"
@@ -580,7 +600,8 @@ usage: the-gathering.sh [create | update <CTID> [tag] | auto-update <CTID> <cron
 
   create                  create a Debian LXC running ${APP} (default; settings via env vars,
                           see the comment at the top of this script)
-  update <CTID> [tag]     install the latest (or given) release in an existing container
+  update <CTID> [tag]     install the latest (or given) release in an existing container; the tag
+                          nightly switches it to the newest build of main, vX.Y.Z back to releases
   auto-update <CTID> <cron expression | off>
                           schedule automatic updates (${AUTO_UPDATE_DEFAULT} by default) or turn them off
   bootstrap-admin <CTID>  create the first administrator from ADMIN_USERNAME/ADMIN_PASSWORD
