@@ -2,8 +2,9 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
   use TheGathering.DataCase, async: false
   import Phoenix.ChannelTest
 
+  alias ExWebRTC.{PeerConnection, SessionDescription}
   alias TheGathering.{Accounts, AccountsFixtures, Games, WebcamTables}
-  alias TheGathering.WebcamTables.{Room, Session, Timer}
+  alias TheGathering.WebcamTables.{Room, Session, Sfu, Timer}
   alias TheGatheringWeb.{Presence, UserSocket, WebcamTableChannel, WebcamTableRooms}
 
   @endpoint TheGatheringWeb.Endpoint
@@ -93,36 +94,123 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     %{socket: socket, player: player, deck: deck, room_id: room_id}
   end
 
-  test "joins with a real player and relays targeted signaling", %{socket: socket} do
+  test "joins with a real player and negotiates a media connection with the SFU", %{
+    socket: socket,
+    room_id: room
+  } do
     assert_push "presence_state", %{@peer_a => %{metas: [meta]}}
     assert meta.player_name == "Alice"
+    assert [{sfu, _value}] = Registry.lookup(Sfu.Registry, room)
 
-    push(socket, "signal", %{"target" => @peer_b, "signal" => %{"candidate" => "ice"}})
+    # The browser's offer carries its camera; the server answers with a matching m-line.
+    {browser, offer} = browser_offer()
+    ref = push(socket, "sfu_offer", %{"sdp" => offer})
+    assert_reply ref, :ok, %{sdp: answer}, 1_000
+    assert answer =~ "m=video"
+    assert :ok = PeerConnection.set_remote_description(browser, answer(answer))
 
-    assert_broadcast "signal", %{
-      target: @peer_b,
-      from: @peer_a,
-      signal: %{"candidate" => "ice"}
+    # A second seat whose camera arrives at the SFU triggers a server offer to the first.
+    # Bob is offered Alice's board at the same time; both sockets push to this process.
+    bob = join_player(room, @peer_b, "Bob")
+    {_bob_browser, bob_offer} = browser_offer()
+    assert_reply push(bob, "sfu_offer", %{"sdp" => bob_offer}), :ok, %{sdp: _answer}, 1_000
+    assert_push "sfu_offer", %{sdp: offer_1, tracks: tracks_1}, 1_000
+    assert_push "sfu_offer", %{sdp: offer_2, tracks: tracks_2}, 1_000
+
+    assert {server_offer, tracks} =
+             Enum.find([{offer_1, tracks_1}, {offer_2, tracks_2}], fn {_sdp, tracks} ->
+               @peer_b in Map.values(tracks)
+             end)
+
+    assert [{mid, @peer_b}] = Map.to_list(tracks)
+    assert server_offer =~ "a=mid:#{mid}"
+
+    # Alice answers; the fake browser produces the answer from the server's offer.
+    :ok = PeerConnection.set_remote_description(browser, offer(server_offer))
+    {:ok, browser_answer} = PeerConnection.create_answer(browser)
+    :ok = PeerConnection.set_local_description(browser, browser_answer)
+    assert_reply push(socket, "sfu_answer", %{"sdp" => browser_answer.sdp}), :ok, %{}, 1_000
+
+    # Only one offer may be outstanding; an unsolicited answer is refused.
+    assert_reply push(socket, "sfu_answer", %{"sdp" => browser_answer.sdp}),
+                 :error,
+                 %{reason: "answer rejected"},
+                 1_000
+
+    # Candidates are accepted before and after the answer and never fan out to the room.
+    candidate = %{"candidate" => "candidate:1 1 udp 1 127.0.0.1 9 typ host", "sdpMid" => "0"}
+    push(socket, "sfu_candidate", %{"candidate" => candidate})
+    refute_broadcast "sfu_candidate", _
+
+    assert_reply push(socket, "sfu_candidate", %{"candidate" => %{}}), :error, %{
+      reason: "invalid candidate"
     }
+
+    # The room monitors each channel and closes once every seat has left.
+    monitor = Process.monitor(sfu)
+    Process.unlink(socket.channel_pid)
+    Process.unlink(bob.channel_pid)
+    close(socket)
+    close(bob)
+    assert_receive {:DOWN, ^monitor, :process, ^sfu, :normal}
   end
 
-  test "rejects oversize signals and non-peer targets without relaying them", %{socket: socket} do
-    # A realistic SDP offer is well under the cap.
-    offer = %{"type" => "offer", "sdp" => String.duplicate("a=candidate:x\r\n", 1_500)}
-    push(socket, "signal", %{"target" => @peer_b, "signal" => offer})
-    assert_broadcast "signal", %{target: @peer_b, signal: ^offer}
+  test "rejects oversize or malformed offers and answers", %{socket: socket} do
+    oversize = String.duplicate("a", 65_537)
 
-    oversize = %{"sdp" => String.duplicate("a", 65_537)}
-
-    assert_reply push(socket, "signal", %{"target" => @peer_b, "signal" => oversize}),
-                 :error,
-                 %{reason: "signal too large"}
-
-    assert_reply push(socket, "signal", %{"target" => "peer-b", "signal" => %{}}), :error, %{
-      reason: "invalid signal"
+    assert_reply push(socket, "sfu_offer", %{"sdp" => oversize}), :error, %{
+      reason: "invalid offer"
     }
 
-    refute_broadcast "signal", _
+    assert_reply push(socket, "sfu_offer", %{"sdp" => "not sdp"}),
+                 :error,
+                 %{reason: "offer rejected"},
+                 1_000
+
+    # The server has not offered, so there is nothing to answer.
+    assert_reply push(socket, "sfu_answer", %{"sdp" => "v=0\r\n"}),
+                 :error,
+                 %{reason: "answer rejected"},
+                 1_000
+  end
+
+  test "relays a message to one other seat without broadcasting it", %{
+    socket: socket,
+    room_id: room
+  } do
+    bob = join_player(room, @peer_b, "Bob")
+    assert_push "presence_diff", %{joins: %{@peer_b => _}}
+
+    push(socket, "peer_message", %{"to" => @peer_b, "message" => %{"type" => "crop"}})
+    assert_push "peer_message", %{from: @peer_a, message: %{"type" => "crop"}}
+    refute_broadcast "peer_message", _
+
+    assert_reply push(socket, "peer_message", %{"to" => @peer_a, "message" => %{}}), :error, %{
+      reason: "invalid recipient"
+    }
+
+    assert_reply push(socket, "peer_message", %{"to" => @peer_c, "message" => %{}}), :error, %{
+      reason: "recipient has left"
+    }
+
+    oversize = %{"data" => String.duplicate("a", 262_145)}
+
+    assert_reply push(socket, "peer_message", %{"to" => @peer_b, "message" => oversize}),
+                 :error,
+                 %{reason: "message too large"}
+
+    Process.unlink(bob.channel_pid)
+    close(bob)
+  end
+
+  test "validates layer requests against the known layers and seats", %{socket: socket} do
+    assert_reply push(socket, "sfu_layer", %{"peer_id" => @peer_b, "layer" => "xl"}), :error, %{
+      reason: "invalid layer"
+    }
+
+    assert_reply push(socket, "sfu_layer", %{"peer_id" => @peer_b, "layer" => "l"}), :error, %{
+      reason: "unknown board"
+    }
   end
 
   test "the websocket caps inbound frames above the largest legitimate signal" do
@@ -363,6 +451,18 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert_push "monarch_state", %{holder: ^last, revision: snapshot_revision}
     assert snapshot_revision == last_revision
   end
+
+  # What a browser sends the SFU first: an offer with one video camera track.
+  defp browser_offer do
+    {:ok, pc} = PeerConnection.start_link(video_codecs: [:h264, :vp8], audio_codecs: [])
+    {:ok, _transceiver} = PeerConnection.add_transceiver(pc, :video, direction: :sendonly)
+    {:ok, offer} = PeerConnection.create_offer(pc)
+    :ok = PeerConnection.set_local_description(pc, offer)
+    {pc, offer.sdp}
+  end
+
+  defp offer(sdp), do: %SessionDescription{type: :offer, sdp: sdp}
+  defp answer(sdp), do: %SessionDescription{type: :answer, sdp: sdp}
 
   defp join_player(room_id, peer_id, name) do
     user = AccountsFixtures.user_fixture()
@@ -1574,11 +1674,11 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
       assert Enum.find(WebcamTables.snapshot(room).seats, &(&1.peer_id == @peer_b)).life == 37
 
       for _ <- 1..2 do
-        push(bob, "signal", %{"target" => @peer_a, "signal" => %{"candidate" => "ice"}})
-        assert_broadcast "signal", %{from: @peer_b}
+        push(bob, "peer_message", %{"to" => @peer_a, "message" => %{"type" => "crop"}})
+        assert_push "peer_message", %{from: @peer_b}
       end
 
-      assert_reply push(bob, "signal", %{"target" => @peer_a, "signal" => %{}}), :error, %{
+      assert_reply push(bob, "peer_message", %{"to" => @peer_a, "message" => %{}}), :error, %{
         reason: "rate limited"
       }
 

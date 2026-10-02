@@ -56,6 +56,7 @@ defmodule TheGathering.MixProject do
       {:bandit, "~> 1.5"},
       {:bcrypt_elixir, "~> 3.3"},
       {:hammer, "~> 7.0"},
+      {:ex_webrtc, "~> 0.17"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end

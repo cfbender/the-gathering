@@ -5,8 +5,8 @@ import type { IdentifiedCard } from "./room-types"
 import { useBoardCards } from "./use-board-cards"
 import { useCardCapture } from "./use-card-capture"
 import { useLocalCamera } from "./use-local-camera"
-import { usePeerConnections } from "./use-peer-connections"
 import { useRoomChannel } from "./use-room-channel"
+import { useSfuConnection } from "./use-sfu-connection"
 import { useSeatTrackers } from "./use-seat-trackers"
 import { useTableGameState } from "./use-table-game-state"
 
@@ -19,11 +19,11 @@ export type {
 } from "./room-types"
 export type { TableEvent } from "./table-events"
 export { CAPTURE_TIMEOUT_MS } from "./use-card-capture"
-export { describeConnection } from "./use-peer-connections"
+export { describeConnection } from "./use-sfu-connection"
 export { STARTING_LIFE } from "./use-table-game-state"
 
-/** One seat at a webcam table: wires the local camera, the peer mesh, card captures, the
- * server's card list, and game state to the room channel, and exposes them as one object. */
+/** One seat at a webcam table: wires the local camera, the SFU connection, card captures,
+ * the server's card list, and game state to the room channel, and exposes them as one object. */
 export function useWebcamRoom(
   roomId: string,
   playerId: number,
@@ -36,7 +36,7 @@ export function useWebcamRoom(
   const [status, setStatus] = useState("Opening 1080p camera…")
   const [error, setError] = useState<string | null>(null)
   const camera = useLocalCamera(link, deviceId, cameraEnabled)
-  const peers = usePeerConnections(link, camera, quality, setError)
+  const peers = useSfuConnection(link, camera, quality, setError)
   const captures = useCardCapture(link, playerId, camera, peers, setStatus)
   const cards = useBoardCards(link)
   const game = useTableGameState(link, playerId, setError)
@@ -48,8 +48,9 @@ export function useWebcamRoom(
   const { spectating } = useRoomChannel(link, roomId, playerId, deckId, {
     setStatus,
     setError,
-    onConfig(iceServers) {
+    onConfig(iceServers, sfu) {
       peers.setIceServers(iceServers)
+      peers.setTransport(sfu.transport)
       camera.startPlaceholder()
     },
     bind(room) {
@@ -61,11 +62,16 @@ export function useWebcamRoom(
       game.receivePresence(everyone)
       peers.syncPeers(everyone)
     },
-    onSignal: peers.receiveSignal,
+    onSfuOffer: peers.receiveOffer,
+    onSfuCandidate: peers.receiveCandidate,
+    onPeerMessage: peers.receivePeerMessage,
     onJoined(participant, owner) {
       game.hydrate(participant, owner)
       if (participant) peers.restoreReveal(participant.reveal_to ?? null)
       game.syncTimer()
+      // The connection needs the camera (placeholder for now) before it offers; the real
+      // camera then replaces the published track.
+      peers.connect()
       if (!link.spectator) {
         game.updateStatus({ camera_off: camera.isOff() })
         trackers.publish()
@@ -145,6 +151,10 @@ export function useWebcamRoom(
     streams: peers.streams,
     connectionStates: peers.connectionStates,
     iceServers: peers.iceServers,
+    /** How this seat's media reaches the server: forwarded UDP ports or a TURN relay. */
+    transport: peers.transport,
+    /** Lets a `<video>` report how large it draws a board, so the right layer is requested. */
+    watchTile: peers.watchTile,
     localStream: camera.localStream,
     changeCamera: (nextDeviceId: string) =>
       camera.changeCamera(nextDeviceId, peers.replaceSourceTrack),

@@ -57,6 +57,8 @@ export interface TableTabProps {
   connectedPeers: number
   connectionStates: Record<string, RTCPeerConnectionState>
   iceServers: RTCIceServer[]
+  /** How media reaches the server: forwarded UDP ports or a TURN relay. */
+  transport: "direct" | "relay"
   recognizer: RecognizerState
   onInvite: () => void
   inviteCopied: boolean
@@ -369,15 +371,20 @@ function ConnectionSection(props: TableTabProps) {
           {props.connectedPeers} of {Math.max(0, props.participants.length - 1)} streaming
         </dd>
         <dt className="text-base-content/50">Video</dt>
-        <dd>1080p mesh, up to {maxPlayers} players</dd>
+        <dd>
+          Server-forwarded 1080p simulcast
+          {props.transport === "relay" ? " via TURN relay" : ""}, up to {maxPlayers} players
+        </dd>
         <dt className="text-base-content/50">ICE</dt>
         <dd>{describeIceServers(props.iceServers)}</dd>
       </dl>
       {Object.values(props.connectionStates).some((state) => state === "failed") && (
         <p className="text-warning mt-2 text-xs leading-relaxed">
-          A peer couldn't be reached directly. Players on different networks usually need a TURN
-          relay: set <code>CLOUDFLARE_TURN_KEY_ID</code> and <code>CLOUDFLARE_TURN_API_TOKEN</code>{" "}
-          or the <code>WEBRTC_TURN_*</code> variables on the server (see docs/webcam-table.md).
+          The video server couldn't be reached. Its UDP port range (
+          <code>WEBRTC_SFU_PORT_RANGE</code>) must be forwarded to the host and{" "}
+          <code>WEBRTC_SFU_PUBLIC_IP</code> set to the address players use, or set{" "}
+          <code>WEBRTC_SFU_RELAY_ONLY</code> with Cloudflare TURN credentials (see
+          docs/webcam-table.md).
         </p>
       )}
     </PanelSection>

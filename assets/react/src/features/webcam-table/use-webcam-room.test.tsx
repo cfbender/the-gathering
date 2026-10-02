@@ -7,6 +7,7 @@ import { TOKEN_REFRESH_INTERVAL_MS } from "./use-room-channel"
 import { wire } from "./test-support/fake-phoenix"
 import {
   FakePeerConnection,
+  FakeResizeObserver,
   fakeMedia,
   installFakeMedia,
   installFakeWebRtc,
@@ -379,20 +380,18 @@ it("prefetches details and images for every card new to this seat, newest first,
   expect(requested()).toEqual(["newer", "older", "named"])
 })
 
-it("ignores card messages from peers and never sends cards over data channels", async () => {
+it("ignores card messages from peers and never sends cards to them", async () => {
   const { result } = await joinedRoom()
   const theirs = boardCard("theirs", "remote", "Counterspell")
   act(() => wire.channel!.emit("identified_cards", { entries: [theirs] }))
   const remote = { ...saved, player_id: 9, player_name: "Theo", peer_id: "zz-remote" }
   act(() => wire.presence!.sync([{ ...saved, peer_id: result.current.peerId }, remote]))
-  // The lower peer ID offers and opens the data channel.
-  const channel = FakePeerConnection.instances[0]!.channels[0]!
   const injected = boardCard("injected", result.current.peerId, "Black Lotus")
   act(() => {
-    channel.deliver(JSON.stringify({ type: "card_identified", entry: injected }))
-    channel.deliver(JSON.stringify({ type: "cards_sync", entries: [injected] }))
-    channel.deliver(JSON.stringify({ type: "card_removed", id: "theirs" }))
-    channel.deliver(JSON.stringify({ type: "cards_cleared", ownerPeerId: "remote" }))
+    deliver(remote.peer_id, { type: "card_identified", entry: injected })
+    deliver(remote.peer_id, { type: "cards_sync", entries: [injected] })
+    deliver(remote.peer_id, { type: "card_removed", id: "theirs" })
+    deliver(remote.peer_id, { type: "cards_cleared", ownerPeerId: "remote" })
   })
   expect(result.current.identifiedCards).toEqual([theirs])
 
@@ -404,48 +403,125 @@ it("ignores card messages from peers and never sends cards over data channels", 
     })
     result.current.clearOwnCards()
   })
-  expect(channel.sent).toEqual([])
+  expect(wire.sent("peer_message")).toEqual([])
 })
 
 const theo = { ...saved, player_id: 9, player_name: "Theo", peer_id: "zz-remote" }
 
-/** Seats Cody (this hook) and Theo, whose higher peer ID makes this side open the channel. */
+/** A message another seat sent this one, as the server relays it. */
+function deliver(from: string, message: unknown) {
+  wire.channel!.emit("peer_message", { from, message })
+}
+
+/** Messages this seat sent to other seats through the server. */
+function sentMessages() {
+  return wire
+    .sent("peer_message")
+    .map(
+      ({ payload }) =>
+        payload as { to: string; message: { type: string } & Record<string, unknown> },
+    )
+}
+
+/** Lets queued negotiation steps and sender updates run to completion. */
+async function flush() {
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+}
+
+/** Seats Cody (this hook) and Theo, with the server having answered Cody's offer. */
 async function roomWithTheo() {
   const view = await joinedRoom()
   const self = { ...saved, peer_id: view.result.current.peerId }
   act(() => wire.presence!.sync([self, theo]))
-  const channel = FakePeerConnection.instances[0]!.channels[0]!
-  return { ...view, self, channel }
+  const connection = FakePeerConnection.instances[0]!
+  await waitFor(() => expect(wire.sent("sfu_offer")).toHaveLength(1))
+  act(() => wire.sent("sfu_offer")[0]!.push.reply("ok", { sdp: "answer" }))
+  await flush()
+  return { ...view, self, connection }
 }
 
-/** Lets each peer's serialized sender updates run to completion. */
-async function flushSenderUpdates() {
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+/** The server offers Theo's board on mid "1" and its packets arrive as `stream`. */
+async function serveTheoBoard(
+  connection: FakePeerConnection,
+  stream: MediaStream,
+  owner = theo.peer_id,
+) {
+  act(() => wire.channel!.emit("sfu_offer", { sdp: "server-offer", tracks: { "1": owner } }))
+  await waitFor(() => expect(wire.sent("sfu_answer").length).toBeGreaterThan(0))
+  act(() => connection.arrive("1", stream))
 }
 
-it("leaves video senders alone when a presence sync changes nothing they send", async () => {
-  // Chrome resets a sender's encoder on every replaceTrack, even with the same track, and
-  // each life tap at the table is a presence sync; re-attaching stalled every camera.
-  const { result, self } = await roomWithTheo()
-  const sender = FakePeerConnection.instances[0]!.senders[0]!
-  await flushSenderUpdates()
-  expect(sender.setParameters).toHaveBeenCalledOnce()
+it("publishes the camera once as three H.264-first simulcast layers and answers the server's offer", async () => {
+  const { connection } = await roomWithTheo()
+  expect(FakePeerConnection.instances).toHaveLength(1)
+  expect(connection.addTransceiver).toHaveBeenCalledOnce()
+  const [track, init] = connection.addTransceiver.mock.calls[0]!
+  expect(track).not.toBeNull()
+  expect(init?.direction).toBe("sendonly")
+  // Lowest layer first, each one half the rows and a quarter of the bitrate of the next.
+  expect(init?.sendEncodings).toEqual([
+    { rid: "l", scaleResolutionDownBy: 4, maxBitrate: 156_250, maxFramerate: 30 },
+    { rid: "m", scaleResolutionDownBy: 2, maxBitrate: 625_000, maxFramerate: 30 },
+    { rid: "h", scaleResolutionDownBy: 1, maxBitrate: 2_500_000, maxFramerate: 30 },
+  ])
+  const [transceiver] = connection.transceivers
+  expect(transceiver!.setCodecPreferences.mock.invocationCallOrder[0]).toBeLessThan(
+    connection.createOffer.mock.invocationCallOrder[0]!,
+  )
+  expect(transceiver!.codecPreferences!.map((codec) => codec.mimeType)).toEqual([
+    "video/H264",
+    "video/H264",
+    "video/VP8",
+    "video/rtx",
+    "video/VP9",
+    "video/red",
+    "video/ulpfec",
+  ])
+  expect(wire.sent("sfu_offer")[0]!.payload).toEqual({ sdp: "o" })
+  expect(connection.setRemoteDescription).toHaveBeenCalledWith({ type: "answer", sdp: "answer" })
+})
+
+it("leaves the sender alone when presence changes nothing it encodes, and lets the server enforce reveals", async () => {
+  // Chrome restarts the encoder on every setParameters and replaceTrack; a life tap at the
+  // table is a presence sync, and the old mesh re-attached senders on each of them.
+  const { result, self, connection } = await roomWithTheo()
+  const sender = connection.sender!
+  // The real camera replaced the placeholder once; nothing after that should touch it.
+  expect(sender.replaceTrack).toHaveBeenCalledOnce()
+  expect(sender.setParameters).not.toHaveBeenCalled()
   sender.replaceTrack.mockClear()
-  sender.setParameters.mockClear()
-
   for (const life of [39, 38, 37]) act(() => wire.presence!.sync([self, { ...theo, life }]))
-  await flushSenderUpdates()
+  await flush()
   expect(sender.replaceTrack).not.toHaveBeenCalled()
   expect(sender.setParameters).not.toHaveBeenCalled()
 
-  // A private reveal to someone else still detaches Theo's video.
+  // A third seat drops the frame rate on every layer, once.
   const lee = { ...saved, player_id: 11, player_name: "Lee", peer_id: "zzz-lee" }
   act(() => wire.presence!.sync([self, theo, lee]))
+  await flush()
+  expect(sender.setParameters).toHaveBeenCalledOnce()
+  expect(sender.getParameters().encodings.map((encoding) => encoding.maxFramerate)).toEqual([
+    15, 15, 15,
+  ])
+
+  // A private reveal is a server rule now: the camera keeps publishing every layer.
   wire.onPush = (event, _payload, push) => {
     if (event === "reveal") push.reply("ok")
   }
   await act(() => result.current.changeReveal(lee.peer_id))
-  expect(sender.replaceTrack).toHaveBeenCalledExactlyOnceWith(null)
+  expect(wire.sent("reveal").at(-1)!.payload).toEqual({ target: lee.peer_id })
+  expect(sender.replaceTrack).not.toHaveBeenCalled()
+  expect(result.current.revealTo).toBe(lee.peer_id)
+})
+
+it("spectators negotiate a receive-only connection and never publish", async () => {
+  await joinedRoom({ ...saved, spectator: true })
+  await waitFor(() => expect(wire.sent("sfu_offer")).toHaveLength(1))
+  const connection = FakePeerConnection.instances[0]!
+  expect(connection.addTransceiver).toHaveBeenCalledExactlyOnceWith("video", {
+    direction: "recvonly",
+  })
+  expect(connection.sender).toBeUndefined()
 })
 
 const crop = {
@@ -460,33 +536,41 @@ const crop = {
   shareCorrections: true,
 }
 
-it("drops malformed or unexpected data-channel messages without throwing", async () => {
-  const { result, channel } = await roomWithTheo()
+it("drops malformed or unexpected peer messages without throwing", async () => {
+  const { result } = await roomWithTheo()
   act(() => {
-    channel.deliver("{not json")
-    channel.deliver(new ArrayBuffer(8))
-    channel.deliver(JSON.stringify({ type: "capture_request", requestId: "r", x: 4, y: 0.5 }))
-    channel.deliver(JSON.stringify({ ...crop, requestId: "never-requested" }))
+    deliver(theo.peer_id, "{not json")
+    deliver(theo.peer_id, 42)
+    deliver(theo.peer_id, { type: "capture_request", requestId: "r", x: 4, y: 0.5 })
+    deliver(theo.peer_id, { ...crop, requestId: "never-requested" })
   })
-  expect(channel.sent).toEqual([])
+  expect(sentMessages()).toEqual([])
   expect(result.current.capture).toBeNull()
 
-  act(() =>
-    channel.deliver(JSON.stringify({ type: "capture_request", requestId: "r", x: 0.5, y: 0.5 })),
-  )
-  expect(channel.messages()).toEqual([
-    expect.objectContaining({ type: "capture_response", requestId: "r", private: false }),
+  act(() => deliver(theo.peer_id, { type: "capture_request", requestId: "r", x: 0.5, y: 0.5 }))
+  expect(sentMessages()).toEqual([
+    {
+      to: theo.peer_id,
+      message: expect.objectContaining({
+        type: "capture_response",
+        requestId: "r",
+        private: false,
+      }),
+    },
   ])
 })
 
 it("accepts only the requested peer's well-formed crop and restores the live status", async () => {
-  const { result, channel } = await roomWithTheo()
+  const { result } = await roomWithTheo()
   act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5, true))
   expect(result.current.status).toBe("Requesting native camera crop…")
-  const { requestId } = channel.messages()[0]!
-  act(() => channel.deliver(JSON.stringify({ ...crop, requestId, image: "data:text/html,hi" })))
+  const { requestId } = sentMessages()[0]!.message
+  act(() => deliver(theo.peer_id, { ...crop, requestId, image: "data:text/html,hi" }))
   expect(result.current.capture).toBeNull()
-  act(() => channel.deliver(JSON.stringify({ ...crop, requestId, extra: "dropped" })))
+  // Another seat cannot answer for Theo.
+  act(() => deliver("zz-other", { ...crop, requestId }))
+  expect(result.current.capture).toBeNull()
+  act(() => deliver(theo.peer_id, { ...crop, requestId, extra: "dropped" }))
   expect(result.current.capture).toEqual({
     peerId: theo.peer_id,
     playerId: 9,
@@ -504,7 +588,7 @@ it("accepts only the requested peer's well-formed crop and restores the live sta
 })
 
 it("mirrors a remote crop to match the clicker's flip of that board", async () => {
-  const { result, channel } = await roomWithTheo()
+  const { result } = await roomWithTheo()
   const context = { setTransform: vi.fn(), drawImage: vi.fn() }
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
     context as unknown as CanvasRenderingContext2D,
@@ -517,14 +601,12 @@ it("mirrors a remote crop to match the clicker's flip of that board", async () =
   const flip = { vertical: true, horizontal: true }
   act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5, false, flip))
   // The owner is asked for native pixels; the flip never leaves the clicker.
-  expect(channel.messages()[0]).toEqual({
-    type: "capture_request",
-    requestId: expect.any(String),
-    x: 0.5,
-    y: 0.5,
+  expect(sentMessages()[0]).toEqual({
+    to: theo.peer_id,
+    message: { type: "capture_request", requestId: expect.any(String), x: 0.5, y: 0.5 },
   })
-  const { requestId } = channel.messages()[0]!
-  act(() => channel.deliver(JSON.stringify({ ...crop, requestId, clickX: 100, clickY: 200 })))
+  const { requestId } = sentMessages()[0]!.message
+  act(() => deliver(theo.peer_id, { ...crop, requestId, clickX: 100, clickY: 200 }))
   await waitFor(() =>
     expect(result.current.capture).toMatchObject({
       image: "data:image/jpeg;base64,seen",
@@ -536,148 +618,142 @@ it("mirrors a remote crop to match the clicker's flip of that board", async () =
 })
 
 it("times out a crop request that a silent peer never answers", async () => {
-  const { result, channel } = await roomWithTheo()
+  const { result } = await roomWithTheo()
   vi.useFakeTimers()
   act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5))
-  const { requestId } = channel.messages()[0]!
+  const { requestId } = sentMessages()[0]!.message
   act(() => {
     vi.advanceTimersByTime(CAPTURE_TIMEOUT_MS)
   })
   expect(result.current.status).toBe("Theo's camera did not send a crop; click the card again")
-  act(() => channel.deliver(JSON.stringify({ ...crop, requestId })))
+  act(() => deliver(theo.peer_id, { ...crop, requestId }))
   expect(result.current.capture).toBeNull()
 })
 
-it("drops a departed peer's stream so a rejoin under a new peer ID does not count twice", async () => {
-  const { result, self } = await roomWithTheo()
-  const first = FakePeerConnection.instances[0]!
-  const stream = { id: "theo-1" } as unknown as MediaStream
-  act(() => first.ontrack?.({ streams: [stream] }))
+it("maps each arriving board to its owner by mid and drops it when the server withdraws it", async () => {
+  const { result, connection } = await roomWithTheo()
+  // The server names the board owner per mid; the stream id is only a fallback.
+  const stream = { id: "msid-from-server" } as unknown as MediaStream
+  await serveTheoBoard(connection, stream)
   expect(result.current.streams).toEqual({ [theo.peer_id]: stream })
+  expect(connection.setRemoteDescription).toHaveBeenLastCalledWith({
+    type: "offer",
+    sdp: "server-offer",
+  })
+  expect(wire.sent("sfu_answer")[0]!.payload).toEqual({ sdp: "a" })
 
-  // Theo's channel drops; he rejoins with a new media generation. Closing the old
-  // connection fires no connectionstatechange, so presence is the only signal.
+  act(() => wire.channel!.emit("sfu_offer", { sdp: "server-offer-2", tracks: {} }))
+  await waitFor(() => expect(wire.sent("sfu_answer")).toHaveLength(2))
+  expect(result.current.streams).toEqual({})
+})
+
+it("drops a departed peer's stream so a rejoin under a new peer ID does not count twice", async () => {
+  const { result, self, connection } = await roomWithTheo()
+  const stream = { id: theo.peer_id } as unknown as MediaStream
+  await serveTheoBoard(connection, stream)
+  expect(result.current.streams).toEqual({ [theo.peer_id]: stream })
+  expect(result.current.connectionStates).toEqual({ [theo.peer_id]: "new" })
+
+  // Theo's channel drops; he rejoins with a new media generation. Presence says so first,
+  // then the server offers his new board.
   const rejoined = { ...theo, peer_id: "zz-remote-2" }
   act(() => wire.presence!.sync([self, rejoined]))
+  expect(result.current.streams).toEqual({})
+  expect(result.current.connectionStates).toEqual({ [rejoined.peer_id]: "new" })
+
+  const next = { id: rejoined.peer_id } as unknown as MediaStream
+  await serveTheoBoard(connection, next, rejoined.peer_id)
+  expect(result.current.streams).toEqual({ [rejoined.peer_id]: next })
+  act(() => connection.changeState("connected"))
+  expect(result.current.connectionStates).toEqual({ [rejoined.peer_id]: "connected" })
+})
+
+it("asks the server for the layer that fits the largest tile drawing each board", async () => {
+  const { result, connection } = await roomWithTheo()
+  const stream = { id: theo.peer_id } as unknown as MediaStream
+  await serveTheoBoard(connection, stream)
+  const observer = () => FakeResizeObserver.instances.at(-1)!
+  const rail = document.createElement("video")
+  const stage = document.createElement("video")
+  const unwatchRail = result.current.watchTile(stream, rail)
+  expect(observer().observed.has(rail)).toBe(true)
+
+  // A 16:9 picture in a 400×400 rail tile is 225 rows: the quarter-resolution layer.
+  act(() => observer().resize(rail, 400, 400))
+  expect(payloads("sfu_layer")).toEqual([{ peer_id: theo.peer_id, layer: "l" }])
+  // The pinned board is the full layer; the same size again asks for nothing new.
+  const unwatchStage = result.current.watchTile(stream, stage)
+  act(() => observer().resize(stage, 1600, 900))
+  act(() => observer().resize(stage, 1600, 900))
+  expect(payloads("sfu_layer")).toEqual([
+    { peer_id: theo.peer_id, layer: "l" },
+    { peer_id: theo.peer_id, layer: "h" },
+  ])
+  // The board also stays in the rail; shrinking the stage to a grid cell wants the middle
+  // layer, and unpinning it altogether falls back to the rail's size.
+  act(() => observer().resize(stage, 800, 540))
+  expect(payloads("sfu_layer").at(-1)).toEqual({ peer_id: theo.peer_id, layer: "m" })
+  act(() => unwatchStage())
+  expect(payloads("sfu_layer").at(-1)).toEqual({ peer_id: theo.peer_id, layer: "l" })
+  unwatchRail()
+  // A tile showing a stream the server has not announced asks for nothing.
+  const own = document.createElement("video")
+  result.current.watchTile({ id: "local" } as unknown as MediaStream, own)
+  act(() => observer().resize(own, 1600, 900))
+  expect(payloads("sfu_layer")).toHaveLength(4)
+})
+
+it("reconnects with a fresh offer after a channel retry and abandons the old connection's steps", async () => {
+  let resolveOffer!: (offer: RTCSessionDescriptionInit) => void
+  const { result } = await joinedRoom()
+  const first = FakePeerConnection.instances[0]!
+  await waitFor(() => expect(wire.sent("sfu_offer")).toHaveLength(1))
+  // A server offer still in flight when the channel drops.
+  first.setRemoteDescription.mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveOffer = resolve as never
+    }),
+  )
+  act(() => wire.sent("sfu_offer")[0]!.push.reply("ok", { sdp: "answer" }))
+  act(() => wire.channel!.fail())
   expect(first.connectionState).toBe("closed")
   expect(result.current.streams).toEqual({})
-  expect(result.current.connectionStates).toEqual({})
-
-  const second = FakePeerConnection.instances[1]!
-  const next = { id: "theo-2" } as unknown as MediaStream
-  act(() => second.ontrack?.({ streams: [next] }))
-  expect(result.current.streams).toEqual({ [rejoined.peer_id]: next })
-})
-
-it("cancels pending crops when their peer leaves or the room unmounts", async () => {
-  const { result, self, unmount } = await roomWithTheo()
-  vi.useFakeTimers()
-  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5))
-  expect(vi.getTimerCount()).toBe(1)
-  act(() => wire.presence!.sync([self]))
-  expect(vi.getTimerCount()).toBe(0)
-  expect(result.current.status).toMatch(/^Live/)
-
-  act(() => wire.presence!.sync([self, theo]))
-  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5))
-  expect(vi.getTimerCount()).toBe(1)
-  unmount()
-  expect(vi.getTimerCount()).toBe(0)
-})
-
-it("logs failed negotiation steps instead of leaving unhandled rejections", async () => {
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
-  FakePeerConnection.onCreate = (connection) => {
-    connection.createOffer.mockRejectedValue(new DOMException("no codecs", "OperationError"))
-    connection.setRemoteDescription.mockRejectedValue(
-      new DOMException("bad sdp", "InvalidStateError"),
-    )
-  }
-  const { result } = await roomWithTheo()
-  await waitFor(() =>
-    expect(warn).toHaveBeenCalledWith(
-      "WebRTC negotiation with zz-remote failed",
-      expect.anything(),
-    ),
-  )
-
-  // An offer from a lower peer ID: its failure is logged and later steps still run in order.
-  const target = result.current.peerId
-  act(() => {
-    wire.channel!.emit("signal", {
-      target,
-      from: "00-remote",
-      signal: { description: { type: "offer", sdp: "o" } },
-    })
-    wire.channel!.emit("signal", {
-      target,
-      from: "00-remote",
-      signal: { candidate: { candidate: "c" } },
-    })
-  })
-  await waitFor(() =>
-    expect(warn).toHaveBeenCalledWith(
-      "WebRTC negotiation with 00-remote failed",
-      expect.anything(),
-    ),
-  )
-  const answering = FakePeerConnection.instances[1]!
-  expect(answering.createAnswer).not.toHaveBeenCalled()
-  expect(wire.sent("signal")).toEqual([])
-})
-
-it("ranks H.264 first on both the offering and the answering side before negotiating", async () => {
-  const { result } = await roomWithTheo()
-  const offering = FakePeerConnection.instances[0]!
-  await waitFor(() => expect(offering.createOffer).toHaveBeenCalled())
-  const [transceiver] = offering.transceivers
-  expect(transceiver!.setCodecPreferences).toHaveBeenCalledOnce()
-  expect(transceiver!.setCodecPreferences.mock.invocationCallOrder[0]).toBeLessThan(
-    offering.createOffer.mock.invocationCallOrder[0]!,
-  )
-  expect(transceiver!.codecPreferences!.map((codec) => codec.mimeType)).toEqual([
-    "video/H264",
-    "video/H264",
-    "video/VP8",
-    "video/rtx",
-    "video/VP9",
-    "video/red",
-    "video/ulpfec",
-  ])
-
-  act(() => {
-    wire.channel!.emit("signal", {
-      target: result.current.peerId,
-      from: "00-remote",
-      signal: { description: { type: "offer", sdp: "o" } },
-    })
-  })
-  const answering = FakePeerConnection.instances[1]!
-  await waitFor(() => expect(answering.createAnswer).toHaveBeenCalled())
-  const answerTransceiver = answering.transceivers[0]!
-  expect(answerTransceiver.setCodecPreferences.mock.invocationCallOrder[0]).toBeLessThan(
-    answering.setRemoteDescription.mock.invocationCallOrder[0]!,
-  )
-  expect(answerTransceiver.codecPreferences![0]!.mimeType).toBe("video/H264")
-})
-
-it("abandons an offer when its peer leaves mid-negotiation", async () => {
-  let resolveOffer!: (offer: RTCSessionDescriptionInit) => void
-  FakePeerConnection.onCreate = (connection) => {
-    connection.createOffer.mockReturnValue(
-      new Promise((resolve) => {
-        resolveOffer = resolve
-      }),
-    )
-  }
-  const { self } = await roomWithTheo()
-  const connection = FakePeerConnection.instances[0]!
-  await waitFor(() => expect(connection.createOffer).toHaveBeenCalled())
-  act(() => wire.presence!.sync([self]))
   await act(async () => {
-    resolveOffer({ type: "offer", sdp: "late" })
+    resolveOffer({ type: "answer", sdp: "late" })
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
-  expect(connection.setLocalDescription).not.toHaveBeenCalled()
-  expect(wire.sent("signal")).toEqual([])
+  expect(first.addIceCandidate).not.toHaveBeenCalled()
+
+  await act(async () => wire.channel!.joinPush.reply("ok", { participant: saved }))
+  await waitFor(() => expect(FakePeerConnection.instances).toHaveLength(2))
+  await waitFor(() => expect(wire.sent("sfu_offer")).toHaveLength(2))
+  expect(result.current.error).toBeNull()
+})
+
+it("reports a rejected offer and logs later failed steps instead of leaving unhandled rejections", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+  const { result } = await joinedRoom()
+  await waitFor(() => expect(wire.sent("sfu_offer")).toHaveLength(1))
+  act(() => wire.sent("sfu_offer")[0]!.push.reply("error", { reason: "offer rejected" }))
+  await waitFor(() =>
+    expect(result.current.error).toBe("Could not connect to the table's video server."),
+  )
+  expect(warn).toHaveBeenCalledWith(
+    "WebRTC negotiation with the table server failed",
+    expect.anything(),
+  )
+
+  const connection = FakePeerConnection.instances[0]!
+  connection.setRemoteDescription.mockRejectedValueOnce(
+    new DOMException("bad sdp", "InvalidStateError"),
+  )
+  act(() => {
+    wire.channel!.emit("sfu_offer", { sdp: "bad", tracks: {} })
+    wire.channel!.emit("sfu_candidate", { candidate: { candidate: "c" } })
+  })
+  await waitFor(() => expect(warn).toHaveBeenCalledTimes(2))
+  expect(connection.createAnswer).not.toHaveBeenCalled()
+  expect(wire.sent("sfu_answer")).toEqual([])
+  // The candidate arrived before any description, so it waits instead of failing.
+  expect(connection.addIceCandidate).not.toHaveBeenCalled()
 })

@@ -4,13 +4,16 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   use TheGatheringWeb, :channel
 
   alias TheGathering.{Games, WebcamTables}
+  alias TheGathering.WebcamTables.Sfu
   alias TheGatheringWeb.{ChannelRateLimit, Presence, WebcamTableRooms}
 
   @starting_life 40
   @life_range -999..999
-  # SDP offers with many candidates run 10–20 KB; anything far larger is abuse,
-  # since every signal fans out to the whole room.
-  @max_signal_bytes 65_536
+  # SDP offers with many candidates run 10–20 KB; anything far larger is abuse.
+  @max_sdp_bytes 65_536
+  # Direct seat-to-seat messages carry card crops (JPEG data URLs) for the scanner.
+  @max_peer_message_bytes 262_144
+  @signal_events ["sfu_offer", "sfu_answer", "sfu_candidate", "sfu_layer", "peer_message"]
 
   intercept ["presence_diff"]
 
@@ -55,8 +58,35 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
     # Sent once per join rather than in every table_state broadcast; new entries follow as log_entry.
     push(socket, "table_log", %{entries: WebcamTables.log(socket.assigns.room_id)})
-    {:noreply, assign(socket, :participant, participant)}
+
+    # The seat's media connection lives in the SFU, which monitors this process; the
+    # browser offers once the join reply arrives.
+    case Sfu.join(socket.assigns.room_id, participant.peer_id, participant.spectator) do
+      :ok -> {:noreply, assign(socket, :participant, participant)}
+      {:error, reason} -> {:stop, {:sfu_unavailable, reason}, socket}
+    end
   end
+
+  # Server-initiated signaling: offers whenever the set of boards changes, trickle ICE,
+  # and messages another seat addressed to this one.
+  def handle_info({:sfu, :offer, payload}, socket) do
+    push(socket, "sfu_offer", payload)
+    {:noreply, socket}
+  end
+
+  def handle_info({:sfu, :candidate, payload}, socket) do
+    push(socket, "sfu_candidate", payload)
+    {:noreply, socket}
+  end
+
+  def handle_info({:sfu, :peer_message, payload}, socket) do
+    push(socket, "peer_message", payload)
+    {:noreply, socket}
+  end
+
+  # The media connection failed or crashed. Stopping abnormally sends phx_error, so the
+  # client rejoins under a new peer id and negotiates a fresh connection.
+  def handle_info({:sfu, :down, reason}, socket), do: {:stop, {:sfu_down, reason}, socket}
 
   def handle_info(:seat_replaced, socket) do
     push(socket, "seat_replaced", %{})
@@ -113,10 +143,10 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   # Every event spends a token before it is handled, so floods are refused
   # before they validate, broadcast or write SQLite. Signals have their own,
-  # larger bucket because connecting to a full table sends dozens at once.
+  # larger bucket because connecting to a table sends dozens of candidates at once.
   @impl true
   def handle_in(event, payload, socket) do
-    bucket = if event == "signal", do: :signals, else: :events
+    bucket = if event in @signal_events, do: :signals, else: :events
 
     case ChannelRateLimit.take(socket.assigns.rate_limits[bucket]) do
       {:ok, updated} ->
@@ -129,7 +159,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   end
 
   defp handle_event(event, _payload, %{assigns: %{participant: %{spectator: true}}} = socket)
-       when event not in ["signal", "timer_sync"] do
+       when event not in ["timer_sync" | @signal_events] do
     {:reply, {:error, %{reason: "spectators cannot change the game"}}, socket}
   end
 
@@ -171,28 +201,78 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     {:reply, update_cards(socket, payload), socket}
   end
 
-  defp handle_event("signal", %{"target" => target, "signal" => signal}, socket)
-       when is_binary(target) and is_map(signal) do
-    cond do
-      not uuid?(target) ->
-        {:reply, {:error, %{reason: "invalid signal"}}, socket}
-
-      byte_size(Jason.encode!(signal)) > @max_signal_bytes ->
-        {:reply, {:error, %{reason: "signal too large"}}, socket}
-
-      true ->
-        broadcast_from!(socket, "signal", %{
-          target: target,
-          from: socket.assigns.participant.peer_id,
-          signal: signal
-        })
-
-        {:noreply, socket}
+  # WebRTC signaling with the SFU. The browser's one offer carries its camera; every later
+  # offer comes from the server and the browser answers it.
+  defp handle_event("sfu_offer", %{"sdp" => sdp} = payload, socket)
+       when map_size(payload) == 1 and is_binary(sdp) and byte_size(sdp) <= @max_sdp_bytes do
+    case Sfu.offer(socket.assigns.room_id, socket.assigns.participant.peer_id, sdp) do
+      {:ok, answer} -> {:reply, {:ok, %{sdp: answer}}, socket}
+      {:error, _reason} -> {:reply, {:error, %{reason: "offer rejected"}}, socket}
     end
   end
 
-  defp handle_event("signal", _payload, socket),
-    do: {:reply, {:error, %{reason: "invalid signal"}}, socket}
+  defp handle_event("sfu_offer", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid offer"}}, socket}
+
+  defp handle_event("sfu_answer", %{"sdp" => sdp} = payload, socket)
+       when map_size(payload) == 1 and is_binary(sdp) and byte_size(sdp) <= @max_sdp_bytes do
+    case Sfu.answer(socket.assigns.room_id, socket.assigns.participant.peer_id, sdp) do
+      :ok -> {:reply, :ok, socket}
+      {:error, _reason} -> {:reply, {:error, %{reason: "answer rejected"}}, socket}
+    end
+  end
+
+  defp handle_event("sfu_answer", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid answer"}}, socket}
+
+  defp handle_event("sfu_candidate", %{"candidate" => %{"candidate" => _} = candidate}, socket) do
+    case Sfu.candidate(socket.assigns.room_id, socket.assigns.participant.peer_id, candidate) do
+      :ok -> {:noreply, socket}
+      {:error, _reason} -> {:reply, {:error, %{reason: "invalid candidate"}}, socket}
+    end
+  end
+
+  defp handle_event("sfu_candidate", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid candidate"}}, socket}
+
+  # Which simulcast layer of another seat's board this browser wants, from its drawn size.
+  defp handle_event("sfu_layer", %{"peer_id" => owner, "layer" => layer} = payload, socket)
+       when map_size(payload) == 2 and is_binary(owner) and is_binary(layer) do
+    if uuid?(owner) and Sfu.valid_layer?(layer) do
+      case Sfu.layer(socket.assigns.room_id, socket.assigns.participant.peer_id, owner, layer) do
+        :ok -> {:noreply, socket}
+        {:error, _reason} -> {:reply, {:error, %{reason: "unknown board"}}, socket}
+      end
+    else
+      {:reply, {:error, %{reason: "invalid layer"}}, socket}
+    end
+  end
+
+  defp handle_event("sfu_layer", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid layer"}}, socket}
+
+  # A message for one other seat (card crops for the scanner), relayed as-is.
+  defp handle_event("peer_message", %{"to" => to, "message" => message} = payload, socket)
+       when map_size(payload) == 2 and is_binary(to) and is_map(message) do
+    cond do
+      not uuid?(to) or to == socket.assigns.participant.peer_id ->
+        {:reply, {:error, %{reason: "invalid recipient"}}, socket}
+
+      byte_size(Jason.encode!(message)) > @max_peer_message_bytes ->
+        {:reply, {:error, %{reason: "message too large"}}, socket}
+
+      true ->
+        from = socket.assigns.participant.peer_id
+
+        case Sfu.relay(socket.assigns.room_id, from, to, message) do
+          :ok -> {:noreply, socket}
+          {:error, _reason} -> {:reply, {:error, %{reason: "recipient has left"}}, socket}
+        end
+    end
+  end
+
+  defp handle_event("peer_message", _payload, socket),
+    do: {:reply, {:error, %{reason: "invalid message"}}, socket}
 
   defp handle_event("choose_deck", %{"deck_id" => deck_id}, socket) when is_integer(deck_id) do
     participant = socket.assigns.participant
@@ -455,10 +535,12 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   defp update_cards(socket, payload),
     do: WebcamTables.cards(socket.assigns.room_id, payload, socket.assigns.participant)
 
+  # Presence tells every seat who may see the board; the SFU enforces it on the media.
   defp put_reveal(socket, target) do
     participant = %{socket.assigns.participant | reveal_to: target}
     {:ok, _ref} = Presence.update(socket, participant.peer_id, participant)
     WebcamTables.remember_seat(socket.assigns.room_id, participant)
+    _ = Sfu.reveal(socket.assigns.room_id, participant.peer_id, target)
     assign(socket, :participant, participant)
   end
 

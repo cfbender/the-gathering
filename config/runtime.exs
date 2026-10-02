@@ -81,6 +81,21 @@ config :the_gathering, TheGathering.CloudflareTurn,
   api_token: System.get_env("CLOUDFLARE_TURN_API_TOKEN"),
   ttl: String.to_integer(System.get_env("CLOUDFLARE_TURN_TTL_SECONDS", "21600"))
 
+# The webcam table SFU terminates every seat's WebRTC connection on this server. Media uses
+# UDP ports in WEBRTC_SFU_PORT_RANGE, which must be forwarded to this host and announced
+# as WEBRTC_SFU_PUBLIC_IP; or set WEBRTC_SFU_RELAY_ONLY=true to reach browsers through the
+# Cloudflare TURN relay instead of forwarding ports.
+sfu_port_range =
+  case System.get_env("WEBRTC_SFU_PORT_RANGE", "50000-50100") |> String.split("-", parts: 2) do
+    [first, last] -> String.to_integer(first)..String.to_integer(last)//1
+    [single] -> String.to_integer(single)..String.to_integer(single)//1
+  end
+
+config :the_gathering, :sfu,
+  port_range: sfu_port_range,
+  public_ip: System.get_env("WEBRTC_SFU_PUBLIC_IP"),
+  relay_only: System.get_env("WEBRTC_SFU_RELAY_ONLY") in ["true", "1"]
+
 # Optional origin of a self-hosted ManaVault instance whose shared deck links should be
 # recognized and resolved, e.g. https://manavault.example.com. Unset disables ManaVault links.
 if manavault_url = System.get_env("MANAVAULT_URL") do

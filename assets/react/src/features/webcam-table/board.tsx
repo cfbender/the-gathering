@@ -1,15 +1,23 @@
 import { Crown, UserPlus, Video, VideoOff, type LucideIcon } from "lucide-react"
-import type { MouseEvent, ReactNode } from "react"
+import { useCallback, type MouseEvent, type ReactNode } from "react"
 import { cn } from "@/lib/cn"
 import type { OutlineDraft } from "./outline-drawing"
+import { useWatchTile } from "./stream-tiles"
 import { describeConnection, type TableParticipant } from "./use-webcam-room"
 
 export function StreamVideo({ stream, className }: { stream: MediaStream; className?: string }) {
+  const watchTile = useWatchTile()
+  const attach = useCallback(
+    (video: HTMLVideoElement | null) => {
+      if (!video) return
+      if (video.srcObject !== stream) video.srcObject = stream
+      return watchTile(stream, video)
+    },
+    [stream, watchTile],
+  )
   return (
     <video
-      ref={(video) => {
-        if (video && video.srcObject !== stream) video.srcObject = stream
-      }}
+      ref={attach}
       className={cn("h-full w-full", className)}
       autoPlay
       playsInline

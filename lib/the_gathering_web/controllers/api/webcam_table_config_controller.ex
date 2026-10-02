@@ -2,6 +2,7 @@ defmodule TheGatheringWeb.API.WebcamTableConfigController do
   use TheGatheringWeb, :controller
 
   alias TheGathering.CloudflareTurn
+  alias TheGathering.WebcamTables.Sfu
   alias TheGatheringWeb.UserSocket
 
   plug TheGatheringWeb.RateLimit, bucket: :turn_credentials
@@ -15,6 +16,7 @@ defmodule TheGatheringWeb.API.WebcamTableConfigController do
     |> json(%{
       data: %{
         ice_servers: ice_servers(config),
+        sfu: Sfu.client_info(),
         max_players: 10,
         minimum_height: 1080,
         socket_token: socket_token

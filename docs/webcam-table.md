@@ -37,58 +37,81 @@ only a seat's owner may choose its commander).
 
 ## Decisions
 
-### Ten-seat adaptive mesh now, SFU seam later
+### A server-side SFU with simulcast
 
-Use one `RTCPeerConnection` per pair and Phoenix Channels only for authenticated presence,
-SDP, and ICE signaling. At the maximum of ten, a room has 45 connections and each
-browser sends at most nine streams. This retains the one-container architecture and keeps
-media end-to-end between browsers. `ex_webrtc` implements a peer connection, not an SFU by
-itself; a Membrane RTC engine would add server-side media routing, UDP port exposure, process
-supervision, and materially more deployment work.
+Every browser holds one `RTCPeerConnection` to the server (`TheGathering.WebcamTables.Sfu`,
+built on `ex_webrtc`), not one to each other seat. Phoenix Channels carry authenticated presence
+and the signaling for that single connection: the browser's first `sfu_offer` carries its camera
+and every later offer comes from the server (`sfu_offer` with a `tracks` map of mid → owner peer
+id) and is answered with `sfu_answer`; `sfu_candidate` trickles ICE in both directions.
+`Sfu.Room` is one GenServer per table owning one `ExWebRTC.PeerConnection` per seat; it adds a
+send-only track per other publisher (stream id = owner's peer id, so the browser can map a
+remote stream to its seat), forwards RTP between them, and stops the channel if its connection
+dies so the browser rejoins with a fresh peer id.
 
-`media-policy.ts` budgets each outgoing sender by **total seated players, including self**:
+The table used to be a full mesh. Measured on a real four-seat game in Chrome 154, each browser
+ran three 1080p software encoders plus three decoders at 150–200% of a core, rebuilt the encoders
+on every adaptation step, and burned one TURN allocation per pair; the SFU exists to cut that to
+one encode and N−1 mostly tiny decodes per browser.
 
-| Seats | `scaleResolutionDownBy` | From a 1080p camera | `maxBitrate` per receiver | `maxFramerate` |
-| --- | --- | --- | --- | --- |
-| 1–2 | 1 | 1920 × 1080 | 2,500,000 bps | 30 |
-| 3–4 | 1 | 1920 × 1080 | 2,500,000 bps | 15 |
-| 5–7 | 1.5 | 1280 × 720 | 1,200,000 bps | 15 |
-| 8–10 | 2 | 960 × 540 | 600,000 bps | 15 |
+Each seat publishes its camera **once, as three simulcast layers** (`simulcastEncodings` in
+`use-sfu-connection.ts`): rid `h` is what `videoEncoding` in `media-policy.ts` allows for the room
+size and quality setting (1080p at 2.5 Mbps for up to four seats), `m` halves the resolution and
+quarters the bitrate, `l` halves and quarters again (480 × 270 at ~156 kbps from a 1080p camera).
+Frame rate is 30 for a two-seat table and 15 otherwise. The viewer, not the publisher, decides
+which layer it receives: `watchTile` observes every `<video>` drawing a remote stream with a
+`ResizeObserver`, takes the tallest 16:9 fit in device pixels, and `layerForHeight` asks for `l`
+up to 270 px, `m` up to 540 px, and `h` above that (`sfu_layer {peer_id, layer}`, sent only when
+the answer changes). A rail tile therefore costs a quarter-resolution decode while the pinned
+board stays sharp, and pinning another board switches within a keyframe.
 
-The hook applies these caps through `RTCRtpSender.setParameters` when a connection becomes live
-and when membership changes (including restoring the higher tier after departures). Congestion
-control may reduce quality further. At ten seats the video budget is at most 5.4 Mbps per
-sender before transport overhead, still nine encodes and potentially nine TURN relays. Measure
-sender CPU, available outgoing bitrate, frame dimensions, packet loss, and TURN use; these
-tiers are budgets, not a guarantee of ten-seat performance on every device.
+`Sfu.Subscription` is the pure per-viewer-per-publisher state: which layer is live, which is
+pending, and an `ExWebRTC.RTP.Munger` rewriting sequence numbers and timestamps so the viewer's
+decoder sees one continuous stream across switches. A switch waits for a keyframe of the new
+layer; the room asks the publisher for one with a PLI on that rid, rate-limited to one per
+300 ms per layer so several viewers switching at once do not make the browser spend its whole
+bitrate on keyframes. A viewer showing nothing yet adopts a keyframe of any layer rather than
+staying black while its wanted layer is paused under CPU pressure. Browsers also resend recent
+packets over RTX to probe bandwidth and `ex_webrtc` recovers those into the original packets
+again, so the subscription keeps a 256-packet window of forwarded sequence numbers and drops the
+duplicates (forwarding one twice fails the viewer's SRTP replay check).
 
-CPU, not bandwidth, is the first limit of the mesh. Every remote seat costs one encoder plus
-one decoder whose work scales with pixels × frames per second, and browsers left to themselves
-pick libvpx VP8, which Chromium never hardware-accelerates. Measured in headless Chromium on an
-8-core orb with a synthetic 1080p camera at 20 fps: a seat alone used ~20% of a core; each seat
-of a three-player table used ~130% at 1080p and ~83% at 720p; halving one seat's encode frame
-rate saved ~40% of a core on the sender and ~15% on each receiver. A four-player table from
-30 fps cameras therefore needs about three cores per browser at full rate. The frame-rate
-column caps that cost from the third seat on while keeping the resolution a card needs to be
-readable; the Publisher quality setting still lowers resolution (and so decode cost on every
-receiver) further.
+Two `ex_webrtc` 0.17 gaps are worked around here. Its re-offers never carry `a=rid` /
+`a=simulcast` for a receiving transceiver, so after the second seat joined the browser silently
+dropped to a single layer; `Sfu.SimulcastSdp` captures those attributes from the browser's first
+offer and restores them in the copy of each server offer sent to the browser (the server keeps
+its own unaltered SDP because `set_local_description` rejects a changed one). And the server
+answers a browser offer that includes H.264 and VP8 with both; the browser ranks H.264 first via
+`setCodecPreferences` (`orderVideoCodecs`) for the reasons below, and the SFU forwards whatever
+codec each publisher ends up with, since every WebRTC browser decodes both.
 
-`createPeer` also ranks H.264 first with `RTCRtpTransceiver.setCodecPreferences` on both the
-offering and the answering side (`orderVideoCodecs` in `media-policy.ts`). H.264 is the codec
-hardware encoders and decoders cover (VideoToolbox on macOS and iOS, Media Foundation on
-Windows, VA-API on Linux once Chrome's accelerated-video flags are on), and even in software
-it is cheaper: in the same three-seat 1080p/15 fps room in Chrome 154, each browser dropped from
-~105% of a core with libvpx to ~55% with OpenH264 encode and FFmpeg decode. The preference
-list keeps every other capability in order, so two browsers without a common H.264 profile
-fall back to VP8, and browsers without `setCodecPreferences` negotiate their default.
-`chrome://webrtc-internals` (`about:webrtc` in Firefox) shows the result as the codec and
-`encoderImplementation` / `decoderImplementation` of each stream.
+One cost is not worked around: `ex_webrtc` generates a fresh RSA-2048 DTLS certificate for every
+peer connection inside a regular (non-dirty) `ex_dtls` NIF, which blocks one BEAM scheduler for
+50–500 ms per join (`:erlang.system_monitor` `long_schedule` on `ExWebRTC.DTLSTransport.init/1`).
+On a four-core host a full table arriving at once stalls other work by that much; it is why
+`test/test_helper.exs` raises ExUnit's `assert_receive_timeout`. Fixing it needs an upstream
+option to supply a pre-generated certificate or a dirty-scheduler NIF.
 
-The SFU migration seam is `useWebcamRoom`: replace peer creation/signaling and stream delivery
-behind that hook, preserving participant, stream, capture, reveal, and result APIs. The SFU
-must enforce reveal subscriptions server-side and preserve the native crop RPC (a targeted data
-channel or equivalent), rather than forwarding hidden video and relying on UI overlays. Move
-there when measured CPU, uplink, or relay costs make the mesh impractical.
+H.264 is the codec hardware encoders and decoders cover (VideoToolbox on macOS and iOS, Media
+Foundation on Windows, VA-API on Linux once Chrome's accelerated-video flags are on), and even in
+software it is cheaper: in a three-seat 1080p/15 fps room in Chrome 154, each browser dropped from
+~105% of a core with libvpx to ~55% with OpenH264 encode and FFmpeg decode. `chrome://webrtc-internals`
+(`about:webrtc` in Firefox) shows the result as the codec and `encoderImplementation` /
+`decoderImplementation` of each stream.
+
+Reveals are enforced server-side: `Sfu.reveal/3` limits a publisher to one viewer and the room
+stops forwarding to everyone else, so hidden video never leaves the server. The native crop RPC
+that used to ride each pair's data channel is a targeted channel event instead
+(`peer_message {to, message}` in, `peer_message {from, message}` out, capped at 256 KB); a seat
+still only answers crop requests for its own camera. Spectators add a receive-only transceiver so
+the server has a connection to offer boards on without a camera.
+
+The room keeps one UDP socket per connected browser from `WEBRTC_SFU_PORT_RANGE` and announces
+`WEBRTC_SFU_PUBLIC_IP` as its server-reflexive address when set, so a host that forwards that
+range needs no STUN of its own. `WEBRTC_SFU_RELAY_ONLY=true` instead makes the server connect
+out through Cloudflare TURN (`ice_transport_policy: :relay`) for hosts that cannot forward ports,
+at the cost of every byte crossing the relay. `GET /api/webcam-table/config` tells the browser
+which (`sfu.transport`).
 
 Phoenix's own Channels documentation confirms that signaling is application-defined and that
 signed-token authentication belongs in `connect`; the authenticated config endpoint signs the
@@ -101,17 +124,25 @@ through such a signaling service. References:
 
 ### ICE, STUN, TURN, and proxies
 
-The normal HTTPS reverse proxy must pass WebSocket upgrades for `/socket`; it never carries RTP
-in the mesh case. Host candidates alone only work on one LAN: two browsers on different networks
-each sit at "Connecting…" forever because neither learns a reachable address. `WEBRTC_STUN_URLS`
-therefore defaults to public STUN servers (Google and Cloudflare); override it with your own or
-set it to `none` for a LAN-only install. STUN gets through ordinary home routers; players behind
-symmetric NAT or carrier-grade NAT also need a separately reachable TURN server configured with
-`WEBRTC_TURN_URLS`, `WEBRTC_TURN_USERNAME`, and `WEBRTC_TURN_CREDENTIAL`. When a peer connection
-fails the offering side restarts ICE once; a peer that stays failed is labelled "Couldn't
-connect" on its tile and the Connection section points at TURN. TURN cannot be hidden behind an ordinary HTTP reverse proxy: expose its
-UDP/TCP listener (commonly 3478) and preferably TURN-over-TLS (commonly 5349/443) from coturn or
-another relay. Credentials are returned only from the authenticated config endpoint.
+The normal HTTPS reverse proxy must pass WebSocket upgrades for `/socket`; it never carries RTP.
+Media is UDP between each browser and the SFU's ports, which no HTTP proxy can front: forward
+`WEBRTC_SFU_PORT_RANGE` from the router straight to the host running the app and set
+`WEBRTC_SFU_PUBLIC_IP` to the router's WAN address so the server's candidates are reachable.
+Without the public address the server offers only its interface addresses, which works on one
+LAN and leaves remote browsers at "Connecting…" forever. On the browser side `WEBRTC_STUN_URLS`
+defaults to public STUN servers (Google and Cloudflare) so a browser behind NAT learns its own
+reflexive address; override it or set it to `none` for a LAN-only install. Because the server
+end has a fixed public port, ordinary and even symmetric home NATs connect directly; browsers on
+networks that block UDP entirely need a TURN server configured with `WEBRTC_TURN_URLS`,
+`WEBRTC_TURN_USERNAME`, and `WEBRTC_TURN_CREDENTIAL`, which cannot be hidden behind an HTTP
+reverse proxy either (expose 3478 and preferably TURN-over-TLS on 5349/443 from coturn or
+another relay). A failed connection is labelled "Couldn't connect" on every remote tile; the
+server sees the same failure and stops the channel, which rejoins under a new peer id and a fresh
+connection. Credentials are returned only from the authenticated config endpoint.
+
+Hosts that cannot forward ports set `WEBRTC_SFU_RELAY_ONLY=true` with a Cloudflare TURN key:
+the server then dials out to the relay for every seat and all media crosses it, roughly 20 GB per
+relayed 1080p player in a three-hour game.
 
 The hosted alternative is Cloudflare Realtime TURN: set `CLOUDFLARE_TURN_KEY_ID` and
 `CLOUDFLARE_TURN_API_TOKEN` (create the key under Realtime → TURN in the Cloudflare dashboard) and
@@ -134,7 +165,7 @@ player in a four-seat, three-hour game is roughly 20 GB.
 ### Browser inference in the clicking browser
 
 The detector, perspective warp, art crop, embedder, and cosine search run in the browser of the
-player who clicked, on the crop the camera owner already returns over the data channel (see the
+player who clicked, on the crop the camera owner already returns over the channel relay (see the
 next section). Running it there rather than in the owner's browser costs nothing extra: the crop
 transfer already solves the resolution problem, each browser loads the bundle once, and the
 result needs no second round trip before it can be shown, corrected, and announced. ONNX Runtime
@@ -221,9 +252,9 @@ but would add a second supervised runtime and duplicate the spike runtime in pro
 ### Remote clicks use the source camera's native frame
 
 `getUserMedia` requests a hard minimum of 1920 × 1080. A click on a remote tile is sent as
-normalized coordinates over that pair's WebRTC data channel. The camera owner's browser maps the
+normalized coordinates in a targeted `peer_message` channel event. The camera owner's browser maps the
 coordinates to its native `videoWidth`/`videoHeight`, captures the same 640 px JPEG crop used by
-`cardid.capture`, and returns it on the data channel together with the click position inside the
+`cardid.capture`, and returns it the same way together with the click position inside the
 crop. The requester recognizes the card from that crop.
 
 Video flips are a viewer-only preference (players can flip their own preview too; the sent
@@ -247,7 +278,7 @@ Games page Play / Join button ────▶ /table/:roomId
                                          │
                               choose deck in the room
                                          │
-                            browser WebRTC mesh (≤ 10)
+                       one WebRTC connection each to the SFU (≤ 10)
                                          │
                                  click End game
                                          │
@@ -305,8 +336,8 @@ expired UUID opens a fresh lobby.
 
 The authenticated player ID owns the seat, not the transient peer ID or Presence entry. A newer
 connection takes over the same seat, stops the old channel, and remaps order, monarch and cards.
-Each channel retry uses a fresh media peer ID so browsers rebuild the WebRTC mesh rather than
-keeping mismatched connections after a signaling restart. Video elements are muted (there is no
+Each channel retry uses a fresh media peer ID so the browser rebuilds its SFU connection rather than
+keeping a mismatched one after a signaling restart. Video elements are muted (there is no
 table audio), allowing spectators to autoplay without a camera grant or a prior click.
 Disconnecting does not advance the turn. The first timer start (through `start_game` or legacy
 `seat_order`) locks the roster: returning players reclaim their seats, everyone else spectates.
@@ -322,8 +353,8 @@ Join replies carry the authoritative seat, and `table_state` includes `seats`, `
 failure. Game state survives restarts: rooms reload their saved session on the next join.
 
 The server bounds untrusted input: `peer_id` must be a canonical UUID (clients use
-`crypto.randomUUID()`), WebRTC `signal` payloads are capped at 64 KB of JSON, and the websocket
-refuses frames over 128 KB. Every channel event spends a token from a per-connection bucket
+`crypto.randomUUID()`), SDP in `sfu_offer`/`sfu_answer` is capped at 64 KB and a relayed
+`peer_message` at 256 KiB, and the websocket refuses frames over 384 KiB. Every channel event spends a token from a per-connection bucket
 (signals have their own, larger bucket) and replies `{reason: "rate limited"}` when it is empty;
 joins and TURN credential requests (`GET /api/webcam-table/config`) are limited per account.
 Limits live under `config :the_gathering, TheGatheringWeb.RateLimit`.
@@ -605,7 +636,8 @@ can still save or share what they saw; this feature cannot revoke frames already
 
 - `TheGatheringWeb.UserSocket` issues and decrypts a short-lived encrypted token wrapping the tracked
   cookie session.
-- `TheGatheringWeb.WebcamTableChannel` caps rooms at ten, relays targeted WebRTC signals,
+- `TheGatheringWeb.WebcamTableChannel` caps rooms at ten, carries SFU signaling and targeted
+  `peer_message`s,
   merges `update_status`/`set_eliminated` into presence, validates `seat_order`/`timer`/`timer_sync`,
   `start_game`/`turn_settings`/`pass_turn`/`unpass_turn`/`adjust_turn`, and generates
   and broadcasts validated `roll` results.
@@ -620,8 +652,15 @@ can still save or share what they saw; this feature cannot revoke frames already
   accumulated-time accounting, and `WebcamTables.Timer` the pause-aware game clock
   (`test/the_gathering/webcam_tables/`).
 - `TheGatheringWeb.Presence` owns ephemeral room membership and seat status.
-- `WebcamTableConfigController` exposes authenticated ICE configuration.
-- `features/webcam-table/use-webcam-room.ts` owns camera, mesh, signaling, native crop RPC,
+- `WebcamTableConfigController` exposes authenticated ICE configuration and the SFU transport mode.
+- `TheGathering.WebcamTables.Sfu` (`Sfu.Room`, `Sfu.Subscription`, `Sfu.SimulcastSdp`) is the
+  media server: one room process per table, one `ExWebRTC.PeerConnection` per seat, per-viewer
+  layer selection and packet rewriting, and the simulcast SDP repair
+  (`test/the_gathering/webcam_tables/sfu/`).
+- `features/webcam-table/use-sfu-connection.ts` owns the browser's one peer connection: simulcast
+  publishing, remote streams keyed by owner, `watchTile`/`layerForHeight` layer requests, and the
+  `peer_message` relay; `stream-tiles.ts` hands `watchTile` to `StreamVideo` through context.
+- `features/webcam-table/use-webcam-room.ts` composes camera, SFU connection, native crop RPC,
   seat status (life, camera, elimination), seat order, timer/turn synchronization, roll overlays, and the event log.
 - `features/webcam-table/use-correction-upload.tsx` uploads explicit picker labels and owns
   the crop-sharing preference/save note. Both camera owner and clicker must allow sharing.

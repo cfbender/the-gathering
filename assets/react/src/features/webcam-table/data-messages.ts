@@ -1,6 +1,7 @@
-/** Peer-to-peer messages on the WebRTC `table` data channel. Only the native camera crop RPC
- * travels peer to peer; everything shared with the table goes through the server. Anything
- * a peer sends is untrusted until `parseDataMessage` accepts it. */
+/** Seat-to-seat messages, relayed as-is by the server's `peer_message` channel event. Only
+ * the native camera crop RPC travels this way; everything shared with the table goes through
+ * the server's own events. Anything a peer sends is untrusted until `parseDataMessage`
+ * accepts it. */
 
 export interface CaptureRequest {
   type: "capture_request"
@@ -27,7 +28,7 @@ export interface CaptureResponse {
 export type DataMessage = CaptureRequest | CaptureResponse
 
 export const CAPTURE_IMAGE_PREFIX = "data:image/jpeg;base64,"
-/** Browsers negotiate a 256 KiB SCTP message limit; a 640 px JPEG crop fits well inside it. */
+/** The server relays messages up to 256 KiB; a 640 px JPEG crop fits well inside it. */
 export const MAX_DATA_MESSAGE_LENGTH = 256 * 1024
 const MAX_REQUEST_ID_LENGTH = 64
 const MAX_FRAME_SIZE = 8192
@@ -94,14 +95,17 @@ function parseResponse(fields: Fields): CaptureResponse | null {
   }
 }
 
-/** Returns a well-formed message with only its known fields, or null for anything else. */
+/** Returns a well-formed message with only its known fields, or null for anything else.
+ * Accepts the decoded JSON object the channel delivers, or its JSON text. */
 export function parseDataMessage(data: unknown): DataMessage | null {
-  if (typeof data !== "string" || data.length > MAX_DATA_MESSAGE_LENGTH) return null
-  let value: unknown
-  try {
-    value = JSON.parse(data)
-  } catch {
-    return null
+  let value: unknown = data
+  if (typeof data === "string") {
+    if (data.length > MAX_DATA_MESSAGE_LENGTH) return null
+    try {
+      value = JSON.parse(data)
+    } catch {
+      return null
+    }
   }
   if (!isRecord(value)) return null
   if (value.type === "capture_request") return parseRequest(value)

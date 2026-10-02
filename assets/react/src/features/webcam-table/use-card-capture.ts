@@ -7,7 +7,7 @@ import { liveStatus, type RoomLink } from "./room-link"
 import { outlineInCrop, type Point } from "./recognition/pipeline"
 import type { CapturedCard } from "./room-types"
 import type { LocalCamera } from "./use-local-camera"
-import type { PeerConnections } from "./use-peer-connections"
+import type { SfuConnection } from "./use-sfu-connection"
 
 /** How long a clicker waits for a remote camera's crop before giving up on it. */
 export const CAPTURE_TIMEOUT_MS = 8000
@@ -28,12 +28,12 @@ const OUTLINE_TOO_BIG =
   "That card is too big to outline in one crop; zoom out or outline a smaller card"
 
 /** Native camera crops for card identification. Your own board is cropped locally; another
- * board's owner is asked over the data channel and answers with a crop of their camera. */
+ * board's owner is asked through the server and answers with a crop of their camera. */
 export function useCardCapture(
   link: RoomLink,
   playerId: number,
   { crop, videoEnabled }: Pick<LocalCamera, "crop" | "videoEnabled">,
-  { send, listen, revealTarget }: Pick<PeerConnections, "send" | "listen" | "revealTarget">,
+  { send, listen, revealTarget }: Pick<SfuConnection, "send" | "listen" | "revealTarget">,
   setStatus: (status: string) => void,
 ) {
   const pendingRef = useRef(new Map<string, PendingCapture>())

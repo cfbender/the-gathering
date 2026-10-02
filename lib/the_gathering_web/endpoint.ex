@@ -17,10 +17,10 @@ defmodule TheGatheringWeb.Endpoint do
     max_age: 60 * 60 * 24 * 14
   ]
 
-  # The largest legitimate client frame is a WebRTC signal, capped at 64 KB by
-  # WebcamTableChannel; leave headroom for the envelope and JSON escaping.
+  # The largest legitimate client frame is a relayed card crop (`peer_message`), capped at
+  # 256 KiB by WebcamTableChannel; leave headroom for the envelope and JSON escaping.
   socket "/socket", TheGatheringWeb.UserSocket,
-    websocket: [max_frame_size: 131_072],
+    websocket: [max_frame_size: 393_216],
     longpoll: false
 
   # Vite output (hashed filenames) is safe to cache forever. COEP lets the recognizer worker

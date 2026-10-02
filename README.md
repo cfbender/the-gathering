@@ -203,7 +203,11 @@ response's `errors`.
 ### Webcam table
 
 **Games → Play** opens a temporary room for up to ten signed-in members who share their
-board cameras over an adaptive-resolution WebRTC mesh and record the result when the game ends.
+board cameras through a WebRTC SFU built into the server (each browser uploads one simulcast
+stream and receives every other board at the resolution it is drawn) and record the result
+when the game ends. The SFU listens on the UDP range `WEBRTC_SFU_PORT_RANGE`; forward it to the
+host and set `WEBRTC_SFU_PUBLIC_IP`, or set `WEBRTC_SFU_RELAY_ONLY=true` to carry media over the
+configured TURN servers instead (see `docs/webcam-table.md`).
 **Reveal hand to** privately sends your camera to one chosen player; everyone else receives no
 video until you end the reveal or the target leaves. Clicking a card on
 any board identifies it with the recognizer bundle published from [Oracle](https://github.com/cfbender/oracle) (see
@@ -239,8 +243,11 @@ see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONT
 | `TRUST_PROXY_HEADERS` | unset | Set to `true` behind a reverse proxy so rate limiting identifies clients by `x-real-ip` / `x-forwarded-for` instead of the proxy address. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, or `error`. `debug` explains why the Discord bot ignored a message. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
-| `WEBRTC_STUN_URLS` | Google + Cloudflare public STUN | Comma-separated STUN URLs for webcam-table NAT discovery. Needed for any room that is not on one LAN; `none` disables STUN for LAN-only installs. |
-| `WEBRTC_TURN_URLS` | unset | Comma-separated TURN URLs; with `WEBRTC_TURN_USERNAME` and `WEBRTC_TURN_CREDENTIAL`, relays webcam-table media when peers cannot connect directly. |
+| `WEBRTC_SFU_PORT_RANGE` | `50000-50100` | UDP ports the built-in webcam-table SFU listens on, one per connected browser. Forward the same range from your router to the host (Docker: publish it as `/udp`). |
+| `WEBRTC_SFU_PUBLIC_IP` | unset | Public address browsers reach the SFU ports at, announced as an ICE candidate. Required for players outside your LAN unless `WEBRTC_SFU_RELAY_ONLY` is set. |
+| `WEBRTC_SFU_RELAY_ONLY` | unset | Set to `true` to open no public ports: the SFU reaches browsers through Cloudflare TURN (requires `CLOUDFLARE_TURN_KEY_ID`), so all media crosses the relay. |
+| `WEBRTC_STUN_URLS` | Google + Cloudflare public STUN | Comma-separated STUN URLs browsers use for NAT discovery toward the SFU. `none` disables STUN for LAN-only installs. |
+| `WEBRTC_TURN_URLS` | unset | Comma-separated TURN URLs; with `WEBRTC_TURN_USERNAME` and `WEBRTC_TURN_CREDENTIAL`, relays webcam-table media for browsers that cannot reach the SFU directly. |
 | `CLOUDFLARE_TURN_KEY_ID` | unset | With `CLOUDFLARE_TURN_API_TOKEN`, a Cloudflare Realtime TURN key. The server mints per-join credentials that expire after `CLOUDFLARE_TURN_TTL_SECONDS` (default 21600); relayed traffic is free up to 1,000 GB/month, then $0.05/GB. |
 | `MANAVAULT_URL` | unset | Origin of a self-hosted ManaVault instance whose shared deck links are recognized and resolved. |
 | `MANAVAULT_ALLOWED_HOSTS` | unset | Comma-separated exact hostnames allowed for personal ManaVault listing on private networks; also permits HTTP for those hosts. |

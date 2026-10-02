@@ -56,6 +56,14 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
+# The WebRTC stack logs every STUN binding request and keepalive at debug level, which
+# buries everything else once a table is streaming.
+config :logger,
+  compile_time_purge_matching: [
+    [application: :ex_ice, level_lower_than: :info],
+    [application: :ex_webrtc, level_lower_than: :info]
+  ]
+
 # Use Jason for JSON parsing in Phoenix
 config :phoenix,
   json_library: Jason,

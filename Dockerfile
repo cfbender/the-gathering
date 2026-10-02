@@ -20,7 +20,9 @@ FROM ${BUILDER_IMAGE} AS builder
 ARG AUBE_VERSION
 COPY --from=node-runtime /usr/local /usr/local
 
-RUN apk add --no-cache build-base git curl ca-certificates tar
+# pkgconf, openssl-dev, and libsrtp-dev build the ex_dtls and ex_libsrtp NIFs behind the
+# webcam-table SFU (musl has no precompiled libsrtp, so it links the system one).
+RUN apk add --no-cache build-base git curl ca-certificates tar pkgconf openssl-dev libsrtp-dev
 
 WORKDIR /app
 
@@ -76,7 +78,7 @@ RUN mix release
 FROM ${RUNNER_IMAGE} AS runner
 
 RUN apk upgrade --no-cache \
-  && apk add --no-cache libstdc++ openssl ncurses-libs ca-certificates lksctp-tools su-exec rsvg-convert font-dejavu
+  && apk add --no-cache libstdc++ openssl libsrtp ncurses-libs ca-certificates lksctp-tools su-exec rsvg-convert font-dejavu
 
 ENV LANG=C.UTF-8
 ENV LANGUAGE=C.UTF-8

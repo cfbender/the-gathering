@@ -3,17 +3,23 @@ import { useEffect, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import { liveStatus, type RoomLink } from "./room-link"
 import type { TableParticipant } from "./room-types"
-import type { Signal } from "./use-peer-connections"
+import type { SfuOffer } from "./use-sfu-connection"
 
 /** Minimum gap between socket-token refreshes while reconnecting. The config endpoint allows
  * 20 requests per 5 minutes per account, and the page-load fetch is not counted here. */
 export const TOKEN_REFRESH_INTERVAL_MS = 30_000
+
+export interface SfuInfo {
+  /** Whether media reaches the server directly (forwarded UDP ports) or through TURN. */
+  transport: "direct" | "relay"
+}
 
 interface TableConfig {
   ice_servers: RTCIceServer[]
   max_players: number
   minimum_height: number
   socket_token: string
+  sfu: SfuInfo
 }
 
 /** What the rest of the room does with the channel's lifecycle. Read at event time, so the
@@ -22,12 +28,16 @@ export interface RoomChannelHandlers {
   setStatus: (status: string) => void
   setError: (error: string | null) => void
   /** The table config arrived; the channel opens right after this returns. */
-  onConfig: (iceServers: RTCIceServer[]) => void
+  onConfig: (iceServers: RTCIceServer[], sfu: SfuInfo) => void
   /** Register channel and presence bindings; runs before the first join. */
   bind: (room: Channel, presence: Presence) => void
   /** Everyone present after a presence sync, spectators included. */
   onPresence: (everyone: TableParticipant[]) => void
-  onSignal: (from: string, signal: Signal) => void
+  /** The server offers this seat a new set of boards (or asks to drop one). */
+  onSfuOffer: (offer: SfuOffer) => void
+  onSfuCandidate: (payload: { candidate: RTCIceCandidateInit }) => void
+  /** A message from another seat, relayed by the server. */
+  onPeerMessage: (payload: { from: string; message: unknown }) => void
   /** Every successful (re)join, after `link.spectator` is set. `owner` is the server's
    * decision that this seat holds the table controls (room creator or an admin). */
   onJoined: (participant: TableParticipant | undefined, owner: boolean) => void
@@ -66,7 +76,7 @@ export function useRoomChannel(
           (body) => body.data,
         )
         if (disposed) return
-        on().onConfig(config.ice_servers)
+        on().onConfig(config.ice_servers, config.sfu)
 
         socket = new Socket("/socket", { params: () => ({ token: config.socket_token }) })
         let refreshing = false
@@ -104,11 +114,12 @@ export function useRoomChannel(
         presence.onSync(() =>
           on().onPresence(presence.list((_id, value) => value.metas[0] as TableParticipant)),
         )
-        room.on(
-          "signal",
-          ({ target, from, signal }: { target: string; from: string; signal: Signal }) => {
-            if (target === link.peerId) on().onSignal(from, signal)
-          },
+        room.on("sfu_offer", (offer: SfuOffer) => on().onSfuOffer(offer))
+        room.on("sfu_candidate", (payload: { candidate: RTCIceCandidateInit }) =>
+          on().onSfuCandidate(payload),
+        )
+        room.on("peer_message", (payload: { from: string; message: unknown }) =>
+          on().onPeerMessage(payload),
         )
         // The owner ended the table; the server closes this channel right after.
         room.on("table_closed", () => {

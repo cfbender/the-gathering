@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     ports:
       - "4000:4000"
+      # Webcam-table SFU media (UDP). Keep in step with WEBRTC_SFU_PORT_RANGE and forward the
+      # same range from your router, or set WEBRTC_SFU_RELAY_ONLY=true and drop this line.
+      - "50000-50100:50000-50100/udp"
     volumes:
       # SQLite, uploaded files, and the disposable card-images cache (512 MiB, 30 days).
       - ./data:/data
@@ -30,6 +33,11 @@ services:
       # Or a Cloudflare Realtime TURN key; the server mints short-lived credentials per room join.
       CLOUDFLARE_TURN_KEY_ID: ${CLOUDFLARE_TURN_KEY_ID:-}
       CLOUDFLARE_TURN_API_TOKEN: ${CLOUDFLARE_TURN_API_TOKEN:-}
+      # Webcam-table SFU: the UDP range it listens on, the public address browsers reach it
+      # at, or relay-only to send all media through the TURN servers above.
+      WEBRTC_SFU_PORT_RANGE: ${WEBRTC_SFU_PORT_RANGE:-}
+      WEBRTC_SFU_PUBLIC_IP: ${WEBRTC_SFU_PUBLIC_IP:-}
+      WEBRTC_SFU_RELAY_ONLY: ${WEBRTC_SFU_RELAY_ONLY:-}
       # debug explains why the Discord bot ignored a message.
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Optional self-hosted ManaVault origin whose shared deck links should resolve.

@@ -1,35 +1,17 @@
-// Minimal RTCPeerConnection and RTCDataChannel stand-ins; jsdom has neither. Install with
-// `installFakeWebRtc()` in a test's beforeEach and inspect `FakePeerConnection.instances`.
+// Minimal RTCPeerConnection stand-ins; jsdom has none. Install with `installFakeWebRtc()`
+// in a test's beforeEach and inspect `FakePeerConnection.instances`.
 import { vi } from "vite-plus/test"
 
-export class FakeDataChannel {
-  readyState: RTCDataChannelState = "open"
-  readonly sent: string[] = []
-  onmessage: ((event: { data: unknown }) => void) | null = null
-  onopen: (() => void) | null = null
-
-  constructor(readonly label: string) {}
-
-  send(data: string) {
-    this.sent.push(data)
-  }
-
-  /** Delivers a message from the remote peer. */
-  deliver(data: unknown) {
-    this.onmessage?.({ data })
-  }
-
-  /** Parsed messages this side sent. */
-  messages() {
-    return this.sent.map((data) => JSON.parse(data) as { type: string } & Record<string, unknown>)
-  }
-}
-
-/** A video sender that keeps its track and one encoding, like a negotiated RTCRtpSender. */
+/** A video sender that keeps its track and encodings, like a negotiated RTCRtpSender. */
 export class FakeSender {
-  private encodings: RTCRtpEncodingParameters[] = [{}]
+  private encodings: RTCRtpEncodingParameters[]
 
-  constructor(public track: unknown) {}
+  constructor(
+    public track: unknown,
+    encodings: RTCRtpEncodingParameters[] = [{}],
+  ) {
+    this.encodings = encodings
+  }
 
   replaceTrack = vi.fn(async (track: unknown) => {
     this.track = track
@@ -40,11 +22,22 @@ export class FakeSender {
   })
 }
 
-/** Pairs a sender with the codec order the room asks for, like a negotiated transceiver. */
+export class FakeReceiver {
+  track: unknown = null
+  getStats = vi.fn(async () => new Map())
+}
+
+/** A transceiver as the room sees it: its sender, receiver, negotiated mid, and the codec
+ * order the room asked for. */
 export class FakeTransceiver {
   codecPreferences: RTCRtpCodec[] | null = null
+  mid: string | null = null
+  readonly receiver = new FakeReceiver()
 
-  constructor(readonly sender: FakeSender) {}
+  constructor(
+    readonly sender: FakeSender,
+    readonly direction: RTCRtpTransceiverDirection,
+  ) {}
 
   setCodecPreferences = vi.fn((codecs: RTCRtpCodec[]) => {
     this.codecPreferences = codecs
@@ -71,10 +64,10 @@ export class FakePeerConnection {
   signalingState: RTCSignalingState = "stable"
   remoteDescription: RTCSessionDescriptionInit | null = null
   onicecandidate: ((event: { candidate: null }) => void) | null = null
-  ontrack: ((event: { streams: MediaStream[] }) => void) | null = null
-  ondatachannel: ((event: { channel: FakeDataChannel }) => void) | null = null
+  ontrack:
+    | ((event: { transceiver: FakeTransceiver; streams: MediaStream[]; track: unknown }) => void)
+    | null = null
   onconnectionstatechange: (() => void) | null = null
-  readonly channels: FakeDataChannel[] = []
 
   createOffer = vi.fn(async (): Promise<RTCSessionDescriptionInit> => ({ type: "offer", sdp: "o" }))
   createAnswer = vi.fn(async (): Promise<RTCSessionDescriptionInit> => ({
@@ -86,39 +79,44 @@ export class FakePeerConnection {
     this.remoteDescription = description
   })
   addIceCandidate = vi.fn(async (_candidate: RTCIceCandidateInit) => {})
-  restartIce = vi.fn()
 
   constructor(readonly config: RTCConfiguration) {
     FakePeerConnection.instances.push(this)
     FakePeerConnection.onCreate?.(this)
   }
 
-  readonly senders: FakeSender[] = []
   readonly transceivers: FakeTransceiver[] = []
+  addTransceiver = vi.fn((trackOrKind: unknown, init?: RTCRtpTransceiverInit) => {
+    const track = typeof trackOrKind === "string" ? null : trackOrKind
+    const sender = new FakeSender(
+      track,
+      init?.sendEncodings?.map((encoding) => ({ ...encoding })) ?? [{}],
+    )
+    const transceiver = new FakeTransceiver(sender, init?.direction ?? "sendrecv")
+    transceiver.mid = String(this.transceivers.length)
+    this.transceivers.push(transceiver)
+    return transceiver
+  })
 
-  addTrack(track: unknown) {
-    const sender = new FakeSender(track)
-    this.senders.push(sender)
-    this.transceivers.push(new FakeTransceiver(sender))
-    return sender
+  /** This seat's camera sender, if it publishes. */
+  get sender() {
+    return this.transceivers.find((transceiver) => transceiver.direction === "sendonly")?.sender
   }
 
   getTransceivers() {
     return this.transceivers
   }
 
-  createDataChannel(label: string) {
-    const channel = new FakeDataChannel(label)
-    this.channels.push(channel)
-    return channel
-  }
-
-  /** Announces a channel the remote peer opened. */
-  announceChannel(label = "table") {
-    const channel = new FakeDataChannel(label)
-    this.channels.push(channel)
-    this.ondatachannel?.({ channel })
-    return channel
+  /** Delivers a board the server added under `mid`, as the server's offer named it. */
+  arrive(mid: string, stream: MediaStream) {
+    let transceiver = this.transceivers.find((entry) => entry.mid === mid)
+    if (!transceiver) {
+      transceiver = new FakeTransceiver(new FakeSender(null), "recvonly")
+      transceiver.mid = mid
+      this.transceivers.push(transceiver)
+    }
+    transceiver.receiver.track = { kind: "video" }
+    this.ontrack?.({ transceiver, streams: [stream], track: transceiver.receiver.track })
   }
 
   changeState(state: RTCPeerConnectionState) {
@@ -136,10 +134,37 @@ export class FakePeerConnection {
   }
 }
 
+/** Stands in for ResizeObserver: tests fire sizes for the elements the room observes. */
+export class FakeResizeObserver {
+  static instances: FakeResizeObserver[] = []
+  readonly observed = new Set<Element>()
+
+  constructor(
+    readonly callback: (entries: { target: Element; contentRect: DOMRectReadOnly }[]) => void,
+  ) {
+    FakeResizeObserver.instances.push(this)
+  }
+
+  observe = vi.fn((element: Element) => {
+    this.observed.add(element)
+  })
+  unobserve = vi.fn((element: Element) => {
+    this.observed.delete(element)
+  })
+  disconnect = vi.fn()
+
+  /** Reports `element` drawn at `width` × `height` CSS pixels. */
+  resize(element: Element, width: number, height: number) {
+    this.callback([{ target: element, contentRect: { width, height } as DOMRectReadOnly }])
+  }
+}
+
 export function installFakeWebRtc() {
   FakePeerConnection.instances = []
   FakePeerConnection.onCreate = null
+  FakeResizeObserver.instances = []
   vi.stubGlobal("RTCPeerConnection", FakePeerConnection)
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver)
   vi.stubGlobal("RTCRtpReceiver", {
     getCapabilities: (kind: string) => (kind === "video" ? { codecs: VIDEO_CAPABILITIES } : null),
   })
@@ -189,7 +214,12 @@ export function serveTableConfig(socketToken = "fresh-token") {
     (input instanceof Request ? input.url : input.toString()).includes("/api/webcam-table/config")
       ? new Response(
           JSON.stringify({
-            data: { socket_token: socketToken, ice_servers: [], max_players: 10 },
+            data: {
+              socket_token: socketToken,
+              ice_servers: [],
+              max_players: 10,
+              sfu: { transport: "direct" },
+            },
           }),
         )
       : new Response("{}", { status: 503 }),

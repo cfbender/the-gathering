@@ -9,6 +9,7 @@ import { cn } from "@/lib/cn"
 import { turnId } from "./game-modes"
 import { MAX_PLAYERS } from "./rooms"
 import { SidePanel, type PanelTab } from "./side-panel"
+import { WatchTileContext } from "./stream-tiles"
 import { TableCameraRail } from "./table-camera-rail"
 import { TableDialogs, type TableDialog } from "./table-dialogs"
 import { RailResizeHandle, useTablePreferences } from "./table-preferences"
@@ -125,117 +126,120 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     `${railShown}:${view.activeGroup.map((participant) => participant.peer_id).join(",")}`,
   )
   return (
-    <div
-      className={cn(
-        "grid h-dvh bg-black text-white lg:grid-rows-1",
-        railShown ? "grid-rows-[auto_minmax(0,1fr)_auto]" : "grid-rows-[minmax(0,1fr)_auto]",
-        railShown
-          ? preferences.panelLeft
-            ? "lg:grid-cols-[auto_auto_minmax(0,1fr)_0.375rem_var(--table-camera-width)]"
-            : "lg:grid-cols-[var(--table-camera-width)_0.375rem_minmax(0,1fr)_auto_auto]"
-          : preferences.panelLeft
-            ? "lg:grid-cols-[auto_auto_minmax(0,1fr)]"
-            : "lg:grid-cols-[minmax(0,1fr)_auto_auto]",
-      )}
-      style={
-        {
-          "--table-camera-width": `${cameraRail.width}px`,
-          "--table-panel-width": `min(${preferences.panel}px, 32vw)`,
-        } as CSSProperties
-      }
-    >
-      {railShown && (
-        <>
-          <TableCameraRail view={view} videoStats={videoStats} />
-          <RailResizeHandle
-            rail="camera"
-            reversed={preferences.panelLeft}
-            width={cameraRail.width}
-            max={cameraRail.max}
-            onChange={(width) => preferences.setWidth("camera", width)}
-          />
-        </>
-      )}
-
-      <TableStage ref={stageRef} view={view} flow={flow} videoStats={videoStats} />
-
-      {panelOpen ? (
-        <RailResizeHandle
-          rail="panel"
-          reversed={preferences.panelLeft}
-          width={preferences.panel}
-          onChange={(width) => preferences.setWidth("panel", width)}
-        />
-      ) : (
-        <div className={cn("hidden lg:block", preferences.panelLeft && "lg:order-2")} />
-      )}
-
-      <SidePanel
-        mode={room.mode}
-        onModeChange={room.setMode}
-        onMoveSeat={room.moveSeat}
-        spectating={room.spectating}
-        isOwner={room.isOwner}
-        left={preferences.panelLeft}
-        onHelp={openHelp}
-        settings={
-          <TableSettings
-            preferences={preferences}
-            room={{ ...room, toggleCamera }}
-            corrections={corrections}
-            recognizer={flow.recognizer.state}
-            onHelp={openHelp}
-          />
+    <WatchTileContext value={room.watchTile}>
+      <div
+        className={cn(
+          "grid h-dvh bg-black text-white lg:grid-rows-1",
+          railShown ? "grid-rows-[auto_minmax(0,1fr)_auto]" : "grid-rows-[minmax(0,1fr)_auto]",
+          railShown
+            ? preferences.panelLeft
+              ? "lg:grid-cols-[auto_auto_minmax(0,1fr)_0.375rem_var(--table-camera-width)]"
+              : "lg:grid-cols-[var(--table-camera-width)_0.375rem_minmax(0,1fr)_auto_auto]"
+            : preferences.panelLeft
+              ? "lg:grid-cols-[auto_auto_minmax(0,1fr)]"
+              : "lg:grid-cols-[minmax(0,1fr)_auto_auto]",
+        )}
+        style={
+          {
+            "--table-camera-width": `${cameraRail.width}px`,
+            "--table-panel-width": `min(${preferences.panel}px, 32vw)`,
+          } as CSSProperties
         }
-        open={panelOpen}
-        tab={panelTab}
-        onOpenChange={setPanelOpen}
-        onTabChange={setPanelTab}
-        participants={view.seated}
-        spectators={room.spectators}
-        localParticipant={view.localParticipant}
-        maxPlayers={MAX_PLAYERS}
-        playerDecks={decksFor(view, view.localParticipant)}
-        decks={decks}
-        events={room.events}
-        status={room.status}
-        error={room.error}
-        connectedPeers={Object.keys(room.streams).length}
-        connectionStates={room.connectionStates}
-        iceServers={room.iceServers}
-        recognizer={flow.recognizer.state}
-        identifiedCards={room.identifiedCards}
-        gallerySearchable
-        onSearch={flow.recognizer.search}
-        onPreviewCard={flow.previewEntry}
-        onPreviewArt={flow.previewArt}
-        onRemoveCard={room.removeCard}
-        onClearOwnCards={room.clearOwnCards}
-        inviteCopied={invite.copied}
-        onInvite={invite.copy}
-        onChooseDeck={room.chooseDeck}
-        onStartGame={room.startGame}
-        shuffleVersion={room.shuffleVersion}
-        turns={room.turns}
-        timer={room.timer}
-        onPassTurn={room.passTurn}
-        onUnpassTurn={room.unpassTurn}
-        onAdjustTurn={room.adjustTurn}
-        onRoll={room.rollDice}
-        onChangeTimer={(action) => {
-          void room.changeTimer(action)
-        }}
-        reveal={{ target: room.revealTo, busy: room.revealBusy, onChange: room.changeReveal }}
-        onEndGame={() => {
-          void room.changeTimer("pause").then((timer) => {
-            if (timer) setDialog({ kind: "finish", timer })
-          })
-        }}
-      />
+      >
+        {railShown && (
+          <>
+            <TableCameraRail view={view} videoStats={videoStats} />
+            <RailResizeHandle
+              rail="camera"
+              reversed={preferences.panelLeft}
+              width={cameraRail.width}
+              max={cameraRail.max}
+              onChange={(width) => preferences.setWidth("camera", width)}
+            />
+          </>
+        )}
 
-      <TableDialogs view={view} dialog={dialog} onDialogChange={setDialog} />
-      {room.closedByOwner && <TableEndedRedirect />}
-    </div>
+        <TableStage ref={stageRef} view={view} flow={flow} videoStats={videoStats} />
+
+        {panelOpen ? (
+          <RailResizeHandle
+            rail="panel"
+            reversed={preferences.panelLeft}
+            width={preferences.panel}
+            onChange={(width) => preferences.setWidth("panel", width)}
+          />
+        ) : (
+          <div className={cn("hidden lg:block", preferences.panelLeft && "lg:order-2")} />
+        )}
+
+        <SidePanel
+          mode={room.mode}
+          onModeChange={room.setMode}
+          onMoveSeat={room.moveSeat}
+          spectating={room.spectating}
+          isOwner={room.isOwner}
+          left={preferences.panelLeft}
+          onHelp={openHelp}
+          settings={
+            <TableSettings
+              preferences={preferences}
+              room={{ ...room, toggleCamera }}
+              corrections={corrections}
+              recognizer={flow.recognizer.state}
+              onHelp={openHelp}
+            />
+          }
+          open={panelOpen}
+          tab={panelTab}
+          onOpenChange={setPanelOpen}
+          onTabChange={setPanelTab}
+          participants={view.seated}
+          spectators={room.spectators}
+          localParticipant={view.localParticipant}
+          maxPlayers={MAX_PLAYERS}
+          playerDecks={decksFor(view, view.localParticipant)}
+          decks={decks}
+          events={room.events}
+          status={room.status}
+          error={room.error}
+          connectedPeers={Object.keys(room.streams).length}
+          connectionStates={room.connectionStates}
+          iceServers={room.iceServers}
+          transport={room.transport}
+          recognizer={flow.recognizer.state}
+          identifiedCards={room.identifiedCards}
+          gallerySearchable
+          onSearch={flow.recognizer.search}
+          onPreviewCard={flow.previewEntry}
+          onPreviewArt={flow.previewArt}
+          onRemoveCard={room.removeCard}
+          onClearOwnCards={room.clearOwnCards}
+          inviteCopied={invite.copied}
+          onInvite={invite.copy}
+          onChooseDeck={room.chooseDeck}
+          onStartGame={room.startGame}
+          shuffleVersion={room.shuffleVersion}
+          turns={room.turns}
+          timer={room.timer}
+          onPassTurn={room.passTurn}
+          onUnpassTurn={room.unpassTurn}
+          onAdjustTurn={room.adjustTurn}
+          onRoll={room.rollDice}
+          onChangeTimer={(action) => {
+            void room.changeTimer(action)
+          }}
+          reveal={{ target: room.revealTo, busy: room.revealBusy, onChange: room.changeReveal }}
+          onEndGame={() => {
+            void room.changeTimer("pause").then((timer) => {
+              if (timer) setDialog({ kind: "finish", timer })
+            })
+          }}
+        />
+
+        <TableDialogs view={view} dialog={dialog} onDialogChange={setDialog} />
+        {room.closedByOwner && <TableEndedRedirect />}
+      </div>
+    </WatchTileContext>
   )
 }
 
