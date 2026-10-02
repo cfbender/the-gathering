@@ -14,9 +14,13 @@
 #   CORES             vCPUs (4)
 #   RAM_MB            memory in MiB (2048)
 #   BRIDGE            network bridge (vmbr0)
-#   IP                dhcp, or CIDR such as 192.168.1.50/24 (dhcp; the IP is printed at the end,
-#                     so give the container a DHCP reservation if your reverse proxy points at it)
+#   IP                dhcp, or CIDR such as 192.168.1.50/24 (dhcp)
+#   PIN_IP            with IP=dhcp, store the address DHCP hands out as a static address in the
+#                     container config, so it never changes (true). Keep that address out of the
+#                     DHCP pool or reserve it; the DHCP server no longer knows it is in use.
 #   GATEWAY           gateway for a static IP (empty)
+#   TIMEZONE          container time zone: host, or a zone such as America/New_York (host).
+#                     The AUTO_UPDATE cron schedule runs in this time zone.
 #   SSH_KEYS          public keys to authorize for root (the PVE host's /root/.ssh/authorized_keys)
 #   PASSWORD          root password; leave empty for automatic root login on the Proxmox web
 #                     console (plus SSH keys and `pct enter`)
@@ -27,29 +31,40 @@
 #   PUBLIC_URL        address players use, e.g. https://games.example.com (http://<container-ip>:4000)
 #   ADMIN_USERNAME    first administrator account (blank skips; the app then offers its setup page)
 #   ADMIN_PASSWORD    at least 12 characters
+#   AUTO_UPDATE       cron schedule for automatic updates, or "off" (0 4 * * *: daily at 04:00)
 #
 # Inside the container:
 #   /opt/the-gathering/releases/<tag>   Elixir releases from GitHub; `current` points at the live one
 #   /etc/the-gathering.env              settings (copied from .env.example, SECRET_KEY_BASE generated)
 #   /var/lib/the-gathering              DATA_DIR: SQLite database, recognizer bundles, image cache
 #   the-gathering.service               systemd unit running bin/the_gathering as user the-gathering
+#   /usr/local/bin/update               `update [tag]` installs the latest (or given) release, like
+#                                       the community-scripts helpers: it runs the current copy of
+#                                       this script from GitHub, so updater fixes reach old containers
+#   /etc/cron.d/the-gathering-update    runs `update` on the AUTO_UPDATE schedule (absent when off)
 #
 # The container is unprivileged with nesting=1: Debian 13's systemd (257) needs it to boot in an
 # LXC (Proxmox warns "Systemd 257 detected. You may need to enable nesting" otherwise), and it is
 # the Proxmox GUI default for unprivileged containers. Docker-only keyctl is not enabled.
 #
-# Later, from the PVE host:
-#   bash the-gathering.sh update <CTID>             install the latest release and restart
-#   bash the-gathering.sh update <CTID> v0.2.0      install a specific release
+# Later, from the PVE host (or inside the container, without the <CTID>):
+#   bash the-gathering.sh update <CTID>                   install the latest release and restart
+#   bash the-gathering.sh update <CTID> v0.2.0            install a specific release
+#   bash the-gathering.sh auto-update <CTID> '0 3 * * 0'  change the automatic update schedule
+#   bash the-gathering.sh auto-update <CTID> off          disable automatic updates
 set -euo pipefail
 
 APP="The Gathering"
 REPO="cfbender/the-gathering"
+SCRIPT_URL="https://raw.githubusercontent.com/${REPO}/main/deploy/proxmox/the-gathering.sh"
 APP_DIR="/opt/the-gathering"
 DATA_DIR="/var/lib/the-gathering"
 ENV_FILE="/etc/the-gathering.env"
 SERVICE="the-gathering"
 APP_USER="the-gathering"
+UNIT_FILE="/etc/systemd/system/${SERVICE}.service"
+CRON_FILE="/etc/cron.d/${SERVICE}-update"
+AUTO_UPDATE_DEFAULT="0 4 * * *"
 
 CT_HOSTNAME="${CT_HOSTNAME:-the-gathering}"
 STORAGE="${STORAGE:-local-lvm}"
@@ -59,13 +74,16 @@ CORES="${CORES:-4}"
 RAM_MB="${RAM_MB:-2048}"
 BRIDGE="${BRIDGE:-vmbr0}"
 IP="${IP:-dhcp}"
+PIN_IP="${PIN_IP:-true}"
 GATEWAY="${GATEWAY:-}"
+TIMEZONE="${TIMEZONE:-host}"
 SSH_KEYS="${SSH_KEYS:-/root/.ssh/authorized_keys}"
 PASSWORD="${PASSWORD:-}"
 VERSION="${VERSION:-}"
 PUBLIC_URL="${PUBLIC_URL:-}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+AUTO_UPDATE="${AUTO_UPDATE:-}"
 PHX_HOST="" PHX_SCHEME="" PHX_URL_PORT=""
 
 info() { printf '\033[1;34m->\033[0m %s\n' "$*"; }
@@ -75,16 +93,43 @@ die() {
   exit 1
 }
 
+# The script runs in two places: on the PVE host (create, and update/auto-update with a CTID)
+# and inside the container (update/auto-update without a CTID, which is what the `update`
+# command does). Functions that work on a container take a CTID; an empty CTID means "here".
+on_pve() { command -v pct >/dev/null; }
+
 require_pve() {
-  command -v pct >/dev/null || die "pct not found: run this on a Proxmox VE host"
+  on_pve || die "pct not found: run this on a Proxmox VE host"
   [[ $EUID -eq 0 ]] || die "run as root"
   [[ "$(dpkg --print-architecture)" == amd64 ]] || die "release tarballs are built for amd64 only"
+}
+
+require_container() {
+  [[ $EUID -eq 0 ]] || die "run as root"
+  [[ -f "$UNIT_FILE" ]] || die "no $APP installation here: run this on the PVE host or inside the container"
 }
 
 in_ct() {
   local ctid="$1"
   shift
-  pct exec "$ctid" -- bash -lc "$*"
+  if [[ -n "$ctid" ]]; then
+    pct exec "$ctid" -- bash -lc "$*"
+  else
+    bash -lc "$*"
+  fi
+}
+
+# Writes stdin to a file in the container with the given mode.
+put_file() {
+  local ctid="$1" path="$2" mode="$3" tmp
+  tmp="$(mktemp)"
+  cat >"$tmp"
+  if [[ -n "$ctid" ]]; then
+    pct push "$ctid" "$tmp" "$path" --perms "$mode"
+  else
+    install -m "$mode" "$tmp" "$path"
+  fi
+  rm -f "$tmp"
 }
 
 # Newest Debian 13 template for the host's architecture. pveam also lists arm64 templates,
@@ -158,6 +203,17 @@ ask_settings() {
       fi
     done
   fi
+  if [[ -z "$AUTO_UPDATE" ]]; then
+    read -rp "Automatic update schedule (cron expression, 'off' to disable; blank for daily at 04:00): " AUTO_UPDATE
+  fi
+}
+
+# Accepts "off", a cron nickname such as @daily, or a five-field cron expression.
+valid_schedule() {
+  local -a fields
+  [[ "$1" == off || "$1" =~ ^@(hourly|daily|midnight|weekly|monthly|yearly|annually)$ ]] && return 0
+  read -ra fields <<<"$1"
+  [[ ${#fields[@]} -eq 5 ]]
 }
 
 wait_for_network() {
@@ -173,13 +229,44 @@ ct_ip() {
   in_ct "$1" "hostname -I" | awk '{print $1}'
 }
 
-# Installs /usr/local/bin/the-gathering-install inside the container. It downloads a
-# release tarball from GitHub, verifies its checksum, unpacks it next to the previous
-# releases, repoints `current`, and restarts the service. Shared by create and update.
-push_installer() {
-  local ctid="$1" installer
-  installer="$(mktemp)"
-  cat >"$installer" <<EOF
+ct_timezone() {
+  in_ct "$1" "readlink -f /etc/localtime" | sed 's|^/usr/share/zoneinfo/||'
+}
+
+# Turns the address DHCP gave eth0 into a static address in the container config (keeping the
+# rest of net0, in particular the MAC) and carries the DHCP nameservers over, since a static
+# container otherwise inherits the host's resolver. Proxmox applies the new net0 live but leaves
+# the guest's DHCP client running, so the caller reboots the container afterwards.
+pin_dhcp_ip() {
+  local ctid="$1" net0 cidr gw nameservers
+  net0="$(pct config "$ctid" | sed -n 's/^net0: //p')"
+  [[ "$net0" == *,ip=dhcp* ]] || return 0
+  cidr="$(in_ct "$ctid" "ip -4 -o addr show dev eth0 scope global" | awk '{print $4; exit}')"
+  gw="$(in_ct "$ctid" "ip -4 route show default dev eth0" | awk '{print $3; exit}')"
+  nameservers="$(in_ct "$ctid" "awk '/^nameserver/ {print \$2}' /etc/resolv.conf" | paste -sd' ')"
+  [[ -n "$cidr" && -n "$gw" ]] || die "could not read the DHCP address of container $ctid to make it static; set PIN_IP=false or a static IP"
+  local -a opts=(--net0 "${net0/,ip=dhcp/,ip=${cidr},gw=${gw}}")
+  [[ -n "$nameservers" ]] && opts+=(--nameserver "$nameservers")
+  pct set "$ctid" "${opts[@]}"
+  ok "pinned ${cidr} via ${gw} as the container's static address"
+}
+
+# Installs the in-container helpers, shared by create and update:
+#   /usr/local/bin/the-gathering-install <tag>  downloads a release tarball from GitHub, verifies
+#                                               its checksum, unpacks it next to the previous
+#                                               releases, repoints `current`, restarts the service
+#   /usr/local/bin/update [tag]                 runs this script's `update` from GitHub main
+push_helpers() {
+  local ctid="$1"
+  put_file "$ctid" /usr/local/bin/update 0755 <<EOF
+#!/usr/bin/env bash
+# Updates ${APP} in this container (usage: update [tag]). Runs the current
+# deploy/proxmox/the-gathering.sh from GitHub so the updater itself stays current.
+set -euo pipefail
+script="\$(curl -fsSL ${SCRIPT_URL})"
+exec bash -c "\$script" the-gathering.sh update "\$@"
+EOF
+  put_file "$ctid" /usr/local/bin/the-gathering-install 0755 <<EOF
 #!/usr/bin/env bash
 # Usage: the-gathering-install <tag>
 set -euo pipefail
@@ -215,8 +302,31 @@ if systemctl is-enabled -q ${SERVICE} 2>/dev/null; then
 fi
 echo "installed \${tag}"
 EOF
-  pct push "$ctid" "$installer" /usr/local/bin/the-gathering-install --perms 0755
-  rm -f "$installer"
+}
+
+# Writes (or, for "off", removes) the cron.d entry that runs `update` on a schedule. Output goes
+# to the journal under the tag the-gathering-update.
+set_auto_update() {
+  local ctid="$1" schedule="$2"
+  valid_schedule "$schedule" || die "AUTO_UPDATE must be 'off', @daily-style, or a five-field cron expression (got '$schedule')"
+  if [[ "$schedule" == off ]]; then
+    in_ct "$ctid" "rm -f ${CRON_FILE}"
+    ok "automatic updates are off"
+    return
+  fi
+  # Containers created before the `update` command existed need it and cron installed.
+  in_ct "$ctid" "test -x /usr/local/bin/update" || push_helpers "$ctid"
+  in_ct "$ctid" "command -v cron >/dev/null || (apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cron >/dev/null)"
+  put_file "$ctid" "$CRON_FILE" 0644 <<EOF
+# Automatic updates for ${APP}, written by deploy/proxmox/the-gathering.sh.
+# Change the schedule with \`the-gathering.sh auto-update <CTID> '<cron expression>'\` on the PVE
+# host (or edit the line below); \`auto-update <CTID> off\` removes this file. Logs:
+#   journalctl -t the-gathering-update
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+${schedule} root update 2>&1 | logger -t the-gathering-update
+EOF
+  ok "automatic updates run on '${schedule}' in the container's time zone, $(ct_timezone "$ctid") (${CRON_FILE})"
 }
 
 create() {
@@ -229,6 +339,8 @@ create() {
     [[ ${#ADMIN_PASSWORD} -ge 12 ]] || die "ADMIN_PASSWORD must be at least 12 characters"
   fi
   parse_public_url
+  AUTO_UPDATE="${AUTO_UPDATE:-$AUTO_UPDATE_DEFAULT}"
+  valid_schedule "$AUTO_UPDATE" || die "AUTO_UPDATE must be 'off', @daily-style, or a five-field cron expression (got '$AUTO_UPDATE')"
 
   local tag
   tag="$(resolve_version)"
@@ -257,11 +369,18 @@ create() {
     --swap 512 \
     --rootfs "${STORAGE}:${DISK_GB}" \
     --net0 "$net" \
+    --timezone "$TIMEZONE" \
     --onboot 1 \
     --tags the-gathering \
     "${auth[@]}" >/dev/null
   pct start "$ctid"
   wait_for_network "$ctid"
+  if [[ "$IP" == dhcp && "$PIN_IP" == true ]]; then
+    pin_dhcp_ip "$ctid"
+    # Boot once more so the guest's DHCP client is gone and resolv.conf comes from the new config.
+    pct reboot "$ctid"
+    wait_for_network "$ctid"
+  fi
   local ip
   ip="$(ct_ip "$ctid")"
   ok "container $ctid is up at $ip"
@@ -276,18 +395,19 @@ create() {
   fi
 
   info "Installing runtime packages and $APP $tag"
-  push_installer "$ctid"
+  push_helpers "$ctid"
   local setup
   setup="$(mktemp)"
   # Runtime libraries match the Dockerfile runner image: OpenSSL/ncurses for ERTS,
   # libstdc++ and libsctp for NIFs, rsvg-convert + DejaVu for game summary images.
+  # cron runs the automatic updates.
   cat >"$setup" <<EOF
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 # pct exec inherits the host's LANG, which the template has not generated; use the built-in locale.
 export LC_ALL=C.UTF-8 LANG=C.UTF-8
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates openssl rsync openssh-server \\
+apt-get install -y -qq curl ca-certificates openssl rsync openssh-server cron \\
   libstdc++6 libssl3t64 libncurses6 libsctp1 librsvg2-bin fonts-dejavu-core >/dev/null
 
 if [ "${AUTOLOGIN}" = true ]; then
@@ -369,20 +489,29 @@ EOF
 
   in_ct "$ctid" "systemctl start ${SERVICE}"
   ok "$APP $tag is starting"
+  set_auto_update "$ctid" "$AUTO_UPDATE"
 
   cat <<EOF
 
 ${APP} ${tag} is running in container ${ctid} at http://${ip}:4000
 EOF
   [[ -n "$PUBLIC_URL" ]] && echo "Configured for ${PHX_SCHEME}://${PHX_HOST}:${PHX_URL_PORT}; point your reverse proxy at http://${ip}:4000."
+  if [[ "$IP" == dhcp && "$PIN_IP" == true ]]; then
+    echo "${ip} came from DHCP and is now the container's static address: keep it out of the DHCP pool or reserve it."
+  fi
   cat <<EOF
 
 Next steps:
   * Optional settings (Discord, TURN, ManaVault) live in ${ENV_FILE} in the container; after editing run
       pct exec ${ctid} -- systemctl restart ${SERVICE}
   * Logs:   pct exec ${ctid} -- journalctl -fu ${SERVICE}
-  * Update: bash the-gathering.sh update ${ctid}
+  * Update: run \`update\` inside the container, or bash the-gathering.sh update ${ctid}
 EOF
+  if [[ "$AUTO_UPDATE" == off ]]; then
+    echo "  * Automatic updates are off; enable with bash the-gathering.sh auto-update ${ctid} '${AUTO_UPDATE_DEFAULT}'"
+  else
+    echo "  * Automatic updates run on '${AUTO_UPDATE}' ($(ct_timezone "$ctid") time); change with bash the-gathering.sh auto-update ${ctid} '<cron>' (or off)"
+  fi
   if [[ -z "$ADMIN_USERNAME" ]]; then
     cat <<EOF
   * Create the first administrator (or open the app and use the setup page):
@@ -391,18 +520,42 @@ EOF
   fi
 }
 
+# Resolves the container that update/auto-update act on: sets TARGET to the CTID argument on
+# the PVE host (empty inside the container) and ARGS to the remaining arguments.
+target_container() {
+  local usage="$1"
+  shift
+  if on_pve; then
+    require_pve
+    TARGET="${1:-}"
+    [[ -n "$TARGET" ]] || die "usage: the-gathering.sh $usage"
+    in_ct "$TARGET" "test -f ${UNIT_FILE}" || die "no $APP installation in container $TARGET"
+    ARGS=("${@:2}")
+  else
+    require_container
+    TARGET=""
+    ARGS=("$@")
+  fi
+}
+
 update() {
-  require_pve
-  local ctid="${1:-}"
-  [[ -n "$ctid" ]] || die "usage: the-gathering.sh update <CTID> [tag]"
-  VERSION="${2:-$VERSION}"
-  in_ct "$ctid" "test -f /etc/systemd/system/${SERVICE}.service" || die "no $APP installation in container $ctid"
+  target_container "update <CTID> [tag]" "$@"
+  VERSION="${ARGS[0]:-$VERSION}"
   local tag
   tag="$(resolve_version)"
   info "Installing $APP $tag"
-  push_installer "$ctid"
-  in_ct "$ctid" "the-gathering-install ${tag}"
-  ok "$APP $tag is running in container $ctid"
+  push_helpers "$TARGET"
+  in_ct "$TARGET" "the-gathering-install ${tag}"
+  ok "$APP $tag is running${TARGET:+ in container $TARGET}"
+  if ! in_ct "$TARGET" "test -f ${CRON_FILE}"; then
+    info "Automatic updates are off; enable with the-gathering.sh auto-update ${TARGET:+$TARGET }'${AUTO_UPDATE_DEFAULT}'"
+  fi
+}
+
+auto_update() {
+  target_container "auto-update <CTID> <cron expression | off>" "$@"
+  [[ -n "${ARGS[0]:-}" ]] || die "usage: the-gathering.sh auto-update ${TARGET:+<CTID> }<cron expression | off>"
+  set_auto_update "$TARGET" "${ARGS[0]}"
 }
 
 bootstrap_admin() {
@@ -423,18 +576,23 @@ bootstrap_admin() {
 
 usage() {
   cat <<EOF
-usage: the-gathering.sh [create | update <CTID> [tag] | bootstrap-admin <CTID>]
+usage: the-gathering.sh [create | update <CTID> [tag] | auto-update <CTID> <cron | off> | bootstrap-admin <CTID>]
 
   create                  create a Debian LXC running ${APP} (default; settings via env vars,
                           see the comment at the top of this script)
   update <CTID> [tag]     install the latest (or given) release in an existing container
+  auto-update <CTID> <cron expression | off>
+                          schedule automatic updates (${AUTO_UPDATE_DEFAULT} by default) or turn them off
   bootstrap-admin <CTID>  create the first administrator from ADMIN_USERNAME/ADMIN_PASSWORD
+
+Inside the container, \`update [tag]\` is on PATH and update/auto-update take no <CTID>.
 EOF
 }
 
 case "${1:-create}" in
 create) create ;;
-update) update "${2:-}" ;;
+update) update "${@:2}" ;;
+auto-update) auto_update "${@:2}" ;;
 bootstrap-admin) bootstrap_admin "${2:-}" ;;
 -h | --help | help) usage ;;
 *)

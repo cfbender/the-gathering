@@ -46,17 +46,29 @@ latest [GitHub release](https://github.com/cfbender/the-gathering/releases) into
 `/etc/the-gathering.env` (same keys as `.env.example`), and runs it as the `the-gathering`
 systemd service. Run it as root on the Proxmox host. It asks for the public URL and the first
 administrator account; container settings such as `CTID`, `STORAGE`, `IP`, `CORES`, `RAM_MB` and
-`VERSION` are environment variables documented at the top of the script (the defaults use DHCP
-and the next free container id).
+`VERSION` are environment variables documented at the top of the script. By default it takes the
+next free container id, lets DHCP assign an address and then stores that address as the
+container's static IP (`PIN_IP=false` keeps DHCP), and uses the Proxmox host's time zone
+(`TIMEZONE`).
 
 ```sh
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/cfbender/the-gathering/main/deploy/proxmox/the-gathering.sh)"
 ```
 
-`bash the-gathering.sh update <CTID> [tag]` installs the latest (or given) release into an existing
-container and restarts the service; the previous release stays under
+Updates work like the community-scripts helpers: inside the container, `update [tag]` is on `PATH`
+and installs the latest (or given) release and restarts the service (it runs the current copy of
+the script from GitHub, so fixes to the updater reach existing containers). From the Proxmox host,
+`bash the-gathering.sh update <CTID> [tag]` does the same. The previous release stays under
 `/opt/the-gathering/releases/` for rollback. Release tarballs are built by
 [`.github/workflows/release.yml`](.github/workflows/release.yml) for every `v*.*.*` tag.
+
+The container also updates itself on a cron schedule: `AUTO_UPDATE` (asked at install time;
+default `0 4 * * *`, daily at 04:00 in the container's time zone; `off` disables it) is written to
+`/etc/cron.d/the-gathering-update`, and each run logs to `journalctl -t the-gathering-update`.
+Change it later with `bash the-gathering.sh auto-update <CTID> '<cron expression>'` or
+`... auto-update <CTID> off` (without the `<CTID>` when run inside the container). Containers
+created before the time zone option existed run on UTC; `pct set <CTID> --timezone host` followed
+by a restart moves them to the host's zone.
 
 ### Invite members while registration is closed
 
