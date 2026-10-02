@@ -560,6 +560,11 @@ installed_channel() {
 update() {
   target_container "update <CTID> [tag]" "$@"
   VERSION="${ARGS[0]:-$VERSION}"
+  if [[ -n "$VERSION" && ! "$VERSION" =~ ^(nightly|v[0-9]+\.[0-9]+\.[0-9]+) ]]; then
+    local hint=""
+    [[ -n "$TARGET" ]] || hint="; inside the container run \`update [tag]\` without a CTID"
+    die "'$VERSION' is not a release tag (vX.Y.Z or nightly)$hint"
+  fi
   [[ -n "$VERSION" ]] || VERSION="$(installed_channel "$TARGET")"
   local tag
   tag="$(resolve_version)"
