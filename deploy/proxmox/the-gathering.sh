@@ -18,7 +18,8 @@
 #                     so give the container a DHCP reservation if your reverse proxy points at it)
 #   GATEWAY           gateway for a static IP (empty)
 #   SSH_KEYS          public keys to authorize for root (the PVE host's /root/.ssh/authorized_keys)
-#   PASSWORD          root password; leave empty to rely on keys and `pct enter`
+#   PASSWORD          root password; leave empty for automatic root login on the Proxmox web
+#                     console (plus SSH keys and `pct enter`)
 #   VERSION           release tag to install, e.g. v0.1.0 (latest GitHub release)
 #
 # When run from a terminal the script asks for these; set them to skip the questions:
@@ -265,7 +266,8 @@ create() {
   ip="$(ct_ip "$ctid")"
   ok "container $ctid is up at $ip"
 
-  local trust_proxy=""
+  local trust_proxy="" AUTOLOGIN=false
+  [[ -z "$PASSWORD" ]] && AUTOLOGIN=true
   if [[ -z "$PHX_HOST" ]]; then
     PHX_HOST="$ip" PHX_SCHEME=http PHX_URL_PORT=4000
   else
@@ -287,6 +289,19 @@ export LC_ALL=C.UTF-8 LANG=C.UTF-8
 apt-get update -qq
 apt-get install -y -qq curl ca-certificates openssl rsync openssh-server \\
   libstdc++6 libssl3t64 libncurses6 libsctp1 librsvg2-bin fonts-dejavu-core >/dev/null
+
+if [ "${AUTOLOGIN}" = true ]; then
+  # No root password was set, so log root in automatically on the Proxmox web console
+  # (which already requires Proxmox authentication), as the community-scripts helpers do.
+  mkdir -p /etc/systemd/system/container-getty@1.service.d
+  cat >/etc/systemd/system/container-getty@1.service.d/override.conf <<'GETTY'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM
+GETTY
+  systemctl daemon-reload
+  systemctl restart container-getty@1.service
+fi
 
 if ! id -u ${APP_USER} >/dev/null 2>&1; then
   useradd --system --home-dir ${DATA_DIR} --shell /usr/sbin/nologin ${APP_USER}
