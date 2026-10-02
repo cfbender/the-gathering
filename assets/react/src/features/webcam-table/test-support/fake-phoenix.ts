@@ -102,6 +102,7 @@ export class Socket {
   }
   connect() {}
   disconnect() {}
+  onClose(_callback: (event?: CloseEvent) => void) {}
   onError(callback: () => void) {
     wire.socketError = callback
   }

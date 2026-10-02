@@ -55,6 +55,32 @@ export function describeConnection(state: RTCPeerConnectionState | undefined): s
   }
 }
 
+/** The browser's candidate pairs from a `getStats()` report, one line each: which of our
+ * addresses talked to which of the server's, whether it was the pair in use, and how much
+ * travelled on it. Logged when the connection degrades; the server logs its own view. */
+export function describeIcePairs(report: Iterable<unknown>): string[] {
+  type Candidate = { candidateType: string; address: string; port: number }
+  type Pair = RTCIceCandidatePairStats & { selected?: boolean }
+  type IceEntry = Partial<Candidate & Pair> & { id: string; type: string }
+  const entries = Array.from(report) as IceEntry[]
+  const byId = new Map(entries.map((entry) => [entry.id, entry]))
+  const candidate = (id: string | undefined) => {
+    const entry = id === undefined ? undefined : byId.get(id)
+    if (!entry) return "?"
+    return `${entry.candidateType ?? "?"} ${entry.address ?? "?"}:${entry.port ?? "?"}`
+  }
+  return entries
+    .filter((entry) => entry.type === "candidate-pair")
+    .map(
+      (pair) =>
+        `${candidate(pair.localCandidateId)} -> ${candidate(pair.remoteCandidateId)} ` +
+        `${pair.state ?? "?"}${pair.nominated ? ",nominated" : ""}${pair.selected ? ",selected" : ""} ` +
+        `rx ${pair.bytesReceived ?? 0}B tx ${pair.bytesSent ?? 0}B ` +
+        `req ${pair.requestsSent ?? 0} resp ${pair.responsesReceived ?? 0} ` +
+        `last rx ${pair.lastPacketReceivedTimestamp ?? "never"}`,
+    )
+}
+
 function withoutKey<T>(record: Record<string, T>, key: string) {
   const next = { ...record }
   delete next[key]
@@ -383,9 +409,18 @@ export function useSfuConnection(
       const state = pc.connectionState
       setConnectionState(state)
       if (state === "connected") refreshVideo()
-      // The server sees the same failure and closes the channel, which rejoins under a new
-      // peer id and a fresh connection; nothing to retry from this side.
-      if (state === "failed") console.warn("WebRTC connection to the table server failed")
+      // The server sees the same failure and offers an ICE restart (answered like any other
+      // offer); only if that keeps failing does it close the channel, which rejoins under a
+      // new peer id. Log both sides' candidate pairs so a flaky path can be told apart from
+      // a server that stopped answering.
+      if (state === "failed" || state === "disconnected")
+        void pc.getStats().then(
+          (report) =>
+            console.warn(`WebRTC connection to the table server ${state}`, {
+              pairs: describeIcePairs(report.values()),
+            }),
+          () => console.warn(`WebRTC connection to the table server ${state}`),
+        )
     }
     void negotiate(connection, async (current) => {
       const offer = await pc.createOffer()

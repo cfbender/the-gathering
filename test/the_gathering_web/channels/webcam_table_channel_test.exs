@@ -155,6 +155,41 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert_receive {:DOWN, ^monitor, :process, ^sfu, :normal}
   end
 
+  test "answers a failed media connection with an ICE restart before giving up on the seat",
+       %{socket: socket, room_id: room} do
+    assert [{sfu, _value}] = Registry.lookup(Sfu.Registry, room)
+    {browser, offer} = browser_offer()
+    assert_reply push(socket, "sfu_offer", %{"sdp" => offer}), :ok, %{sdp: answer}, 1_000
+    :ok = PeerConnection.set_remote_description(browser, answer(answer))
+    [ufrag] = Regex.run(~r/a=ice-ufrag:(\S+)/, answer, capture: :all_but_first)
+    pc = :sys.get_state(sfu).peers[@peer_a].pc
+
+    # The first failures re-offer with fresh ICE credentials and keep the channel open.
+    restart_ufrags =
+      for _attempt <- 1..3 do
+        send(sfu, {:ex_webrtc, pc, {:connection_state_change, :failed}})
+        assert_push "sfu_offer", %{sdp: restart_offer, tracks: %{}}, 1_000
+        [restart_ufrag] = Regex.run(~r/a=ice-ufrag:(\S+)/, restart_offer, capture: :all_but_first)
+        refute restart_ufrag == ufrag
+
+        :ok = PeerConnection.set_remote_description(browser, offer(restart_offer))
+        {:ok, browser_answer} = PeerConnection.create_answer(browser)
+        :ok = PeerConnection.set_local_description(browser, browser_answer)
+        assert_reply push(socket, "sfu_answer", %{"sdp" => browser_answer.sdp}), :ok, %{}, 1_000
+        restart_ufrag
+      end
+
+    assert length(Enum.uniq(restart_ufrags)) == 3
+    assert Process.alive?(socket.channel_pid)
+
+    # A fourth failure within the window drops the seat so the browser rejoins afresh.
+    Process.unlink(socket.channel_pid)
+    monitor = Process.monitor(socket.channel_pid)
+    send(sfu, {:ex_webrtc, pc, {:connection_state_change, :failed}})
+    assert_receive {:DOWN, ^monitor, :process, _pid, {:sfu_down, :failed}}, 1_000
+    refute Map.has_key?(:sys.get_state(sfu).peers, @peer_a)
+  end
+
   test "rejects oversize or malformed offers and answers", %{socket: socket} do
     oversize = String.duplicate("a", 65_537)
 

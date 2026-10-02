@@ -22,7 +22,7 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
   alias ExWebRTC.{ICECandidate, MediaStreamTrack, PeerConnection, SessionDescription}
   alias ExWebRTC.RTP.{H264, VP8}
   alias TheGathering.WebcamTables.Sfu
-  alias TheGathering.WebcamTables.Sfu.{BrowserSdp, SimulcastSdp, Subscription}
+  alias TheGathering.WebcamTables.Sfu.{BrowserSdp, IceReport, SimulcastSdp, Subscription}
 
   # A keyframe request per publisher layer at most this often; a browser answering every
   # PLI from several viewers at once would spend its whole bitrate on keyframes.
@@ -35,6 +35,14 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
   @adapt_interval_ms 500
   @stale_ms 500
   @recovered_ms 2_000
+
+  # ex_ice gives up on a connection 8 s after it last heard from the browser on the selected
+  # candidate pair, even while media is still arriving on another path (a NAT that rebinds, a
+  # browser that moved to a pair it never nominated to us). An ICE restart keeps the DTLS
+  # session, tracks and subscriptions and only redoes the path; the seat is dropped only when
+  # restarts keep failing.
+  @max_ice_restarts 3
+  @ice_restart_window_ms 120_000
 
   def start_link(room_id), do: GenServer.start_link(__MODULE__, room_id, name: via(room_id))
 
@@ -66,6 +74,8 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
           ready?: false,
           negotiating?: false,
           dirty?: false,
+          restart_ice?: false,
+          ice_restarts: [],
           candidates: [],
           simulcast: %{}
         }
@@ -292,8 +302,22 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
   end
 
   defp handle_webrtc({:connection_state_change, :failed}, peer_id, state) do
-    Logger.info("SFU peer connection for #{peer_id} failed")
-    disconnect_peer(state, peer_id, :failed)
+    peer = Map.fetch!(state.peers, peer_id)
+    now = System.monotonic_time(:millisecond)
+    recent = Enum.filter(peer.ice_restarts, &(now - &1 < @ice_restart_window_ms))
+    Logger.info("SFU peer connection for #{peer_id} failed; ICE: #{IceReport.describe(peer.pc)}")
+
+    if length(recent) < @max_ice_restarts and peer.ready? do
+      Logger.info(
+        "SFU restarting ICE for #{peer_id} (#{length(recent) + 1}/#{@max_ice_restarts})"
+      )
+
+      state
+      |> put_peer(%{peer | restart_ice?: true, dirty?: true, ice_restarts: [now | recent]})
+      |> negotiate(peer_id)
+    else
+      disconnect_peer(state, peer_id, :failed)
+    end
   end
 
   defp handle_webrtc(_message, _peer_id, state), do: state
@@ -455,7 +479,7 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
   end
 
   defp offer(state, peer) do
-    with {:ok, offer} <- PeerConnection.create_offer(peer.pc),
+    with {:ok, offer} <- PeerConnection.create_offer(peer.pc, ice_restart: peer.restart_ice?),
          :ok <- PeerConnection.set_local_description(peer.pc, offer) do
       mids =
         peer.pc
@@ -469,9 +493,11 @@ defmodule TheGathering.WebcamTables.Sfu.Room do
 
       tracks = Map.new(subs, fn {owner_id, sub} -> {sub.mid, owner_id} end)
       sdp = SimulcastSdp.restore(offer.sdp, peer.simulcast)
-      Logger.info("SFU offered #{map_size(tracks)} board(s) to #{peer.id}")
+      restart = if peer.restart_ice?, do: " with an ICE restart", else: ""
+      Logger.info("SFU offered #{map_size(tracks)} board(s) to #{peer.id}#{restart}")
       send(peer.channel, {:sfu, :offer, %{sdp: sdp, tracks: tracks}})
-      put_peer(state, %{peer | subs: subs, negotiating?: true, dirty?: false})
+
+      put_peer(state, %{peer | subs: subs, negotiating?: true, dirty?: false, restart_ice?: false})
     else
       {:error, reason} ->
         Logger.warning("SFU could not offer to #{peer.id}: #{inspect(reason)}")
