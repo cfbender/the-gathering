@@ -143,9 +143,19 @@ defmodule TheGathering.WebcamTables.Log do
 
     for {label, from, to} <-
           [{"poison", previous.poison, next.poison}, {"rad", previous.rad, next.rad}] ++
-            casts ++ damage,
+            casts ++ damage ++ custom_counter_changes(previous, next),
         from != to,
         do: %{text: "#{name} #{label}: #{from} → #{to}"}
+  end
+
+  # Shared custom counters are matched by id, so renaming one does not log a change and a
+  # counter that stops being shared (or is removed) leaves nothing behind. Seats saved before
+  # custom counters existed have none.
+  defp custom_counter_changes(previous, next) do
+    before = Map.new(Map.get(previous, :custom_counters, []), &{&1["id"], &1["value"]})
+
+    for counter <- Map.get(next, :custom_counters, []),
+        do: {counter["label"], Map.get(before, counter["id"], 0), counter["value"]}
   end
 
   defp keys(a, b), do: Enum.uniq(Map.keys(a) ++ Map.keys(b))

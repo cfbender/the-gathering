@@ -3,6 +3,7 @@ import { LifeControl } from "./life-control"
 import type { TableParticipant } from "./room-types"
 import { SeatBar } from "./seat-bar"
 import { SeatCounterControls } from "./seat-counter-controls"
+import { SeatTrackersOverlay } from "./seat-trackers"
 import {
   decksFor,
   isCurrentTurn,
@@ -13,6 +14,7 @@ import {
   togglePin,
   type TableView,
 } from "./table-view"
+import { receivedTrackers } from "./trackers"
 import { VideoStatsOverlay, type useVideoStats } from "./video-stats"
 
 type SeatSize = "board" | "tile"
@@ -61,6 +63,25 @@ export function SeatLife({ view, participant, size }: SeatProps) {
         <SeatCounters view={view} participant={participant} onOpenChange={onOpenChange} />
       )}
       onChangeLife={view.room.changeLife}
+    />
+  )
+}
+
+/** A seat's custom counters and combat buffs over its video: the viewer's own are editable
+ * (private ones included); other seats show what they share. */
+export function SeatTrackers({
+  view,
+  participant,
+  compact = false,
+}: Omit<SeatProps, "size"> & { compact?: boolean }) {
+  const { room } = view
+  const local = isLocal(view, participant) && !room.spectating
+  return (
+    <SeatTrackersOverlay
+      trackers={local ? room.trackers.trackers : receivedTrackers(participant)}
+      playerName={participant.player_name}
+      compact={compact}
+      local={local ? room.trackers : undefined}
     />
   )
 }
@@ -120,6 +141,7 @@ export function SeatTile({
           fill={fill}
           onActivate={() => togglePin(view, participant)}
           lifeControl={<SeatLife view={view} participant={participant} size="tile" />}
+          trackers={<SeatTrackers view={view} participant={participant} compact={!fill} />}
         />
         {preferences.stats && (
           <VideoStatsOverlay

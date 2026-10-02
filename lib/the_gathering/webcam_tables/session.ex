@@ -106,6 +106,8 @@ defmodule TheGathering.WebcamTables.Session do
          :rad,
          :commander_casts,
          :commander_damage,
+         :custom_counters,
+         :combat_effects,
          :reveal_to,
          :eliminated,
          :spectator,

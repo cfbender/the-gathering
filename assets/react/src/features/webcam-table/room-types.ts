@@ -1,7 +1,9 @@
 import type { GalleryArt, Quad } from "./recognition/pipeline"
 import type { SeatCounters } from "./seat-counters"
+import type { SharedTrackers } from "./trackers"
 
-export interface TableParticipant extends SeatCounters {
+/** Absent on seats saved before trackers existed. */
+export interface TableParticipant extends SeatCounters, Partial<SharedTrackers> {
   peer_id: string
   player_id: number
   player_name: string
@@ -20,7 +22,7 @@ export interface TableParticipant extends SeatCounters {
 
 /** Status a player publishes about their own seat; mirrors the channel's `update_status`. */
 export type SeatStatus = Partial<
-  Pick<TableParticipant, "life" | "camera_off" | "eliminated"> & SeatCounters
+  Pick<TableParticipant, "life" | "camera_off" | "eliminated"> & SeatCounters & SharedTrackers
 >
 
 export interface Monarch {

@@ -508,6 +508,8 @@ defmodule TheGathering.WebcamTables.Room do
       rad: 0,
       commander_casts: %{},
       commander_damage: %{},
+      custom_counters: [],
+      combat_effects: [],
       eliminated: false
     }
   end

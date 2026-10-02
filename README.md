@@ -155,6 +155,12 @@ suggestions instead. When a seated player's chosen deck links to a list, every s
 and warms its card images, **Decks → View decklist** shows your own list, and the recognizer
 favours cards in the clicked board owner's list (see Oracle's README, "Deck-list prior").
 Opponents' lists are not shown in the UI but are visible in the browser's network tab.
+**Trackers** over your own camera keep free-form 0–100 counters ("Lands", "Creatures in graveyard")
+and a combat-math list: enter each anthem or combat buff with its conditions (attacking, blocking,
+flying, tokens, nontoken, or any creature type) and the overlay shows the combined bonus for every
+kind of creature ("Attacking token creatures +4/+4 · vigilance"). Each counter and the buff list has
+its own "Show to table" switch; shared ones appear on your seat for everyone and shared counter
+changes are logged, while private ones stay in your browser.
 Design notes are in
 [docs/webcam-table.md](docs/webcam-table.md); to improve recognition or contribute training data,
 see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONTRIBUTING.md).

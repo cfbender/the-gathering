@@ -161,6 +161,7 @@ export function ActiveBoard({
   outline,
   onInspect,
   lifeControl,
+  trackers,
 }: {
   participant: TableParticipant
   unattackable?: boolean
@@ -178,6 +179,8 @@ export function ActiveBoard({
   outline?: OutlineDraft
   onInspect: (event: MouseEvent<HTMLButtonElement>) => void
   lifeControl: ReactNode
+  /** The seat's custom counters and combat buffs, stacked under the release button. */
+  trackers?: ReactNode
 }) {
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
@@ -230,17 +233,21 @@ export function ActiveBoard({
           <Crown className="size-6" />
         </span>
       )}
-      {release && (
-        <button
-          type="button"
-          className="btn btn-xs absolute top-2 right-2 h-7 min-h-0 gap-1 border-primary bg-primary/80 px-2.5 text-xs text-white hover:bg-primary"
-          onClick={release.onClick}
-          title={release.title}
-        >
-          <release.icon className="size-3.5" />
-          {release.label}
-        </button>
-      )}
+      {/* Lets clicks beside the stacked controls reach the video. */}
+      <div className="pointer-events-none absolute top-2 right-2 flex max-w-[60%] flex-col items-end gap-1">
+        {release && (
+          <button
+            type="button"
+            className="btn btn-xs pointer-events-auto h-7 min-h-0 gap-1 border-primary bg-primary/80 px-2.5 text-xs text-white hover:bg-primary"
+            onClick={release.onClick}
+            title={release.title}
+          >
+            <release.icon className="size-3.5" />
+            {release.label}
+          </button>
+        )}
+        {trackers}
+      </div>
     </div>
   )
 }
@@ -260,6 +267,7 @@ export function CameraTile({
   fill = false,
   onActivate,
   lifeControl,
+  trackers,
 }: {
   participant: TableParticipant
   unattackable?: boolean
@@ -276,6 +284,8 @@ export function CameraTile({
   fill?: boolean
   onActivate: () => void
   lifeControl: ReactNode
+  /** The seat's custom counters and combat buffs, stacked under the monarch crown. */
+  trackers?: ReactNode
 }) {
   return (
     <div
@@ -326,14 +336,17 @@ export function CameraTile({
       )}
       {currentTurn && !participant.eliminated && <CurrentTurnBadge compact />}
       {lifeControl}
-      {monarch && (
-        <span
-          className="pointer-events-none absolute top-1.5 right-1.5 rounded bg-black/80 p-1 text-warning"
-          aria-label={`${participant.player_name} is the monarch`}
-        >
-          <Crown className="size-4" />
-        </span>
-      )}
+      <div className="pointer-events-none absolute top-1.5 right-1.5 flex max-w-[calc(100%-4.5rem)] flex-col items-end gap-1">
+        {monarch && (
+          <span
+            className="rounded bg-black/80 p-1 text-warning"
+            aria-label={`${participant.player_name} is the monarch`}
+          >
+            <Crown className="size-4" />
+          </span>
+        )}
+        {trackers}
+      </div>
     </div>
   )
 }

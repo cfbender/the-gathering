@@ -250,6 +250,64 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
                  :ok
   end
 
+  test "publishes shared custom counters and combat buffs, rejecting malformed ones", %{
+    socket: socket,
+    room_id: room_id
+  } do
+    assert_push "presence_state", %{@peer_a => %{metas: [initial]}}
+    assert %{custom_counters: [], combat_effects: []} = initial
+
+    counters = [%{"id" => "c1", "label" => "Lands", "value" => 7}]
+
+    effects = [
+      %{
+        "id" => "e1",
+        "name" => "Intangible Virtue",
+        "power" => 1,
+        "toughness" => 1,
+        "conditions" => ["Token"],
+        "keywords" => ["vigilance"]
+      }
+    ]
+
+    assert_reply push(socket, "update_status", %{
+                   "custom_counters" => counters,
+                   "combat_effects" => effects
+                 }),
+                 :ok
+
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", @peer_a)
+    assert meta.custom_counters == counters
+    assert meta.combat_effects == effects
+    assert [%{custom_counters: ^counters}] = WebcamTables.snapshot(room_id).seats
+    assert Enum.any?(WebcamTables.log(room_id), &(&1.text == "Alice Lands: 0 → 7"))
+
+    effect = hd(effects)
+
+    for payload <- [
+          %{"custom_counters" => %{}},
+          %{"custom_counters" => [%{"id" => "c1", "label" => "Lands", "value" => 101}]},
+          %{"custom_counters" => [%{"id" => "c1", "label" => "", "value" => 1}]},
+          %{"custom_counters" => [%{"id" => "c1", "label" => "Lands", "value" => 1, "x" => 1}]},
+          %{"custom_counters" => [%{"label" => "Lands", "value" => 1}]},
+          %{"combat_effects" => [Map.put(effect, "power", 100)]},
+          %{"combat_effects" => [Map.put(effect, "toughness", "1")]},
+          %{"combat_effects" => [Map.put(effect, "conditions", "Token")]},
+          %{"combat_effects" => [Map.put(effect, "keywords", [""])]},
+          %{"combat_effects" => [Map.delete(effect, "keywords")]},
+          %{"combat_effects" => [Map.put(effect, "shared", true)]}
+        ] do
+      assert_reply push(socket, "update_status", payload), :error, %{reason: "invalid status"}
+    end
+
+    %{metas: [unchanged]} = Presence.get_by_key("webcam_table:#{room_id}", @peer_a)
+    assert unchanged.custom_counters == counters
+    assert unchanged.combat_effects == effects
+
+    assert_reply push(socket, "update_status", %{"custom_counters" => [], "combat_effects" => []}),
+                 :ok
+  end
+
   test "monarch is one shared holder, synchronized to late joiners and retained on departure", %{
     socket: socket,
     room_id: room_id

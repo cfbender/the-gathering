@@ -491,10 +491,66 @@ defmodule TheGatheringWeb.WebcamTableChannel do
       {"eliminated", eliminated}, {:ok, changes} when is_boolean(eliminated) ->
         {:cont, {:ok, Map.put(changes, :eliminated, eliminated)}}
 
+      {"custom_counters", counters}, {:ok, changes} ->
+        if valid_custom_counters?(counters),
+          do: {:cont, {:ok, Map.put(changes, :custom_counters, counters)}},
+          else: {:halt, :error}
+
+      {"combat_effects", effects}, {:ok, changes} ->
+        if valid_combat_effects?(effects),
+          do: {:cont, {:ok, Map.put(changes, :combat_effects, effects)}},
+          else: {:halt, :error}
+
       _invalid, _changes ->
         {:halt, :error}
     end)
   end
+
+  # Free-form counters a seat shares ("Lands: 7"). The client keeps private ones to itself.
+  defp valid_custom_counters?(counters) when is_list(counters) and length(counters) <= 20 do
+    Enum.all?(counters, fn
+      %{"id" => id, "label" => label, "value" => value} = counter when map_size(counter) == 3 ->
+        short_string?(id, 40) and short_string?(label, 40) and is_integer(value) and
+          value in 0..100
+
+      _other ->
+        false
+    end)
+  end
+
+  defp valid_custom_counters?(_counters), do: false
+
+  # Anthems and combat buffs a seat shares; every client derives the same totals from them.
+  defp valid_combat_effects?(effects) when is_list(effects) and length(effects) <= 30 do
+    Enum.all?(effects, fn
+      %{
+        "id" => id,
+        "name" => name,
+        "power" => power,
+        "toughness" => toughness,
+        "conditions" => conditions,
+        "keywords" => keywords
+      } = effect
+      when map_size(effect) == 6 ->
+        short_string?(id, 40) and is_binary(name) and byte_size(name) <= 80 and
+          buff_amount?(power) and buff_amount?(toughness) and
+          string_list?(conditions, 8) and string_list?(keywords, 10)
+
+      _other ->
+        false
+    end)
+  end
+
+  defp valid_combat_effects?(_effects), do: false
+
+  defp buff_amount?(value), do: is_integer(value) and value in -99..99
+
+  defp short_string?(value, max), do: is_binary(value) and byte_size(value) in 1..max
+
+  defp string_list?(items, max_items) when is_list(items) and length(items) <= max_items,
+    do: Enum.all?(items, &short_string?(&1, 40))
+
+  defp string_list?(_items, _max_items), do: false
 
   # Dropping to zero life knocks a player out in every format. Restoring is
   # deliberately manual, so gaining life back does not silently un-eliminate.
@@ -539,6 +595,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
           rad: 0,
           commander_casts: %{},
           commander_damage: %{},
+          custom_counters: [],
+          combat_effects: [],
           reveal_to: nil,
           eliminated: false,
           # Default seat order is join order, so every browser sees the same seats.

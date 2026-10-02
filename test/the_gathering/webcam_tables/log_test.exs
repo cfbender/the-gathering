@@ -97,6 +97,30 @@ defmodule TheGathering.WebcamTables.LogTest do
            )
   end
 
+  test "logs shared custom counters by id, ignoring renames, removals and combat buffs" do
+    lands = %{"id" => "c1", "label" => "Lands", "value" => 6}
+    storm = %{"id" => "c2", "label" => "Storm", "value" => 3}
+    # A seat saved before custom counters existed has no key at all.
+    before = seat(%{custom_counters: [lands, storm]})
+    legacy = seat()
+
+    after_ =
+      seat(%{
+        custom_counters: [%{lands | "value" => 7}, %{storm | "label" => "Storm count"}],
+        combat_effects: [%{"id" => "e1", "name" => "Anthem"}]
+      })
+
+    assert texts(Log.seat_changes(before, after_, [])) == ["Alice Lands: 6 → 7"]
+
+    assert texts(Log.seat_changes(legacy, after_, [])) == [
+             "Alice Lands: 0 → 7",
+             "Alice Storm count: 0 → 3"
+           ]
+
+    assert Log.seat_changes(after_, seat(%{custom_counters: []}), []) == []
+    assert Log.seat_changes(after_, legacy, []) == []
+  end
+
   test "names joins, leaves, eliminations, the monarch and seat order" do
     assert Log.joined("Alice").text == "Alice joined the table"
     assert Log.left("Alice").text == "Alice left the table"

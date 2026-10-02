@@ -11,7 +11,7 @@ import { useOutlineDrawing, type OutlineDrawing } from "./outline-drawing"
 import type { TableParticipant } from "./room-types"
 import { describeRoll } from "./table-rolls"
 import { StartOverlay } from "./start-overlay"
-import { SeatActions, SeatLife, SeatTile, TeamHeader } from "./table-seat"
+import { SeatActions, SeatLife, SeatTile, SeatTrackers, TeamHeader } from "./table-seat"
 import {
   isCurrentTurn,
   videoFlip,
@@ -50,6 +50,7 @@ function StageBoard({
           connectionState={room.connectionStates[participant.peer_id]}
           stream={streamFor(view, participant)}
           lifeControl={<SeatLife view={view} participant={participant} size="board" />}
+          trackers={<SeatTrackers view={view} participant={participant} />}
           release={
             !isPinned(view, participant)
               ? undefined

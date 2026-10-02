@@ -7,6 +7,7 @@ import { useCardCapture } from "./use-card-capture"
 import { useLocalCamera } from "./use-local-camera"
 import { usePeerConnections } from "./use-peer-connections"
 import { useRoomChannel } from "./use-room-channel"
+import { useSeatTrackers } from "./use-seat-trackers"
 import { useTableGameState } from "./use-table-game-state"
 
 export type {
@@ -39,6 +40,7 @@ export function useWebcamRoom(
   const captures = useCardCapture(link, playerId, camera, peers, setStatus)
   const cards = useBoardCards(link)
   const game = useTableGameState(link, playerId, setError)
+  const trackers = useSeatTrackers(link, roomId, playerId)
   // Set while this seat ends the table, so its own `table_closed` is not reported back to it.
   const endingRef = useRef(false)
   const [closedByOwner, setClosedByOwner] = useState(false)
@@ -53,6 +55,7 @@ export function useWebcamRoom(
     bind(room) {
       game.bindChannel(room)
       cards.bindChannel(room)
+      trackers.bindChannel(room)
     },
     onPresence(everyone) {
       game.receivePresence(everyone)
@@ -65,6 +68,7 @@ export function useWebcamRoom(
       game.syncTimer()
       if (!link.spectator) {
         game.updateStatus({ camera_off: camera.isOff() })
+        trackers.publish()
         camera.startCamera(peers.replaceSourceTrack)
       }
       peers.refreshVideo()
@@ -164,6 +168,8 @@ export function useWebcamRoom(
     changeLife: game.changeLife,
     counters: game.counters,
     adjustCounter: game.adjustCounter,
+    /** This seat's custom counters and combat buffs; see `useSeatTrackers`. */
+    trackers,
     monarch: game.monarch,
     takeMonarch: game.takeMonarch,
     toggleCamera,
