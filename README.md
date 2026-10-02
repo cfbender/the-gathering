@@ -40,15 +40,22 @@ Health check: `GET /api/health` returns `{"status":"ok"}` when the database is r
 ### Proxmox VE
 
 [`deploy/proxmox/the-gathering.sh`](deploy/proxmox/the-gathering.sh) creates an unprivileged
-Debian LXC with Docker and the Compose stack above in `/opt/the-gathering`. Run it as root on the
-Proxmox host; settings such as `CTID`, `STORAGE`, `IP`, `CORES` and `RAM_MB` are environment
-variables documented at the top of the script.
+Debian LXC that runs the app natively (no Docker): it installs the Elixir release tarball from the
+latest [GitHub release](https://github.com/cfbender/the-gathering/releases) into
+`/opt/the-gathering`, keeps data in `/var/lib/the-gathering`, reads settings from
+`/etc/the-gathering.env` (same keys as `.env.example`), and runs it as the `the-gathering`
+systemd service. Run it as root on the Proxmox host; settings such as `CTID`, `STORAGE`, `IP`,
+`CORES`, `RAM_MB`, `VERSION` and `ADMIN_USERNAME`/`ADMIN_PASSWORD` are environment variables
+documented at the top of the script.
 
 ```sh
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/cfbender/the-gathering/main/deploy/proxmox/the-gathering.sh)"
 ```
 
-`bash the-gathering.sh update <CTID>` pulls the latest image into an existing container.
+`bash the-gathering.sh update <CTID> [tag]` installs the latest (or given) release into an existing
+container and restarts the service; the previous release stays under
+`/opt/the-gathering/releases/` for rollback. Release tarballs are built by
+[`.github/workflows/release.yml`](.github/workflows/release.yml) for every `v*.*.*` tag.
 
 ### Invite members while registration is closed
 

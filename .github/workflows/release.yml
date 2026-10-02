@@ -1,0 +1,96 @@
+name: Release
+
+# Builds the Elixir release tarball that deploy/proxmox/the-gathering.sh installs
+# (bare-metal / LXC, no Docker). Runs on version tags only; the container image is
+# built separately by container.yml.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  MIX_ENV: prod
+  NODE_VERSION: 26.9.0
+  NODE_SHA256: c6ecd8efc1c1d395265891675319da7a7b3785c6be174bd78933cf4f057624d1
+  AUBE_VERSION: 1.21.0
+  AUBE_SHA256: f56cb4db3b47e47b51ca8f05677dad7ddef25079e5a81f0ec6afaa0d54201bbe
+
+jobs:
+  release:
+    name: Build release tarball
+    runs-on: ubuntu-latest
+    # Build on the same Debian release the installer targets (Debian 13 "trixie") so the
+    # bundled ERTS and native deps link against the glibc/OpenSSL the container ships.
+    # Keep Elixir/OTP aligned with the Dockerfile.
+    container:
+      image: hexpm/elixir:1.20.4-erlang-29.1.1-debian-trixie-20260918
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install build tools
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            build-essential git curl ca-certificates xz-utils pkg-config libssl-dev >/dev/null
+
+      - name: Install Node and aube
+        run: |
+          set -eu
+          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/node.tar.xz
+          echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
+          curl -fsSL "https://github.com/aubepkg/aube/releases/download/v${AUBE_VERSION}/aube-v${AUBE_VERSION}-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/aube.tar.gz
+          echo "${AUBE_SHA256}  /tmp/aube.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/aube.tar.gz -C /tmp aube
+          install /tmp/aube /usr/local/bin/aube
+          node --version
+          aube --version
+
+      - name: Install Hex and Rebar
+        run: mix local.hex --force && mix local.rebar --force
+
+      - name: Fetch and compile dependencies
+        run: |
+          mix deps.get --only prod
+          mix deps.compile
+
+      - name: Build assets
+        run: |
+          aube install --frozen-lockfile
+          mix compile
+          mix assets.deploy
+
+      - name: Assemble release
+        id: release
+        run: |
+          set -eu
+          mix release --overwrite
+          tag="${GITHUB_REF_NAME}"
+          archive="the_gathering-${tag}-linux-amd64.tar.gz"
+          tar -C _build/prod/rel -czf "$archive" the_gathering
+          sha256sum "$archive" > "${archive}.sha256"
+          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload tarball as workflow artifact (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.release.outputs.archive }}
+          path: |
+            ${{ steps.release.outputs.archive }}
+            ${{ steps.release.outputs.archive }}.sha256
+
+      - name: Publish GitHub release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          generate_release_notes: true
+          files: |
+            ${{ steps.release.outputs.archive }}
+            ${{ steps.release.outputs.archive }}.sha256
