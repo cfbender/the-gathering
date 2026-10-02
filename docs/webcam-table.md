@@ -48,11 +48,12 @@ supervision, and materially more deployment work.
 
 `media-policy.ts` budgets each outgoing sender by **total seated players, including self**:
 
-| Seats | `scaleResolutionDownBy` | From a 1080p camera | `maxBitrate` per receiver |
-| --- | --- | --- | --- |
-| 1–4 | 1 | 1920 × 1080 | 2,500,000 bps |
-| 5–7 | 1.5 | 1280 × 720 | 1,200,000 bps |
-| 8–10 | 2 | 960 × 540 | 600,000 bps |
+| Seats | `scaleResolutionDownBy` | From a 1080p camera | `maxBitrate` per receiver | `maxFramerate` |
+| --- | --- | --- | --- | --- |
+| 1–2 | 1 | 1920 × 1080 | 2,500,000 bps | 30 |
+| 3–4 | 1 | 1920 × 1080 | 2,500,000 bps | 15 |
+| 5–7 | 1.5 | 1280 × 720 | 1,200,000 bps | 15 |
+| 8–10 | 2 | 960 × 540 | 600,000 bps | 15 |
 
 The hook applies these caps through `RTCRtpSender.setParameters` when a connection becomes live
 and when membership changes (including restoring the higher tier after departures). Congestion
@@ -60,6 +61,17 @@ control may reduce quality further. At ten seats the video budget is at most 5.4
 sender before transport overhead, still nine encodes and potentially nine TURN relays. Measure
 sender CPU, available outgoing bitrate, frame dimensions, packet loss, and TURN use; these
 tiers are budgets, not a guarantee of ten-seat performance on every device.
+
+CPU, not bandwidth, is the first limit of the mesh. Browsers encode WebRTC video in software
+here (Chromium picks libvpx VP8 without a hardware encoder; Firefox has no hardware WebRTC
+encoding at all), and every remote seat costs one encoder plus one decoder whose work scales
+with pixels × frames per second. Measured in headless Chromium on an 8-core orb with a synthetic
+1080p camera at 20 fps: a seat alone used ~20% of a core; each seat of a three-player table
+used ~130% at 1080p and ~83% at 720p; halving one seat's encode frame rate saved ~40% of a core
+on the sender and ~15% on each receiver. A four-player table from 30 fps cameras therefore needs
+about three cores per browser at full rate. The frame-rate column caps that cost from the third
+seat on while keeping the resolution a card needs to be readable; the Publisher quality setting
+still lowers resolution (and so decode cost on every receiver) further.
 
 The SFU migration seam is `useWebcamRoom`: replace peer creation/signaling and stream delivery
 behind that hook, preserving participant, stream, capture, reveal, and result APIs. The SFU
@@ -400,7 +412,8 @@ board is large, everyone else is small, and controls live in a collapsible colum
   private-reveal restrictions survive switching. Missing saved cameras fall back to the system
   default with a warning. Capture requests ideal 1080p (lower-resolution devices are accepted).
   Publisher quality offers Auto (the existing seat-count tiers), 1080p, 720p or 540p ceilings;
-  it changes sender scaling/bitrate without lowering native card-crop resolution. Stats sample
+  it changes sender scaling/bitrate without lowering native card-crop resolution, and the
+  seat-count frame-rate cap applies to every choice. Stats sample
   each connection every two seconds while enabled: remote tiles show received resolution, fps,
   bitrate and the selected remote ICE candidate type; the local tile shows native capture
   resolution/fps (no network hop). Check video health reports local track settings and state.

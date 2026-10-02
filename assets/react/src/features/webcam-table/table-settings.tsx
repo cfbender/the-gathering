@@ -212,7 +212,8 @@ export function TableSettings({
             </select>
           </label>
           <p className="text-[0.65rem] text-base-content/60">
-            Lower if your video appears choppy. Takes effect immediately; card scans keep the native
+            Lower if your video appears choppy or your fans spin up: every seat decodes what you
+            send, and you encode once per seat. Takes effect immediately; card scans keep the native
             camera resolution.
           </p>
           <Button

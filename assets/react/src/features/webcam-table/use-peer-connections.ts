@@ -98,7 +98,8 @@ export function usePeerConnections(
           const unchanged = parameters.encodings.every(
             (current) =>
               current.scaleResolutionDownBy === encoding.scaleResolutionDownBy &&
-              current.maxBitrate === encoding.maxBitrate,
+              current.maxBitrate === encoding.maxBitrate &&
+              current.maxFramerate === encoding.maxFramerate,
           )
           if (unchanged) return
           parameters.encodings = parameters.encodings.map((current) => ({
