@@ -3,6 +3,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
 
   use TheGatheringWeb, :channel
 
+  require Logger
+
   alias TheGathering.{Games, WebcamTables}
   alias TheGathering.WebcamTables.Sfu
   alias TheGatheringWeb.{ChannelRateLimit, Presence, WebcamTableRooms}
@@ -31,6 +33,7 @@ defmodule TheGatheringWeb.WebcamTableChannel do
        |> assign(:participant, participant)
        |> assign(:room_id, room_id)
        |> assign(:room_monitor, room_monitor)
+       |> assign(:joined_at, System.monotonic_time(:millisecond))
        |> assign(:rate_limits, %{
          events: ChannelRateLimit.new(:webcam_table_events),
          signals: ChannelRateLimit.new(:webcam_table_signals)
@@ -41,6 +44,25 @@ defmodule TheGatheringWeb.WebcamTableChannel do
       false -> {:error, %{reason: "invalid room"}}
       {:error, reason} -> {:error, %{reason: reason}}
     end
+  end
+
+  # Why and after how long a seat's channel went away. A seat that keeps rejoining shows up
+  # here as short lifetimes; `:shutdown` reasons are the transport closing under it.
+  @impl true
+  def terminate(reason, socket) do
+    case socket.assigns do
+      %{participant: %{peer_id: peer_id}, joined_at: joined_at} ->
+        lifetime = System.monotonic_time(:millisecond) - joined_at
+
+        Logger.info(
+          "Webcam table seat #{peer_id} left after #{lifetime}ms: #{inspect(reason, limit: 50)}"
+        )
+
+      _not_joined ->
+        :ok
+    end
+
+    :ok
   end
 
   @impl true

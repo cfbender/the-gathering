@@ -81,7 +81,16 @@ export function useRoomChannel(
         socket = new Socket("/socket", { params: () => ({ token: config.socket_token }) })
         let refreshing = false
         let refreshedAt: number | null = null
-        socket.onError(() => {
+        socket.onClose((event) => {
+          // A close is routine on leaving; a stream of them is why seats keep "Connecting…".
+          console.warn("Table socket closed", {
+            code: event?.code,
+            reason: event?.reason,
+            wasClean: event?.wasClean,
+          })
+        })
+        socket.onError((error, transport, establishedConnections) => {
+          console.warn("Table socket error", { error, transport, establishedConnections })
           on().setStatus("Reconnecting… Your game is saved.")
           // Socket tokens expire after a day; refresh from the still-authenticated
           // cookie session so the next automatic retry does not reuse an expired token.
@@ -134,7 +143,8 @@ export function useRoomChannel(
           room.leave()
           socket?.disconnect()
         })
-        room.onError(() => {
+        room.onError((reason) => {
+          console.warn("Table channel error; rejoining with a new seat connection", reason)
           // A channel retry is a new media generation. Reusing its peer ID can
           // leave one browser offering to an old connection after Presence resets.
           link.peerId = crypto.randomUUID()
