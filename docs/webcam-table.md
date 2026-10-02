@@ -107,9 +107,14 @@ The hosted alternative is Cloudflare Realtime TURN: set `CLOUDFLARE_TURN_KEY_ID`
 `TheGathering.CloudflareTurn` exchanges that long-lived key for per-join credentials via
 `POST https://rtc.live.cloudflare.com/v1/turn/keys/:id/credentials/generate-ice-servers`. The
 credentials expire after `CLOUDFLARE_TURN_TTL_SECONDS` (default six hours, longer than a game;
-refreshing mid-session would need `RTCPeerConnection.setConfiguration`). The config endpoint
-appends Cloudflare's servers after the static ones, dropping URLs the static list already covers,
-and falls back to the static list with a logged warning if Cloudflare is unreachable, so a
+refreshing mid-session would need `RTCPeerConnection.setConfiguration`). Cloudflare answers with
+six TURN URLs (primary and alternate ports for UDP, TCP, and TLS); only `turn:…:3478?transport=udp`
+and `turns:…:443?transport=tcp` are passed on, because a browser opens one relay allocation per
+URL on every peer connection and Firefox logs "Using five or more STUN/TURN servers slows down
+discovery" once the whole list reaches five. With the two default STUN servers that makes four
+URLs. The config endpoint appends Cloudflare's servers after the static ones, dropping URLs the
+static list already covers, and falls back to the static list with a logged warning if
+Cloudflare is unreachable, so a
 Cloudflare outage degrades to STUN-only rather than blocking the room. Only pairs that cannot
 connect directly use the relay; Cloudflare bills relayed egress at $0.05/GB after the first
 1,000 GB each month (STUN at `stun.cloudflare.com` is free and unlimited). One relayed 1080p

@@ -93,7 +93,8 @@ defmodule TheGatheringWeb.API.WebcamTableConfigControllerTest do
       :ok
     end
 
-    test "appends minted credentials and drops URLs already served statically", %{conn: conn} do
+    test "appends minted credentials, keeping one UDP and one TLS relay URL and dropping URLs already served statically",
+         %{conn: conn} do
       Req.Test.expect(__MODULE__, fn req_conn ->
         assert req_conn.method == "POST"
         assert req_conn.request_path == "/v1/turn/keys/key123/credentials/generate-ice-servers"
@@ -103,12 +104,17 @@ defmodule TheGatheringWeb.API.WebcamTableConfigControllerTest do
 
         req_conn
         |> Plug.Conn.put_status(201)
+        # Cloudflare's documented response: primary and alternate ports for every transport.
         |> Req.Test.json(%{
           "iceServers" => [
             %{"urls" => ["stun:stun.cloudflare.com:3478"]},
             %{
               "urls" => [
                 "turn:turn.cloudflare.com:3478?transport=udp",
+                "turn:turn.cloudflare.com:443?transport=udp",
+                "turn:turn.cloudflare.com:3478?transport=tcp",
+                "turn:turn.cloudflare.com:80?transport=tcp",
+                "turns:turn.cloudflare.com:5349?transport=tcp",
                 "turns:turn.cloudflare.com:443?transport=tcp"
               ],
               "username" => "short-lived-user",
@@ -118,6 +124,7 @@ defmodule TheGatheringWeb.API.WebcamTableConfigControllerTest do
         })
       end)
 
+      # Four URLs in total: Firefox warns that five or more slow ICE discovery.
       assert %{
                "data" => %{
                  "ice_servers" => [
@@ -130,6 +137,33 @@ defmodule TheGatheringWeb.API.WebcamTableConfigControllerTest do
                      "username" => "short-lived-user",
                      "credential" => "short-lived-secret"
                    }
+                 ]
+               }
+             } = conn |> get(~p"/api/webcam-table/config") |> json_response(200)
+    end
+
+    test "passes an unfamiliar relay URL set through rather than dropping the relay", %{
+      conn: conn
+    } do
+      Req.Test.expect(__MODULE__, fn req_conn ->
+        req_conn
+        |> Plug.Conn.put_status(201)
+        |> Req.Test.json(%{
+          "iceServers" => [
+            %{
+              "urls" => ["turn:relay.example:9000?transport=udp"],
+              "username" => "u",
+              "credential" => "c"
+            }
+          ]
+        })
+      end)
+
+      assert %{
+               "data" => %{
+                 "ice_servers" => [
+                   %{"urls" => ["stun:stun.cloudflare.com:3478"]},
+                   %{"urls" => ["turn:relay.example:9000?transport=udp"]}
                  ]
                }
              } = conn |> get(~p"/api/webcam-table/config") |> json_response(200)
