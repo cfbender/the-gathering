@@ -111,6 +111,8 @@ export interface OverviewStats {
     id: number
     name: string
     rating: number
+    /** Rating carried into the date range (1000 for players new to it). */
+    start: number
     peak: number
     games: number
     history: { date: string; rating: number }[]
@@ -146,6 +148,7 @@ export interface PlayerStats {
   loss_conditions: WinConditionStats
   elo: {
     rating: number
+    start: number
     peak: number
     games: number
     /** Position among players with at least `LEADERBOARD_MIN_GAMES`; null below the floor. */

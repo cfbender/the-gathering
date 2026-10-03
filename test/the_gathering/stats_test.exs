@@ -470,6 +470,23 @@ defmodule TheGathering.StatsTest do
     assert %{games: 7, wins: 2, beaten: 3} = Enum.find(kangee.opponents, &(&1.name == "Bob"))
   end
 
+  test "a date range carries Elo in from earlier games", %{players: players} do
+    params = %{"date_from" => "2026-02-01"}
+    full = Stats.overview().elo
+    windowed = Stats.overview(params).elo
+
+    assert Enum.map(windowed, &{&1.id, &1.rating}) == Enum.map(full, &{&1.id, &1.rating})
+    assert Enum.any?(windowed, &(&1.start != 1000))
+
+    for rating <- windowed do
+      assert hd(rating.history) == %{date: "2026-02-01", rating: rating.start}
+    end
+
+    alice = Stats.player(players["Alice"].id, params).elo
+    assert alice.rating == Enum.find(full, &(&1.id == players["Alice"].id)).rating
+    assert hd(alice.history).date == "2026-02-01"
+  end
+
   test "players below the game floor are rated but unranked", %{players: players, decks: decks} do
     {:ok, dana} = Games.create_player(%{name: "Dana"})
 

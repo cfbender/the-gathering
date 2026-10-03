@@ -21,7 +21,7 @@ defmodule TheGathering.Stats.Overview do
       game_lengths: Summaries.game_lengths(detailed),
       game_times: Enum.map(games, & &1.played_at),
       leaderboard: Records.grouped_records(seats, &Summaries.entity(&1.player), & &1.player_id),
-      elo: Elo.ratings(games),
+      elo: elo(games, params),
       matchups: Records.matchups(games),
       games_by_month:
         games
@@ -39,6 +39,18 @@ defmodule TheGathering.Stats.Overview do
       commanders: params |> Stats.Commanders.list() |> Enum.take(8),
       recent_games: games |> Enum.take(6) |> Summaries.recent_games()
     }
+  end
+
+  # Ratings carry in from before the window, so a `date_from` bound replays every
+  # earlier game too.
+  defp elo(games, params) do
+    case Query.window_start(params) do
+      nil ->
+        Elo.ratings(games)
+
+      window_start ->
+        params |> Query.without_date_from() |> Query.games() |> Elo.ratings(window_start)
+    end
   end
 
   defp detailed_games(games, nil), do: games

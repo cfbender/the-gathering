@@ -93,4 +93,28 @@ defmodule TheGathering.Stats.EloTest do
     # replayed backwards Alice would.
     assert Enum.map(newest_first, &{&1.name, &1.rating}) == [{"Bob", 1001}, {"Alice", 999}]
   end
+
+  test "a window replays earlier games and reports only the change inside it" do
+    rows = [
+      {~D[2026-01-01], [{@alice, "win"}, {@bob, "loss"}, {@cara, "loss"}]},
+      {~D[2026-02-01], [{@bob, "win"}, {@alice, "loss"}]}
+    ]
+
+    ratings = Elo.ratings(games(rows), {~D[2026-01-20], ~U[2026-01-20 05:00:00Z]})
+    full = Elo.ratings(games(rows))
+
+    # Cara sat out the window, and the others end where the full replay leaves them.
+    assert Enum.map(ratings, &{&1.name, &1.rating}) ==
+             Enum.map(Enum.reject(full, &(&1.name == "Cara")), &{&1.name, &1.rating})
+
+    alice = Enum.find(ratings, &(&1.name == "Alice"))
+    final = Enum.find(full, &(&1.name == "Alice")).rating
+
+    assert %{start: 1016, peak: 1016, games: 1} = alice
+
+    assert alice.history == [
+             %{date: "2026-01-20", rating: 1016},
+             %{date: "2026-02-01", rating: final}
+           ]
+  end
 end

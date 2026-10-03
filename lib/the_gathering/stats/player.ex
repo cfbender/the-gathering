@@ -76,11 +76,17 @@ defmodule TheGathering.Stats.Player do
     Enum.filter(games, &(Date.compare(DateTime.to_date(&1.played_at), cutoff) != :lt))
   end
 
-  # Ratings depend on every game at the table, so the whole playgroup is replayed.
+  # Ratings depend on every game at the table, so the whole playgroup is replayed,
+  # including games before the window so ratings carry into it.
   # Only players at or above `Stats.min_games/0` hold a rank; a newer player still
   # sees their rating but is unranked until they reach the floor.
   defp elo(player_id, params) do
-    ratings = params |> Query.games() |> Elo.ratings()
+    ratings =
+      params
+      |> Query.without_date_from()
+      |> Query.games()
+      |> Elo.ratings(Query.window_start(params))
+
     ranked = Enum.filter(ratings, &(&1.games >= Stats.min_games()))
 
     case Enum.find(ratings, &(&1.id == player_id)) do
@@ -91,7 +97,7 @@ defmodule TheGathering.Stats.Player do
         rank = Enum.find_index(ranked, &(&1.id == player_id))
 
         rating
-        |> Map.take([:rating, :peak, :games, :history])
+        |> Map.take([:rating, :start, :peak, :games, :history])
         |> Map.put(:rank, rank && rank + 1)
         |> Map.put(:players, length(ranked))
     end

@@ -146,6 +146,25 @@ defmodule TheGathering.Stats.Query do
     |> maybe_date_to(params_value(params, :date_to), zone)
   end
 
+  @doc """
+  `params` without the `date_from` bound, for views such as Elo that must replay every
+  earlier game to know the ratings players carried into the window.
+  """
+  def without_date_from(params), do: Map.drop(params, [:date_from, "date_from"])
+
+  @doc """
+  The window's first local day and the UTC instant it begins, or `nil` when `params`
+  has no valid `date_from`.
+  """
+  def window_start(params) do
+    with value when is_binary(value) <- params_value(params, :date_from),
+         {:ok, date} <- Date.from_iso8601(value) do
+      {date, LocalTime.start_of_day(date, LocalTime.zone(params_value(params, :tz)))}
+    else
+      _missing -> nil
+    end
+  end
+
   defp params_value(params, key), do: Map.get(params, key) || Map.get(params, Atom.to_string(key))
 
   defp maybe_date_from(query, nil, _zone), do: query

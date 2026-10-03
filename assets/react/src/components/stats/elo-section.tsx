@@ -73,7 +73,8 @@ export function EloSection({ players }: { players: OverviewStats["elo"] }) {
       <p className="text-base-content/45 mt-3 text-xs leading-relaxed">
         Everyone starts at 1000 with K = 32. Winners score against each loser, draws split their
         comparison, and losing seats are not compared; changes are averaged across opponents so each
-        game is zero-sum.
+        game is zero-sum. Ratings always replay every game, so a date range shows the change from
+        each player's rating at its start.
       </p>
     </section>
   )

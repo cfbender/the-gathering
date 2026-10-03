@@ -5,6 +5,7 @@ const player = (name: string, rating: number, games: number) => ({
   id: name.length,
   name,
   rating,
+  start: 1000,
   peak: rating,
   games,
   history: [{ date: "2026-01-01", rating }],
@@ -38,6 +39,7 @@ describe("Elo chart scaling", () => {
         id: 7,
         name: "Leader",
         rating: 1120,
+        start: 1000,
         history: [
           { date: "2026-02-08", rating: 1080 },
           { date: "2026-02-12", rating: 1120 },

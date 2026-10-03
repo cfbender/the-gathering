@@ -26,6 +26,7 @@ const player = (id: number, name: string, rating: number) => ({
   id,
   name,
   rating,
+  start: 1000,
   peak: rating,
   games: 5,
   history: [{ date: `2026-01-0${id}`, rating }],

@@ -116,7 +116,7 @@ export function EloChart({
           onMouseLeave={() => onHighlightChange?.(null)}
         >
           {series.map((player, index) => {
-            const change = player.rating - 1000
+            const change = player.rating - player.start
             return (
               <li
                 key={player.id}

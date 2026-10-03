@@ -5,9 +5,21 @@ import { EloChart } from "./elo-chart"
 afterEach(cleanup)
 
 const series = [
-  { id: 1, name: "Alice", rating: 1040, history: [{ date: "2026-01-01", rating: 1040 }] },
-  { id: 2, name: "Bob", rating: 980, history: [{ date: "2026-01-02", rating: 980 }] },
-  { id: 3, name: "Cara", rating: 1010, history: [{ date: "2026-01-03", rating: 1010 }] },
+  {
+    id: 1,
+    name: "Alice",
+    rating: 1040,
+    start: 1000,
+    history: [{ date: "2026-01-01", rating: 1040 }],
+  },
+  { id: 2, name: "Bob", rating: 980, start: 1000, history: [{ date: "2026-01-02", rating: 980 }] },
+  {
+    id: 3,
+    name: "Cara",
+    rating: 1010,
+    start: 1000,
+    history: [{ date: "2026-01-03", rating: 1010 }],
+  },
 ]
 
 const lineOpacities = (container: HTMLElement) =>
@@ -53,4 +65,25 @@ it("reports hover changes on the lines themselves", () => {
 
   fireEvent.mouseLeave(bobLine)
   expect(onHighlightChange).toHaveBeenLastCalledWith(null)
+})
+
+it("shows each legend change from the rating carried into the range", () => {
+  render(
+    <EloChart
+      series={[
+        {
+          id: 1,
+          name: "Alice",
+          rating: 1090,
+          start: 1100,
+          history: [
+            { date: "2026-04-01", rating: 1100 },
+            { date: "2026-04-02", rating: 1090 },
+          ],
+        },
+      ]}
+    />,
+  )
+
+  expect(screen.getByText("Alice").closest("li")?.textContent).toContain("1090 (-10)")
 })

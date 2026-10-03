@@ -1,6 +1,9 @@
 import type { OverviewStats } from "@/lib/stats"
 
-export type EloSeries = Pick<OverviewStats["elo"][number], "id" | "name" | "rating" | "history">
+export type EloSeries = Pick<
+  OverviewStats["elo"][number],
+  "id" | "name" | "rating" | "start" | "history"
+>
 
 export interface EloChartBounds {
   startDate: string

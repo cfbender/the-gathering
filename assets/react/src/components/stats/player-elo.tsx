@@ -27,7 +27,9 @@ export function EloTrendCard({ elo }: { elo: PlayerStats["elo"] }) {
       <h3 className="mb-4 font-bold">Rating over time</h3>
       {elo ? (
         <EloChart
-          series={[{ id: 0, name: "Rating", rating: elo.rating, history: elo.history }]}
+          series={[
+            { id: 0, name: "Rating", rating: elo.rating, start: elo.start, history: elo.history },
+          ]}
           showLegend={false}
         />
       ) : (
