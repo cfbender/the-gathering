@@ -10,7 +10,11 @@ config :bcrypt_elixir, :log_rounds, 1
 # Run `mix help test` for more information.
 config :the_gathering, TheGathering.Repo,
   database: Path.expand("../the_gathering_test.db", __DIR__),
-  pool_size: 5,
+  # SQLite has one writer, and sandbox transactions are deferred: a test whose first write
+  # follows a read fails at once with "Database busy" (busy_timeout does not apply) if the
+  # previous test's connection is still rolling back. One connection makes each checkout
+  # wait for that rollback instead.
+  pool_size: 1,
   pool: Ecto.Adapters.SQL.Sandbox
 
 # We don't run a server during test. If one is required,
