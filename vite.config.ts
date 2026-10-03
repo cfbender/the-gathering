@@ -32,6 +32,9 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Each file still gets its own isolated context, but every worker builds jsdom once
+    // instead of once per file, which was over half of the suite's run time.
+    pool: "vmThreads",
     include: ["assets/react/src/**/*.test.{ts,tsx}"],
     setupFiles: ["assets/react/src/test/setup.ts"],
   },
