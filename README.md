@@ -245,6 +245,7 @@ see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONT
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
 | `WEBRTC_SFU_PORT_RANGE` | `50000-50100` | UDP ports the built-in webcam-table SFU listens on, one per connected browser. Forward the same range from your router to the host (Docker: publish it as `/udp`). |
 | `WEBRTC_SFU_PUBLIC_IP` | unset | Public address browsers reach the SFU ports at, announced as an ICE candidate. Required for players outside your LAN unless `WEBRTC_SFU_RELAY_ONLY` is set. |
+| `WEBRTC_SFU_IPV6` | unset | Set to `true` to also offer the host's IPv6 addresses as media candidates. Off by default: the port forward above is IPv4, and LAN browsers that pick an IPv6 path have lost their video on it. |
 | `WEBRTC_SFU_RELAY_ONLY` | unset | Set to `true` to open no public ports: the SFU reaches browsers through Cloudflare TURN (requires `CLOUDFLARE_TURN_KEY_ID`), so all media crosses the relay. |
 | `WEBRTC_STUN_URLS` | Google + Cloudflare public STUN | Comma-separated STUN URLs browsers use for NAT discovery toward the SFU. `none` disables STUN for LAN-only installs. |
 | `WEBRTC_TURN_URLS` | unset | Comma-separated TURN URLs; with `WEBRTC_TURN_USERNAME` and `WEBRTC_TURN_CREDENTIAL`, relays webcam-table media for browsers that cannot reach the SFU directly. |

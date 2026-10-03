@@ -17,8 +17,6 @@ defmodule TheGathering.WebcamTables.Sfu.IceReportTest do
         valid: true,
         nominated: false,
         last_seen: @now - 1_000,
-        packets_sent: 0,
-        packets_received: 0,
         requests_sent: 0,
         requests_received: 0,
         responses_received: 0,
@@ -36,6 +34,8 @@ defmodule TheGathering.WebcamTables.Sfu.IceReportTest do
         ice_role: :controlled,
         ice_state: :failed,
         dtls_state: :connected,
+        packets_received: 1_820,
+        packets_sent: 0,
         selected_candidate_pair_changes: 2,
         unmatched_requests: 0
       },
@@ -66,7 +66,7 @@ defmodule TheGathering.WebcamTables.Sfu.IceReportTest do
           state: :failed,
           nominated: true,
           last_seen: @now - 9_200,
-          packets_received: 1_500,
+          requests_received: 1,
           requests_sent: 4,
           responses_received: 2,
           non_symmetric_responses_received: 2
@@ -76,18 +76,17 @@ defmodule TheGathering.WebcamTables.Sfu.IceReportTest do
           priority: 9,
           state: :frozen,
           valid: false,
-          last_seen: @now - 40,
-          packets_received: 320
+          last_seen: @now - 40
         })
     }
 
     assert IceReport.format(stats, @now) ==
-             "controlled failed, dtls connected, selected pair changes 2, unmatched requests 0; " <>
-               "local host 10.0.0.5:50000; " <>
+             "controlled failed, dtls connected, rx 1820pkt tx 0pkt, selected pair changes 2, " <>
+               "unmatched requests 0; local host 10.0.0.5:50000; " <>
                "host 10.0.0.5:50000->srflx 203.0.113.9:61000 failed,nominated,valid seen 9200ms ago " <>
-               "rx 1500pkt req 0 tx 0pkt req 4 resp 2 non-symmetric 2 | " <>
+               "req in 1 out 4 resp 2 non-symmetric 2 | " <>
                "prflx 203.0.113.9:61777 frozen seen 40ms ago " <>
-               "rx 320pkt req 0 tx 0pkt req 0 resp 0"
+               "req in 0 out 0 resp 0"
   end
 
   test "copes with an mDNS remote address, an unseen pair, and no pairs at all" do
@@ -119,6 +118,7 @@ defmodule TheGathering.WebcamTables.Sfu.IceReportTest do
              "host 10.0.0.5:50000->host abc.local:9 waiting seen never"
 
     assert IceReport.format(%{}, @now) ==
-             "unknown unknown, dtls unknown, selected pair changes 0, unmatched requests 0; local none; no candidate pairs"
+             "unknown unknown, dtls unknown, rx 0pkt tx 0pkt, selected pair changes 0, " <>
+               "unmatched requests 0; local none; no candidate pairs"
   end
 end

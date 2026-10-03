@@ -76,6 +76,7 @@ defmodule TheGathering.WebcamTables.Sfu do
         [
           ice_servers: [],
           ice_port_range: Keyword.get(config, :port_range, 50_000..50_100),
+          ice_ip_filter: ip_filter(Keyword.get(config, :ipv6, false)),
           host_to_srflx_ip_mapper: public_ip_mapper(Keyword.get(config, :public_ip))
         ]
       end
@@ -103,6 +104,12 @@ defmodule TheGathering.WebcamTables.Sfu do
         []
     end
   end
+
+  # IPv4 only unless asked: the port forward and WEBRTC_SFU_PUBLIC_IP are IPv4, browsers hide
+  # their IPv6 host addresses behind mDNS names ex_ice resolves only to IPv4, and a LAN
+  # browser that picks the server's IPv6 candidate has been seen to lose its media on it.
+  defp ip_filter(true), do: fn _ip -> true end
+  defp ip_filter(_ipv4_only), do: fn ip -> tuple_size(ip) == 4 end
 
   defp public_ip_mapper(nil), do: nil
 

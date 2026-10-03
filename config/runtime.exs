@@ -94,6 +94,7 @@ sfu_port_range =
 config :the_gathering, :sfu,
   port_range: sfu_port_range,
   public_ip: System.get_env("WEBRTC_SFU_PUBLIC_IP"),
+  ipv6: System.get_env("WEBRTC_SFU_IPV6") in ["true", "1"],
   relay_only: System.get_env("WEBRTC_SFU_RELAY_ONLY") in ["true", "1"]
 
 # Optional origin of a self-hosted ManaVault instance whose shared deck links should be

@@ -40,14 +40,21 @@ defmodule TheGathering.WebcamTables.Sfu.IceReport do
       |> Enum.sort_by(&{not &1.nominated, -(&1.priority || 0)})
       |> Enum.map_join(" | ", &pair(&1, candidates, now))
 
-    summary =
-      "#{transport[:ice_role] || :unknown} #{transport[:ice_state] || :unknown}, " <>
-        "dtls #{transport[:dtls_state] || :unknown}, " <>
-        "selected pair changes #{transport[:selected_candidate_pair_changes] || 0}, " <>
-        "unmatched requests #{transport[:unmatched_requests] || 0}; " <>
-        "local #{if local == "", do: "none", else: local}"
+    summary = "#{summary(transport)}; local #{if local == "", do: "none", else: local}"
 
     if pairs == "", do: "#{summary}; no candidate pairs", else: "#{summary}; #{pairs}"
+  end
+
+  # Data counters exist only for the whole connection: ex_ice keeps per-pair ones but
+  # leaves them out of the pairs it reports.
+  defp summary(transport) do
+    get = fn key, default -> Map.get(transport, key) || default end
+
+    "#{get.(:ice_role, :unknown)} #{get.(:ice_state, :unknown)}, " <>
+      "dtls #{get.(:dtls_state, :unknown)}, " <>
+      "rx #{get.(:packets_received, 0)}pkt tx #{get.(:packets_sent, 0)}pkt, " <>
+      "selected pair changes #{get.(:selected_candidate_pair_changes, 0)}, " <>
+      "unmatched requests #{get.(:unmatched_requests, 0)}"
   end
 
   defp pair(pair, candidates, now) do
@@ -68,8 +75,7 @@ defmodule TheGathering.WebcamTables.Sfu.IceReport do
 
     "#{local}#{candidate(candidates[pair.remote_candidate_id])} #{flags} " <>
       "seen #{age(pair.last_seen, now)} " <>
-      "rx #{pair.packets_received}pkt req #{pair.requests_received} " <>
-      "tx #{pair.packets_sent}pkt req #{pair.requests_sent} resp #{pair.responses_received}" <>
+      "req in #{pair.requests_received} out #{pair.requests_sent} resp #{pair.responses_received}" <>
       non_symmetric(pair.non_symmetric_responses_received)
   end
 
