@@ -15,6 +15,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
   @max_sdp_bytes 65_536
   # Direct seat-to-seat messages carry card crops (JPEG data URLs) for the scanner.
   @max_peer_message_bytes 262_144
+  # No webcam publishes more rows than 8K; anything above is a bogus status.
+  @max_camera_height 4_320
   @signal_events ["sfu_offer", "sfu_answer", "sfu_candidate", "sfu_layer", "peer_message"]
 
   intercept ["presence_diff"]
@@ -577,37 +579,43 @@ defmodule TheGatheringWeb.WebcamTableChannel do
       {"camera_off", camera_off}, {:ok, changes} when is_boolean(camera_off) ->
         {:cont, {:ok, Map.put(changes, :camera_off, camera_off)}}
 
+      # The camera's native rows, so a viewer receiving the full layer crops its own frame
+      # instead of asking the owner; nil while only the placeholder is published.
+      {"camera_height", height}, {:ok, changes}
+      when is_nil(height) or (is_integer(height) and height in 1..@max_camera_height) ->
+        {:cont, {:ok, Map.put(changes, :camera_height, height)}}
+
+      # Whether crops of this board may be uploaded as recognizer training data.
+      {"shares_corrections", shares}, {:ok, changes} when is_boolean(shares) ->
+        {:cont, {:ok, Map.put(changes, :shares_corrections, shares)}}
+
       {key, count}, {:ok, changes}
       when key in ["poison", "rad"] and is_integer(count) and count in 0..999 ->
         field = if key == "poison", do: :poison, else: :rad
         {:cont, {:ok, Map.put(changes, field, count)}}
 
       {"commander_casts", counts}, {:ok, changes} ->
-        if valid_counts?(counts),
-          do: {:cont, {:ok, Map.put(changes, :commander_casts, counts)}},
-          else: {:halt, :error}
+        put_valid(changes, :commander_casts, counts, &valid_counts?/1)
 
       {"commander_damage", damage}, {:ok, changes} ->
-        if valid_damage?(damage),
-          do: {:cont, {:ok, Map.put(changes, :commander_damage, damage)}},
-          else: {:halt, :error}
+        put_valid(changes, :commander_damage, damage, &valid_damage?/1)
 
       {"eliminated", eliminated}, {:ok, changes} when is_boolean(eliminated) ->
         {:cont, {:ok, Map.put(changes, :eliminated, eliminated)}}
 
       {"custom_counters", counters}, {:ok, changes} ->
-        if valid_custom_counters?(counters),
-          do: {:cont, {:ok, Map.put(changes, :custom_counters, counters)}},
-          else: {:halt, :error}
+        put_valid(changes, :custom_counters, counters, &valid_custom_counters?/1)
 
       {"combat_effects", effects}, {:ok, changes} ->
-        if valid_combat_effects?(effects),
-          do: {:cont, {:ok, Map.put(changes, :combat_effects, effects)}},
-          else: {:halt, :error}
+        put_valid(changes, :combat_effects, effects, &valid_combat_effects?/1)
 
       _invalid, _changes ->
         {:halt, :error}
     end)
+  end
+
+  defp put_valid(changes, field, value, valid?) do
+    if valid?.(value), do: {:cont, {:ok, Map.put(changes, field, value)}}, else: {:halt, :error}
   end
 
   # Free-form counters a seat shares ("Lands: 7"). The client keeps private ones to itself.
@@ -695,6 +703,8 @@ defmodule TheGatheringWeb.WebcamTableChannel do
           player_name: player.name,
           life: @starting_life,
           camera_off: false,
+          camera_height: nil,
+          shares_corrections: false,
           poison: 0,
           rad: 0,
           commander_casts: %{},

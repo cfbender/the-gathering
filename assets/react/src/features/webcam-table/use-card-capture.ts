@@ -6,7 +6,7 @@ import { orientCrop } from "./orient-crop"
 import { liveStatus, type RoomLink } from "./room-link"
 import { outlineInCrop, type Point } from "./recognition/pipeline"
 import type { CapturedCard } from "./room-types"
-import type { LocalCamera } from "./use-local-camera"
+import { captureCrop, type LocalCamera } from "./use-local-camera"
 import type { SfuConnection } from "./use-sfu-connection"
 
 /** How long a clicker waits for a remote camera's crop before giving up on it. */
@@ -21,19 +21,31 @@ interface PendingCapture {
   /** The clicker's flip of that board; the owner crops native pixels, so it is applied here. */
   flip: VideoFlip
   timeout: number
+  requestedAt: number
 }
+
+/** A crop round trip slower than this is logged with its size, so "the scanner feels slow"
+ * comes with numbers. */
+const SLOW_CAPTURE_MS = 1500
 
 /** A drawn card outline too big for one crop: the corners cannot be kept. */
 const OUTLINE_TOO_BIG =
   "That card is too big to outline in one crop; zoom out or outline a smaller card"
 
-/** Native camera crops for card identification. Your own board is cropped locally; another
- * board's owner is asked through the server and answers with a crop of their camera. */
+/** Native camera crops for card identification. Your own board is cropped locally. Another
+ * board is cropped from the frame already on this screen when the server is sending it at
+ * the owner's camera resolution; otherwise the owner is asked through the server and answers
+ * with a crop of their camera. */
 export function useCardCapture(
   link: RoomLink,
   playerId: number,
   { crop, videoEnabled }: Pick<LocalCamera, "crop" | "videoEnabled">,
-  { send, listen, revealTarget }: Pick<SfuConnection, "send" | "listen" | "revealTarget">,
+  {
+    send,
+    listen,
+    revealTarget,
+    remoteFrame,
+  }: Pick<SfuConnection, "send" | "listen" | "revealTarget" | "remoteFrame">,
   setStatus: (status: string) => void,
 ) {
   const pendingRef = useRef(new Map<string, PendingCapture>())
@@ -102,6 +114,12 @@ export function useCardCapture(
       const owner = link.participants.find((item) => item.peer_id === fromPeerId)
       if (!owner || owner.camera_off || !canViewBoard(fromPeerId, link.peerId, owner.reveal_to))
         return
+      const elapsed = Math.round(performance.now() - pending.requestedAt)
+      if (elapsed >= SLOW_CAPTURE_MS) {
+        console.info(
+          `Crop from ${owner.player_name} took ${elapsed} ms (${Math.round(response.image.length / 1024)} KB)`,
+        )
+      }
       const { type: _type, requestId: _requestId, ...image } = response
       const outline = pending.corners && outlineInCrop(pending.corners, image, pending.at)
       if (pending.corners && !outline) return setStatus(OUTLINE_TOO_BIG)
@@ -165,6 +183,28 @@ export function useCardCapture(
         )
         return
       }
+      // The frame on this screen is the owner's native picture when the server forwards the
+      // top layer unscaled; a smaller one (rail tile, bandwidth ramp, a capped publisher)
+      // would blur the card, so the owner is asked instead.
+      const frame = remoteFrame(targetPeerId)
+      if (frame && owner.camera_height && frame.videoHeight >= owner.camera_height) {
+        const result = captureCrop(frame, x, y)
+        const outline = corners && outlineInCrop(corners, result, { x, y })
+        if (corners && !outline) return setStatus(OUTLINE_TOO_BIG)
+        show(
+          {
+            peerId: targetPeerId,
+            playerId: owner.player_id,
+            inspect,
+            ...result,
+            private: owner.reveal_to != null,
+            shareCorrections: !!owner.shares_corrections,
+            ...(outline ? { outline } : {}),
+          },
+          flip,
+        )
+        return
+      }
       const requestId = crypto.randomUUID()
       const timeout = window.setTimeout(() => {
         if (!pendingRef.current.delete(requestId)) return
@@ -175,6 +215,7 @@ export function useCardCapture(
         inspect,
         flip,
         timeout,
+        requestedAt: performance.now(),
         at: { x, y },
         ...(corners ? { corners } : {}),
       })
@@ -186,7 +227,7 @@ export function useCardCapture(
       }
       setStatus("Requesting native camera crop…")
     },
-    [crop, link, playerId, revealTarget, send, setStatus, show],
+    [crop, link, playerId, remoteFrame, revealTarget, send, setStatus, show],
   )
 
   const dismissCapture = useCallback(() => {

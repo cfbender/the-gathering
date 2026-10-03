@@ -1,9 +1,10 @@
-import { useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { PublisherQuality } from "./media-policy"
 import { useRoomLink } from "./room-link"
 import type { IdentifiedCard } from "./room-types"
 import { useBoardCards } from "./use-board-cards"
 import { useCardCapture } from "./use-card-capture"
+import { sharesCorrections } from "./use-correction-upload"
 import { useLocalCamera } from "./use-local-camera"
 import { useRoomChannel } from "./use-room-channel"
 import { useSfuConnection } from "./use-sfu-connection"
@@ -73,7 +74,11 @@ export function useWebcamRoom(
       // camera then replaces the published track.
       peers.connect()
       if (!link.spectator) {
-        game.updateStatus({ camera_off: camera.isOff() })
+        game.updateStatus({
+          camera_off: camera.isOff(),
+          camera_height: camera.cameraHeight,
+          shares_corrections: sharesCorrections(),
+        })
         trackers.publish()
         camera.startCamera(peers.replaceSourceTrack)
       }
@@ -94,6 +99,22 @@ export function useWebcamRoom(
       camera.stop()
     },
   })
+
+  // The camera opens after the join, so the frame size viewers compare against follows it.
+  const { cameraHeight } = camera
+  const { updateStatus } = game
+  useEffect(() => {
+    if (link.spectator || cameraHeight === null) return
+    updateStatus({ camera_height: cameraHeight })
+  }, [cameraHeight, link, updateStatus])
+
+  /** Tells the table whether viewers may upload crops of this board as training data. */
+  const setSharesCorrections = useCallback(
+    (value: boolean) => {
+      if (!link.spectator) updateStatus({ shares_corrections: value })
+    },
+    [link, updateStatus],
+  )
 
   /** Owner ends the table for everyone (after recording it or instead of recording it). */
   async function endGame() {
@@ -183,6 +204,7 @@ export function useWebcamRoom(
     monarch: game.monarch,
     takeMonarch: game.takeMonarch,
     toggleCamera,
+    setSharesCorrections,
     startGame: game.startGame,
     beginPlay: game.beginPlay,
     dismissCapture: captures.dismissCapture,

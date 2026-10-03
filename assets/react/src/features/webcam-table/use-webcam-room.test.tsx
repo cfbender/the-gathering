@@ -98,7 +98,13 @@ it("hydrates before editing and reconnects without republishing default life or 
   const { result } = await joinedRoom()
   expect(result.current.life).toBe(23)
   expect(result.current.counters.commander_damage).toEqual({ 19: { Atraxa: 11 } })
-  expect(payloads("update_status")).toContainEqual({ camera_off: false })
+  // The seat announces its camera and consent on join, then the camera's rows once it opens.
+  expect(payloads("update_status")).toContainEqual({
+    camera_off: false,
+    camera_height: null,
+    shares_corrections: true,
+  })
+  expect(payloads("update_status")).toContainEqual({ camera_height: 1080 })
   expect(payloads("update_status")).not.toContainEqual(expect.objectContaining({ life: 40 }))
   act(() => result.current.changeLife(-2))
   expect(payloads("update_status").at(-1)).toEqual({ life: 21 })
@@ -627,6 +633,76 @@ it("times out a crop request that a silent peer never answers", async () => {
   })
   expect(result.current.status).toBe("Theo's camera did not send a crop; click the card again")
   act(() => deliver(theo.peer_id, { ...crop, requestId }))
+  expect(result.current.capture).toBeNull()
+})
+
+/** A `<video>` on this page decoding Theo's board at `height` rows (16:9). */
+function playingTile(height: number) {
+  const video = document.createElement("video")
+  Object.defineProperties(video, {
+    videoWidth: { value: (height * 16) / 9 },
+    videoHeight: { value: height },
+    readyState: { value: HTMLMediaElement.HAVE_CURRENT_DATA },
+  })
+  return video
+}
+
+it("crops a remote board from its own frame when that frame is the owner's native picture", async () => {
+  const { result, self, connection } = await roomWithTheo()
+  // Theo shows his hand to Cody alone and has opted out of training uploads.
+  const owner = {
+    ...theo,
+    camera_height: 1080,
+    shares_corrections: false,
+    reveal_to: self.peer_id,
+  }
+  act(() => wire.presence!.sync([self, owner]))
+  const stream = { id: theo.peer_id } as unknown as MediaStream
+  await serveTheoBoard(connection, stream)
+  const drawImage = vi.fn()
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage,
+  } as unknown as CanvasRenderingContext2D)
+  const stage = playingTile(1080)
+  const unwatch = result.current.watchTile(stream, stage)
+
+  act(() => result.current.requestCapture(theo.peer_id, 0.25, 0.5, true))
+  // No round trip through the owner, and no waiting status.
+  expect(sentMessages()).toEqual([])
+  expect(result.current.status).toMatch(/^Live/)
+  expect(drawImage).toHaveBeenCalledWith(stage, 160, 220, 640, 640, 0, 0, 640, 640)
+  // The owner's consent and privacy travel with their seat, not the clicker's settings.
+  expect(result.current.capture).toEqual({
+    peerId: theo.peer_id,
+    playerId: 9,
+    inspect: true,
+    image: "data:image/jpeg;base64,/9j/4AAQ",
+    nativeWidth: 1920,
+    nativeHeight: 1080,
+    cropSize: 640,
+    clickX: 320,
+    clickY: 320,
+    private: true,
+    shareCorrections: false,
+  })
+  unwatch()
+})
+
+it("asks the owner for a crop while its board arrives below the camera's resolution", async () => {
+  const { result, self, connection } = await roomWithTheo()
+  act(() => wire.presence!.sync([self, { ...theo, camera_height: 1080 }]))
+  const stream = { id: theo.peer_id } as unknown as MediaStream
+  await serveTheoBoard(connection, stream)
+  // A rail tile and a grid cell both decode a lower simulcast layer.
+  result.current.watchTile(stream, playingTile(540))
+  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5))
+  expect(sentMessages()).toEqual([
+    {
+      to: theo.peer_id,
+      message: { type: "capture_request", requestId: expect.any(String), x: 0.5, y: 0.5 },
+    },
+  ])
+  expect(result.current.status).toBe("Requesting native camera crop…")
   expect(result.current.capture).toBeNull()
 })
 

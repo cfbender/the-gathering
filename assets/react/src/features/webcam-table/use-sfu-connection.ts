@@ -230,12 +230,18 @@ export function useSfuConnection(
     }
   }, [])
 
-  /** Sends a message to one other seat through the server; false when the channel is down. */
+  /** Sends a message to one other seat through the server; false when the channel is down.
+   * A refusal (the seat left, the message is over the relay's size cap) is logged, since the
+   * other side only sees its request time out. */
   const send = useCallback(
     (peerId: string, message: DataMessage) => {
       const channel = link.channel
       if (!channel) return false
-      channel.push("peer_message", { to: peerId, message })
+      channel
+        .push("peer_message", { to: peerId, message })
+        .receive("error", ({ reason }: { reason: string }) =>
+          console.warn(`The table server refused a ${message.type} to another seat`, reason),
+        )
       return true
     },
     [link],
@@ -276,16 +282,17 @@ export function useSfuConnection(
   /** Follows the drawn size of a `<video>` showing `remote`; returns the unwatch. */
   const watchTile = useCallback(
     (remote: MediaStream, element: Element) => {
-      if (typeof ResizeObserver === "undefined") return () => {}
-      observerRef.current ??= new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const tile = tilesRef.current.get(entry.target)
-          if (tile) tile.height = fittedHeight(entry.contentRect.width, entry.contentRect.height)
-        }
-        updateLayers()
-      })
       tilesRef.current.set(element, { streamId: remote.id, height: 0 })
-      observerRef.current.observe(element)
+      if (typeof ResizeObserver !== "undefined") {
+        observerRef.current ??= new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            const tile = tilesRef.current.get(entry.target)
+            if (tile) tile.height = fittedHeight(entry.contentRect.width, entry.contentRect.height)
+          }
+          updateLayers()
+        })
+        observerRef.current.observe(element)
+      }
       return () => {
         observerRef.current?.unobserve(element)
         tilesRef.current.delete(element)
@@ -294,6 +301,18 @@ export function useSfuConnection(
     },
     [updateLayers],
   )
+
+  /** The `<video>` on this page drawing `owner`'s board with a decoded frame, if any: a
+   * clicker crops that frame itself when it is as sharp as the owner's camera. */
+  const remoteFrame = useCallback((owner: string): HTMLVideoElement | null => {
+    const streamId = streamsRef.current[owner]?.id
+    if (!streamId) return null
+    for (const [element, tile] of tilesRef.current) {
+      if (tile.streamId !== streamId || !(element instanceof HTMLVideoElement)) continue
+      if (element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return element
+    }
+    return null
+  }, [])
 
   useEffect(() => {
     updateLayers()
@@ -599,6 +618,7 @@ export function useSfuConnection(
     receiveCandidate,
     receivePeerMessage,
     watchTile,
+    remoteFrame,
     syncPeers,
     reset,
     closeAll,

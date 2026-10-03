@@ -104,9 +104,11 @@ software it is cheaper: in a three-seat 1080p/15 fps room in Chrome 154, each br
 Reveals are enforced server-side: `Sfu.reveal/3` limits a publisher to one viewer and the room
 stops forwarding to everyone else, so hidden video never leaves the server. The native crop RPC
 that used to ride each pair's data channel is a targeted channel event instead
-(`peer_message {to, message}` in, `peer_message {from, message}` out, capped at 256 KB); a seat
-still only answers crop requests for its own camera. Spectators add a receive-only transceiver so
-the server has a connection to offer boards on without a camera.
+(`peer_message {to, message}` in, `peer_message {from, message}` out, capped at 256 KB, so the
+owner re-encodes a crop coarser until it fits); a seat still only answers crop requests for its
+own camera, and a viewer whose `<video>` already decodes the board at the owner's advertised
+`camera_height` skips the RPC and crops its own frame. Spectators add a receive-only
+transceiver so the server has a connection to offer boards on without a camera.
 
 The room keeps one UDP socket per connected browser from `WEBRTC_SFU_PORT_RANGE` and announces
 `WEBRTC_SFU_PUBLIC_IP` as its server-reflexive address when set, so a host that forwards that
@@ -260,11 +262,19 @@ but would add a second supervised runtime and duplicate the spike runtime in pro
 
 ### Remote clicks use the source camera's native frame
 
-`getUserMedia` requests a hard minimum of 1920 × 1080. A click on a remote tile is sent as
-normalized coordinates in a targeted `peer_message` channel event. The camera owner's browser maps the
-coordinates to its native `videoWidth`/`videoHeight`, captures the same 640 px JPEG crop used by
-`cardid.capture`, and returns it the same way together with the click position inside the
-crop. The requester recognizes the card from that crop.
+`getUserMedia` requests a hard minimum of 1920 × 1080, and each seat publishes the rows its
+camera actually delivers as `camera_height` in presence (with `shares_corrections`, its
+training-upload consent). A click on a remote tile is cropped locally when the clicker's
+`<video>` for that board has a decoded frame at least `camera_height` rows tall: in rooms of up
+to four the pinned board's top simulcast layer is the unscaled camera, so the crop is identical
+to the owner's and costs no round trip. Otherwise (a rail tile or grid cell decoding a lower
+layer, the top layer still ramping up, or a publisher capped to 720p/540p) the click is sent as
+normalized coordinates in a targeted `peer_message` channel event. The camera owner's browser
+maps the coordinates to its native `videoWidth`/`videoHeight`, captures the same 640 px JPEG crop
+used by `cardid.capture` (re-encoded coarser until it fits the 256 KB relay cap), and returns it
+the same way together with the click position inside the crop. The requester recognizes the card
+from that crop. Either way the crop carries the owner's privacy (`reveal_to`) and consent, not
+the clicker's.
 
 Video flips are a viewer-only preference (players can flip their own preview too; the sent
 stream is never flipped), so the click is mapped back to unflipped source
@@ -274,7 +284,7 @@ mirrors the returned crop and its click position to match its own flip of that b
 it appears on screen.
 
 This protocol does not depend on the resolution selected by WebRTC congestion control (a
-960 × 540 received stream still yields a crop of the owner's 1920 × 1080 frame) and keeps the
+960 × 540 received stream still yields a crop of the owner's 1920 × 1080 frame, by asking) and keeps the
 click-to-candidate latency budget local: capture + detector + embedder + gallery search, with no
 server image round trip.
 

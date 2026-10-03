@@ -97,6 +97,11 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     turnId(room.participants, playerId, room.mode) ?? playerId,
   )
   const corrections = useCorrectionUpload()
+  // Viewers cropping this board themselves need to know whether they may keep the crop.
+  const { setSharesCorrections } = room
+  useEffect(() => {
+    setSharesCorrections(corrections.enabled)
+  }, [corrections.enabled, setSharesCorrections])
   const decklists = useSeatDecklists(view.seated, decks)
   const flow = useCardIdentificationFlow({
     room,

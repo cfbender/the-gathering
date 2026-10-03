@@ -11,6 +11,11 @@ export interface TableParticipant extends SeatCounters, Partial<SharedTrackers> 
   /** Server clock (ms) when the seat was taken; default seat order is join order. */
   joined_at: number
   camera_off: boolean
+  /** Rows of the owner's camera; a viewer receiving that many crops its own frame. Null (or
+   * absent, on seats saved before it existed) while only the placeholder is published. */
+  camera_height?: number | null
+  /** Whether the owner lets crops of their board be uploaded as training data. */
+  shares_corrections?: boolean
   reveal_to?: string | null
   eliminated: boolean
   spectator?: boolean
@@ -22,7 +27,12 @@ export interface TableParticipant extends SeatCounters, Partial<SharedTrackers> 
 
 /** Status a player publishes about their own seat; mirrors the channel's `update_status`. */
 export type SeatStatus = Partial<
-  Pick<TableParticipant, "life" | "camera_off" | "eliminated"> & SeatCounters & SharedTrackers
+  Pick<
+    TableParticipant,
+    "life" | "camera_off" | "camera_height" | "shares_corrections" | "eliminated"
+  > &
+    SeatCounters &
+    SharedTrackers
 >
 
 export interface Monarch {

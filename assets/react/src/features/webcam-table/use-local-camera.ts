@@ -5,10 +5,28 @@ import { sharesCorrections } from "./use-correction-upload"
 
 const CROP_SIZE = 640
 
+/** The server relays a crop to the clicker only under 256 KiB of JSON
+ * (`@max_peer_message_bytes` in `WebcamTableChannel`), and a noisy low-light board can encode
+ * well past that at the first quality. This leaves room for the envelope. */
+export const MAX_CROP_IMAGE_LENGTH = 200_000
+const CROP_QUALITIES = [0.82, 0.7, 0.55, 0.4]
+
 /** Replaces the camera track in every peer's sender after the local camera changes. */
 export type TrackSwap = (track: MediaStreamTrack) => Promise<unknown>
 
-function captureCrop(video: HTMLVideoElement, x: number, y: number) {
+/** The crop as a JPEG data URL, re-encoded coarser until it fits the relay. */
+export function encodeCrop(canvas: HTMLCanvasElement) {
+  let image = ""
+  for (const quality of CROP_QUALITIES) {
+    image = canvas.toDataURL("image/jpeg", quality)
+    if (image.length <= MAX_CROP_IMAGE_LENGTH) break
+  }
+  return image
+}
+
+/** A square crop of a playing video's current frame around (`x`, `y`), fractions of the frame,
+ * with the click's position inside it, in that video's pixels. */
+export function captureCrop(video: HTMLVideoElement, x: number, y: number) {
   const width = video.videoWidth
   const height = video.videoHeight
   const size = Math.min(CROP_SIZE, width, height)
@@ -19,7 +37,7 @@ function captureCrop(video: HTMLVideoElement, x: number, y: number) {
   canvas.height = size
   canvas.getContext("2d")?.drawImage(video, left, top, size, size, 0, 0, size, size)
   return {
-    image: canvas.toDataURL("image/jpeg", 0.82),
+    image: encodeCrop(canvas),
     nativeWidth: width,
     nativeHeight: height,
     cropSize: size,
@@ -41,6 +59,8 @@ export function useLocalCamera(link: RoomLink, deviceId: string, cameraEnabled: 
   const streamRef = useRef<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  /** Rows the real camera delivers; null while only the placeholder is published. */
+  const [cameraHeight, setCameraHeight] = useState<number | null>(null)
   const offRef = useRef(!cameraEnabled)
   const [cameraOff, setCameraOff] = useState(!cameraEnabled)
 
@@ -97,6 +117,7 @@ export function useLocalCamera(link: RoomLink, deviceId: string, cameraEnabled: 
         track.enabled = previous?.getVideoTracks()[0]?.enabled ?? false
         streamRef.current = media
         setLocalStream(media)
+        setCameraHeight(track.getSettings().height ?? null)
         if (videoRef.current) {
           // Assigning srcObject pauses the element; left paused, the hidden capture video
           // would freeze on the camera's first frame and every crop would repeat it.
@@ -157,6 +178,7 @@ export function useLocalCamera(link: RoomLink, deviceId: string, cameraEnabled: 
 
   return {
     localStream,
+    cameraHeight,
     cameraOff,
     cameraChanging,
     cameraError,

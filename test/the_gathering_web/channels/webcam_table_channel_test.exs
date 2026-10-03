@@ -304,6 +304,36 @@ defmodule TheGatheringWeb.WebcamTableChannelTest do
     assert meta.life == 37
   end
 
+  test "publishes the camera's native height and correction consent for viewer-side crops", %{
+    socket: socket,
+    room_id: room_id
+  } do
+    assert_push "presence_state", %{@peer_a => %{metas: [meta]}}
+    assert %{camera_height: nil, shares_corrections: false} = meta
+
+    assert_reply push(socket, "update_status", %{
+                   "camera_height" => 1080,
+                   "shares_corrections" => true
+                 }),
+                 :ok
+
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", @peer_a)
+    assert %{camera_height: 1080, shares_corrections: true} = meta
+
+    for bad <- [
+          %{"camera_height" => 0},
+          %{"camera_height" => "1080"},
+          %{"shares_corrections" => 1}
+        ] do
+      assert_reply push(socket, "update_status", bad), :error, %{reason: "invalid status"}
+    end
+
+    # The placeholder stream has no camera behind it.
+    assert_reply push(socket, "update_status", %{"camera_height" => nil}), :ok
+    %{metas: [meta]} = Presence.get_by_key("webcam_table:#{room_id}", @peer_a)
+    assert %{camera_height: nil, shares_corrections: true} = meta
+  end
+
   test "a full status update right after joining is applied", %{socket: socket, room_id: room} do
     full = %{
       "life" => 33,
