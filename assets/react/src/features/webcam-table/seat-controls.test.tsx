@@ -329,6 +329,37 @@ describe("seat counters", () => {
     expect(onAdjust).toHaveBeenCalledWith({ kind: "casts", commander: "Tymna" }, -1)
   })
 
+  it("lets any player give the monarch to another seat, but not spectators", () => {
+    const onTakeMonarch = vi.fn()
+    const { rerender } = render(
+      <SeatCounterControls
+        participant={seat}
+        participants={[seat]}
+        decks={[deck]}
+        local={false}
+        monarch={false}
+        onAdjust={vi.fn()}
+        onChangeLife={vi.fn()}
+        onTakeMonarch={onTakeMonarch}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Alice's counters" }))
+    fireEvent.click(screen.getByRole("button", { name: "Give Alice the monarch" }))
+    expect(onTakeMonarch).toHaveBeenCalledOnce()
+    rerender(
+      <SeatCounterControls
+        participant={seat}
+        participants={[seat]}
+        decks={[deck]}
+        local={false}
+        monarch={false}
+        onAdjust={vi.fn()}
+        onChangeLife={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: /monarch/ })).toBeNull()
+  })
+
   it("opens remote values without mutation buttons, including damage from departed commanders", () => {
     render(
       <SeatCounterControls
@@ -349,7 +380,9 @@ describe("seat counters", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "Alice's counters" }))
     const panel = screen.getByRole("dialog")
-    expect(within(panel).queryAllByRole("button")).toHaveLength(0)
+    expect(within(panel).queryAllByRole("button")).toHaveLength(1)
+    const crown = within(panel).getByRole("button", { name: "Alice is the monarch" })
+    expect(crown.hasAttribute("disabled")).toBe(true)
     expect(screen.getByLabelText("Tymna commander tax: 6")).toBeTruthy()
     expect(screen.getByLabelText("Thrasios commander tax: 2")).toBeTruthy()
     expect(screen.getByLabelText("Poison: 5")).toBeTruthy()

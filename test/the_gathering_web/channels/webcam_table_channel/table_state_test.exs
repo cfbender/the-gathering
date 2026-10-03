@@ -144,6 +144,18 @@ defmodule TheGatheringWeb.WebcamTableChannel.TableStateTest do
     assert_reply push(bob, "take_monarch", %{}), :ok
     refute_broadcast "monarch", _payload
 
+    # Any player may hand the crown to another seated player, and back.
+    assert_reply push(bob, "take_monarch", %{"peer_id" => @elsewhere}), :error
+    assert_reply push(bob, "take_monarch", %{"peer_id" => @peer_a, "x" => 1}), :error
+    assert_reply push(bob, "take_monarch", %{"peer_id" => @peer_a}), :ok
+    assert_broadcast "monarch", %{holder: %{peer_id: @peer_a, player_name: "Alice"}}
+    assert_broadcast "monarch", %{holder: %{peer_id: @peer_a, player_name: "Alice"}}
+    assert_broadcast "log_entry", %{text: "Bob gave Alice the monarch"}
+
+    assert_reply push(socket, "take_monarch", %{"peer_id" => @peer_b}), :ok
+    assert_broadcast "monarch", %{holder: %{peer_id: @peer_b, player_name: "Bob"}}
+    assert_broadcast "monarch", %{holder: %{peer_id: @peer_b, player_name: "Bob"}}
+
     # The previous holder leaving must not clear Bob's crown.
     assert_reply leave(socket), :ok
     refute_broadcast "monarch", %{holder: nil}

@@ -40,7 +40,11 @@ function SeatCounters({
       monarch={room.monarch?.peer_id === participant.peer_id}
       onAdjust={room.adjustCounter}
       onChangeLife={room.changeLife}
-      onTakeMonarch={room.takeMonarch}
+      onTakeMonarch={
+        room.spectating
+          ? undefined
+          : () => room.takeMonarch(isLocal(view, participant) ? undefined : participant.peer_id)
+      }
       onOpenChange={onOpenChange}
     />
   )

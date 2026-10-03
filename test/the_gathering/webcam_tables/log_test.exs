@@ -127,6 +127,12 @@ defmodule TheGathering.WebcamTables.LogTest do
     assert Log.elimination(seat(), true).text == "Alice was eliminated"
     assert Log.elimination(seat(), false).text == "Alice was restored to the game"
     assert Log.monarch(%{player_name: "Alice"}).text == "Alice took the monarch"
+    alice = %{peer_id: "a", player_name: "Alice"}
+    assert Log.monarch(alice, alice).text == "Alice took the monarch"
+
+    assert Log.monarch(alice, %{peer_id: "b", player_name: "Bob"}).text ==
+             "Bob gave Alice the monarch"
+
     assert Log.seat_order(true, false).text == "Seat order randomized"
     assert Log.seat_order(false, false).text == "Game started in seat order"
     assert Log.seat_order(false, true).text == "Seat order changed"

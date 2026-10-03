@@ -362,8 +362,26 @@ defmodule TheGatheringWeb.WebcamTableChannel do
     do: {:reply, {:error, %{reason: "invalid status"}}, socket}
 
   defp handle_event("take_monarch", payload, socket) when payload == %{} do
-    :ok = WebcamTables.take_monarch(socket.assigns.room_id, socket.assigns.participant)
+    participant = socket.assigns.participant
+    :ok = WebcamTables.take_monarch(socket.assigns.room_id, participant, participant)
     {:reply, :ok, socket}
+  end
+
+  # Any player may hand the monarch to another present, seated player.
+  defp handle_event("take_monarch", %{"peer_id" => peer_id} = payload, socket)
+       when map_size(payload) == 1 and is_binary(peer_id) do
+    seat =
+      Enum.find(
+        WebcamTables.snapshot(socket.assigns.room_id).seats,
+        &(&1.peer_id == peer_id)
+      )
+
+    if seat && Map.has_key?(Presence.list(socket), peer_id) do
+      :ok = WebcamTables.take_monarch(socket.assigns.room_id, seat, socket.assigns.participant)
+      {:reply, :ok, socket}
+    else
+      {:reply, {:error, %{reason: "the monarch must go to a seated player"}}, socket}
+    end
   end
 
   defp handle_event("take_monarch", _payload, socket),

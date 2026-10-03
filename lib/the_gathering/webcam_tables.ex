@@ -162,7 +162,8 @@ defmodule TheGathering.WebcamTables do
 
   def adjust_turn(room, player_id, delta), do: call(room, {:adjust_turn, player_id, delta})
 
-  def take_monarch(room, participant), do: call(room, {:monarch, participant})
+  @doc "Makes `holder` the monarch on behalf of `actor`, who may be the holder themselves."
+  def take_monarch(room, holder, actor), do: call(room, {:monarch, holder, actor})
 
   @doc "Applies a card list change on behalf of `actor`, the acting participant."
   def cards(room, payload, actor), do: call(room, {:cards, payload, actor})

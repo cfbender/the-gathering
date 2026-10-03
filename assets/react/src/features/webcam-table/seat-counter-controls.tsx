@@ -16,7 +16,8 @@ interface Props {
   monarch: boolean
   onAdjust: (counter: Counter, delta: number) => void
   onChangeLife: (delta: number) => void
-  onTakeMonarch: () => void
+  /** Claims the monarch for this seat; any player may hand it to another seat. */
+  onTakeMonarch?: () => void
   onOpenChange?: (open: boolean) => void
 }
 
@@ -241,7 +242,7 @@ export function SeatCounterControls({
         )}
         {row("Poison", { kind: "poison" }, { threshold: 10 })}
         {row("Rad", { kind: "rad" })}
-        {local && (
+        {onTakeMonarch && (
           <button
             type="button"
             className="btn btn-sm btn-ghost my-2 w-full justify-start text-warning"
@@ -249,7 +250,13 @@ export function SeatCounterControls({
             onClick={onTakeMonarch}
           >
             <Crown className="size-4" />
-            {monarch ? "You are the monarch" : "Take the monarch"}
+            {local
+              ? monarch
+                ? "You are the monarch"
+                : "Take the monarch"
+              : monarch
+                ? `${participant.player_name} is the monarch`
+                : `Give ${participant.player_name} the monarch`}
           </button>
         )}
         <div className="mt-2 border-t border-base-content/10 pt-2">

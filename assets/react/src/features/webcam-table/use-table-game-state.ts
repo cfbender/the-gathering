@@ -243,8 +243,10 @@ export function useTableGameState(
     updateStatus(next)
   }
 
-  function takeMonarch() {
-    link.channel?.push("take_monarch", {})
+  /** Claims the monarch, or hands it to another seated player's `peerId`. */
+  function takeMonarch(peerId?: string) {
+    if (!canEditSeat()) return
+    link.channel?.push("take_monarch", peerId ? { peer_id: peerId } : {})
   }
 
   /** Owner starts the match, either keeping the arranged order or shuffling it. */

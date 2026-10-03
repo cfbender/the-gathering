@@ -155,14 +155,14 @@ defmodule TheGathering.WebcamTables.Room do
     {:reply, :ok, state}
   end
 
-  def handle_call({:monarch, participant}, _from, %{entry: entry} = state) do
-    holder = Map.take(participant, [:peer_id, :player_name])
+  def handle_call({:monarch, holder, actor}, _from, %{entry: entry} = state) do
+    holder = Map.take(holder, [:peer_id, :player_name])
 
     if holder == entry.monarch do
       {:reply, :ok, state}
     else
       entry = %{entry | monarch: holder, monarch_revision: entry.monarch_revision + 1}
-      entry = log(entry, [Log.monarch(holder)])
+      entry = log(entry, [Log.monarch(holder, actor)])
       event = %{holder: holder, revision: entry.monarch_revision}
       {:reply, :ok, commit(state, entry, [{"monarch", event}])}
     end

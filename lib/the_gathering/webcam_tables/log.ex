@@ -63,6 +63,11 @@ defmodule TheGathering.WebcamTables.Log do
   def monarch(nil), do: %{text: "The monarch left the table"}
   def monarch(holder), do: %{text: "#{holder.player_name} took the monarch"}
 
+  def monarch(%{peer_id: peer_id} = holder, %{peer_id: peer_id}), do: monarch(holder)
+
+  def monarch(holder, actor),
+    do: %{text: "#{actor.player_name} gave #{holder.player_name} the monarch"}
+
   @doc "The line for a new seat order; `started?` is whether the clock was already running."
   def seat_order(true = _shuffled, _started?), do: %{text: "Seat order randomized"}
   def seat_order(false, false), do: %{text: "Game started in seat order"}
