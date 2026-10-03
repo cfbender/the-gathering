@@ -3,13 +3,13 @@ import Config
 # Only in tests: use the cheapest bcrypt cost so password hashing does not dominate the suite.
 config :bcrypt_elixir, :log_rounds, 1
 
+# `mix test --partitions N` runs with MIX_TEST_PARTITION set (see `mix help test`). Each
+# partition gets its own SQLite file and data directory so partitions can run side by side.
+partition = System.get_env("MIX_TEST_PARTITION")
+
 # Configure your database
-#
-# The MIX_TEST_PARTITION environment variable can be used
-# to provide built-in test partitioning in CI environment.
-# Run `mix help test` for more information.
 config :the_gathering, TheGathering.Repo,
-  database: Path.expand("../the_gathering_test.db", __DIR__),
+  database: Path.expand("../the_gathering_test#{partition}.db", __DIR__),
   # SQLite has one writer, and sandbox transactions are deferred: a test whose first write
   # follows a read fails at once with "Database busy" (busy_timeout does not apply) if the
   # previous test's connection is still rolling back. One connection makes each checkout
@@ -28,7 +28,7 @@ config :the_gathering, TheGatheringWeb.Endpoint,
 config :the_gathering, TheGatheringWeb.ViteAssets, mode: :dev_server
 
 # Tests that need runtime data files (card-recognition bundles) write them here.
-config :the_gathering, :data_dir, Path.expand("../tmp/test_data", __DIR__)
+config :the_gathering, :data_dir, Path.expand("../tmp/test_data#{partition}", __DIR__)
 
 # Print only warnings and errors during test
 config :logger, level: :warning
