@@ -1,5 +1,8 @@
 name: Quality
 
+# The same checks as `mix precommit`, split into parallel jobs: Elixir lint plus the ExUnit
+# suite in parallel partitions, and the frontend checks. "Precommit quality gate" aggregates
+# them so branch protection keeps a single required check.
 on:
   pull_request:
   push:
@@ -10,17 +13,38 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request makes the older run pointless.
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  precommit:
-    name: Precommit quality gate
+  elixir:
+    name: Elixir lint and tests
     runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+      TEST_PARTITIONS: 4
+      # Four BEAMs share the runner's cores; idle schedulers should not spin on them.
+      ELIXIR_ERL_OPTIONS: +sbwt none +sbwtdcpu none +sbwtdio none
 
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install summary image renderer
-        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin fonts-dejavu-core
+      # Only the summary PNG test shells out to rsvg-convert. Install it in the background
+      # while the toolchain is restored and the code is linted; the tests wait for it.
+      - name: Start installing the summary image renderer
+        run: |
+          (
+            set +e
+            # Skip the man-db trigger, the slowest part of an apt install on runners.
+            sudo rm -f /var/lib/man-db/auto-update
+            sudo apt-get update -qq &&
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+                librsvg2-bin fonts-dejavu-core
+            echo $? > "$RUNNER_TEMP/renderer.status"
+          ) > "$RUNNER_TEMP/renderer.log" 2>&1 &
 
       - name: Set up mise tools
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
@@ -43,8 +67,73 @@ jobs:
       - name: Install Elixir dependencies
         run: mise exec -- mix deps.get
 
+      - name: Compile, format and credo
+        run: mise exec -- mix precommit.lint
+
+      - name: Wait for the summary image renderer
+        timeout-minutes: 3
+        run: |
+          while [ ! -f "$RUNNER_TEMP/renderer.status" ]; do sleep 1; done
+          status="$(cat "$RUNNER_TEMP/renderer.status")"
+          if [ "$status" != 0 ]; then cat "$RUNNER_TEMP/renderer.log"; exit "$status"; fi
+          rsvg-convert --version
+
+      # Each partition has its own SQLite file (config/test.exs), so they run side by side.
+      - name: Run ExUnit in parallel partitions
+        run: |
+          pids=()
+          for partition in $(seq "$TEST_PARTITIONS"); do
+            MIX_TEST_PARTITION="$partition" mise exec -- mix test --partitions "$TEST_PARTITIONS" \
+              > "$RUNNER_TEMP/test-$partition.log" 2>&1 &
+            pids+=("$!")
+          done
+
+          failed=0
+          for partition in $(seq "$TEST_PARTITIONS"); do
+            if wait "${pids[$((partition - 1))]}"; then
+              echo "::group::Partition $partition passed"
+              cat "$RUNNER_TEMP/test-$partition.log"
+              echo "::endgroup::"
+            else
+              failed=1
+              echo "::error::ExUnit partition $partition failed"
+              cat "$RUNNER_TEMP/test-$partition.log"
+            fi
+          done
+          exit "$failed"
+
+  frontend:
+    name: Frontend checks, tests and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise tools
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install: true
+          cache: true
+
       - name: Install JavaScript dependencies
         run: mise exec -- aube install --frozen-lockfile
 
-      - name: Run the precommit quality gate
-        run: mise exec -- mix precommit
+      - name: Check, test and build
+        run: mise exec -- aube run precommit
+
+  precommit:
+    name: Precommit quality gate
+    needs: [elixir, frontend]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require every check to pass
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || exit 1
+          done

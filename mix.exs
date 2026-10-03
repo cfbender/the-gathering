@@ -27,7 +27,7 @@ defmodule TheGathering.MixProject do
 
   def cli do
     [
-      preferred_envs: [precommit: :test]
+      preferred_envs: [precommit: :test, "precommit.lint": :test]
     ]
   end
 
@@ -75,13 +75,14 @@ defmodule TheGathering.MixProject do
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.build": ["compile", "cmd --cd . aube run build"],
       "assets.deploy": ["cmd --cd . aube run build", "phx.digest"],
-      precommit: [
+      # CI runs `precommit.lint`, partitioned `mix test` and `aube run precommit` as
+      # parallel jobs (.github/workflows/quality.yml); keep the three in sync with this.
+      precommit: ["precommit.lint", "test", "cmd --cd . aube run precommit"],
+      "precommit.lint": [
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format --check-formatted",
-        "credo --strict",
-        "test",
-        "cmd --cd . aube run precommit"
+        "credo --strict"
       ]
     ]
   end
