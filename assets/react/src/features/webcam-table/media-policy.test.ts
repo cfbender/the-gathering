@@ -40,7 +40,7 @@ describe("private reveal visibility", () => {
   })
 })
 
-describe("mesh sender budget", () => {
+describe("top simulcast layer budget", () => {
   it("overrides seat tiers without upscaling or assuming a 1080p source", () => {
     expect(videoEncoding(10, "1080p", 1080)).toEqual({
       scaleResolutionDownBy: 1,

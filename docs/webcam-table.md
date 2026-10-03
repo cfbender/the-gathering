@@ -46,8 +46,10 @@ and every later offer comes from the server (`sfu_offer` with a `tracks` map of 
 id) and is answered with `sfu_answer`; `sfu_candidate` trickles ICE in both directions.
 `Sfu.Room` is one GenServer per table owning one `ExWebRTC.PeerConnection` per seat; it adds a
 send-only track per other publisher (stream id = owner's peer id, so the browser can map a
-remote stream to its seat), forwards RTP between them, and stops the channel if its connection
-dies so the browser rejoins with a fresh peer id.
+remote stream to its seat), and forwards RTP between them. If a seat's connection fails the room
+first re-offers with an ICE restart (new credentials and candidates, DTLS and tracks kept, so the
+browser sees a blip rather than a rejoin); after three restarts in two minutes it stops the
+channel and the browser rejoins with a fresh peer id.
 
 The table used to be a full mesh. Measured on a real four-seat game in Chrome 154, each browser
 ran three 1080p software encoders plus three decoders at 150–200% of a core, rebuilt the encoders
@@ -137,8 +139,15 @@ networks that block UDP entirely need a TURN server configured with `WEBRTC_TURN
 `WEBRTC_TURN_USERNAME`, and `WEBRTC_TURN_CREDENTIAL`, which cannot be hidden behind an HTTP
 reverse proxy either (expose 3478 and preferably TURN-over-TLS on 5349/443 from coturn or
 another relay). A failed connection is labelled "Couldn't connect" on every remote tile; the
-server sees the same failure and stops the channel, which rejoins under a new peer id and a fresh
-connection. Credentials are returned only from the authenticated config endpoint.
+server logs an ICE report (role, candidates, and every pair with how long ago it was last heard)
+and restarts ICE as described above, and the browser logs its own candidate pairs to the console.
+Credentials are returned only from the authenticated config endpoint.
+
+The server offers IPv4 candidates only unless `WEBRTC_SFU_IPV6=true`. Browsers hide their host
+addresses behind mDNS names, and `ex_ice` resolves those only to IPv4, so a browser that picked
+the server's IPv6 candidate streamed from an address the server had never learned and `ex_ice`
+silently dropped every packet: the browser believed it was connected while the server timed the
+pair out eight seconds later. The port forward and `WEBRTC_SFU_PUBLIC_IP` are IPv4 anyway.
 
 Hosts that cannot forward ports set `WEBRTC_SFU_RELAY_ONLY=true` with a Cloudflare TURN key:
 the server then dials out to the relay for every seat and all media crosses it, roughly 20 GB per
