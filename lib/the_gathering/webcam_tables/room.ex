@@ -417,13 +417,10 @@ defmodule TheGathering.WebcamTables.Room do
   defp log(entry, contents),
     do: %{entry | log: Enum.reduce(contents, entry.log, &Log.append(&2, &1, now()))}
 
-  # Entries newer than the old head, plus the head itself if a merge changed it.
+  # New entries, plus any older entry a merge changed, oldest first.
   defp new_log_entries(old, new) do
-    head = List.first(old || [])
-
-    new
-    |> Enum.take_while(&(is_nil(head) or &1.id > head.id or (&1.id == head.id and &1 != head)))
-    |> Enum.reverse()
+    old = Map.new(old || [], &{&1.id, &1})
+    new |> Enum.reject(&(Map.get(old, &1.id) == &1)) |> Enum.reverse()
   end
 
   defp broadcast!(id, event, payload),

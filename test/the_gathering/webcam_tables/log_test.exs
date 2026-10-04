@@ -21,12 +21,12 @@ defmodule TheGathering.WebcamTables.LogTest do
     )
   end
 
-  defp life(from, to, actor \\ "a"),
+  defp life(from, to, actor \\ "a", name \\ "Alice"),
     do: %{
-      text: "Alice: #{from} → #{to} life",
+      text: "#{name}: #{from} → #{to} life",
       actor: actor,
       kind: "life",
-      life: %{name: "Alice", from: from, to: to}
+      life: %{name: name, from: from, to: to}
     }
 
   defp texts(contents), do: Enum.map(contents, & &1.text)
@@ -40,16 +40,60 @@ defmodule TheGathering.WebcamTables.LogTest do
     assert [%{id: 1, text: "Alice: 40 → 37 life", count: 3, at: 2000}] = log
   end
 
-  test "merges at the window boundary but not beyond it, backwards in time, or across events" do
+  test "merges at the window boundary but not beyond it, backwards in time, or across table events" do
     first = Log.append([], life(40, 39), 1000)
-    assert length(Log.append(first, life(39, 35), 3000)) == 1
-    assert length(Log.append(first, life(39, 35), 3001)) == 2
+    assert length(Log.append(first, life(39, 35), 6000)) == 1
+    assert length(Log.append(first, life(39, 35), 6001)) == 2
     assert length(Log.append(first, life(39, 35), 999)) == 2
 
-    for between <- [life(40, 38, "b"), %{text: "Seat order randomized"}] do
-      log = first |> Log.append(between, 1100) |> Log.append(life(39, 37), 1200)
-      assert Enum.map(log, & &1.id) == [3, 2, 1]
+    log = first |> Log.append(%{text: "Seat order randomized"}, 1100)
+    assert Enum.map(Log.append(log, life(39, 37), 1200), & &1.id) == [3, 2, 1]
+  end
+
+  test "keeps one line per player when several change life at once" do
+    log =
+      [
+        {life(40, 37, "a"), 1000},
+        {life(40, 37, "b", "Bob"), 1100},
+        {life(40, 37, "c", "Cara"), 1200},
+        {life(37, 34, "a"), 1300},
+        {life(37, 34, "b", "Bob"), 1400},
+        {life(34, 31, "a"), 1500},
+        {life(37, 34, "c", "Cara"), 1600}
+      ]
+      |> Enum.reduce([], fn {content, at}, log -> Log.append(log, content, at) end)
+
+    assert [
+             %{id: 3, text: "Cara: 40 → 34 life", count: 2, at: 1600},
+             %{id: 2, text: "Bob: 40 → 34 life", count: 2},
+             %{id: 1, text: "Alice: 40 → 31 life", count: 3, at: 1500}
+           ] = log
+
+    # The window runs from each player's latest change.
+    assert [%{id: 3}, %{id: 2}, %{id: 1, text: "Alice: 40 → 28 life", count: 4}] =
+             Log.append(log, life(31, 28), 6500)
+  end
+
+  test "coalesces counters per player alongside the life changes they come with" do
+    hit = fn from, to ->
+      Log.seat_changes(
+        seat(%{life: 40 - from, commander_damage: %{"2" => %{"Kangee" => from}}}),
+        seat(%{life: 40 - to, commander_damage: %{"2" => %{"Kangee" => to}}}),
+        [seat(%{player_id: 2, player_name: "Bob", peer_id: "b"})]
+      )
     end
+
+    log =
+      [hit.(0, 1), hit.(1, 2), hit.(2, 3)]
+      |> Enum.with_index()
+      |> Enum.reduce([], fn {contents, index}, log ->
+        Enum.reduce(contents, log, &Log.append(&2, &1, 1000 + index * 100))
+      end)
+
+    assert [
+             %{text: "Alice damage from Bob's Kangee: 0 → 3", count: 3},
+             %{text: "Alice: 40 → 37 life", count: 3}
+           ] = log
   end
 
   test "preserves every roll result and caps the history" do

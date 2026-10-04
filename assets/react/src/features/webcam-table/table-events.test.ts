@@ -61,6 +61,14 @@ describe("receiveTableEvent", () => {
       ["Alice joined the table", undefined],
     ])
     expect(events[0]!.at).toEqual(new Date(2000))
+
+    events = receiveTableEvent(events, entry(3, "Bob: 40 → 38 life"))
+    events = receiveTableEvent(events, entry(2, "Alice: 40 → 35 life", 4))
+    expect(events.map((event) => event.text)).toEqual([
+      "Bob: 40 → 38 life",
+      "Alice: 40 → 35 life",
+      "Alice joined the table",
+    ])
   })
 
   it("keeps a snapshot entry once when its broadcast arrives too, and caps history", () => {

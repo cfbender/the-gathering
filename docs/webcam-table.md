@@ -621,10 +621,12 @@ entries for joins and leaves, deck/life/camera/counter changes, eliminations, th
 order and rolls, keeps the newest 200 in the saved snapshot, and broadcasts each new or merged
 entry as `log_entry`. Every (re)join receives the whole log as `table_log`, so all seats see the
 same history and a reload restores it. A reload or reconnect within ten seconds logs neither a
-leave nor a join. Consecutive events of the same kind and actor within two seconds coalesce
-(merged entries keep their id): life keeps the first and final totals, dice/coins retain every
-result, and deck/camera changes show the latest state with a count. Different actors, event
-kinds, and intervening entries break the group.
+leave nor a join. An event merges into that actor's latest entry of the same kind if it changed
+within five seconds, so several players adjusting at once each keep one line. Merged entries
+keep their id and position: life and counters keep the first and final values, dice/coins
+retain every result, and deck/camera changes show the latest state with a count. Other
+players' entries do not break the group; table-wide entries (joins, leaves, seat order, the
+monarch, rematches) do.
 
 Audio is not part of the webcam table: no microphone is captured and there are no mute
 controls. Players use their usual voice app alongside the table.

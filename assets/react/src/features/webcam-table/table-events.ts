@@ -19,7 +19,7 @@ export function toTableEvent({ id, at, text, count }: TableLogEntry): TableEvent
   return { id, at: new Date(at), text, count }
 }
 
-/** Newest first. A merge re-sends the head entry under its id; anything else is new. */
+/** Newest first. A merge re-sends the merged entry under its id, in place; anything else is new. */
 export function receiveTableEvent(events: TableEvent[], next: TableEvent): TableEvent[] {
   if (events.some((event) => event.id === next.id))
     return events.map((event) => (event.id === next.id ? next : event))

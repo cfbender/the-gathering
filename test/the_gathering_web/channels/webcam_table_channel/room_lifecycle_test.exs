@@ -290,6 +290,22 @@ defmodule TheGatheringWeb.WebcamTableChannel.RoomLifecycleTest do
     assert restored == entries
   end
 
+  test "a merge into an older log entry is broadcast in place", %{socket: alice, room_id: room} do
+    bob = join_player(room, @peer_b, "Bob")
+    assert_reply push(alice, "update_status", %{"life" => 37}), :ok
+    assert_broadcast "log_entry", %{id: 3, text: "Alice: 40 → 37 life"}
+    assert_reply push(bob, "update_status", %{"life" => 38}), :ok
+    assert_broadcast "log_entry", %{id: 4, text: "Bob: 40 → 38 life"}
+    assert_reply push(alice, "update_status", %{"life" => 35}), :ok
+    assert_broadcast "log_entry", %{id: 3, text: "Alice: 40 → 35 life", count: 2}
+    assert [%{id: 4}, %{id: 3} | _] = WebcamTables.log(room)
+
+    # Counter merge metadata survives a saved session.
+    assert_reply push(alice, "update_status", %{"poison" => 2}), :ok
+    assert_broadcast "log_entry", %{id: 5, counter: %{from: 0, to: 2}}
+    assert Session.load(room).log == WebcamTables.log(room)
+  end
+
   test "a seat that stays away past the grace period is logged as leaving", %{room_id: room} do
     bob = join_player(room, @peer_b, "Bob")
     bob_id = bob.assigns.participant.player_id

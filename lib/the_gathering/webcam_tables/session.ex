@@ -122,6 +122,7 @@ defmodule TheGathering.WebcamTables.Session do
 
     entry
     |> maybe_put(:life, data["life"] && fields(data["life"], [:name, :from, :to]))
+    |> maybe_put(:counter, data["counter"] && fields(data["counter"], [:prefix, :from, :to]))
     |> maybe_put(:roll, data["roll"] && fields(data["roll"], [:prefix, :results]))
   end
 

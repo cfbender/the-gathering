@@ -4,35 +4,45 @@ defmodule TheGathering.WebcamTables.Log do
   durable state so every seat sees the same history and a reload restores it.
 
   An entry is `%{id, at, text}` plus optional merge metadata (`actor`, `kind`,
-  `life`, `roll`) and a `count` once rapid changes coalesce. Ids only grow, so
-  the head always has the largest id; a merge keeps the head's id.
+  `life`, `counter`, `roll`) and a `count` once rapid changes coalesce. Ids only
+  grow, so the head always has the largest id; a merge updates its entry in place
+  and keeps that entry's id.
   """
 
   @max_entries 200
-  @merge_window_ms 2_000
+  @merge_window_ms 5_000
 
   @doc """
-  Adds `content` at `at` (milliseconds). Adjacent entries from the same actor
-  and kind within two seconds merge: life keeps the original total, rolls keep
-  every result.
+  Adds `content` at `at` (milliseconds). It merges into the latest entry with the
+  same actor and kind if that entry changed within five seconds, so players
+  adjusting at the same time each keep one line. Other players' entries do not
+  separate a merge; table-wide entries (no actor) do. Life and counters keep the
+  original value, rolls keep every result.
   """
   def append(log, content, at) do
-    previous = List.first(log)
-    next = Map.merge(content, %{id: if(previous, do: previous.id + 1, else: 1), at: at})
+    next = Map.merge(content, %{id: next_id(log), at: at})
 
-    if mergeable?(previous, next),
-      do: [merge(previous, next) | tl(log)],
-      else: Enum.take([next | log], @max_entries)
+    case merge_index(log, next) do
+      nil -> Enum.take([next | log], @max_entries)
+      index -> List.update_at(log, index, &merge(&1, next))
+    end
   end
 
-  defp mergeable?(nil, _next), do: false
+  defp next_id([]), do: 1
+  defp next_id([head | _log]), do: head.id + 1
 
-  defp mergeable?(previous, next) do
-    gap = next.at - previous.at
-
-    not is_nil(next[:kind]) and not is_nil(next[:actor]) and previous[:kind] == next.kind and
-      previous[:actor] == next.actor and gap in 0..@merge_window_ms
+  defp merge_index(log, %{kind: kind, actor: actor} = next)
+       when not is_nil(kind) and not is_nil(actor) do
+    log
+    |> Enum.take_while(&(not is_nil(&1[:actor])))
+    |> Enum.find_index(&(&1.actor == actor and &1[:kind] == kind))
+    |> case do
+      nil -> nil
+      index -> if (next.at - Enum.at(log, index).at) in 0..@merge_window_ms, do: index
+    end
   end
+
+  defp merge_index(_log, _next), do: nil
 
   defp merge(previous, next) do
     merged = %{next | id: previous.id} |> Map.put(:count, Map.get(previous, :count, 1) + 1)
@@ -41,6 +51,10 @@ defmodule TheGathering.WebcamTables.Log do
       previous[:life] && next[:life] ->
         life = %{next.life | from: previous.life.from}
         %{merged | life: life, text: life_text(life)}
+
+      previous[:counter] && next[:counter] ->
+        counter = %{next.counter | from: previous.counter.from}
+        %{merged | counter: counter, text: counter_text(counter)}
 
       previous[:roll] && next[:roll] ->
         roll = %{next.roll | results: previous.roll.results ++ next.roll.results}
@@ -149,9 +163,19 @@ defmodule TheGathering.WebcamTables.Log do
     for {label, from, to} <-
           [{"poison", previous.poison, next.poison}, {"rad", previous.rad, next.rad}] ++
             casts ++ damage ++ custom_counter_changes(previous, next),
-        from != to,
-        do: %{text: "#{name} #{label}: #{from} → #{to}"}
+        from != to do
+      counter = %{prefix: "#{name} #{label}: ", from: from, to: to}
+
+      %{
+        text: counter_text(counter),
+        actor: next.peer_id,
+        kind: "counter:#{label}",
+        counter: counter
+      }
+    end
   end
+
+  defp counter_text(counter), do: "#{counter.prefix}#{counter.from} → #{counter.to}"
 
   # Shared custom counters are matched by id, so renaming one does not log a change and a
   # counter that stops being shared (or is removed) leaves nothing behind. Seats saved before
