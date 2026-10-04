@@ -46,7 +46,7 @@ defmodule TheGathering.Discord.NewGameCommand do
         guild_cache \\ Nostrum.Cache.GuildCache
       ) do
     if Map.get(interaction.data, :custom_id) do
-      button(interaction, api, scheduler, guild_cache)
+      button(interaction, api, scheduler, guild_cache, now)
     else
       create(interaction, api, scheduler, now)
     end
@@ -79,25 +79,98 @@ defmodule TheGathering.Discord.NewGameCommand do
     end
   end
 
-  defp button(interaction, api, scheduler, guild_cache) do
+  defp button(interaction, api, scheduler, guild_cache, now) do
     with ["newgame", id, action] <- String.split(interaction.data.custom_id, ":"),
          {id, ""} when id > 0 <- Integer.parse(id),
-         true <- action in ["join", "leave", "cancel"] do
-      with {:ok} <- api.create_response(interaction, %{type: 5, data: %{flags: 64}}) do
-        actor =
-          Map.put(
-            actor(interaction),
-            :admin?,
-            action == "cancel" and administrator?(interaction, guild_cache)
-          )
+         true <- action in ["join", "leave", "cancel", "time"] do
+      actor =
+        Map.put(
+          actor(interaction),
+          :admin?,
+          action in ["cancel", "time"] and administrator?(interaction, guild_cache)
+        )
 
-        result = NewGameScheduler.act(id, action, actor, scheduler)
-        api.edit_response(interaction, private(confirmation(result, action)))
-      end
+      handle_button(
+        action,
+        Map.get(interaction, :type),
+        interaction,
+        api,
+        scheduler,
+        id,
+        actor,
+        now
+      )
     else
       _ ->
         api.create_response(interaction, %{type: 4, data: private("This game button is invalid.")})
     end
+  end
+
+  defp handle_button("time", 5, interaction, api, scheduler, id, actor, now),
+    do: change_time(interaction, api, scheduler, id, actor, now)
+
+  # Modals must be the first response, so check permission before opening one.
+  defp handle_button("time", _type, interaction, api, _scheduler, id, actor, _now) do
+    if ScheduledGames.manageable?(id, actor),
+      do: api.create_response(interaction, time_modal(id)),
+      else: api.create_response(interaction, %{type: 4, data: private(error(:forbidden))})
+  end
+
+  defp handle_button(action, _type, interaction, api, scheduler, id, actor, _now) do
+    with {:ok} <- api.create_response(interaction, %{type: 5, data: %{flags: 64}}) do
+      result = NewGameScheduler.act(id, action, actor, scheduler)
+      api.edit_response(interaction, private(confirmation(result, action)))
+    end
+  end
+
+  defp change_time(interaction, api, scheduler, id, actor, now) do
+    input = modal_value(interaction, "start")
+
+    case StartTime.parse(if(input == "", do: nil, else: input), now) do
+      {:ok, start_at} ->
+        with {:ok} <- api.create_response(interaction, %{type: 5, data: %{flags: 64}}) do
+          result = NewGameScheduler.act(id, {"time", start_at}, actor, scheduler)
+          api.edit_response(interaction, private(confirmation(result, "time")))
+        end
+
+      {:error, reason} ->
+        api.create_response(interaction, %{type: 4, data: private(error(reason))})
+    end
+  end
+
+  defp time_modal(id),
+    do: %{
+      type: 9,
+      data: %{
+        custom_id: "newgame:#{id}:time",
+        title: "Change start time",
+        components: [
+          %{
+            type: 1,
+            components: [
+              %{
+                type: 4,
+                custom_id: "start",
+                label: "Start time",
+                style: 1,
+                required: false,
+                max_length: 100,
+                placeholder: "8pm, in 45m, tomorrow 7pm, <t:unix>; blank starts when filled"
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+  defp modal_value(interaction, name) do
+    values =
+      for row <- interaction.data.components || [],
+          field <- row.components || [],
+          field.custom_id == name and is_binary(field.value),
+          do: String.trim(field.value)
+
+    List.first(values, "")
   end
 
   defp actor(interaction) do
@@ -144,13 +217,18 @@ defmodule TheGathering.Discord.NewGameCommand do
   defp confirmation({:ok, %{status: "cancelled"}}, _), do: "This game was cancelled."
   defp confirmation({:ok, _}, "join"), do: "You are on the roster."
   defp confirmation({:ok, _}, "leave"), do: "You are no longer on the roster."
+  defp confirmation({:ok, %{start_at: nil}}, "time"), do: "The game now starts when filled."
+
+  defp confirmation({:ok, %{start_at: start_at}}, "time"),
+    do: "The game now starts <t:#{DateTime.to_unix(start_at)}:F>."
+
   defp confirmation({:error, reason}, _), do: error(reason)
   defp error(message) when is_binary(message), do: message
   defp error(:full), do: "This game already has 10 players."
 
   defp error(:forbidden),
     do:
-      "Use this game's original server and channel. Only its host or a Discord Administrator can cancel."
+      "Use this game's original server and channel. Only its host or a Discord Administrator can change its time or cancel it."
 
   defp error(_), do: "Use a minimum of 2–10 players and a title/format of at most 100 characters."
   defp private(content), do: %{content: content, flags: 64, allowed_mentions: %{parse: []}}

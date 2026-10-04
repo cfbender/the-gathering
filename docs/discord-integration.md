@@ -291,8 +291,10 @@ and Leave update it in place and privately confirm the action. Repeated clicks
 do not duplicate players; the roster caps at ten. **The host must click Join to
 play**, just like everyone else. Cancel is a button, not a slash subcommand;
 only the host or a Discord **Administrator** (including the guild owner) can
-cancel. The app's admin role and Discord Manage Guild alone do not grant this
-permission. Guild roles come from Nostrum's cache because version 0.10 drops
+cancel. The same people can click **Change time**, which opens a form that
+accepts the `start` syntax below; leave it blank to start as soon as the minimum
+joins (immediately, if the roster is already full enough). The app's admin role
+and Discord Manage Guild alone do not grant these permissions. Guild roles come from Nostrum's cache because version 0.10 drops
 the interaction's member permission field. All buttons are bound to the original
 guild, channel and message, and disabled once started, cancelled or expired.
 

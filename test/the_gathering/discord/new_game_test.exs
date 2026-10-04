@@ -330,7 +330,7 @@ defmodule TheGathering.Discord.NewGameTest do
     :sys.get_state(server)
     refute Repo.get!(ScheduledGame, game.id).message_dirty
     assert_receive {:edit, {222, 555, %{components: [%{components: buttons}]}}}
-    assert Enum.map(buttons, & &1.label) == ["Join", "Leave", "Cancel"]
+    assert Enum.map(buttons, & &1.label) == ["Join", "Leave", "Change time", "Cancel"]
     refute Enum.any?(buttons, & &1.disabled)
   end
 
@@ -350,6 +350,55 @@ defmodule TheGathering.Discord.NewGameTest do
     assert Enum.count(results, &match?({:ok, _}, &1)) == 10
     assert Enum.count(results, &(&1 == {:error, :full})) == 1
     assert map_size(Repo.get!(ScheduledGame, game.id).players) == 10
+  end
+
+  test "host changes the start time through a modal; others cannot open it", %{
+    scheduler: server
+  } do
+    game = queue(%{start_at: DateTime.add(@now, 3600)})
+    button = interaction(%{custom_id: "newgame:#{game.id}:time"}, "12", [], 3)
+    assert {:ok} = NewGameCommand.respond(button, API, server, @now, API)
+    assert_receive {:response, %{type: 4, data: %{flags: 64, content: "Use this game's" <> _}}}
+
+    button = interaction(%{custom_id: "newgame:#{game.id}:time"}, "111", [], 3)
+    assert {:ok} = NewGameCommand.respond(button, API, server, @now, API)
+    assert_receive {:response, %{type: 9, data: %{custom_id: custom_id}}}
+    assert custom_id == "newgame:#{game.id}:time"
+
+    assert {:ok, _} =
+             NewGameCommand.respond(
+               time_submit(game, "111", "tomorrow 7pm"),
+               API,
+               server,
+               @now,
+               API
+             )
+
+    assert_receive {:response, %{type: 5, data: %{flags: 64}}}
+    assert_receive {:edit_response, %{content: "The game now starts <t:1790290800:F>."}}
+    assert Repo.get!(ScheduledGame, game.id).start_at == ~U[2026-09-24 23:00:00Z]
+    assert_receive {:edit, {222, 555, %{embeds: [embed]}}}
+    assert Enum.at(embed.fields, 0).value == "<t:1790290800:F> (<t:1790290800:R>)"
+
+    assert {:ok} =
+             NewGameCommand.respond(time_submit(game, "111", "yesterday"), API, server, @now, API)
+
+    assert_receive {:response, %{type: 4, data: %{flags: 64}}}
+
+    assert {:error, :forbidden} =
+             NewGameScheduler.act(game.id, {"time", nil}, actor("12"), server)
+
+    assert Repo.get!(ScheduledGame, game.id).start_at == ~U[2026-09-24 23:00:00Z]
+  end
+
+  test "clearing the start time starts a filled queue immediately", %{scheduler: server} do
+    game = queue(%{start_at: DateTime.add(@now, 3600), min_players: 2})
+    for id <- ["11", "12"], do: NewGameScheduler.act(game.id, "join", actor(id), server)
+
+    assert {:ok, _} = NewGameCommand.respond(time_submit(game, "42", " "), API, server, @now, API)
+    assert_receive {:edit_response, %{content: "Your game is ready!" <> _}}
+    assert %{status: "started", start_at: nil} = Repo.get!(ScheduledGame, game.id)
+    assert_receive {:create, {222, _}}
   end
 
   test "guild owner can cancel without an explicit administrator role", %{scheduler: server} do
@@ -381,13 +430,28 @@ defmodule TheGathering.Discord.NewGameTest do
         &{&1, %{"display_name" => "Player #{&1}", "joined_at" => DateTime.to_iso8601(@now)}}
       )
 
-  defp interaction(data, user \\ "111", roles \\ []) do
+  defp time_submit(game, user, value) do
+    interaction(
+      %{
+        custom_id: "newgame:#{game.id}:time",
+        components: [
+          %{type: 1, components: [%{type: 4, custom_id: "start", value: value}]}
+        ]
+      },
+      user,
+      [],
+      5
+    )
+  end
+
+  defp interaction(data, user \\ "111", roles \\ [], type \\ nil) do
     data =
       Map.update(data, :options, [], fn options ->
         Enum.map(options, &Map.put(&1, :type, if(&1.name == "min_players", do: 4, else: 3)))
       end)
 
     Interaction.to_struct(%{
+      type: type,
       guild_id: "333",
       channel_id: "222",
       message: %{id: "555"},

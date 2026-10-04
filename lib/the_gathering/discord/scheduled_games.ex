@@ -28,13 +28,22 @@ defmodule TheGathering.Discord.ScheduledGames do
     )
   end
 
+  @doc "Read-only check used before opening the change-time modal; `act/4` re-checks on submit."
+  def manageable?(id, actor) do
+    with :ok <- authorize(actor),
+         %ScheduledGame{status: "open"} = game <- Repo.get(ScheduledGame, id),
+         true <- same_message?(game, actor) do
+      host_or_admin?(game, actor)
+    else
+      _ -> false
+    end
+  end
+
   def act(id, action, actor, now) do
     Repo.transaction(fn ->
       with :ok <- authorize(actor),
            %ScheduledGame{} = game <- Repo.get(ScheduledGame, id),
-           true <-
-             game.guild_id == actor.guild_id and game.channel_id == actor.channel_id and
-               game.message_id == actor.message_id,
+           true <- same_message?(game, actor),
            %ScheduledGame{status: "open"} = game <- settle(game, now),
            {:ok, changes} <- changes(game, action, actor, now) do
         game |> Ecto.Changeset.change(changes) |> Repo.update!() |> settle(now)
@@ -106,12 +115,25 @@ defmodule TheGathering.Discord.ScheduledGames do
     do: {:ok, [players: Map.delete(game.players, actor.discord_id), message_dirty: true]}
 
   defp changes(game, "cancel", actor, _now) do
-    if actor.discord_id == game.host_discord_id or actor.admin?,
+    if host_or_admin?(game, actor),
       do: {:ok, [status: "cancelled", message_dirty: true]},
       else: {:error, :forbidden}
   end
 
+  defp changes(game, {"time", start_at}, actor, _now) do
+    if host_or_admin?(game, actor),
+      do: {:ok, [start_at: start_at, message_dirty: true]},
+      else: {:error, :forbidden}
+  end
+
   defp changes(_game, _action, _actor, _now), do: {:error, :forbidden}
+
+  defp same_message?(game, actor),
+    do:
+      game.guild_id == actor.guild_id and game.channel_id == actor.channel_id and
+        game.message_id == actor.message_id
+
+  defp host_or_admin?(game, actor), do: actor.discord_id == game.host_discord_id or actor.admin?
 
   defp authorize(actor) do
     guild = Application.get_env(:the_gathering, TheGathering.Discord, [])[:guild_id]

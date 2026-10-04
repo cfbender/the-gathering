@@ -32,6 +32,7 @@ defmodule TheGathering.Discord.NewGameMessage do
           components: [
             button(game, "join", "Join", 3),
             button(game, "leave", "Leave", 2),
+            button(game, "time", "Change time", 1),
             button(game, "cancel", "Cancel", 4)
           ]
         }
@@ -59,7 +60,8 @@ defmodule TheGathering.Discord.NewGameMessage do
   defp description(%{status: "cancelled"}), do: "This game was cancelled."
 
   defp description(_game),
-    do: "Join the roster to play. The host or a Discord Administrator can cancel."
+    do:
+      "Join the roster to play. The host or a Discord Administrator can change the time or cancel."
 
   defp start(nil), do: "As soon as the minimum is met"
   defp start(time), do: "<t:#{DateTime.to_unix(time)}:F> (<t:#{DateTime.to_unix(time)}:R>)"

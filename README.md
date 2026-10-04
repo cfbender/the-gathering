@@ -266,7 +266,7 @@ Use `/newgame [start] [min_players] [title] [format]` to post a public Join/Leav
 queue. The default minimum is three (configurable from two to ten). Without
 `start`, it opens a webcam-table link as soon as the minimum joins; scheduled
 queues start or expire at the requested time. The host or a Discord Administrator
-can Cancel. See [Discord integration](docs/discord-integration.md#webcam-table-queues-with-newgame)
+can Change time or Cancel. See [Discord integration](docs/discord-integration.md#webcam-table-queues-with-newgame)
 for time syntax, permissions, and restart/delivery behavior.
 
 ### Accounts and registration
