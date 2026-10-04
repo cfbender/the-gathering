@@ -163,13 +163,39 @@ describe("searchArts", () => {
         },
       ],
     }
-    expect(searchArts([art], "Nettlecyst mkc #233").map((p) => p.id)).toEqual(["reprint", "jp"])
+    expect(searchArts([art], "Nettlecyst mkc #233").map((p) => p.id)).toEqual(["reprint"])
     expect(searchArts([art], "Nettlecyst set:mkc lang:ja")).toEqual([
       { ...art.printings![0], frame: "extended" },
     ])
     expect(searchArts([art], "Nettlecyst mh2 231").map((p) => p.id)).toEqual(["regular"])
-    expect(searchArts([art, art], "Nettlecyst", 20)).toHaveLength(4)
+    expect(searchArts([art, art], "Nettlecyst", 20)).toHaveLength(3)
     expect(searchArts([art], "Nettlecyst mkc lang:de")).toEqual([])
+  })
+
+  it("hides translations of English printings but keeps foreign-only printings", () => {
+    const art: GalleryArt = {
+      id: "sta-en",
+      name: "Lightning Bolt",
+      set: "sta",
+      collector_number: "42",
+      frame: "2015",
+      printings: [
+        { id: "sta-en", name: "Lightning Bolt", set: "sta", collector_number: "42", lang: "en" },
+        { id: "sta-ja", name: "Lightning Bolt", set: "sta", collector_number: "42", lang: "ja" },
+        {
+          id: "sta-jp-art",
+          name: "Lightning Bolt",
+          set: "sta",
+          collector_number: "105",
+          lang: "ja",
+        },
+      ],
+    }
+    expect(searchArts([art], "lightning bolt").map((p) => p.id)).toEqual(["sta-en", "sta-jp-art"])
+    expect(searchArts([art], "lightning bolt lang:ja").map((p) => p.id)).toEqual([
+      "sta-ja",
+      "sta-jp-art",
+    ])
   })
 
   it("finds Revised and Unlimited printings even when the gallery representative is Alpha", () => {

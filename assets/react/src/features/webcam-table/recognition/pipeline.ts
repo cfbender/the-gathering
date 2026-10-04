@@ -180,8 +180,13 @@ export function searchArts(arts: GalleryArt[], query: string, limit = 24): Galle
     ...matchArts(arts, withSet, seen, 0),
     ...(ambiguous ? matchArts(arts, asName, seen, 1) : []),
   ]
+  // A translated copy of an English printing only clutters the list; keep foreign printings
+  // that exist in no English version (Japanese Mystical Archive, for example) or that a
+  // `lang:` token asked for.
+  const english = new Set(matches.filter((art) => !isForeign(art)).map(printingKey))
   const exact = tokens.join(" ")
   return matches
+    .filter((art) => withSet.lang || !isForeign(art) || !english.has(printingKey(art)))
     .sort(
       (a, b) =>
         Number(a.name.toLowerCase() !== exact) - Number(b.name.toLowerCase() !== exact) ||
@@ -228,6 +233,14 @@ export function galleryPrintingCaption(art: GalleryPrinting): string {
   ]
     .filter(Boolean)
     .join(" · ")
+}
+
+function isForeign(art: GalleryPrinting): boolean {
+  return !!art.lang && art.lang !== "en"
+}
+
+function printingKey(art: GalleryPrinting): string {
+  return `${art.set}|${art.collector_number ?? ""}|${art.face ?? 0}`
 }
 
 function collectorOrder(number: string | undefined): number {
