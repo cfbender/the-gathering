@@ -10,7 +10,8 @@ defmodule TheGathering.Stats.Commanders do
   catalog knows it, otherwise the stored ID, otherwise the normalized name. The
   published `id` is that canonical catalog ID (or the card name when the catalog lacks
   the card), and `get/2` accepts the published ID, a stored ID, or a card name, so every
-  ID `list/1` emits resolves to a detail page. Detail trends are limited to the newest
+  ID `list/1` emits resolves to a detail page. Each commander shows the art chosen by
+  its most-played deck (that deck's printing, else the catalog default). Detail trends are limited to the newest
   500 games so response and calculation cost remain bounded.
   """
 
@@ -31,6 +32,7 @@ defmodule TheGathering.Stats.Commanders do
 
     seats
     |> Enum.flat_map(&commander_seats(&1, summaries))
+    |> put_deck_art()
     |> commander_records(fn seats ->
       %{
         pilots: seats |> Enum.map(& &1.player_id) |> Enum.uniq() |> length(),
@@ -58,6 +60,7 @@ defmodule TheGathering.Stats.Commanders do
         candidate_seats
         |> Enum.flat_map(&commander_seats(&1, summaries))
         |> Enum.filter(&same_commander?(&1, key))
+        |> put_deck_art()
 
       detail(entries, summaries)
     end
@@ -146,14 +149,64 @@ defmodule TheGathering.Stats.Commanders do
     deck = seat.deck
 
     [
-      {deck.commander_card_id, deck.commander_name},
-      {deck.partner_card_id, deck.partner_name}
+      {deck.commander_card_id, deck.commander_name, deck.commander_printing_id},
+      {deck.partner_card_id, deck.partner_name, deck.partner_printing_id}
     ]
-    |> Enum.reject(fn {id, name} -> is_nil(id) and (is_nil(name) or name == "") end)
-    |> Enum.map(fn {id, name} ->
+    |> Enum.reject(fn {id, name, _printing_id} -> is_nil(id) and (is_nil(name) or name == "") end)
+    |> Enum.map(fn {id, name, printing_id} ->
       {key, card} = canonical(Catalog.card_summary(summaries, id, name), id, name)
-      {key, card, seat}
+      {key, Map.put(card, :printing_id, printing_id), seat}
     end)
+  end
+
+  # Gives every entry of a commander the art of its most-played deck (ties go to the
+  # most recently played): that deck's chosen printing, else the catalog default.
+  defp put_deck_art(entries) do
+    printings =
+      entries
+      |> Enum.group_by(fn {key, _card, _seat} -> key end)
+      |> Map.new(fn {key, rows} -> {key, most_played_printing(rows)} end)
+
+    urls =
+      printings
+      |> Map.values()
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&{:printing, &1})
+      |> Catalog.art_crop_urls()
+
+    Enum.map(entries, fn {key, card, seat} ->
+      {key, deck_art(card, urls, Map.fetch!(printings, key)), seat}
+    end)
+  end
+
+  defp most_played_printing(rows) do
+    {_deck_id, deck_rows} =
+      rows
+      |> Enum.group_by(fn {_key, _card, seat} -> seat.deck_id end)
+      |> Enum.max_by(fn {_deck_id, deck_rows} ->
+        last_played =
+          deck_rows
+          |> Enum.map(fn {_key, _card, seat} -> DateTime.to_unix(seat.game.played_at) end)
+          |> Enum.max()
+
+        {length(deck_rows), last_played}
+      end)
+
+    {_key, card, _seat} = hd(deck_rows)
+    card.printing_id
+  end
+
+  defp deck_art(card, _urls, nil), do: card
+
+  defp deck_art(card, urls, printing_id) do
+    %{
+      card
+      | art_crop_url: Map.get(urls, {:printing, printing_id}) || card.art_crop_url
+    }
+    |> Map.put(
+      :image_url,
+      Map.get(urls, {:image, {:printing, printing_id}}) || Map.get(card, :image_url)
+    )
   end
 
   defp canonical(%{id: catalog_id} = summary, stored_id, _name) do
@@ -175,6 +228,7 @@ defmodule TheGathering.Stats.Commanders do
     seats
     |> Enum.flat_map(&commander_seats(&1, summaries))
     |> Enum.reject(fn {other_key, _card, _seat} -> other_key == key end)
+    |> put_deck_art()
     |> commander_records()
   end
 

@@ -3,7 +3,7 @@ defmodule TheGathering.StatsTest do
 
   alias TheGathering.{Accounts, AccountsFixtures, Games, Repo, Stats}
   alias TheGathering.Accounts.User
-  alias TheGathering.Catalog.Card
+  alias TheGathering.Catalog.{Card, Printing}
 
   setup do
     Repo.insert!(%Card{
@@ -642,6 +642,61 @@ defmodule TheGathering.StatsTest do
 
     assert Stats.commander("kangee", %{"date_from" => "2026-04-01"}).record.games == 2
     assert Stats.commander("00000000-0000-0000-0000-000000000000") == nil
+  end
+
+  test "commander art comes from the commander's most-played deck", %{
+    players: players,
+    decks: decks
+  } do
+    for id <- ~w(kangee-alt kangee-promo) do
+      Repo.insert!(%Printing{
+        id: id,
+        oracle_id: "oracle-kangee",
+        name: "Kangee, Sky Warden",
+        set_code: "tst",
+        set_name: "Test",
+        collector_number: id,
+        image_uris: %{
+          "art_crop" => "https://cards.example/#{id}-art.jpg",
+          "normal" => "https://cards.example/#{id}-card.jpg"
+        }
+      })
+    end
+
+    {:ok, promo} =
+      Games.create_deck(%{
+        player_id: players["Bob"].id,
+        name: "Promo Kangee",
+        commander_card_id: "kangee",
+        commander_name: "Kangee, Sky Warden",
+        commander_printing_id: "kangee-promo",
+        color_identity: "WU"
+      })
+
+    game(players, Map.put(decks, "Bob", promo), ~U[2026-04-01 12:00:00Z], "Bob", ["Bob", "Cara"])
+
+    kangee_art = fn params ->
+      params
+      |> Stats.commanders()
+      |> Enum.find(&(&1.id == "kangee"))
+      |> Map.take([:art_crop_url, :image_url])
+    end
+
+    # Birds (six games) outplays Promo Kangee (one) and keeps the catalog default art.
+    assert %{art_crop_url: "https://cards.example/kangee-art.jpg"} = kangee_art.(%{})
+
+    # With a single Kangee deck in range, that deck's printing is used.
+    assert kangee_art.(%{"date_from" => "2026-04-01"}) == %{
+             art_crop_url: "https://cards.example/kangee-promo-art.jpg",
+             image_url: "https://cards.example/kangee-promo-card.jpg"
+           }
+
+    {:ok, _birds} = Games.update_deck(decks["Alice"], %{commander_printing_id: "kangee-alt"})
+    alt = "https://cards.example/kangee-alt-art.jpg"
+
+    assert %{art_crop_url: ^alt} = kangee_art.(%{})
+    assert %{art_crop_url: ^alt} = Stats.commander("kangee").commander
+    assert %{art_crop_url: ^alt} = Enum.find(Stats.overview().commanders, &(&1.id == "kangee"))
   end
 
   test "commander detail query resolves a name-only legacy deck" do
