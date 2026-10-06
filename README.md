@@ -262,10 +262,12 @@ see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONT
 | `THE_GATHERING_ADMIN_USERNAME` | unset | Creates this admin on container startup when paired with the password. |
 | `THE_GATHERING_ADMIN_PASSWORD` | unset | Password for container or Mix-task admin bootstrap. |
 
-Use `/newgame [start] [min_players] [title] [format]` to post a public Join/Leave
+Use `/newgame [start] [min_players] [title] [format]` to post a public Join/Maybe/Leave
 queue. The default minimum is three (configurable from two to ten). Without
 `start`, it opens a webcam-table link as soon as the minimum joins; scheduled
-queues start or expire at the requested time. The host or a Discord Administrator
+queues start or expire at the requested time. Maybe doesn't count toward the
+minimum, but if a scheduled game is short at its start time the bot pings the
+maybe list and waits 15 minutes for them to join. The host or a Discord Administrator
 can Change time or Cancel. See [Discord integration](docs/discord-integration.md#webcam-table-queues-with-newgame)
 for time syntax, permissions, and restart/delivery behavior.
 

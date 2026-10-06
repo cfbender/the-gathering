@@ -82,7 +82,7 @@ defmodule TheGathering.Discord.NewGameCommand do
   defp button(interaction, api, scheduler, guild_cache, now) do
     with ["newgame", id, action] <- String.split(interaction.data.custom_id, ":"),
          {id, ""} when id > 0 <- Integer.parse(id),
-         true <- action in ["join", "leave", "cancel", "time"] do
+         true <- action in ["join", "maybe", "leave", "cancel", "time"] do
       actor =
         Map.put(
           actor(interaction),
@@ -216,7 +216,18 @@ defmodule TheGathering.Discord.NewGameCommand do
 
   defp confirmation({:ok, %{status: "cancelled"}}, _), do: "This game was cancelled."
   defp confirmation({:ok, _}, "join"), do: "You are on the roster."
-  defp confirmation({:ok, _}, "leave"), do: "You are no longer on the roster."
+
+  defp confirmation({:ok, %{start_at: nil}}, "maybe"),
+    do: "You are on the maybe list. Maybes don't count toward the minimum."
+
+  defp confirmation({:ok, %{maybe_pinged_at: nil}}, "maybe"),
+    do:
+      "You are on the maybe list. You'll be pinged at the start time if the game is short of players."
+
+  defp confirmation({:ok, _}, "maybe"),
+    do: "You are on the maybe list. Click Join if you can play."
+
+  defp confirmation({:ok, _}, "leave"), do: "You are no longer on the roster or maybe list."
   defp confirmation({:ok, %{start_at: nil}}, "time"), do: "The game now starts when filled."
 
   defp confirmation({:ok, %{start_at: start_at}}, "time"),
@@ -225,6 +236,7 @@ defmodule TheGathering.Discord.NewGameCommand do
   defp confirmation({:error, reason}, _), do: error(reason)
   defp error(message) when is_binary(message), do: message
   defp error(:full), do: "This game already has 10 players."
+  defp error(:maybe_full), do: "This game's maybe list is full."
 
   defp error(:forbidden),
     do:

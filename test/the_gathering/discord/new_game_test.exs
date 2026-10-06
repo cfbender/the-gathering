@@ -192,6 +192,111 @@ defmodule TheGathering.Discord.NewGameTest do
     refute_receive {:create, _}
   end
 
+  test "maybe does not count toward the minimum and moves between lists", %{scheduler: server} do
+    game = queue(%{min_players: 2})
+    assert {:ok, _} = NewGameScheduler.act(game.id, "join", actor("11"), server)
+    assert {:ok, maybe} = NewGameScheduler.act(game.id, "maybe", actor("12"), server)
+    assert maybe.status == "open"
+    assert Map.keys(maybe.players) == ["11"]
+    assert Map.keys(maybe.maybe) == ["12"]
+
+    assert_receive {:edit, {222, 555, _join}}
+    assert_receive {:edit, {222, 555, %{embeds: [%{fields: fields}]}}}
+    assert List.last(fields) == %{name: "Maybe (1) — not counted", value: "<@12>"}
+
+    assert {:ok, switched} = NewGameScheduler.act(game.id, "maybe", actor("11"), server)
+    assert switched.players == %{}
+    assert Map.keys(switched.maybe) == ["11", "12"]
+    assert {:ok, left} = NewGameScheduler.act(game.id, "leave", actor("11"), server)
+    assert Map.keys(left.maybe) == ["12"]
+    assert {:ok, started} = NewGameScheduler.act(game.id, "join", actor("12"), server)
+    assert started.maybe == %{}
+    assert started.status == "open"
+
+    for id <- 1..10,
+        do: assert({:ok, _} = NewGameScheduler.act(game.id, "maybe", actor("m#{id}"), server))
+
+    assert {:error, :maybe_full} = NewGameScheduler.act(game.id, "maybe", actor("m11"), server)
+  end
+
+  test "underfilled game pings maybes once at start, then starts when a maybe joins", %{
+    scheduler: server
+  } do
+    due = DateTime.add(@now, 60)
+    game = queue(%{start_at: due, min_players: 2, title: "Friday pod"})
+    NewGameScheduler.act(game.id, "join", actor("11"), server)
+    NewGameScheduler.act(game.id, "maybe", actor("13"), server)
+    NewGameScheduler.act(game.id, "maybe", actor("12"), server)
+    API.set_now(due)
+    NewGameScheduler.sweep(server)
+
+    pinged = Repo.get!(ScheduledGame, game.id)
+    assert pinged.status == "open"
+    assert pinged.maybe_pinged_at == due
+    assert pinged.maybe_ping_id == "999"
+    refute pinged.message_dirty
+
+    assert_receive {:create, {222, payload}}
+    assert payload.allowed_mentions == %{parse: [], users: ["12", "13"]}
+    assert payload.content =~ "<@12> <@13> **Friday pod** is 1 player short"
+    assert payload.content =~ "https://discord.com/channels/333/222/555"
+    assert payload.nonce == "ngm:#{game.id}:#{DateTime.to_unix(due)}"
+    assert String.length(payload.nonce) <= 25
+
+    assert_receive {:edit, {222, 555, %{embeds: [%{description: "Short of the minimum" <> _}]}}}
+
+    API.set_now(DateTime.add(due, 60))
+    NewGameScheduler.sweep(server)
+    refute_receive {:create, _}
+
+    assert {:ok, started} = NewGameScheduler.act(game.id, "join", actor("12"), server)
+    assert started.status == "started"
+    assert_receive {:create, {222, ready}}
+    assert ready.allowed_mentions == %{parse: [], users: ["11", "12"]}
+  end
+
+  test "maybe grace period expires an unfilled game; changing time re-arms the ping", %{
+    scheduler: server
+  } do
+    due = DateTime.add(@now, 60)
+    game = queue(%{start_at: due, min_players: 2})
+    NewGameScheduler.act(game.id, "maybe", actor("12"), server)
+    API.set_now(due)
+    NewGameScheduler.sweep(server)
+    assert_receive {:create, {222, _}}
+
+    later = DateTime.add(due, 3600)
+    assert {:ok, moved} = NewGameScheduler.act(game.id, {"time", later}, actor("111"), server)
+    assert {moved.maybe_pinged_at, moved.maybe_ping_id} == {nil, nil}
+
+    API.set_now(later)
+    NewGameScheduler.sweep(server)
+    assert_receive {:create, {222, %{nonce: nonce}}}
+    assert nonce == "ngm:#{game.id}:#{DateTime.to_unix(later)}"
+
+    API.set_now(DateTime.add(later, ScheduledGames.maybe_grace_seconds() - 1))
+    NewGameScheduler.sweep(server)
+    assert Repo.get!(ScheduledGame, game.id).status == "open"
+
+    API.set_now(DateTime.add(later, ScheduledGames.maybe_grace_seconds()))
+    NewGameScheduler.sweep(server)
+    assert Repo.get!(ScheduledGame, game.id).status == "expired"
+    assert_receive {:edit, {222, 555, %{embeds: [%{description: "This game did not fill" <> _}]}}}
+    refute_receive {:create, _}
+  end
+
+  test "maybe button confirms privately", %{scheduler: server} do
+    game = queue(%{start_at: DateTime.add(@now, 3600)})
+    event = interaction(%{custom_id: "newgame:#{game.id}:maybe"})
+    assert {:ok, _} = NewGameCommand.respond(event, API, server, @now)
+    assert_receive {:response, %{type: 5, data: %{flags: 64}}}
+
+    assert_receive {:edit_response,
+                    %{content: "You are on the maybe list. You'll be pinged" <> _}}
+
+    assert Map.keys(Repo.get!(ScheduledGame, game.id).maybe) == ["111"]
+  end
+
   test "boot reloads due work from DB and expires underfilled queues", %{scheduler: _server} do
     game = queue(%{start_at: DateTime.add(@now, -1)})
     stop_supervised!(NewGameScheduler)
@@ -330,7 +435,7 @@ defmodule TheGathering.Discord.NewGameTest do
     :sys.get_state(server)
     refute Repo.get!(ScheduledGame, game.id).message_dirty
     assert_receive {:edit, {222, 555, %{components: [%{components: buttons}]}}}
-    assert Enum.map(buttons, & &1.label) == ["Join", "Leave", "Change time", "Cancel"]
+    assert Enum.map(buttons, & &1.label) == ["Join", "Maybe", "Leave", "Change time", "Cancel"]
     refute Enum.any?(buttons, & &1.disabled)
   end
 

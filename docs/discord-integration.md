@@ -288,7 +288,9 @@ crashing the gateway consumer.
 
 The public embed shows the title, start time, minimum, format and roster. Join
 and Leave update it in place and privately confirm the action. Repeated clicks
-do not duplicate players; the roster caps at ten. **The host must click Join to
+do not duplicate players; the roster caps at ten. **Maybe** puts a member on a
+separate maybe list (also capped at ten) that does not count toward the minimum;
+Join and Maybe move a member between the lists, and Leave removes them from both. **The host must click Join to
 play**, just like everyone else. Cancel is a button, not a slash subcommand;
 only the host or a Discord **Administrator** (including the guild owner) can
 cancel. The same people can click **Change time**, which opens a form that
@@ -316,8 +318,12 @@ time in each viewer's timezone. `in Nm` / `in Nh` mean elapsed time.
 
 The supervised scheduler scans SQLite on boot and every five seconds, in batches
 of 100; Discord request/rate-limit delays can extend that interval. At the deadline
-the existing roster starts if its minimum is met; otherwise it expires. A click
-at or after the deadline cannot rescue an underfilled queue. Unscheduled queues
+the existing roster starts if its minimum is met. If it is short and the maybe
+list is empty, it expires, and a click at or after the deadline cannot rescue it.
+If it is short and anyone said Maybe, the bot posts one message mentioning only
+the maybe list, links the game, and keeps the queue open for 15 more minutes: it
+starts as soon as the minimum joins, otherwise it expires. Changing the time
+re-arms the maybe ping for the new deadline. Unscheduled queues never ping maybes. Unscheduled queues
 wait indefinitely until filled or cancelled. Overdue queues are processed on
 restart, even after a long outage. Records and rosters are retained, not deleted.
 The status transition is an atomic `UPDATE ... WHERE status = 'open'`; the room

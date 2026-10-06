@@ -15,6 +15,9 @@ defmodule TheGathering.Discord.ScheduledGame do
     field :status, :string, default: "open"
     field :room_id, Ecto.UUID
     field :players, :map, default: %{}
+    field :maybe, :map, default: %{}
+    field :maybe_pinged_at, :utc_datetime
+    field :maybe_ping_id, :string
     field :announcement_id, :string
     field :message_dirty, :boolean, default: true
     timestamps(type: :utc_datetime)

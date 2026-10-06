@@ -9,6 +9,7 @@ defmodule TheGathering.Discord.NewGameDelivery do
 
   def deliver(game, api) do
     with {:ok, game} <- announce(game, api),
+         {:ok, game} <- ping_maybe(game, api),
          {:ok, _message} <-
            api.edit(
              String.to_integer(game.channel_id),
@@ -33,4 +34,18 @@ defmodule TheGathering.Discord.NewGameDelivery do
   end
 
   defp announce(game, _api), do: {:ok, game}
+
+  # Saved before the embed edit, like the announcement, so an edit failure does not re-ping.
+  defp ping_maybe(
+         %{status: "open", maybe_ping_id: nil, maybe_pinged_at: %DateTime{}, maybe: maybe} = game,
+         api
+       )
+       when map_size(maybe) > 0 do
+    with {:ok, message} <-
+           api.create(String.to_integer(game.channel_id), NewGameMessage.maybe_ping(game)) do
+      game |> Ecto.Changeset.change(maybe_ping_id: to_string(message.id)) |> Repo.update()
+    end
+  end
+
+  defp ping_maybe(game, _api), do: {:ok, game}
 end
