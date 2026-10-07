@@ -1,5 +1,5 @@
 //! Ported from `test/the_gathering_web/controllers/api/card_controller_test.exs`,
-//! `card_printing_controller_test.exs` (the catalog parts), `card_rulings_controller_test.exs`,
+//! `card_printing_controller_test.exs`, `card_rulings_controller_test.exs`,
 //! and `card_image_controller_test.exs`.
 #![allow(
     clippy::unwrap_used,
@@ -994,6 +994,311 @@ async fn saved_printing_art_survives_a_catalog_replacement_and_a_missing_crop_fa
             .as_deref(),
         Some("https://img.example/latest-art.jpg")
     );
+}
+
+// ---- card_printing_controller_test.exs (deck surfaces) ----
+
+struct DeckCtx {
+    app: TestApp,
+    player: the_gathering::games::Player,
+    deck: the_gathering::games::Deck,
+}
+
+/// The printing setup plus the signed-in member's linked player and a partner deck.
+async fn deck_ctx(server: &MockServer) -> DeckCtx {
+    let app = printing_app(server).await;
+    let user = app
+        .state
+        .accounts
+        .get_user_by_username("member")
+        .await
+        .unwrap()
+        .unwrap();
+    let player = app.player("Printing owner").await;
+    let player = app
+        .state
+        .games
+        .link_player_to_user(&player, &user)
+        .await
+        .unwrap();
+    let deck = app
+        .deck_with(json!({
+            "player_id": player.id,
+            "name": "Partners",
+            "commander_card_id": "commander",
+            "commander_name": "Tymna the Weaver",
+            "partner_card_id": "partner",
+            "partner_name": "Thrasios, Triton Hero",
+            "color_identity": "WUBG"
+        }))
+        .await;
+    DeckCtx { app, player, deck }
+}
+
+async fn save(ctx: &DeckCtx, attrs: Value) -> Value {
+    ctx.app
+        .patch(&format!("/api/decks/{}", ctx.deck.id), json!({"deck": attrs}))
+        .await
+        .assert_json(200)["data"]
+        .clone()
+}
+
+#[track_caller]
+fn assert_art(deck: &Value) {
+    assert_eq!(
+        deck["commander_art_crop_url"],
+        "https://img.example/commander-alternate.jpg"
+    );
+    assert_eq!(
+        deck["partner_art_crop_url"],
+        "https://img.example/partner-alternate.jpg"
+    );
+}
+
+#[tokio::test]
+async fn saves_independent_commander_and_partner_printings_and_resolves_them_on_every_deck_surface()
+ {
+    let server = MockServer::start().await;
+    let ctx = deck_ctx(&server).await;
+    let body = save(
+        &ctx,
+        json!({"commander_printing_id": "commander-alternate", "partner_printing_id": "partner-alternate"}),
+    )
+    .await;
+    assert_eq!(body["commander_card_id"], "commander");
+    assert_eq!(body["partner_card_id"], "partner");
+    assert_eq!(body["color_identity"], "WUBG");
+    assert_art(&body);
+
+    let app = &ctx.app;
+    assert_art(
+        &app.get(&format!("/api/decks/{}", ctx.deck.id))
+            .await
+            .assert_json(200)["data"],
+    );
+    assert_art(&app.get("/api/decks").await.assert_json(200)["data"][0]);
+    assert_art(
+        &app.get(&format!("/api/players/{}", ctx.player.id))
+            .await
+            .assert_json(200)["data"]["decks"][0],
+    );
+    assert_art(&app.get("/api/deck-chooser").await.assert_json(200)["data"]["deck"]);
+
+    let other = app.player("Other pilot").await;
+    let mirror = app
+        .deck_with(json!({
+            "player_id": other.id,
+            "name": "Default art",
+            "commander_card_id": "commander",
+            "commander_name": "Tymna the Weaver"
+        }))
+        .await;
+    let game = app
+        .game(
+            json!({
+                "played_at": "2026-09-21T12:00:00Z",
+                "seats": [
+                    {"player_id": ctx.player.id, "deck_id": ctx.deck.id, "seat": 1, "result": "win"},
+                    {"player_id": other.id, "deck_id": mirror.id, "seat": 2, "result": "loss"}
+                ]
+            }),
+            None,
+        )
+        .await;
+    let body = app
+        .get(&format!("/api/games/{}", game.id))
+        .await
+        .assert_json(200);
+    let seats = body["data"]["seats"].as_array().unwrap();
+    let selected = seats
+        .iter()
+        .find(|seat| seat["deck"]["id"] == ctx.deck.id)
+        .unwrap();
+    assert_art(&selected["deck"]);
+    let default = seats
+        .iter()
+        .find(|seat| seat["deck"]["id"] == mirror.id)
+        .unwrap();
+    assert_eq!(
+        default["deck"]["commander_art_crop_url"],
+        "https://img.example/commander-default.jpg"
+    );
+
+    let commanders = the_gathering::stats::commanders(app.pool(), &json!({}))
+        .await
+        .unwrap();
+    let commander: Vec<&Value> = commanders
+        .iter()
+        .filter(|row| row["id"] == "commander")
+        .collect();
+    assert_eq!(commander.len(), 1);
+    assert_eq!((&commander[0]["games"], &commander[0]["wins"]), (&json!(2), &json!(1)));
+
+    let imported = app
+        .state
+        .games
+        .find_or_create_deck(
+            ctx.player.id,
+            "Imported partners",
+            &json!({"commander_name": "Thrasios, Triton Hero", "partner_name": "Tymna the Weaver"}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(imported.id, ctx.deck.id);
+    assert_eq!(
+        imported.commander_printing_id.as_deref(),
+        Some("commander-alternate")
+    );
+}
+
+#[tokio::test]
+async fn deck_create_list_and_edit_expose_independent_full_card_printing_images() {
+    let server = MockServer::start().await;
+    let ctx = deck_ctx(&server).await;
+    let created = ctx
+        .app
+        .post(
+            "/api/decks",
+            json!({"deck": {
+                "player_id": ctx.player.id,
+                "name": "Table partners",
+                "commander_card_id": "commander",
+                "commander_name": "Tymna the Weaver",
+                "commander_printing_id": "commander-alternate",
+                "partner_card_id": "partner",
+                "partner_name": "Thrasios, Triton Hero",
+                "partner_printing_id": "partner-alternate"
+            }}),
+        )
+        .await
+        .assert_json(201)["data"]
+        .clone();
+    assert_eq!(
+        created["commander_image_url"],
+        "https://img.example/commander-alternate-card.jpg"
+    );
+    assert_eq!(
+        created["partner_image_url"],
+        "https://img.example/partner-alternate-card.jpg"
+    );
+    assert_eq!(created["partner_name"], "Thrasios, Triton Hero");
+    assert_art(&created);
+
+    let listed = ctx.app.get("/api/decks").await.assert_json(200);
+    let listed = listed["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|deck| deck["id"] == created["id"])
+        .unwrap()
+        .clone();
+    assert_eq!(listed["partner_image_url"], created["partner_image_url"]);
+
+    let default = save(
+        &ctx,
+        json!({"commander_card_id": null, "partner_name": null, "partner_card_id": null}),
+    )
+    .await;
+    // Legacy name-only decks fall back to the catalog; no partner means no partner image.
+    assert_eq!(
+        default["commander_image_url"],
+        "https://img.example/commander-default-card.jpg"
+    );
+    assert_eq!(default["partner_image_url"], Value::Null);
+}
+
+#[tokio::test]
+async fn rejects_unknown_and_mismatched_printings_atomically_including_on_create() {
+    let server = MockServer::start().await;
+    let ctx = deck_ctx(&server).await;
+    for attrs in [
+        json!({"commander_printing_id": "partner-alternate"}),
+        json!({"partner_printing_id": "commander-alternate"}),
+        json!({"commander_printing_id": "missing"}),
+        json!({"commander_name": "Thrasios, Triton Hero", "commander_printing_id": "commander-alternate"}),
+    ] {
+        let mut attrs = attrs;
+        attrs["name"] = json!("Must not change");
+        ctx.app
+            .patch(&format!("/api/decks/{}", ctx.deck.id), json!({"deck": attrs}))
+            .await
+            .assert_json(422);
+    }
+    let deck = ctx.app.state.games.get_deck(ctx.deck.id).await.unwrap().unwrap();
+    assert_eq!(deck.name, "Partners");
+    match ctx
+        .app
+        .state
+        .games
+        .create_deck(&json!({
+            "player_id": ctx.player.id,
+            "name": "Invalid",
+            "commander_name": "Tymna the Weaver",
+            "commander_printing_id": "partner-alternate"
+        }))
+        .await
+    {
+        Err(the_gathering::games::GamesError::Invalid(errors)) => {
+            assert!(errors.has("commander_printing_id"));
+        }
+        other => panic!("expected a printing error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn clears_defaults_explicitly_and_stale_printings_when_a_card_changes_or_partner_is_removed() {
+    let server = MockServer::start().await;
+    let ctx = deck_ctx(&server).await;
+    save(
+        &ctx,
+        json!({"commander_printing_id": "commander-alternate", "partner_printing_id": "partner-alternate"}),
+    )
+    .await;
+    assert_art(&save(&ctx, json!({"name": "Renamed"})).await);
+    let default = save(&ctx, json!({"commander_printing_id": null})).await;
+    assert_eq!(
+        default["commander_art_crop_url"],
+        "https://img.example/commander-default.jpg"
+    );
+    assert_eq!(default["partner_printing_id"], "partner-alternate");
+    save(&ctx, json!({"commander_printing_id": "commander-alternate"})).await;
+    let changed = save(
+        &ctx,
+        json!({
+            "commander_card_id": "partner",
+            "commander_name": "Thrasios, Triton Hero",
+            "partner_card_id": null,
+            "partner_name": null
+        }),
+    )
+    .await;
+    assert_eq!(changed["commander_printing_id"], Value::Null);
+    assert_eq!(changed["partner_printing_id"], Value::Null);
+    assert_eq!(
+        changed["commander_art_crop_url"],
+        "https://img.example/partner-default.jpg"
+    );
+    assert_eq!(changed["partner_art_crop_url"], Value::Null);
+}
+
+#[tokio::test]
+async fn saved_deck_printing_art_survives_a_catalog_replacement() {
+    let server = MockServer::start().await;
+    let ctx = deck_ctx(&server).await;
+    save(
+        &ctx,
+        json!({"commander_printing_id": "commander-alternate", "partner_printing_id": "partner-alternate"}),
+    )
+    .await;
+    sync_fixture(&ctx.app).await;
+    assert!(
+        catalog(&ctx.app)
+            .get_card("commander")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_art(&save(&ctx, json!({"name": "After sync"})).await);
 }
 
 // ---- card_rulings_controller_test.exs ----
