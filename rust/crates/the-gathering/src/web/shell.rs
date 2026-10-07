@@ -56,42 +56,46 @@ fn dev_server_tags(origin: &str, headers: &HeaderMap) -> String {
 }
 
 fn manifest_tags(state: &AppState) -> String {
+    // Cached once read, like `:persistent_term`; a missing or incomplete manifest (a build
+    // still running) is read again on the next request instead of being cached.
     static TAGS: OnceLock<String> = OnceLock::new();
-    TAGS.get_or_init(|| {
-        let path = state
-            .config
-            .static_dir()
-            .join("assets/react/.vite/manifest.json");
-        let manifest: serde_json::Value = std::fs::read(&path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
-        let Some(entry) = manifest.get(ENTRY) else {
-            tracing::error!(
-                "Vite manifest {} has no entry for {ENTRY}; run `aube run build`",
-                path.display()
-            );
-            return String::new();
-        };
-        let file = entry
-            .get("file")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
-        let styles: Vec<String> = entry
-            .get("css")
-            .and_then(serde_json::Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(serde_json::Value::as_str)
-            .map(|css| format!(r#"<link rel="stylesheet" href="{PUBLIC_PATH}{css}" />"#))
-            .collect();
-        format!(
-            r#"{}
+    if let Some(tags) = TAGS.get() {
+        return tags.clone();
+    }
+    let path = state
+        .config
+        .static_dir()
+        .join("assets/react/.vite/manifest.json");
+    let manifest: serde_json::Value = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    let Some(file) = manifest
+        .get(ENTRY)
+        .and_then(|entry| entry.get("file"))
+        .and_then(serde_json::Value::as_str)
+    else {
+        tracing::error!(
+            "Vite manifest {} has no entry for {ENTRY}; run `aube run build`",
+            path.display()
+        );
+        return String::new();
+    };
+    let styles: Vec<String> = manifest
+        .get(ENTRY)
+        .and_then(|entry| entry.get("css"))
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(|css| format!(r#"<link rel="stylesheet" href="{PUBLIC_PATH}{css}" />"#))
+        .collect();
+    let tags = format!(
+        r#"{}
 <script type="module" src="{PUBLIC_PATH}{file}"></script>"#,
-            styles.join("\n")
-        )
-    })
-    .clone()
+        styles.join("\n")
+    );
+    TAGS.get_or_init(|| tags).clone()
 }
 
 /// Serves the React app shell for every client-side route.
@@ -185,22 +189,23 @@ pub async fn index(
         .into_response()
 }
 
-/// `put_secure_browser_headers` for the browser pipeline.
+/// `put_secure_browser_headers` for the browser pipeline: Phoenix 1.8's defaults, kept
+/// when the handler already set the header.
 pub async fn secure_browser_headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     for (name, value) in [
+        ("referrer-policy", "strict-origin-when-cross-origin"),
         (
             "content-security-policy",
             "base-uri 'self'; frame-ancestors 'self';",
         ),
-        ("referrer-policy", "strict-origin-when-cross-origin"),
         ("x-content-type-options", "nosniff"),
-        ("x-download-options", "noopen"),
-        ("x-frame-options", "SAMEORIGIN"),
         ("x-permitted-cross-domain-policies", "none"),
     ] {
-        headers.insert(name, HeaderValue::from_static(value));
+        if !headers.contains_key(name) {
+            headers.insert(name, HeaderValue::from_static(value));
+        }
     }
     response
 }

@@ -593,22 +593,61 @@ impl std::io::Write for LogBuffer {
     }
 }
 
-impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogBuffer {
-    type Writer = LogBuffer;
+thread_local! {
+    static CAPTURE: std::cell::RefCell<Option<LogBuffer>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Writes to the current thread's capture buffer, if any.
+struct ThreadWriter;
+
+impl std::io::Write for ThreadWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        CAPTURE.with_borrow_mut(|capture| match capture {
+            Some(buffer) => buffer.write(bytes),
+            None => Ok(bytes.len()),
+        })
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for ThreadWriterMaker {
+    type Writer = ThreadWriter;
 
     fn make_writer(&'a self) -> Self::Writer {
-        self.clone()
+        ThreadWriter
+    }
+}
+
+struct ThreadWriterMaker;
+
+/// Stops capturing when dropped.
+pub struct CaptureGuard;
+
+impl Drop for CaptureGuard {
+    fn drop(&mut self) {
+        CAPTURE.with_borrow_mut(|capture| *capture = None);
     }
 }
 
 /// `ExUnit.CaptureLog` at debug level: captures this thread's logs until the guard drops.
 /// `#[tokio::test]` runs on one thread, so requests and spawned tasks log here too.
-pub fn capture_logs() -> (tracing::subscriber::DefaultGuard, LogBuffer) {
+///
+/// One global subscriber writes to a per-thread buffer: a scoped (`set_default`) subscriber
+/// would miss callsites whose interest was cached while no subscriber existed.
+pub fn capture_logs() -> (CaptureGuard, LogBuffer) {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_writer(ThreadWriterMaker)
+            .finish();
+        tracing::subscriber::set_global_default(subscriber).expect("one global subscriber");
+    });
     let buffer = LogBuffer::default();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_ansi(false)
-        .with_writer(buffer.clone())
-        .finish();
-    (tracing::subscriber::set_default(subscriber), buffer)
+    CAPTURE.with_borrow_mut(|capture| *capture = Some(buffer.clone()));
+    (CaptureGuard, buffer)
 }

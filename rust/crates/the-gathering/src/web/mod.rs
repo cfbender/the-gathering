@@ -7,11 +7,13 @@ pub mod api;
 pub mod auth;
 pub mod channels;
 pub mod params;
+pub mod request_id;
 pub mod session;
 pub mod shell;
 pub mod statics;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::middleware::{from_fn, from_fn_with_state};
 use axum::routing::{any, delete, get, patch, post, put};
 
@@ -31,6 +33,9 @@ pub enum Bucket {
     /// Personal API keys, per owner.
     ApiKeys,
 }
+
+/// Largest request body read (`Plug.Parsers`' default 8 MB).
+pub const BODY_LIMIT: usize = 8_000_000;
 
 async fn not_found() -> ApiError {
     ApiError::NotFound
@@ -289,10 +294,18 @@ pub fn router(state: AppState) -> Router {
         .route_layer(from_fn_with_state(state.clone(), api::rate_limit_api_keys))
         .route_layer(from_fn_with_state(state.clone(), auth::api_key_layer));
 
-    Router::new()
+    // `Plug.RequestId` and request logging run after `Plug.Static` and the socket in the
+    // endpoint, so only routed requests get them.
+    let routed = Router::new()
         .merge(v1)
+        .merge(sessioned)
+        // `Plug.Parsers`' default `length`.
+        .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(from_fn(request_id::layer));
+
+    Router::new()
         .route("/socket/websocket", get(webcam::socket))
         .merge(statics::router(&state))
-        .merge(sessioned)
+        .merge(routed)
         .with_state(state)
 }

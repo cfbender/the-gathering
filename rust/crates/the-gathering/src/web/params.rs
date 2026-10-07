@@ -3,8 +3,8 @@
 
 use axum::body::Bytes;
 use axum::extract::{FromRequest, Request};
-use axum::http::header;
-use serde_json::{Map, Value};
+use axum::http::{StatusCode, header};
+use serde_json::{Map, Value, json};
 
 use crate::error::ApiError;
 
@@ -26,6 +26,39 @@ impl Params {
     /// An object param, such as `%{"user" => attrs}`.
     pub fn object(&self, key: &str) -> Option<&Value> {
         self.0.get(key).filter(|value| value.is_object())
+    }
+}
+
+/// `config :phoenix, filter_parameters`: keys containing any of these are never logged.
+pub const FILTERED_PARAMETERS: [&str; 7] = [
+    "password",
+    "image",
+    "token",
+    "secret",
+    "manavault_api_key",
+    "code",
+    "state",
+];
+
+/// `Phoenix.Logger.filter_values/1`: replaces the value of every key that contains a
+/// filtered word with `[FILTERED]`, at any depth.
+pub fn filter_values(value: &Value) -> Value {
+    match value {
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .map(|(key, value)| {
+                    let filtered = if FILTERED_PARAMETERS.iter().any(|word| key.contains(word)) {
+                        Value::String("[FILTERED]".to_owned())
+                    } else {
+                        filter_values(value)
+                    };
+                    (key.clone(), filtered)
+                })
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(filter_values).collect()),
+        other => other.clone(),
     }
 }
 
@@ -73,14 +106,28 @@ impl<S: Send + Sync> FromRequest<S> for Params {
 
     async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
         let mut params = request.uri().query().map(decode_query).unwrap_or_default();
-        let is_json = request
+        let content_type = request
             .headers()
             .get(header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.starts_with("application/json") || value.contains("+json"));
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let is_json =
+            content_type.starts_with("application/json") || content_type.contains("+json");
+        let is_form = content_type.starts_with("application/x-www-form-urlencoded");
         let body = Bytes::from_request(request, state)
             .await
-            .map_err(|_| ApiError::BadRequest)?;
+            .map_err(|rejection| {
+                if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+                    // `Plug.Parsers.RequestTooLargeError`.
+                    ApiError::Custom(
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        json!({ "errors": { "detail": "Request Entity Too Large" } }),
+                    )
+                } else {
+                    ApiError::BadRequest
+                }
+            })?;
         if is_json && !body.is_empty() {
             match serde_json::from_slice::<Value>(&body).map_err(|_| ApiError::BadRequest)? {
                 Value::Object(object) => params.extend(object),
@@ -89,15 +136,42 @@ impl<S: Send + Sync> FromRequest<S> for Params {
                     params.insert("_json".to_owned(), other);
                 }
             }
+        } else if is_form && !body.is_empty() {
+            // `Plug.Parsers.URLENCODED`.
+            let form = std::str::from_utf8(&body).map_err(|_| ApiError::BadRequest)?;
+            params.extend(decode_query(form));
         }
-        Ok(Self(Value::Object(params)))
+        let params = Value::Object(params);
+        tracing::debug!("Parameters: {}", filter_values(&params));
+        Ok(Self(params))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+
+    #[test]
+    fn filters_sensitive_values_at_any_depth() {
+        assert_eq!(
+            filter_values(&json!({
+                "manavault_api_key": "k",
+                "code": "c",
+                "state": "s",
+                "user": {"username": "u", "password": "p", "password_confirmation": "p"},
+                "rows": [{"image_base64": "i"}],
+                "name": "visible"
+            })),
+            json!({
+                "manavault_api_key": "[FILTERED]",
+                "code": "[FILTERED]",
+                "state": "[FILTERED]",
+                "user": {"username": "u", "password": "[FILTERED]", "password_confirmation": "[FILTERED]"},
+                "rows": [{"image_base64": "[FILTERED]"}],
+                "name": "visible"
+            })
+        );
+    }
 
     #[test]
     fn decodes_nested_queries() {

@@ -20,8 +20,7 @@ use self::user::{
 /// Days a cookie session stays valid.
 pub const SESSION_VALIDITY_DAYS: i64 = 14;
 
-/// A `users` row as stored.
-#[derive(Debug)]
+/// A `users` row as stored. `Debug` redacts the credentials.
 pub struct UserRow {
     id: i64,
     username: String,
@@ -39,6 +38,24 @@ pub struct UserRow {
     theme_style: String,
     inserted_at: UtcDateTime,
     updated_at: UtcDateTime,
+}
+
+impl std::fmt::Debug for UserRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UserRow")
+            .field("id", &self.id)
+            .field("username", &self.username)
+            .field("role", &self.role)
+            .field(
+                "hashed_password",
+                &user::redacted(self.hashed_password.as_ref()),
+            )
+            .field(
+                "manavault_api_key",
+                &user::redacted(self.manavault_api_key.as_ref()),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 impl UserRow {
@@ -128,8 +145,8 @@ impl From<sqlx::Error> for RegisterError {
     }
 }
 
-/// Server settings (`server_settings` row 1).
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Server settings (`server_settings` row 1). `Debug` redacts the invitation digest.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ServerSettings {
     /// Anyone may sign in with Discord and become a member.
     pub registration_enabled: bool,
@@ -137,6 +154,19 @@ pub struct ServerSettings {
     pub detailed_stats_from: Option<IsoDate>,
     /// SHA-256 of the reusable invitation secret.
     pub registration_invite_hash: Option<Vec<u8>>,
+}
+
+impl std::fmt::Debug for ServerSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerSettings")
+            .field("registration_enabled", &self.registration_enabled)
+            .field("detailed_stats_from", &self.detailed_stats_from)
+            .field(
+                "registration_invite_hash",
+                &user::redacted(self.registration_invite_hash.as_ref()),
+            )
+            .finish()
+    }
 }
 
 /// A personal API key (without its secret).

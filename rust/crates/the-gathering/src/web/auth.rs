@@ -97,7 +97,8 @@ async fn load_user(state: &AppState, session: &Session) -> Result<Option<User>, 
     if let Some(token) = session.get_bytes("user_token")
         && let Some((user, inserted_at)) = state.accounts.get_user_by_session_token(&token).await?
     {
-        if inserted_at < UtcDateTime::now().plus(Duration::days(-SESSION_REISSUE_AGE_DAYS)) {
+        // `DateTime.diff(now, inserted_at, :day) >= 7`.
+        if inserted_at <= UtcDateTime::now().plus(Duration::days(-SESSION_REISSUE_AGE_DAYS)) {
             create_or_extend_session(state, session, Some(&user), &user).await?;
             state.accounts.delete_user_session_token(&token).await?;
         }

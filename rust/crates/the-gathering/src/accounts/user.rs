@@ -36,8 +36,9 @@ pub const ROLES: [&str; 2] = ["admin", "member"];
 static USERNAME: LazyLock<Regex> = LazyLock::new(|| compile(r"^[a-z0-9][a-z0-9_.-]*$"));
 static DECK_HOST_USERNAME: LazyLock<Regex> = LazyLock::new(|| compile(r"^[^\s/]+$"));
 
-/// A member or administrator account.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// A member or administrator account. `Debug` redacts the credentials, like the Ecto
+/// schema's `redact: true` fields.
+#[derive(Clone, PartialEq, Eq)]
 pub struct User {
     /// Primary key.
     pub id: i64,
@@ -73,6 +74,41 @@ pub struct User {
     pub updated_at: UtcDateTime,
     /// When the session's password (or Discord) authentication happened (virtual).
     pub authenticated_at: Option<UtcDateTime>,
+}
+
+/// Shown in place of a redacted field (Ecto's `inspect` output).
+pub const REDACTED: &str = "**redacted**";
+
+/// `Some("**redacted**")` for a present secret.
+pub fn redacted<T>(value: Option<&T>) -> Option<&'static str> {
+    value.map(|_| REDACTED)
+}
+
+impl std::fmt::Debug for User {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("User")
+            .field("id", &self.id)
+            .field("username", &self.username)
+            .field("display_name", &self.display_name)
+            .field("role", &self.role)
+            .field("disabled_at", &self.disabled_at)
+            .field("hashed_password", &redacted(self.hashed_password.as_ref()))
+            .field("discord_id", &self.discord_id)
+            .field("avatar_url", &self.avatar_url)
+            .field("moxfield_username", &self.moxfield_username)
+            .field("archidekt_username", &self.archidekt_username)
+            .field("manavault_url", &self.manavault_url)
+            .field(
+                "manavault_api_key",
+                &redacted(self.manavault_api_key.as_ref()),
+            )
+            .field("palette", &self.palette)
+            .field("theme_style", &self.theme_style)
+            .field("inserted_at", &self.inserted_at)
+            .field("updated_at", &self.updated_at)
+            .field("authenticated_at", &self.authenticated_at)
+            .finish()
+    }
 }
 
 impl User {

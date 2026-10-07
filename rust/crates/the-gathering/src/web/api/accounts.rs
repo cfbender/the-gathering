@@ -109,8 +109,11 @@ pub async fn invite_create(
     session: Session,
     params: Params,
 ) -> ApiResult<Response> {
-    let token = params.str("token").ok_or(ApiError::BadRequest)?;
-    let hash = crate::accounts::registration_invite_hash(token);
+    // Any `token` value is checked (non-strings are simply invalid); only a missing one is a 400.
+    let token = params.get("token").ok_or(ApiError::BadRequest)?;
+    let hash = token
+        .as_str()
+        .and_then(crate::accounts::registration_invite_hash);
     if state
         .accounts
         .valid_registration_invite_hash(hash.as_deref())
@@ -528,41 +531,72 @@ pub async fn discord_request(
     found(&format!("{}?{query}", oauth.authorize_url))
 }
 
-async fn discord_profile(state: &AppState, code: &str) -> anyhow::Result<Value> {
+/// Why the token exchange or profile request failed. The message names the step and the
+/// status or error class only: Discord's response body (and the request, which carries the
+/// code and client secret) never reach the log (`oauth_error_summary/1`).
+#[derive(Debug, thiserror::Error)]
+enum OauthError {
+    #[error("Discord OAuth is not configured")]
+    NotConfigured,
+    #[error("{0} answered with status={1}")]
+    Status(&'static str, u16),
+    #[error("{0} failed: {1}")]
+    Transport(&'static str, String),
+    #[error("{0} returned an invalid response")]
+    InvalidResponse(&'static str),
+}
+
+async fn oauth_json(
+    step: &'static str,
+    request: reqwest::RequestBuilder,
+) -> Result<Value, OauthError> {
+    let response = request
+        .send()
+        .await
+        .map_err(|error| OauthError::Transport(step, error.without_url().to_string()))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(OauthError::Status(step, status.as_u16()));
+    }
+    response
+        .json()
+        .await
+        .map_err(|_| OauthError::InvalidResponse(step))
+}
+
+async fn discord_profile(state: &AppState, code: &str) -> Result<Value, OauthError> {
     let oauth = state
         .config
         .discord_oauth
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("not configured"))?;
+        .ok_or(OauthError::NotConfigured)?;
     let redirect_uri = format!("{}/auth/discord/callback", state.config.public_url());
-    let token: Value = state
-        .http
-        .post(format!("{}/oauth2/token", oauth.api_base))
-        .form(&[
-            ("grant_type", "authorization_code"),
-            ("code", code),
-            ("client_id", oauth.client_id.as_str()),
-            ("client_secret", oauth.client_secret.as_str()),
-            ("redirect_uri", redirect_uri.as_str()),
-        ])
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let token = oauth_json(
+        "token request",
+        state
+            .http
+            .post(format!("{}/oauth2/token", oauth.api_base))
+            .form(&[
+                ("grant_type", "authorization_code"),
+                ("code", code),
+                ("client_id", oauth.client_id.as_str()),
+                ("client_secret", oauth.client_secret.as_str()),
+                ("redirect_uri", redirect_uri.as_str()),
+            ]),
+    )
+    .await?;
     let access_token = token
         .get("access_token")
         .and_then(Value::as_str)
-        .ok_or_else(|| anyhow::anyhow!("token response without access_token"))?;
-    Ok(state
-        .http
-        .get(format!("{}/users/@me", oauth.api_base))
-        .bearer_auth(access_token)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?)
+        .ok_or(OauthError::InvalidResponse("token request"))?;
+    oauth_json(
+        "profile request",
+        state
+            .http
+            .get(format!("{}/users/@me", oauth.api_base))
+            .bearer_auth(access_token),
+    )
+    .await
 }
 
 /// `GET /auth/discord/callback`.
