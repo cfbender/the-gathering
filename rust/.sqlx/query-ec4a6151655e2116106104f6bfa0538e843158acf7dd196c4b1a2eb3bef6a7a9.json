@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM discord_result_drafts WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "ec4a6151655e2116106104f6bfa0538e843158acf7dd196c4b1a2eb3bef6a7a9"
+}

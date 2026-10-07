@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM webcam_table_sessions WHERE expires_at < ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "215a797bfedf94254e3b241886e0aa8d52461baf219056ac9790d40d8e5964f9"
+}

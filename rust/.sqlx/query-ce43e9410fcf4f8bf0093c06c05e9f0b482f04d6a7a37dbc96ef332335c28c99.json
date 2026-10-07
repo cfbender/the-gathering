@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT oracle_id, selection_key FROM catalog_cards_staging\n         WHERE oracle_id IN (SELECT value FROM json_each(?))",
+  "describe": {
+    "columns": [
+      {
+        "name": "oracle_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog_cards_staging",
+            "name": "oracle_id"
+          }
+        }
+      },
+      {
+        "name": "selection_key",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog_cards_staging",
+            "name": "selection_key"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "ce43e9410fcf4f8bf0093c06c05e9f0b482f04d6a7a37dbc96ef332335c28c99"
+}

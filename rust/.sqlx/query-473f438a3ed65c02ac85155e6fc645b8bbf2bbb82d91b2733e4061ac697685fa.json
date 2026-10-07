@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO discord_scheduled_games (guild_id, channel_id, host_discord_id, title, format, start_at,\n             min_players, status, players, maybe, message_dirty, inserted_at, updated_at)\n           VALUES (?, ?, ?, ?, ?, ?, ?, 'open', '{}', '{}', 1, ?, ?) RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "discord_scheduled_games",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "473f438a3ed65c02ac85155e6fc645b8bbf2bbb82d91b2733e4061ac697685fa"
+}

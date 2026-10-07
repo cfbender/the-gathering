@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id AS \"id!\", p.name, p.user_id, p.discord_id, p.archived_at AS \"archived_at: UtcDateTime\",\n                  u.avatar_url AS \"avatar_url?: String\",\n                  p.inserted_at AS \"inserted_at: UtcDateTime\", p.updated_at AS \"updated_at: UtcDateTime\"\n           FROM players p LEFT JOIN users u ON u.id = p.user_id\n           WHERE ? OR p.archived_at IS NULL\n           ORDER BY lower(p.name)",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "discord_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "discord_id"
+          }
+        }
+      },
+      {
+        "name": "archived_at: UtcDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "archived_at"
+          }
+        }
+      },
+      {
+        "name": "avatar_url?: String",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "avatar_url"
+          }
+        }
+      },
+      {
+        "name": "inserted_at: UtcDateTime",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "inserted_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: UtcDateTime",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "199cf04c415cc7ab7418b365386cfff461772f2881bd185665bbbcc1d9915648"
+}

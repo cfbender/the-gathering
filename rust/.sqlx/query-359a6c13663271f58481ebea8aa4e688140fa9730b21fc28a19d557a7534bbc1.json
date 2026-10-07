@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT 1 FROM decks WHERE id = ? AND player_id = ?) AS \"e!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "e!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "359a6c13663271f58481ebea8aa4e688140fa9730b21fc28a19d557a7534bbc1"
+}

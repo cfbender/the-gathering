@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO discord_result_drafts (id, pending_game_id, discord_id, guild_id, channel_id, snapshot, data, expires_at)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "17fabe81ffa4dc70ad0d7a80bbf2623b1cb70de62d746efc7d21727f2f20e3b8"
+}

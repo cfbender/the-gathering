@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT 1 FROM players WHERE id = ? AND user_id = ?) AS \"e!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "e!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "27dec540cf57f2076ad682667ecead3a693c8ef79f057dda4f88acba34c4f143"
+}

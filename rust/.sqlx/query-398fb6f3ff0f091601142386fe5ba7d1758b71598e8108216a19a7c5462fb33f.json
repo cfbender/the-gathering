@@ -1,0 +1,218 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", player_id, name, commander_card_id, commander_name, commander_printing_id,\n                partner_card_id, partner_name, partner_printing_id, color_identity, decklist_url,\n                decklist_source AS \"decklist_source: crate::games::model::DecklistSource\",\n                archived_at AS \"archived_at: crate::db::UtcDateTime\", skip_count, included_for_play AS \"included_for_play: bool\",\n                inserted_at AS \"inserted_at: crate::db::UtcDateTime\", updated_at AS \"updated_at: crate::db::UtcDateTime\"\n               FROM decks WHERE player_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "player_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "player_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "commander_card_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_card_id"
+          }
+        }
+      },
+      {
+        "name": "commander_name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_name"
+          }
+        }
+      },
+      {
+        "name": "commander_printing_id",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_printing_id"
+          }
+        }
+      },
+      {
+        "name": "partner_card_id",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_card_id"
+          }
+        }
+      },
+      {
+        "name": "partner_name",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_name"
+          }
+        }
+      },
+      {
+        "name": "partner_printing_id",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_printing_id"
+          }
+        }
+      },
+      {
+        "name": "color_identity",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "color_identity"
+          }
+        }
+      },
+      {
+        "name": "decklist_url",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "decklist_url"
+          }
+        }
+      },
+      {
+        "name": "decklist_source: crate::games::model::DecklistSource",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "decklist_source"
+          }
+        }
+      },
+      {
+        "name": "archived_at: crate::db::UtcDateTime",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "archived_at"
+          }
+        }
+      },
+      {
+        "name": "skip_count",
+        "ordinal": 13,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "skip_count"
+          }
+        }
+      },
+      {
+        "name": "included_for_play: bool",
+        "ordinal": 14,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "included_for_play"
+          }
+        }
+      },
+      {
+        "name": "inserted_at: crate::db::UtcDateTime",
+        "ordinal": 15,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "inserted_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: crate::db::UtcDateTime",
+        "ordinal": 16,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "398fb6f3ff0f091601142386fe5ba7d1758b71598e8108216a19a7c5462fb33f"
+}

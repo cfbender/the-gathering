@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", user_id, name, prefix, last_used_at AS \"last_used_at: UtcDateTime\",\n                      inserted_at AS \"inserted_at: UtcDateTime\"\n               FROM api_keys WHERE user_id = ? ORDER BY inserted_at DESC, id DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "api_keys",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "api_keys",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "api_keys",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "prefix",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "api_keys",
+            "name": "prefix"
+          }
+        }
+      },
+      {
+        "name": "last_used_at: UtcDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "api_keys",
+            "name": "last_used_at"
+          }
+        }
+      },
+      {
+        "name": "inserted_at: UtcDateTime",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "api_keys",
+            "name": "inserted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "8a8e2dbc71d4460fd114ad52ffb439f1c9e13a0d3adb2faa0789166d44204588"
+}

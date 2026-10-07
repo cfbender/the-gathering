@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE players SET user_id = ?, discord_id = ?, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "7e8eaa5ce918dbaac2708e82057ebd1045674c383d7ba9700c2825dca55ddcfa"
+}

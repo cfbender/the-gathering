@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM catalog_cards_staging",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "c47518fbdedeade40008866fccfd27be61609793be621f0ca481f056cdff8905"
+}

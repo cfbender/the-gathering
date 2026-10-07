@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE server_settings SET registration_enabled = ?, detailed_stats_from = ?, updated_at = ? WHERE id = 1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "4b18609825317eb8ce0b9a2cb00a4aff990b5e08588ba0bbc9e54affa25e709e"
+}

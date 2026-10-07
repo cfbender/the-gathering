@@ -1,0 +1,28 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT 1 FROM decks WHERE player_id = ?1) AS \"decks!: bool\",\n                  EXISTS(SELECT 1 FROM game_players WHERE player_id = ?1 OR eliminated_by_player_id = ?1) AS \"seats!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "decks!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "seats!: bool",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1bb0d39f230a0d3c8ac2f016b1eb0052f54eccc6f35fd435568307aaa35bba65"
+}

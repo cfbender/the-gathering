@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT game_id AS \"game_id!: i64\" FROM sheet_import_receipts WHERE key = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "game_id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "sheet_import_receipts",
+            "name": "game_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "51c1f4eb0a409a4a43f63d04b50deb51aea6a565ea210971a02cb4747674527d"
+}

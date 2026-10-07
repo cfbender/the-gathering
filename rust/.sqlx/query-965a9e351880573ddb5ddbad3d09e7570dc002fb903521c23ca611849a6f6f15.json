@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: i64\" FROM games\n           WHERE (?1 IS NULL OR played_at >= ?1) AND (?2 IS NULL OR played_at < ?2)\n             AND (?3 IS NULL OR id IN (SELECT game_id FROM game_players WHERE player_id = ?3))\n             AND (?4 IS NULL OR id IN (SELECT game_id FROM game_players WHERE deck_id = ?4))\n           ORDER BY played_at DESC, id DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "965a9e351880573ddb5ddbad3d09e7570dc002fb903521c23ca611849a6f6f15"
+}

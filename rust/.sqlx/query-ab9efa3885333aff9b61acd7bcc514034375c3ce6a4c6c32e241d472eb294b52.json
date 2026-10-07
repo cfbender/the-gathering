@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO cards (id, oracle_id, name, normalized_name, mana_cost, cmc, type_line, oracle_text, colors,\n            color_identity, image_uris, set_code, collector_number, released_at, layout, rarity, game_changer,\n            commander_legal, can_be_commander, commander_pairing, inserted_at, updated_at)\n         SELECT id, oracle_id, name, normalized_name, mana_cost, cmc, type_line, oracle_text, colors,\n            color_identity, image_uris, set_code, collector_number, released_at, layout, rarity, game_changer,\n            commander_legal, can_be_commander, commander_pairing, inserted_at, updated_at\n         FROM catalog_cards_staging",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "ab9efa3885333aff9b61acd7bcc514034375c3ce6a4c6c32e241d472eb294b52"
+}

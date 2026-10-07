@@ -35,7 +35,8 @@
 #   AUTO_UPDATE       cron schedule for automatic updates, or "off" (0 4 * * *: daily at 04:00)
 #
 # Inside the container:
-#   /opt/the-gathering/releases/<tag>   Elixir releases from GitHub; `current` points at the live one
+#   /opt/the-gathering/releases/<tag>   releases from GitHub (the Rust server and the built web app);
+#                                       `current` points at the live one
 #   /etc/the-gathering.env              settings (copied from .env.example, SECRET_KEY_BASE generated)
 #   /var/lib/the-gathering              DATA_DIR: SQLite database, recognizer bundles, image cache
 #   the-gathering.service               systemd unit running bin/the_gathering as user the-gathering
@@ -512,7 +513,7 @@ EnvironmentFile=${ENV_FILE}
 WorkingDirectory=${APP_DIR}/current
 # Paths are fixed here, after the env file, so a settings file copied from a Docker install
 # (DATA_DIR=/data, DATABASE_PATH=/data/..., PORT=...) cannot point the service elsewhere.
-ExecStart=/usr/bin/env PHX_SERVER=true PORT=4000 DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp LANG=C.UTF-8 LC_ALL=C.UTF-8 ${APP_DIR}/current/bin/the_gathering start
+ExecStart=/usr/bin/env THE_GATHERING_ENV=prod PORT=4000 DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db LANG=C.UTF-8 LC_ALL=C.UTF-8 ${APP_DIR}/current/bin/the_gathering start
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -540,7 +541,7 @@ EOF
       THE_GATHERING_ADMIN_PASSWORD=$(printf %q "$ADMIN_PASSWORD") \
       DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp \
       setpriv --reuid=${APP_USER} --regid=${APP_USER} --init-groups \
-      ${APP_DIR}/current/bin/the_gathering eval 'TheGathering.Release.bootstrap_admin()'"
+      ${APP_DIR}/current/bin/the_gathering bootstrap-admin"
   fi
 
   in_ct "$ctid" "systemctl start ${SERVICE}"
@@ -648,7 +649,7 @@ bootstrap_admin() {
     THE_GATHERING_ADMIN_PASSWORD=$(printf %q "$ADMIN_PASSWORD") \
     DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp \
     setpriv --reuid=${APP_USER} --regid=${APP_USER} --init-groups \
-    ${APP_DIR}/current/bin/the_gathering eval 'TheGathering.Release.bootstrap_admin()'"
+    ${APP_DIR}/current/bin/the_gathering bootstrap-admin"
   in_ct "$ctid" "systemctl start ${SERVICE}"
   ok "administrator $ADMIN_USERNAME is ready in container $ctid"
 }

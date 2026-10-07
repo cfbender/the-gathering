@@ -1,28 +1,14 @@
 # syntax=docker/dockerfile:1
 
-ARG ELIXIR_VERSION=1.20.4
-# OTP 29.1.1 fixes the ssl/ssh/public_key advisories CVE-2026-65634,
-# CVE-2026-68956, and CVE-2026-89422 (and keeps the 29.1 OTP-20292 Alpine fix).
-ARG OTP_VERSION=29.1.1
+ARG RUST_VERSION=1.99.0
 ARG ALPINE_VERSION=3.24
 ARG NODE_VERSION=26.9.0
 ARG AUBE_VERSION=1.21.0
 
-# Hex images pin the OTP patch release as well as Elixir. Keep the builder's
-# Alpine minor version aligned with the runner for native release dependencies.
-ARG BUILDER_IMAGE=hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-alpine-${ALPINE_VERSION}.2
-ARG RUNNER_IMAGE=alpine:${ALPINE_VERSION}
-
-FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS node-runtime
-
-FROM ${BUILDER_IMAGE} AS builder
+FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS assets
 
 ARG AUBE_VERSION
-COPY --from=node-runtime /usr/local /usr/local
-
-# pkgconf, openssl-dev, and libsrtp-dev build the ex_dtls and ex_libsrtp NIFs behind the
-# webcam-table SFU (musl has no precompiled libsrtp, so it links the system one).
-RUN apk add --no-cache build-base git curl ca-certificates tar pkgconf openssl-dev libsrtp-dev
+RUN apk add --no-cache curl ca-certificates tar
 
 WORKDIR /app
 
@@ -46,39 +32,32 @@ RUN set -eu; \
   rm -f /tmp/aube /tmp/aube.tar.gz; \
   aube --version
 
-RUN mix local.hex --force && mix local.rebar --force
-
-ENV MIX_ENV=prod
-
-COPY mix.exs mix.lock ./
-RUN mix deps.get --only $MIX_ENV
-RUN mkdir config
-
-COPY config/config.exs config/${MIX_ENV}.exs config/
-RUN mix deps.compile
-
 COPY package.json aube-lock.yaml ./
 RUN aube install --frozen-lockfile
 
-COPY priv priv
-# The admin UI shows this version and compares it with GitHub (vX.Y.Z for tags, nightly-<commit>
-# for main); container.yml passes it. Empty means a local development build.
-ARG APP_VERSION=""
-RUN printf '%s\n' "$APP_VERSION" > priv/VERSION
-COPY lib lib
 COPY vite.config.ts tsconfig.json ./
 COPY assets assets
+COPY priv/static priv/static
+RUN NODE_ENV=production aube run build
 
-RUN mix compile
-RUN mix assets.deploy
+FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} AS server
 
-COPY config/runtime.exs config/
-RUN mix release
+# build-base compiles the bundled SQLite and aws-lc (the SFU's certificate generation).
+RUN apk add --no-cache build-base cmake perl git
 
-FROM ${RUNNER_IMAGE} AS runner
+WORKDIR /app/rust
+COPY rust ./
+COPY priv/repo/structure.sql ../priv/repo/structure.sql
+# Queries are checked against the committed .sqlx metadata (SQLX_OFFLINE in .cargo/config.toml).
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/rust/target \
+    cargo build --release --locked --bin the-gathering \
+    && install -D target/release/the-gathering /out/the-gathering
+
+FROM alpine:${ALPINE_VERSION} AS runner
 
 RUN apk upgrade --no-cache \
-  && apk add --no-cache libstdc++ openssl libsrtp ncurses-libs ca-certificates lksctp-tools su-exec rsvg-convert font-dejavu
+  && apk add --no-cache ca-certificates su-exec font-dejavu tzdata
 
 ENV LANG=C.UTF-8
 ENV LANGUAGE=C.UTF-8
@@ -86,16 +65,22 @@ ENV LC_ALL=C.UTF-8
 
 WORKDIR /app
 RUN addgroup -S app && adduser -S -G app -h /home/app -s /bin/sh app \
-  && mkdir -p /data && chown -R app:app /app /data
+  && mkdir -p /data /app/bin /app/priv && chown -R app:app /app /data
 
-ENV MIX_ENV=prod
-ENV PHX_SERVER=true
+ENV THE_GATHERING_ENV=prod
 ENV PORT=4000
 ENV DATA_DIR=/data
+ENV PRIV_DIR=/app/priv
 
-COPY --from=builder --chown=app:app /app/_build/prod/rel/the_gathering ./
+COPY --from=server --chown=app:app /out/the-gathering /app/bin/the-gathering
+COPY --chown=app:app rust/release/the_gathering /app/bin/the_gathering
+COPY --from=assets --chown=app:app /app/priv/static /app/priv/static
+# The admin UI shows this version and compares it with GitHub (vX.Y.Z for tags, nightly-<commit>
+# for main); container.yml passes it. Empty means a local development build.
+ARG APP_VERSION=""
+RUN printf '%s\n' "$APP_VERSION" > /app/priv/VERSION && chown app:app /app/priv/VERSION
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod 755 /usr/local/bin/docker-entrypoint.sh
+RUN chmod 755 /usr/local/bin/docker-entrypoint.sh /app/bin/the_gathering
 
 EXPOSE 4000
 VOLUME ["/data"]

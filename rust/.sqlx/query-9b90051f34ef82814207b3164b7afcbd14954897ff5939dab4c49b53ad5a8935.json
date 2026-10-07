@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO games (played_at, duration_minutes, turns, win_condition, notes, source, format, external_id,\n                              portable_id, created_by_user_id, inserted_at, updated_at)\n           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9b90051f34ef82814207b3164b7afcbd14954897ff5939dab4c49b53ad5a8935"
+}

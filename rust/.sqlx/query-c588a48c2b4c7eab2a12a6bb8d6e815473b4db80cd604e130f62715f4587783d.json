@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", mvp_card_name AS \"mvp_card_name!\" FROM game_players\n           WHERE id > ? AND mvp_card_id IS NULL AND mvp_card_name IS NOT NULL ORDER BY id LIMIT ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "mvp_card_name!",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "mvp_card_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "c588a48c2b4c7eab2a12a6bb8d6e815473b4db80cd604e130f62715f4587783d"
+}

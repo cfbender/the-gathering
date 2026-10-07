@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: i64\" FROM games WHERE id IN (SELECT value FROM json_each(?))\n           ORDER BY played_at DESC, id DESC LIMIT ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4a29a3a8c3c9ddf90ae82c6f172d770707b53fb1ff66209d6b63b26948b905d5"
+}

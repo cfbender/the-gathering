@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: i64\", external_id, guild_id, channel_id,\n                      played_at AS \"played_at: UtcDateTime\", players, raw,\n                      inserted_at AS \"inserted_at: UtcDateTime\", updated_at AS \"updated_at: UtcDateTime\"\n               FROM pending_discord_games AS pending WHERE channel_id = ?\n           AND NOT EXISTS (SELECT 1 FROM games WHERE games.source = 'discord' AND games.external_id = pending.external_id)\n         ORDER BY played_at DESC, id DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pending_discord_games",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "external_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_discord_games",
+            "name": "external_id"
+          }
+        }
+      },
+      {
+        "name": "guild_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_discord_games",
+            "name": "guild_id"
+          }
+        }
+      },
+      {
+        "name": "channel_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_discord_games",
+            "name": "channel_id"
+          }
+        }
+      },
+      {
+        "name": "played_at: UtcDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_discord_games",
+            "name": "played_at"
+          }
+        }
+      },
+      {
+        "name": "players",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_discord_games",
+            "name": "players"
+          }
+        }
+      },
+      {
+        "name": "raw",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_discord_games",
+            "name": "raw"
+          }
+        }
+      },
+      {
+        "name": "inserted_at: UtcDateTime",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_discord_games",
+            "name": "inserted_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: UtcDateTime",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_discord_games",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "52a211a6b2da59bf3055417b97759101ccb8d83ec5b8ab33aed811fc1378ad0c"
+}

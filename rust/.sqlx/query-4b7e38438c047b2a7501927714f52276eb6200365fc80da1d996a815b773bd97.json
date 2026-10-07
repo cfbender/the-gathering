@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT user_id AS \"user_id!: i64\", authenticated_at AS \"authenticated_at: UtcDateTime\",\n                      inserted_at AS \"inserted_at!: UtcDateTime\"\n               FROM users_tokens WHERE token = ? AND context = 'session' AND inserted_at > ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "users_tokens",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "authenticated_at: UtcDateTime",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users_tokens",
+            "name": "authenticated_at"
+          }
+        }
+      },
+      {
+        "name": "inserted_at!: UtcDateTime",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users_tokens",
+            "name": "inserted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "4b7e38438c047b2a7501927714f52276eb6200365fc80da1d996a815b773bd97"
+}

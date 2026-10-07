@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id AS \"id!\", p.name, p.user_id, p.discord_id, p.archived_at AS \"archived_at: UtcDateTime\",\n                  p.inserted_at AS \"inserted_at: UtcDateTime\", p.updated_at AS \"updated_at: UtcDateTime\",\n                  u.id AS \"linked_id?: i64\", u.username AS \"username?: String\"\n           FROM players p LEFT JOIN users u ON u.id = p.user_id\n           WHERE instr(lower(p.name), ?1) > 0 OR instr(p.discord_id, ?1) > 0 OR instr(lower(u.username), ?1) > 0\n           ORDER BY lower(p.name), p.id\n           LIMIT ?2 OFFSET ?3",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "discord_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "discord_id"
+          }
+        }
+      },
+      {
+        "name": "archived_at: UtcDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "archived_at"
+          }
+        }
+      },
+      {
+        "name": "inserted_at: UtcDateTime",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "inserted_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: UtcDateTime",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "name": "linked_id?: i64",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "username?: String",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "username"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "f8779535f4eb5b6dc1ebdfd4107ff4902d312ac2fbccad7981e7af43bee40c3d"
+}

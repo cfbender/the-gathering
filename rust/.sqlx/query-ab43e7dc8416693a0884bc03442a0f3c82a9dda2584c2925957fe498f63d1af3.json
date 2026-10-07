@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE catalog_syncs SET status = 'succeeded', last_finished_at = ?, card_count = ?,\n         scryfall_updated_at = ?, last_error = NULL, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "ab43e7dc8416693a0884bc03442a0f3c82a9dda2584c2925957fe498f63d1af3"
+}

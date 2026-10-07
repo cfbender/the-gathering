@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT key AS \"key!\", game_id FROM sheet_import_receipts WHERE key IN (SELECT value FROM json_each(?))",
+  "describe": {
+    "columns": [
+      {
+        "name": "key!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sheet_import_receipts",
+            "name": "key"
+          }
+        }
+      },
+      {
+        "name": "game_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "sheet_import_receipts",
+            "name": "game_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "da1c4c118aa7af8831d70bda1b5e88da1665eeb7b78125118a8faddf826b1d07"
+}

@@ -1,8 +1,8 @@
 services:
   the-gathering-review:
-    # Phoenix listens on 31397; its `aube run dev` watcher starts Vite on 5173,
-    # which serves the React app with HMR and proxies everything else to Phoenix.
-    command: PORT=31397 DISCORD_CLIENT_ID=review-client DISCORD_CLIENT_SECRET=review-secret mise exec -- mix phx.server
+    # The Rust server listens on 31397; rust/scripts/dev.sh also starts Vite on 5173,
+    # which serves the React app with HMR and proxies everything else to the server.
+    command: PORT=31397 DISCORD_CLIENT_ID=review-client DISCORD_CLIENT_SECRET=review-secret mise run dev
     port: 5173
     portal:
       title: The Gathering

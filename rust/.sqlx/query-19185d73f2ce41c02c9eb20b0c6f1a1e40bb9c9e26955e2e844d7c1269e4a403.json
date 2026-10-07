@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", image_uris FROM card_printings WHERE id IN (SELECT value FROM json_each(?))",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "image_uris",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "image_uris"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "19185d73f2ce41c02c9eb20b0c6f1a1e40bb9c9e26955e2e844d7c1269e4a403"
+}

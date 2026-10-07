@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT manavault_api_key FROM users WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "manavault_api_key",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "manavault_api_key"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "25022de8b3d8c688d17c283fbdc816f8241c278087d7eed02daee9c24cdf79b4"
+}

@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT 1 FROM game_players a JOIN game_players b ON a.game_id = b.game_id\n                         WHERE a.player_id = ? AND b.player_id = ?) AS \"shared!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "shared!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fc038068c73135d539438844d4a11b14a6c78d9edf095d9726efdf3ed51ed008"
+}

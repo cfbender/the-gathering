@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE discord_scheduled_games SET status = 'cancelled', message_dirty = 0 WHERE id = ? AND message_id IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "881ba48c58047723b630e1121d90103311a6f223d80822c5b69749387083eb1c"
+}

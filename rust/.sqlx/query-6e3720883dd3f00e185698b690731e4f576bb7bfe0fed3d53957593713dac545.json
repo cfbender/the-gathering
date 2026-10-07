@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO card_rulings_cache (id, rulings, fetched_at) VALUES (?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET rulings = excluded.rulings, fetched_at = excluded.fetched_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "6e3720883dd3f00e185698b690731e4f576bb7bfe0fed3d53957593713dac545"
+}

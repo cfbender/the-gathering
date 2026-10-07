@@ -1,0 +1,40 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT d.id AS \"id!\", count(s.id) AS \"play_count!: i64\", max(g.played_at) AS \"last_played_at?: UtcDateTime\"\n           FROM decks d\n           LEFT JOIN game_players s ON s.deck_id = d.id\n           LEFT JOIN games g ON g.id = s.game_id\n           WHERE d.player_id = ? AND d.archived_at IS NULL AND d.included_for_play\n           GROUP BY d.id\n           ORDER BY lower(d.name), d.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "play_count!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "last_played_at?: UtcDateTime",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "f66f6852a09b07bb285c8715013b2ff9ff61fb7b758e0e41403ad2c339ec8036"
+}

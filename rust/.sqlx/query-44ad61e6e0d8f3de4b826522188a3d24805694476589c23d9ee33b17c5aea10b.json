@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM pending_discord_games WHERE updated_at < ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "44ad61e6e0d8f3de4b826522188a3d24805694476589c23d9ee33b17c5aea10b"
+}

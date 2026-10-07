@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE decks SET skip_count = skip_count + 1 WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "7003ed8a227ffd6b433dc0c8b7fc3e6c7822753a759267ad3ddedaf68c91f340"
+}

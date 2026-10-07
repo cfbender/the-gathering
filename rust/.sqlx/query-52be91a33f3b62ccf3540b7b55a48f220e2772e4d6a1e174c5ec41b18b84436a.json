@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE discord_scheduled_games SET players = ?, maybe = ?, status = ?, start_at = ?, maybe_pinged_at = ?,\n           maybe_ping_id = ?, message_dirty = 1, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "52be91a33f3b62ccf3540b7b55a48f220e2772e4d6a1e174c5ec41b18b84436a"
+}

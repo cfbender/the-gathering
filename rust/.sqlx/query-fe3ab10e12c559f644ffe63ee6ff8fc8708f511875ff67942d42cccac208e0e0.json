@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM discord_result_drafts WHERE expires_at < ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "fe3ab10e12c559f644ffe63ee6ff8fc8708f511875ff67942d42cccac208e0e0"
+}

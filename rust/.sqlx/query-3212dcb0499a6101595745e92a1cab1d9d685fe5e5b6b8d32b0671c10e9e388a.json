@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO game_players (game_id, player_id, deck_id, seat, result, kills, eliminated_turn,\n                                   eliminated_by_player_id, mvp_card_id, mvp_card_name, notes, inserted_at, updated_at)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 13
+    },
+    "nullable": []
+  },
+  "hash": "3212dcb0499a6101595745e92a1cab1d9d685fe5e5b6b8d32b0671c10e9e388a"
+}

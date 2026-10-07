@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT details, fetched_at AS \"fetched_at: UtcDateTime\" FROM card_details_cache WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "details",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_details_cache",
+            "name": "details"
+          }
+        }
+      },
+      {
+        "name": "fetched_at: UtcDateTime",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_details_cache",
+            "name": "fetched_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "977e4573294d294c8ea528df549810f9ec6e61353cf7f03da74e97046d0d4ff6"
+}

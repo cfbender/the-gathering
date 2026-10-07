@@ -1,8 +1,8 @@
 name: Quality
 
-# The same checks as `mix precommit`, split into parallel jobs: Elixir lint plus the ExUnit
-# suite in parallel partitions, and the frontend checks. "Precommit quality gate" aggregates
-# them so branch protection keeps a single required check.
+# Parallel jobs: Elixir lint plus the ExUnit suite in partitions (the Ecto migrations remain
+# the schema definition), the Rust server (fmt, clippy, tests), and the frontend checks.
+# "Precommit quality gate" aggregates them so branch protection keeps a single required check.
 on:
   pull_request:
   push:
@@ -122,9 +122,63 @@ jobs:
       - name: Check, test and build
         run: mise exec -- aube run precommit
 
+  rust:
+    name: Rust server lint and tests
+    runs-on: ubuntu-latest
+
+    env:
+      MISE_ENABLE_TOOLS: rust,sqlite
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up mise tools
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install: true
+          install_args: rust sqlite
+          cache: true
+
+      - name: Cache Cargo registry and build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock', 'mise.toml') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # The server applies rust/migrations/<version>_*.sql for every Ecto migration a database
+      # is missing, so each Ecto migration needs its generated SQL (`mise run rust:migrations`).
+      - name: Check that every Ecto migration has its Rust SQL
+        run: |
+          missing=0
+          for path in priv/repo/migrations/*.exs; do
+            version="$(basename "$path" | cut -d_ -f1)"
+            if ! ls rust/migrations/"${version}"_*.sql >/dev/null 2>&1; then
+              echo "::error::rust/migrations has no SQL for ${path}; run mise run rust:migrations"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Check queries against priv/repo/structure.sql
+        working-directory: rust
+        run: |
+          mkdir -p target
+          rm -f target/schema.db
+          grep -v '^CREATE TABLE sqlite_' ../priv/repo/structure.sql | mise exec -- sqlite3 target/schema.db
+          SQLX_OFFLINE=false DATABASE_URL="sqlite://$PWD/target/schema.db?mode=ro" \
+            mise exec -- cargo check --workspace --all-targets --locked
+
+      - name: Format, lint, and test against the committed query metadata
+        run: mise run rust:check
+
   precommit:
     name: Precommit quality gate
-    needs: [elixir, frontend]
+    needs: [elixir, rust, frontend]
     if: always()
     runs-on: ubuntu-latest
 

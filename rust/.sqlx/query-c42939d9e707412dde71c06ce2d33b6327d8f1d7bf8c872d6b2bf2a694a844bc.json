@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO catalog_cards_staging (id, oracle_id, name, normalized_name, mana_cost, cmc, type_line,\n            oracle_text, colors, color_identity, image_uris, set_code, collector_number, released_at, layout,\n            rarity, game_changer, commander_legal, can_be_commander, commander_pairing, selection_key,\n            inserted_at, updated_at)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n         ON CONFLICT (oracle_id) DO UPDATE SET id = excluded.id, name = excluded.name,\n            normalized_name = excluded.normalized_name, mana_cost = excluded.mana_cost, cmc = excluded.cmc,\n            type_line = excluded.type_line, oracle_text = excluded.oracle_text, colors = excluded.colors,\n            color_identity = excluded.color_identity, image_uris = excluded.image_uris,\n            set_code = excluded.set_code, collector_number = excluded.collector_number,\n            released_at = excluded.released_at, layout = excluded.layout, rarity = excluded.rarity,\n            game_changer = excluded.game_changer, commander_legal = excluded.commander_legal,\n            can_be_commander = excluded.can_be_commander, commander_pairing = excluded.commander_pairing,\n            selection_key = excluded.selection_key, updated_at = excluded.updated_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 23
+    },
+    "nullable": []
+  },
+  "hash": "c42939d9e707412dde71c06ce2d33b6327d8f1d7bf8c872d6b2bf2a694a844bc"
+}

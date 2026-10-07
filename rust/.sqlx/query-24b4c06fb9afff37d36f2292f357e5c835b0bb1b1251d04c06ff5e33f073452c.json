@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE discord_scheduled_games SET maybe_ping_id = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "24b4c06fb9afff37d36f2292f357e5c835b0bb1b1251d04c06ff5e33f073452c"
+}

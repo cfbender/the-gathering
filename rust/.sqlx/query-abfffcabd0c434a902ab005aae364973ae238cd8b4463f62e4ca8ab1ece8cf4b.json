@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE game_players SET deck_id = ? WHERE deck_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "abfffcabd0c434a902ab005aae364973ae238cd8b4463f62e4ca8ab1ece8cf4b"
+}

@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT snapshot, expires_at FROM webcam_table_sessions WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "snapshot",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "webcam_table_sessions",
+            "name": "snapshot"
+          }
+        }
+      },
+      {
+        "name": "expires_at",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "webcam_table_sessions",
+            "name": "expires_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "01a00cf48256968ac19bbdf288599362f931c259d486d180f546d4f56a554aa6"
+}

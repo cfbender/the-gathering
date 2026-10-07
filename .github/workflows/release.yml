@@ -1,6 +1,7 @@
 name: Release
 
-# Builds the Elixir release tarball that deploy/proxmox/the-gathering.sh installs
+# Builds the release tarball (the Rust server plus the built React app) that
+# deploy/proxmox/the-gathering.sh installs
 # (bare-metal / LXC, no Docker). Version tags publish a GitHub release; every push to
 # main republishes the rolling "nightly" prerelease (tag moved to the commit) that
 # `update nightly` / VERSION=nightly install. The container image is built separately
@@ -22,7 +23,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  MIX_ENV: prod
   NODE_VERSION: 26.9.0
   NODE_SHA256: c6ecd8efc1c1d395265891675319da7a7b3785c6be174bd78933cf4f057624d1
   AUBE_VERSION: 1.21.0
@@ -33,10 +33,9 @@ jobs:
     name: Build release tarball
     runs-on: ubuntu-latest
     # Build on the same Debian release the installer targets (Debian 13 "trixie") so the
-    # bundled ERTS and native deps link against the glibc/OpenSSL the container ships.
-    # Keep Elixir/OTP aligned with the Dockerfile.
+    # server links against the glibc the container ships. Keep Rust aligned with mise.toml.
     container:
-      image: hexpm/elixir:1.20.4-erlang-29.1.1-debian-trixie-20260918
+      image: rust:1.99.0-trixie
 
     steps:
       - name: Check out repository
@@ -46,7 +45,7 @@ jobs:
         run: |
           apt-get update -qq
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-            build-essential git curl ca-certificates xz-utils pkg-config libssl-dev >/dev/null
+            build-essential git curl ca-certificates xz-utils pkg-config >/dev/null
 
       # The checksums are verified either way, so a cached tarball is as trusted as a fresh one.
       - name: Cache Node and aube downloads
@@ -69,19 +68,15 @@ jobs:
           node --version
           aube --version
 
-      - name: Install Hex and Rebar
-        run: mix local.hex --force && mix local.rebar --force
-
-      # Native deps (ex_dtls, exqlite, ...) link against the container's OTP and libc, so the
-      # key includes this file: changing the image above starts from a clean build.
-      - name: Cache Elixir dependencies and build
+      - name: Cache Cargo registry and build
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            deps
-            _build/prod
-          key: release-mix-${{ hashFiles('mix.lock', '.github/workflows/release.yml') }}
-          restore-keys: release-mix-
+            /usr/local/cargo/registry
+            /usr/local/cargo/git
+            rust/target
+          key: release-cargo-${{ hashFiles('rust/Cargo.lock', '.github/workflows/release.yml') }}
+          restore-keys: release-cargo-
 
       - name: Cache JavaScript dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -89,17 +84,17 @@ jobs:
           path: node_modules
           key: release-aube-${{ env.AUBE_VERSION }}-${{ hashFiles('aube-lock.yaml') }}
 
-      - name: Fetch and compile dependencies
-        run: |
-          mix deps.get --only prod
-          mix deps.compile
-
       - name: Build assets
         run: |
           aube install --frozen-lockfile
-          mix compile
-          mix assets.deploy
+          NODE_ENV=production aube run build
 
+      - name: Build the server
+        working-directory: rust
+        run: cargo build --release --locked --bin the-gathering
+
+      # Same layout as the Elixir release (the_gathering/bin/the_gathering start | eval ...),
+      # so deploy/proxmox/the-gathering.sh and existing installs keep working.
       - name: Assemble release
         id: release
         run: |
@@ -108,10 +103,14 @@ jobs:
           # priv/VERSION ships inside the release: the admin UI shows it and compares it with
           # GitHub (the nightly tag's commit, or the latest release). Same format as container.yml.
           if [ "$tag" = nightly ]; then version="nightly-$(printf %s "$GITHUB_SHA" | cut -c1-7)"; else version="$tag"; fi
-          printf '%s\n' "$version" > priv/VERSION
-          mix release --overwrite
+          rel=build/the_gathering
+          rm -rf build && mkdir -p "$rel/bin" "$rel/priv"
+          install -m 0755 rust/target/release/the-gathering "$rel/bin/the-gathering"
+          install -m 0755 rust/release/the_gathering "$rel/bin/the_gathering"
+          cp -r priv/static "$rel/priv/static"
+          printf '%s\n' "$version" > "$rel/priv/VERSION"
           archive="the_gathering-${tag}-linux-amd64.tar.gz"
-          tar -C _build/prod/rel -czf "$archive" the_gathering
+          tar -C build -czf "$archive" the_gathering
           sha256sum "$archive" > "${archive}.sha256"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "archive=${archive}" >> "$GITHUB_OUTPUT"

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE discord_scheduled_games SET status = ?, room_id = ?, message_dirty = 1, updated_at = ?\n         WHERE id = ? AND status = 'open'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "8de40ad78089b666086c457c980a04703aba6a06398aefff29b76c78ef50b7c6"
+}

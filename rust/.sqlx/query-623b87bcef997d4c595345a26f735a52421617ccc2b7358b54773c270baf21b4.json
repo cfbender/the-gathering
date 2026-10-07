@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", mvp_card_id, mvp_card_name FROM game_players WHERE game_id = ? ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "mvp_card_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "mvp_card_id"
+          }
+        }
+      },
+      {
+        "name": "mvp_card_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "mvp_card_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "623b87bcef997d4c595345a26f735a52421617ccc2b7358b54773c270baf21b4"
+}

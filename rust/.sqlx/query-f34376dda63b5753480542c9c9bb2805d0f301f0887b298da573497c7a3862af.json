@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO pending_discord_games (external_id, guild_id, channel_id, played_at, players, raw, inserted_at, updated_at)\n           VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n           ON CONFLICT (external_id) DO UPDATE SET guild_id = excluded.guild_id, channel_id = excluded.channel_id,\n             played_at = excluded.played_at, players = excluded.players, raw = excluded.raw, updated_at = excluded.updated_at\n           RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pending_discord_games",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f34376dda63b5753480542c9c9bb2805d0f301f0887b298da573497c7a3862af"
+}

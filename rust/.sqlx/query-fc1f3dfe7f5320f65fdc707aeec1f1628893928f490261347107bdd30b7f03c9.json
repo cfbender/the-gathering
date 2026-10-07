@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT registration_enabled AS \"enabled: bool\", registration_invite_hash FROM server_settings WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "enabled: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "server_settings",
+            "name": "registration_enabled"
+          }
+        }
+      },
+      {
+        "name": "registration_invite_hash",
+        "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "server_settings",
+            "name": "registration_invite_hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "fc1f3dfe7f5320f65fdc707aeec1f1628893928f490261347107bdd30b7f03c9"
+}

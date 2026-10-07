@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM game_players WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "ce84f21665c66da0c86b0b7c61f6aaf7f3ee04e8a680c15583791afa8cd665ae"
+}

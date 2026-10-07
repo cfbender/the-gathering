@@ -1,0 +1,85 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id AS \"id!: i64\", p.name, u.avatar_url AS \"avatar_url?: String\",\n                  count(s.id) AS \"games!: i64\",\n                  SUM(CASE WHEN s.result = 'win' THEN 1 ELSE 0 END) AS \"wins!: i64\",\n                  SUM(CASE WHEN s.result = 'loss' THEN 1 ELSE 0 END) AS \"losses!: i64\",\n                  SUM(CASE WHEN s.result = 'draw' THEN 1 ELSE 0 END) AS \"draws!: i64\",\n                  count(w.id) AS \"beaten!: i64\"\n           FROM game_players s\n           JOIN players p ON p.id = s.player_id\n           LEFT JOIN users u ON u.id = p.user_id\n           LEFT JOIN game_players w ON w.game_id = s.game_id AND w.result = 'win'\n                AND w.id IN (SELECT value FROM json_each(?2))\n           WHERE s.game_id IN (SELECT value FROM json_each(?1)) AND s.id NOT IN (SELECT value FROM json_each(?2))\n           GROUP BY p.id, p.name, u.avatar_url\n           ORDER BY p.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "avatar_url?: String",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "avatar_url"
+          }
+        }
+      },
+      {
+        "name": "games!: i64",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "wins!: i64",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "losses!: i64",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "draws!: i64",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "beaten!: i64",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "837443948732d7b499b9e67d99c7666cf3fc33e1a0997a2795c2ef6ce836c3cb"
+}

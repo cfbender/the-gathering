@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT decklist_url FROM decks WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "decklist_url",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "decklist_url"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "e8bebf78b23b003dde4f217ba03fd85a5c46e504c1ad91ace667d699438d2d7e"
+}

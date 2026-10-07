@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO decks (player_id, name, commander_card_id, commander_name, commander_printing_id,\n                              partner_card_id, partner_name, partner_printing_id, color_identity, decklist_url,\n                              decklist_source, archived_at, skip_count, included_for_play, inserted_at, updated_at)\n           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?) RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 15
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "8d2a4baafa15cf6e9bc37c4f74ec0dd6be39c97708d8e8fe591bf7f84380fdd7"
+}

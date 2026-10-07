@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO users (username, display_name, role, discord_id, avatar_url, inserted_at, updated_at)\n               VALUES (?, ?, 'member', ?, ?, ?, ?) RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3f956bcad4eacb9415c3d119a4b9489671ffa03a0e2e08c91de7b7a94791965a"
+}

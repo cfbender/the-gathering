@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM decks WHERE player_id IN (SELECT id FROM players WHERE user_id = ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "e82052dbe0877d2038bdb84ae4c5e828959d39993896712a2344c9bfc6259b28"
+}

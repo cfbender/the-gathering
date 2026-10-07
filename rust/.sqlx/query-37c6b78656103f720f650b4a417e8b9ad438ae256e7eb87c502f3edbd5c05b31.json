@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE decks SET name = ?, commander_card_id = ?, commander_name = ?, commander_printing_id = ?,\n                          partner_card_id = ?, partner_name = ?, partner_printing_id = ?, color_identity = ?,\n                          decklist_url = ?, decklist_source = ?, archived_at = ?, included_for_play = ?, updated_at = ?\n         WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 14
+    },
+    "nullable": []
+  },
+  "hash": "37c6b78656103f720f650b4a417e8b9ad438ae256e7eb87c502f3edbd5c05b31"
+}
