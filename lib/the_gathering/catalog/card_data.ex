@@ -51,11 +51,16 @@ defmodule TheGathering.Catalog.CardData do
 
   def from_scryfall(_card), do: nil
 
+  # Matches the shared lotus crate's `normalize_name` (used by the Rust server): fold
+  # diacritics and case, drop apostrophes, and collapse whitespace runs.
   def normalize_name(value) when is_binary(value) do
     value
     |> String.normalize(:nfd)
     |> String.replace(~r/\p{Mn}/u, "")
     |> String.downcase()
+    |> String.replace(~r/['’]/u, "")
+    |> String.split()
+    |> Enum.join(" ")
   end
 
   def can_be_commander?(type_line, oracle_text) do
