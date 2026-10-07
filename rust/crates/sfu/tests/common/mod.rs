@@ -60,6 +60,8 @@ pub struct Client {
     socket: UdpSocket,
     local: SocketAddr,
     pub events: Option<mpsc::UnboundedReceiver<SfuEvent>>,
+    /// The SFU's answer to the first offer (it carries the server's candidates).
+    pub answer: String,
     camera: Option<Camera>,
     pub received: Vec<Received>,
     pub offers: Vec<Value>,
@@ -87,6 +89,7 @@ impl Client {
             socket,
             local,
             events: Some(receiver),
+            answer: String::new(),
             camera: None,
             received: Vec::new(),
             offers: Vec::new(),
@@ -117,6 +120,7 @@ impl Client {
         assert!(offer.contains("a=simulcast:send l;m;h"), "{offer}");
         let answer = sfu.offer(room, peer, &offer).await.unwrap();
         assert!(answer.contains("a=simulcast:recv l;m;h"), "{answer}");
+        client.answer.clone_from(&answer);
         client
             .rtc
             .sdp_api()
@@ -146,6 +150,7 @@ impl Client {
         change.add_media(MediaKind::Video, Direction::RecvOnly, None, None, None);
         let (offer, pending) = change.apply().unwrap();
         let answer = sfu.offer(room, peer, &offer.to_sdp_string()).await.unwrap();
+        client.answer.clone_from(&answer);
         client
             .rtc
             .sdp_api()

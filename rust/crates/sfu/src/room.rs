@@ -212,8 +212,12 @@ struct IceLog {
     unconnected_since: Option<Instant>,
     packets_received: u64,
     packets_sent: u64,
+    /// Where DTLS and media go: the pair ICE selected. Connectivity checks (STUN) go to
+    /// every candidate in turn, so they do not count.
     destination: Option<SocketAddr>,
     destination_changes: u64,
+    /// Connectivity checks sent per remote address, with the local socket they left from.
+    checks: BTreeMap<SocketAddr, (SocketAddr, u64)>,
     local: Vec<Candidate>,
     remote: Vec<Candidate>,
     /// mDNS host candidates the browser trickled (name and port), which str0m cannot use.
@@ -233,6 +237,8 @@ pub(crate) struct Room {
     started: Instant,
     commands: mpsc::WeakUnboundedSender<Command>,
     datagrams: mpsc::Sender<Datagram>,
+    /// Whether the loopback-only warning was logged for this room.
+    warned_loopback: bool,
 }
 
 /// Runs `room` until its last seat leaves (or the SFU is dropped).
@@ -295,7 +301,29 @@ impl Room {
             started: now,
             commands,
             datagrams,
+            warned_loopback: false,
         }
+    }
+
+    /// Warns once when a browser offers a candidate on another machine while every socket of
+    /// this room is on loopback: that browser cannot reach the server's host candidate.
+    fn warn_unreachable(&mut self, id: &PeerId, remote: SocketAddr) {
+        let Transport::Direct { sockets, .. } = &self.transport else {
+            return;
+        };
+        if self.warned_loopback
+            || remote.ip().is_loopback()
+            || !sockets.iter().all(|socket| socket.local.ip().is_loopback())
+        {
+            return;
+        }
+        self.warned_loopback = true;
+        tracing::warn!(
+            "SFU table {}: {id} offered {remote}, but this room's media sockets are only on \
+             loopback (the interface had no address when the room started); its media will \
+             not connect. The next room gathers addresses again.",
+            self.id
+        );
     }
 
     fn next_deadline(&self, now: Instant) -> Instant {
@@ -481,6 +509,7 @@ impl Room {
                 packets_sent: 0,
                 destination: None,
                 destination_changes: 0,
+                checks: BTreeMap::new(),
                 local,
                 remote: Vec::new(),
                 mdns: Vec::new(),
@@ -623,6 +652,7 @@ impl Room {
             }
         };
         tracing::debug!("SFU candidate from {id}: {line}");
+        let remote = candidate.addr();
         peer.ice.remote.push(candidate.clone());
         for allocation in &mut peer.turn {
             allocation.permit(candidate.addr().ip(), Instant::now());
@@ -634,6 +664,7 @@ impl Room {
             peer.candidates.push(candidate);
         }
         self.flush_turn(id, Instant::now());
+        self.warn_unreachable(id, remote);
         Ok(())
     }
 
@@ -1515,7 +1546,43 @@ impl Room {
                 valid: nominated,
                 nominated,
                 last_seen: Some(millis(*seen)),
-                requests_sent: 0,
+                requests_sent: ice.checks.get(remote).map_or(0, |(_, sent)| *sent),
+                requests_received: 0,
+                responses_received: 0,
+                non_symmetric_responses_received: 0,
+            }));
+        }
+        // Addresses the connection checked but never heard from: what ICE was trying.
+        let unanswered = ice
+            .checks
+            .iter()
+            .filter(|(remote, _)| !ice.heard.contains_key(remote));
+        for (index, (remote, (local, sent))) in unanswered.enumerate() {
+            let local_id = ice
+                .local
+                .iter()
+                .position(|candidate| candidate.local() == *local || candidate.addr() == *local)
+                .map_or_else(|| "?".to_owned(), |index| format!("l{index}"));
+            let kind = ice
+                .remote
+                .iter()
+                .find(|candidate| candidate.addr() == *remote)
+                .map_or(CandidateKind::PeerReflexive, Candidate::kind);
+            entries.push(Entry::Remote(candidate_stats(
+                &format!("c{index}"),
+                kind,
+                *remote,
+            )));
+            entries.push(Entry::Pair(PairStats {
+                id: format!("pc{index}"),
+                local_candidate_id: local_id,
+                remote_candidate_id: format!("c{index}"),
+                priority: None,
+                state: "unanswered".to_owned(),
+                valid: false,
+                nominated: false,
+                last_seen: None,
+                requests_sent: *sent,
                 requests_received: 0,
                 responses_received: 0,
                 non_symmetric_responses_received: 0,
@@ -1580,7 +1647,14 @@ fn new_rtc(now: Instant) -> Rtc {
 
 fn send(transport: &Transport, peer: &mut Peer, transmit: &Transmit) {
     peer.ice.packets_sent += 1;
-    if peer.ice.destination != Some(transmit.destination) {
+    if is_stun(&transmit.contents) {
+        let checks = peer
+            .ice
+            .checks
+            .entry(transmit.destination)
+            .or_insert((transmit.source, 0));
+        *checks = (transmit.source, checks.1 + 1);
+    } else if peer.ice.destination != Some(transmit.destination) {
         if peer.ice.destination.is_some() {
             peer.ice.destination_changes += 1;
         }
@@ -1604,6 +1678,12 @@ fn send(transport: &Transport, peer: &mut Peer, transmit: &Transmit) {
             tracing::debug!("SFU has no socket for {}", transmit.source);
         }
     }
+}
+
+/// Whether a datagram is STUN (RFC 7983 demultiplexing: a first byte of 0 to 3; DTLS starts
+/// at 20 and RTP/RTCP at 128).
+fn is_stun(contents: &[u8]) -> bool {
+    contents.first().is_some_and(|byte| *byte <= 3)
 }
 
 /// Writes one forwarded packet to the viewer's media section for the board.
@@ -1754,5 +1834,52 @@ mod tests {
         room.connection_failed(&id, Instant::now());
         assert_eq!(receiver.try_recv(), Ok(SfuEvent::Down("failed".into())));
         assert!(room.peers.is_empty());
+    }
+
+    /// Connectivity checks go to every remote candidate in turn; only DTLS and media mark the
+    /// selected pair. Counting every destination change made a connection that never got an
+    /// answer report one "selected pair change" per packet sent.
+    #[tokio::test]
+    async fn connectivity_checks_do_not_count_as_selected_pair_changes() {
+        let (mut room, _commands) = room();
+        let (events, _receiver) = mpsc::unbounded_channel();
+        let id = PeerId::from("p");
+        room.join(&id, false, events, None).unwrap();
+        let local: SocketAddr = "127.0.0.1:50000".parse().unwrap();
+        let lan: SocketAddr = "192.168.1.20:61000".parse().unwrap();
+        let wan: SocketAddr = "203.0.113.7:61000".parse().unwrap();
+        let transmit = |destination: SocketAddr, first: u8| Transmit {
+            proto: Protocol::Udp,
+            source: local,
+            destination,
+            contents: vec![first, 1, 0, 0].into(),
+        };
+        let peer = room.peers.get_mut(&id).unwrap();
+        for _ in 0..3 {
+            send(&room.transport, peer, &transmit(lan, 0x00));
+            send(&room.transport, peer, &transmit(wan, 0x01));
+        }
+        let report = room.describe_ice(&id, Instant::now());
+        assert!(
+            report.contains("tx 6pkt, selected pair changes 0"),
+            "{report}"
+        );
+        assert!(
+            report.contains("192.168.1.20:61000 unanswered seen never req in 0 out 3"),
+            "{report}"
+        );
+        assert!(
+            report.contains("203.0.113.7:61000 unanswered seen never req in 0 out 3"),
+            "{report}"
+        );
+
+        // DTLS (first byte 20 to 63) goes to the selected pair; a move counts once.
+        let peer = room.peers.get_mut(&id).unwrap();
+        send(&room.transport, peer, &transmit(lan, 22));
+        send(&room.transport, peer, &transmit(lan, 22));
+        send(&room.transport, peer, &transmit(wan, 22));
+        let report = room.describe_ice(&id, Instant::now());
+        assert!(report.contains("selected pair changes 1"), "{report}");
+        assert!(is_stun(&[0x01, 0x01]) && !is_stun(&[22]) && !is_stun(&[0x80]) && !is_stun(&[]));
     }
 }

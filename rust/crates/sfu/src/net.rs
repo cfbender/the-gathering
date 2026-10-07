@@ -31,22 +31,24 @@ pub(crate) struct Datagram {
 /// skipped unless they are all there is (a host without a network still serves itself).
 pub(crate) fn host_addresses(ipv6: bool) -> Vec<IpAddr> {
     let interfaces = if_addrs::get_if_addrs().unwrap_or_default();
-    let usable = |ip: &IpAddr| ipv6 || ip.is_ipv4();
-    let mut addresses: Vec<IpAddr> = interfaces
+    select_hosts(interfaces.iter().map(if_addrs::Interface::ip), ipv6)
+}
+
+/// [`host_addresses`] over a given list of interface addresses.
+fn select_hosts(interfaces: impl IntoIterator<Item = IpAddr>, ipv6: bool) -> Vec<IpAddr> {
+    let usable: Vec<IpAddr> = interfaces
+        .into_iter()
+        .filter(|ip| ipv6 || ip.is_ipv4())
+        .collect();
+    let mut addresses: Vec<IpAddr> = usable
         .iter()
-        .map(if_addrs::Interface::ip)
-        .filter(usable)
+        .copied()
         .filter(|ip| {
             !ip.is_loopback() && !link_local(ip) && !ip.is_unspecified() && !ip.is_multicast()
         })
         .collect();
     if addresses.is_empty() {
-        addresses = interfaces
-            .iter()
-            .map(if_addrs::Interface::ip)
-            .filter(usable)
-            .filter(IpAddr::is_loopback)
-            .collect();
+        addresses = usable.into_iter().filter(IpAddr::is_loopback).collect();
     }
     addresses.sort();
     addresses.dedup();
@@ -134,5 +136,30 @@ impl ReadSocket {
 impl Drop for ReadSocket {
     fn drop(&mut self) {
         self.reader.abort();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ips(list: &[&str]) -> Vec<IpAddr> {
+        list.iter().map(|ip| ip.parse().unwrap()).collect()
+    }
+
+    /// A container whose service starts before DHCP has finished sees only loopback (and an
+    /// IPv6 link-local address); a moment later the interface has its IPv4 address.
+    #[test]
+    fn loopback_is_the_fallback_until_an_interface_has_an_address() {
+        let booting = ips(&["127.0.0.1", "::1", "fe80::1"]);
+        assert_eq!(select_hosts(booting, false), ips(&["127.0.0.1"]));
+        let up = ips(&["127.0.0.1", "::1", "fe80::1", "192.168.1.50", "169.254.3.4"]);
+        assert_eq!(select_hosts(up.clone(), false), ips(&["192.168.1.50"]));
+        assert_eq!(select_hosts(up, true), ips(&["192.168.1.50"]));
+        assert_eq!(
+            select_hosts(ips(&["10.0.0.5", "2001:db8::5", "10.0.0.5"]), true),
+            ips(&["10.0.0.5", "2001:db8::5"])
+        );
+        assert!(select_hosts(Vec::new(), false).is_empty());
     }
 }

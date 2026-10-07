@@ -80,6 +80,7 @@ UNIT_FILE="/etc/systemd/system/${SERVICE}.service"
 CRON_FILE="/etc/cron.d/${SERVICE}-update"
 REQUEST_FILE="${DATA_DIR}/update-request"
 HOOK_DROPIN="/etc/systemd/system/${SERVICE}.service.d/self-update.conf"
+NETWORK_DROPIN="/etc/systemd/system/${SERVICE}.service.d/wait-for-ipv4.conf"
 AUTO_UPDATE_DEFAULT="0 4 * * *"
 
 CT_HOSTNAME="${CT_HOSTNAME:-the-gathering}"
@@ -278,6 +279,7 @@ pin_dhcp_ip() {
 #                                               tells the app which file to create
 push_helpers() {
   local ctid="$1"
+  push_network_wait "$ctid"
   push_update_hook "$ctid"
   put_file "$ctid" /usr/local/bin/update 0755 <<EOF
 #!/usr/bin/env bash
@@ -337,6 +339,26 @@ if systemctl is-enabled -q ${SERVICE} 2>/dev/null; then
   systemctl restart ${SERVICE}
 fi
 echo "installed \${tag}"
+EOF
+}
+
+# Inside an LXC container network-online.target can be reached before DHCP has assigned the
+# address, so the service waits (up to 30 s) for a global IPv4 address before starting. The
+# server gathers webcam media addresses for every room it creates, so a late address is picked
+# up by the next room anyway; this only spares the first rooms after a boot. Written on install
+# and on every update; push_update_hook's daemon-reload applies it.
+push_network_wait() {
+  local ctid="$1"
+  in_ct "$ctid" "mkdir -p $(dirname "$NETWORK_DROPIN")"
+  put_file "$ctid" "$NETWORK_DROPIN" 0644 <<'EOF'
+# Written by deploy/proxmox/the-gathering.sh: wait for DHCP before starting, so webcam rooms
+# can announce the container's address from the first one on.
+[Unit]
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=-/bin/sh -c 'command -v ip >/dev/null || exit 0; timeout 30 sh -c "until ip -4 -o addr show scope global | grep -q inet; do sleep 1; done" || echo "no global IPv4 address after 30s; starting anyway" >&2'
 EOF
 }
 
@@ -470,17 +492,16 @@ create() {
   push_helpers "$ctid"
   local setup
   setup="$(mktemp)"
-  # Runtime libraries match the Dockerfile runner image: OpenSSL/ncurses for ERTS,
-  # libstdc++ and libsctp for NIFs, rsvg-convert + DejaVu for game summary images.
-  # cron runs the automatic updates.
+  # The server needs only glibc; DejaVu is the font for game summary images, iproute2 lets the
+  # service wait for its IPv4 address (push_network_wait), and cron runs the automatic updates.
   cat >"$setup" <<EOF
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 # pct exec inherits the host's LANG, which the template has not generated; use the built-in locale.
 export LC_ALL=C.UTF-8 LANG=C.UTF-8
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates openssl rsync openssh-server cron \\
-  libstdc++6 libssl3t64 libncurses6 libsctp1 librsvg2-bin fonts-dejavu-core >/dev/null
+apt-get install -y -qq curl ca-certificates openssl rsync openssh-server cron iproute2 \\
+  fonts-dejavu-core >/dev/null
 
 if [ "${AUTOLOGIN}" = true ]; then
   # No root password was set, so log root in automatically on the Proxmox web console

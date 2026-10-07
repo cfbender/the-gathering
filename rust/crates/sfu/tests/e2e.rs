@@ -10,6 +10,8 @@
 
 mod common;
 
+use std::net::IpAddr;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use common::{Client, Harness, settings};
@@ -250,4 +252,55 @@ async fn a_rejected_answer_is_offered_again_and_repeated_failures_reconnect() {
         .await
         .unwrap();
     assert_eq!(down, Some(SfuEvent::Down("negotiation failed".into())));
+}
+
+/// An LXC container whose service started before DHCP: the first room finds only loopback.
+/// Once the interface has its address, the next room binds and announces it without a
+/// restart, and media flows over it. (The address source stands in for the interface list;
+/// 127.0.0.2 stands in for the LAN address.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn each_room_gathers_the_host_addresses_present_when_it_starts() {
+    let addresses: Arc<Mutex<Vec<IpAddr>>> =
+        Arc::new(Mutex::new(vec!["127.0.0.1".parse().unwrap()]));
+    let source = Arc::clone(&addresses);
+    let sfu = Sfu::with_host_source(
+        settings(53_400, 53_499),
+        Arc::new(move || source.lock().unwrap().clone()),
+    );
+    let host = |answer: &str, ip: &str| answer.contains(&format!(" {ip} 53400 typ host"));
+
+    let early = Box::pin(Client::viewer(&sfu, "early", A)).await;
+    assert!(host(&early.answer, "127.0.0.1"), "{}", early.answer);
+
+    *addresses.lock().unwrap() = vec!["127.0.0.2".parse().unwrap()];
+
+    // A running room keeps the sockets it started with.
+    let early_second = Box::pin(Client::viewer(&sfu, "early", B)).await;
+    assert!(
+        host(&early_second.answer, "127.0.0.1"),
+        "{}",
+        early_second.answer
+    );
+
+    // The next room uses the address that appeared, and connects on it.
+    let publisher = Box::pin(Client::publisher(&sfu, "late", A)).await;
+    let viewer = Box::pin(Client::viewer(&sfu, "late", B)).await;
+    for answer in [&publisher.answer, &viewer.answer] {
+        assert!(host(answer, "127.0.0.2"), "{answer}");
+        assert!(!answer.contains(" 127.0.0.1 "), "{answer}");
+    }
+    let mut harness = Harness {
+        sfu: &sfu,
+        room: "late",
+        a: publisher,
+        b: viewer,
+    };
+    tokio::time::timeout(
+        Duration::from_secs(30),
+        harness.run_until("the viewer sees medium over 127.0.0.2", |h| {
+            h.b.received_after_first(0, b'm') >= 10
+        }),
+    )
+    .await
+    .expect("media flowed in time");
 }

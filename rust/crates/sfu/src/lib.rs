@@ -76,7 +76,12 @@ pub struct IceServer {
 pub type RelayServers =
     Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Vec<IceServer>> + Send>> + Send + Sync>;
 
-/// Transport settings (`config :the_gathering, :sfu`).
+/// Where rooms find the interface addresses to bind their media sockets on. Asked again for
+/// every new room, so an address that appears after startup (DHCP finishing after the
+/// service started) is used by the next room.
+pub type HostAddresses = Arc<dyn Fn() -> Vec<IpAddr> + Send + Sync>;
+
+/// Transport settings.
 #[derive(Clone)]
 pub struct Settings {
     /// First UDP port for media.
@@ -135,8 +140,8 @@ pub enum SfuError {
 /// Rooms of peer connections, keyed by table id.
 pub struct Sfu {
     settings: Settings,
-    /// Interface addresses rooms bind their media sockets on.
-    hosts: Vec<IpAddr>,
+    /// Interface addresses rooms bind their media sockets on, gathered per room.
+    hosts: HostAddresses,
     rooms: Arc<Registry>,
     next_instance: AtomicU64,
 }
@@ -146,22 +151,31 @@ impl std::fmt::Debug for Sfu {
         let rooms = self.rooms.lock().map_or(0, |rooms| rooms.len());
         f.debug_struct("Sfu")
             .field("settings", &self.settings)
-            .field("hosts", &self.hosts)
             .field("rooms", &rooms)
             .finish_non_exhaustive()
     }
 }
 
 impl Sfu {
-    /// An SFU with no rooms yet. Media sockets bind on every non-loopback interface address
-    /// (IPv4 only unless `settings.ipv6`), or on loopback when there is no other.
+    /// An SFU with no rooms yet. Each new room binds its media sockets on every non-loopback
+    /// interface address present at that moment (IPv4 only unless `settings.ipv6`), or on
+    /// loopback when there is no other.
+    ///
+    /// Gathering per room rather than once at startup matters in containers: a service that
+    /// starts before its interface has an address would otherwise offer only loopback for
+    /// the life of the process.
     pub fn new(settings: Settings) -> Self {
-        let hosts = net::host_addresses(settings.ipv6);
-        Self::with_host_addresses(settings, hosts)
+        let ipv6 = settings.ipv6;
+        Self::with_host_source(settings, Arc::new(move || net::host_addresses(ipv6)))
     }
 
     /// An SFU whose rooms bind their media sockets on exactly `hosts` (tests use loopback).
     pub fn with_host_addresses(settings: Settings, hosts: Vec<IpAddr>) -> Self {
+        Self::with_host_source(settings, Arc::new(move || hosts.clone()))
+    }
+
+    /// An SFU that asks `hosts` for the addresses to bind on whenever it creates a room.
+    pub fn with_host_source(settings: Settings, hosts: HostAddresses) -> Self {
         Self {
             settings,
             hosts,
@@ -346,7 +360,7 @@ impl Sfu {
         let transport = if self.settings.relay.is_some() {
             Transport::Relay
         } else {
-            self.direct_transport(&datagrams)?
+            self.direct_transport(room_id, &datagrams)?
         };
         let (commands, command_receiver) = mpsc::unbounded_channel();
         let room = Room::new(room_id.clone(), transport, commands.downgrade(), datagrams);
@@ -363,13 +377,31 @@ impl Sfu {
 
     /// One socket per interface address from the port range, announced as a host candidate,
     /// plus a server-reflexive candidate at `public_ip` (the router's WAN address) when set.
+    /// The addresses are gathered now, for this room.
     fn direct_transport(
         &self,
+        room_id: &RoomId,
         datagrams: &mpsc::Sender<net::Datagram>,
     ) -> Result<Transport, SfuError> {
+        let hosts = (self.hosts)();
+        if hosts.iter().all(IpAddr::is_loopback) {
+            if let Some(public) = self.settings.public_ip {
+                tracing::warn!(
+                    "SFU room {room_id}: no non-loopback interface address, only {hosts:?}; \
+                     browsers on other machines cannot reach the host candidate, and the \
+                     server-reflexive {public} works only through NAT hairpinning. Is the \
+                     network up? (A restart is not needed: the next room gathers again.)"
+                );
+            } else {
+                tracing::warn!(
+                    "SFU room {room_id}: no non-loopback interface address, only {hosts:?}; \
+                     only browsers on this machine can connect. Is the network up?"
+                );
+            }
+        }
         let mut sockets = Vec::new();
         let mut candidates = Vec::new();
-        for ip in &self.hosts {
+        for ip in &hosts {
             let socket =
                 match net::bind_in_range(*ip, self.settings.port_min, self.settings.port_max) {
                     Ok(socket) => socket,
@@ -405,9 +437,22 @@ impl Sfu {
             sockets.push(socket);
         }
         if sockets.is_empty() {
-            tracing::error!("SFU could not bind a media socket");
+            tracing::error!("SFU room {room_id} could not bind a media socket on {hosts:?}");
             return Err(SfuError::Unavailable("no free UDP port for media".into()));
         }
+        let bound: Vec<String> = sockets
+            .iter()
+            .map(|socket| socket.local.to_string())
+            .collect();
+        let announced: Vec<String> = candidates
+            .iter()
+            .map(|candidate| format!("{:?} {}", candidate.kind(), candidate.addr()))
+            .collect();
+        tracing::info!(
+            "SFU room {room_id}: media sockets {}; candidates {}",
+            bound.join(", "),
+            announced.join(", ")
+        );
         Ok(Transport::Direct {
             sockets,
             candidates,
