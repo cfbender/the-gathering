@@ -12,6 +12,7 @@ pub mod db;
 pub mod decklists;
 pub mod error;
 pub mod games;
+pub mod imports;
 pub mod local_time;
 pub mod rate_limit;
 pub mod regex;

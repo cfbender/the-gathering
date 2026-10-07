@@ -19,6 +19,7 @@ pub mod resolve_player;
 pub mod summary;
 pub mod summary_card;
 pub mod summary_image;
+pub mod sync_remote_decks;
 pub mod win_condition;
 
 use std::future::Future;
