@@ -22,7 +22,8 @@ async fn admin_app() -> (TestApp, the_gathering::accounts::User) {
 
 // csv_import_controller_test.exs
 
-const CSV: &str = "game_id,date,player,deck,commander,seat,result,mvp_card,duration_minutes,turns,notes
+const CSV: &str =
+    "game_id,date,player,deck,commander,seat,result,mvp_card,duration_minutes,turns,notes
 game-1,2026-09-18,Alice,Birds,Kangee,1,win,,60,8,
 game-1,2026-09-18,Bob,Goblins,Krenko,2,loss,,60,8,
 ";
@@ -35,7 +36,10 @@ async fn admin_can_preview_and_commit_a_csv_import() {
         .await
         .assert_json(200);
     assert_eq!(preview["data"]["valid"], true);
-    assert_eq!(preview["data"]["players"]["create"], json!(["Alice", "Bob"]));
+    assert_eq!(
+        preview["data"]["players"]["create"],
+        json!(["Alice", "Bob"])
+    );
 
     let result = app
         .post("/api/imports/csv", json!({"csv": CSV}))
@@ -64,8 +68,14 @@ paired,2026-09-18,Bob,Goblins,Krenko,,2,loss,,alternate_win_con
     assert_eq!(games.len(), 1);
     assert_eq!(games[0]["win_condition"], "alternate_win_con");
     let seats = games[0]["seats"].as_array().unwrap();
-    assert_eq!((&seats[0]["partner"], &seats[0]["kills"]), (&json!("Kediss"), &json!(0)));
-    assert_eq!((&seats[1]["partner"], &seats[1]["kills"]), (&Value::Null, &Value::Null));
+    assert_eq!(
+        (&seats[0]["partner"], &seats[0]["kills"]),
+        (&json!("Kediss"), &json!(0))
+    );
+    assert_eq!(
+        (&seats[1]["partner"], &seats[1]["kills"]),
+        (&Value::Null, &Value::Null)
+    );
 }
 
 #[tokio::test]
@@ -105,7 +115,11 @@ async fn sample_endpoint_downloads_a_native_template() {
     let (app, _) = admin_app().await;
     let response = app.get("/api/imports/csv/sample").await;
     assert_eq!(response.status, 200);
-    assert!(response.text().contains("game_id,date,player,deck,commander"));
+    assert!(
+        response
+            .text()
+            .contains("game_id,date,player,deck,commander")
+    );
     assert_eq!(response.header("content-type"), Some("text/csv"));
     assert!(
         response
@@ -150,13 +164,22 @@ fn mythic_json() -> String {
 async fn admin_can_preview_and_commit_a_mythic_track_export() {
     let (app, admin) = admin_app().await;
     let preview = app
-        .post("/api/imports/mythic_track/preview", json!({"json": mythic_json()}))
+        .post(
+            "/api/imports/mythic_track/preview",
+            json!({"json": mythic_json()}),
+        )
         .await
         .assert_json(200);
     assert_eq!(preview["data"]["valid"], true);
     assert_eq!(preview["data"]["warnings"], json!([]));
-    assert_eq!(preview["data"]["players"]["create"], json!(["Alice", "Bob"]));
-    assert_eq!(preview["data"]["games"][0]["seats"][0]["color_identity"], "WU");
+    assert_eq!(
+        preview["data"]["players"]["create"],
+        json!(["Alice", "Bob"])
+    );
+    assert_eq!(
+        preview["data"]["games"][0]["seats"][0]["color_identity"],
+        "WU"
+    );
 
     let result = app
         .post("/api/imports/mythic_track", json!({"json": mythic_json()}))
@@ -174,9 +197,12 @@ async fn admin_can_preview_and_commit_a_mythic_track_export() {
 async fn mythic_commit_requires_authentication_inside_the_ten_minute_sudo_window() {
     let (app, _) = admin_app().await;
     app.expire_sudo(602).await;
-    app.post("/api/imports/mythic_track/preview", json!({"json": mythic_json()}))
-        .await
-        .assert_json(200);
+    app.post(
+        "/api/imports/mythic_track/preview",
+        json!({"json": mythic_json()}),
+    )
+    .await
+    .assert_json(200);
     let body = app
         .post("/api/imports/mythic_track", json!({"json": mythic_json()}))
         .await
@@ -209,7 +235,10 @@ async fn mythic_member_receives_403() {
     let member = app.unique_member().await;
     app.log_in(&member).await;
     let body = app
-        .post("/api/imports/mythic_track/preview", json!({"json": mythic_json()}))
+        .post(
+            "/api/imports/mythic_track/preview",
+            json!({"json": mythic_json()}),
+        )
         .await
         .assert_json(403);
     assert_eq!(body, json!({"errors": {"detail": "Forbidden"}}));
@@ -320,7 +349,12 @@ async fn download_is_versioned_private_and_can_be_previewed_and_reimported() {
     assert_eq!(data["games"], json!([]));
     assert_eq!(download.header("cache-control"), Some("no-store"));
     assert_eq!(download.header("content-type"), Some("application/json"));
-    assert!(download.header("content-disposition").unwrap().contains(".json"));
+    assert!(
+        download
+            .header("content-disposition")
+            .unwrap()
+            .contains(".json")
+    );
 
     let preview = app
         .post("/api/imports/portable/preview", json!({"json": json}))

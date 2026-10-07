@@ -117,13 +117,32 @@ pub fn parse(text: &str, separator: u8) -> Result<Vec<Row>, String> {
         .from_reader(text.as_bytes());
     let mut rows = Vec::new();
     let mut record = csv::StringRecord::new();
+    // The reader positions a record before the blank lines it skips, so lines are counted
+    // from the record's first byte instead.
+    let (mut counted_to, mut line) = (0_usize, 1_i64);
     loop {
         match reader.read_record(&mut record) {
             Ok(false) => break,
             Ok(true) => {
-                let line = record
+                let mut start = record
                     .position()
-                    .map_or(1, |position| i64::try_from(position.line()).unwrap_or(1));
+                    .and_then(|position| usize::try_from(position.byte()).ok())
+                    .unwrap_or(counted_to)
+                    .max(counted_to);
+                while let Some(rest) = text.get(start..) {
+                    if rest.starts_with('\n') {
+                        start += 1;
+                    } else if rest.starts_with("\r\n") {
+                        start += 2;
+                    } else {
+                        break;
+                    }
+                }
+                let newlines = text
+                    .get(counted_to..start)
+                    .map_or(0, |skipped| skipped.matches('\n').count());
+                line += i64::try_from(newlines).unwrap_or(0);
+                counted_to = start;
                 let mut fields: Vec<String> = record.iter().map(str::to_owned).collect();
                 // `\r\n` endings: the `\r` belongs to the terminator, not the last field.
                 if let Some(last) = fields.last_mut()

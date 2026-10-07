@@ -1037,7 +1037,10 @@ async fn deck_ctx(server: &MockServer) -> DeckCtx {
 
 async fn save(ctx: &DeckCtx, attrs: Value) -> Value {
     ctx.app
-        .patch(&format!("/api/decks/{}", ctx.deck.id), json!({"deck": attrs}))
+        .patch(
+            &format!("/api/decks/{}", ctx.deck.id),
+            json!({"deck": attrs}),
+        )
         .await
         .assert_json(200)["data"]
         .clone()
@@ -1057,7 +1060,7 @@ fn assert_art(deck: &Value) {
 
 #[tokio::test]
 async fn saves_independent_commander_and_partner_printings_and_resolves_them_on_every_deck_surface()
- {
+{
     let server = MockServer::start().await;
     let ctx = deck_ctx(&server).await;
     let body = save(
@@ -1132,7 +1135,10 @@ async fn saves_independent_commander_and_partner_printings_and_resolves_them_on_
         .filter(|row| row["id"] == "commander")
         .collect();
     assert_eq!(commander.len(), 1);
-    assert_eq!((&commander[0]["games"], &commander[0]["wins"]), (&json!(2), &json!(1)));
+    assert_eq!(
+        (&commander[0]["games"], &commander[0]["wins"]),
+        (&json!(2), &json!(1))
+    );
 
     let imported = app
         .state
@@ -1220,11 +1226,21 @@ async fn rejects_unknown_and_mismatched_printings_atomically_including_on_create
         let mut attrs = attrs;
         attrs["name"] = json!("Must not change");
         ctx.app
-            .patch(&format!("/api/decks/{}", ctx.deck.id), json!({"deck": attrs}))
+            .patch(
+                &format!("/api/decks/{}", ctx.deck.id),
+                json!({"deck": attrs}),
+            )
             .await
             .assert_json(422);
     }
-    let deck = ctx.app.state.games.get_deck(ctx.deck.id).await.unwrap().unwrap();
+    let deck = ctx
+        .app
+        .state
+        .games
+        .get_deck(ctx.deck.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(deck.name, "Partners");
     match ctx
         .app
@@ -1246,7 +1262,8 @@ async fn rejects_unknown_and_mismatched_printings_atomically_including_on_create
 }
 
 #[tokio::test]
-async fn clears_defaults_explicitly_and_stale_printings_when_a_card_changes_or_partner_is_removed() {
+async fn clears_defaults_explicitly_and_stale_printings_when_a_card_changes_or_partner_is_removed()
+{
     let server = MockServer::start().await;
     let ctx = deck_ctx(&server).await;
     save(
@@ -1261,7 +1278,11 @@ async fn clears_defaults_explicitly_and_stale_printings_when_a_card_changes_or_p
         "https://img.example/commander-default.jpg"
     );
     assert_eq!(default["partner_printing_id"], "partner-alternate");
-    save(&ctx, json!({"commander_printing_id": "commander-alternate"})).await;
+    save(
+        &ctx,
+        json!({"commander_printing_id": "commander-alternate"}),
+    )
+    .await;
     let changed = save(
         &ctx,
         json!({

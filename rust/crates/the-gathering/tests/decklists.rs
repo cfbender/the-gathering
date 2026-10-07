@@ -1377,7 +1377,9 @@ mod sync {
             Some("https://moxfield.com/decks/a")
         );
         assert_eq!(
-            linked.decklist_source.map(|source| source.as_str()),
+            linked
+                .decklist_source
+                .map(the_gathering::games::DecklistSource::as_str),
             Some("moxfield")
         );
         assert_eq!(linked.commander_card_id.as_deref(), Some("krenko"));
@@ -1428,7 +1430,12 @@ mod sync {
                     &["Thrasios, Triton Hero", "Tymna the Weaver"],
                     &["W", "U", "G"],
                 ),
-                moxfield_deck("m", "Meren Reanimator", &["Meren of Clan Nel Toth"], &["B", "G"]),
+                moxfield_deck(
+                    "m",
+                    "Meren Reanimator",
+                    &["Meren of Clan Nel Toth"],
+                    &["B", "G"],
+                ),
             ],
         )
         .await;
@@ -1445,8 +1452,13 @@ mod sync {
             deck(&ctx, elsewhere.id).await.decklist_url.as_deref(),
             Some("https://archidekt.com/decks/9")
         );
-        assert!(decks(&ctx).await.iter().any(|deck| deck.name == "Meren Reanimator"
-            && deck.decklist_url.as_deref() == Some("https://moxfield.com/decks/m")));
+        assert!(
+            decks(&ctx)
+                .await
+                .iter()
+                .any(|deck| deck.name == "Meren Reanimator"
+                    && deck.decklist_url.as_deref() == Some("https://moxfield.com/decks/m"))
+        );
     }
 
     #[tokio::test]
@@ -1464,7 +1476,12 @@ mod sync {
             .await;
         stub_moxfield(
             &server,
-            vec![moxfield_deck("a", "New name", &["Krenko, Mob Boss"], &["R"])],
+            vec![moxfield_deck(
+                "a",
+                "New name",
+                &["Krenko, Mob Boss"],
+                &["R"],
+            )],
         )
         .await;
         let result = sync_remote_decks::run(&ctx.app.state, &ctx.user)
@@ -1483,7 +1500,12 @@ mod sync {
         let user = set_profile(&ctx.app, &ctx.user, json!({"archidekt_username": "brewer"})).await;
         stub_moxfield(
             &server,
-            vec![moxfield_deck("a", "Krenko Storm", &["Krenko, Mob Boss"], &["R"])],
+            vec![moxfield_deck(
+                "a",
+                "Krenko Storm",
+                &["Krenko, Mob Boss"],
+                &["R"],
+            )],
         )
         .await;
         Mock::given(method("GET"))
@@ -1570,7 +1592,13 @@ mod sync {
             body,
             json!({"data": {"created": 1, "updated": 1, "errors": []}})
         );
-        let updated = app.state.games.get_deck(existing.id).await.unwrap().unwrap();
+        let updated = app
+            .state
+            .games
+            .get_deck(existing.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(updated.name, "Atraxa counters");
         assert_eq!(updated.commander_card_id.as_deref(), Some("atraxa"));
         assert_eq!(updated.color_identity, "WUBG");

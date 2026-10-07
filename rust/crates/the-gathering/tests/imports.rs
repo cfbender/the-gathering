@@ -6,7 +6,8 @@
     clippy::expect_used,
     clippy::indexing_slicing,
     clippy::panic,
-    clippy::assert_is_empty
+    clippy::assert_is_empty,
+    clippy::needless_pass_by_value
 )]
 
 mod support;
@@ -77,7 +78,8 @@ async fn player_by_discord(app: &TestApp, discord_id: &str) -> Option<i64> {
 
 // imports_test.exs
 
-const CSV: &str = "game_id,date,player,deck,commander,seat,result,mvp_card,duration_minutes,turns,notes
+const CSV: &str =
+    "game_id,date,player,deck,commander,seat,result,mvp_card,duration_minutes,turns,notes
 friday-1,2026-09-18,Alice,Birds,\"Kangee, Sky Warden\",1,win,Swan Song,75,10,Close game
 friday-1,2026-09-18,Bob,Goblins,Krenko,2,loss,,75,10,Close game
 ";
@@ -123,8 +125,16 @@ async fn reports_invalid_rows_with_csv_line_numbers() {
     assert!(!preview.valid);
     let errors = json!(preview.errors);
     let errors = errors.as_array().unwrap();
-    assert!(errors.contains(&json!({"line": 3, "field": "seat", "message": "must be a positive integer"})));
-    assert!(errors.contains(&json!({"line": 3, "field": "result", "message": "must be win, loss, or draw"})));
+    assert!(
+        errors.contains(
+            &json!({"line": 3, "field": "seat", "message": "must be a positive integer"})
+        )
+    );
+    assert!(
+        errors.contains(
+            &json!({"line": 3, "field": "result", "message": "must be win, loss, or draw"})
+        )
+    );
 }
 
 #[tokio::test]
@@ -155,7 +165,11 @@ async fn imports_players_decks_and_games_and_skips_the_same_normalized_game_on_r
     assert_eq!(
         seats,
         [
-            ("Alice".to_owned(), "Birds".to_owned(), Some("Swan Song".to_owned())),
+            (
+                "Alice".to_owned(),
+                "Birds".to_owned(),
+                Some("Swan Song".to_owned())
+            ),
             ("Bob".to_owned(), "Goblins".to_owned(), None)
         ]
     );
@@ -271,9 +285,18 @@ async fn accepts_the_official_mythic_track_spreadsheet_headers() {
     let seats: Vec<(&str, &str, &str)> = game
         .seats
         .iter()
-        .map(|seat| (seat.player.as_str(), seat.deck.as_str(), seat.result.as_str()))
+        .map(|seat| {
+            (
+                seat.player.as_str(),
+                seat.deck.as_str(),
+                seat.result.as_str(),
+            )
+        })
         .collect();
-    assert_eq!(seats, [("Alice", "Kangee", "loss"), ("Bob", "Krenko", "win")]);
+    assert_eq!(
+        seats,
+        [("Alice", "Kangee", "loss"), ("Bob", "Krenko", "win")]
+    );
 }
 
 // csv_transfer_test.exs
@@ -352,7 +375,8 @@ fn update_rows(game: &Game, game_id: &str, identity: &str, conflicting: Option<&
             "{game_id},2026-09-11,{player},{deck},{commander},{seat},{result},{kills},combat_damage,,update,{source},{external_id},{portable_id}\n"
         )
     })
-    .collect()
+    .collect::<Vec<_>>()
+    .concat()
 }
 
 fn update_csv(game: &Game, identity: &str, conflicting: Option<&str>) -> String {
@@ -457,11 +481,17 @@ async fn commit_preserves_identity_and_retained_seat_metadata_while_replacing_sw
     let saved = game(&app, ctx.game.id).await;
     assert_eq!(
         (&saved.source, &saved.external_id, &saved.portable_id),
-        (&ctx.game.source, &ctx.game.external_id, &ctx.game.portable_id)
+        (
+            &ctx.game.source,
+            &ctx.game.external_id,
+            &ctx.game.portable_id
+        )
     );
     assert_eq!(saved.played_at, utc("2026-09-11T12:00:00Z"));
     assert_eq!(
-        saved.win_condition.map(|condition| condition.as_str()),
+        saved
+            .win_condition
+            .map(the_gathering::games::WinCondition::as_str),
         Some("combat_damage")
     );
     assert_eq!(
@@ -526,7 +556,11 @@ async fn repeating_a_reviewed_update_skips_with_no_material_changes() {
     let review = repeated.review.clone().unwrap();
     assert_eq!(review.len(), 1);
     assert_eq!(
-        (review[0].action, review[0].target_id, review[0].changes.len()),
+        (
+            review[0].action,
+            review[0].target_id,
+            review[0].changes.len()
+        ),
         ("skip", Some(ctx.game.id), 0)
     );
     let before = game(&app, ctx.game.id).await;
@@ -592,7 +626,7 @@ async fn adding_only_a_win_condition_leaves_all_seat_records_untouched() {
         game(&app, ctx.game.id)
             .await
             .win_condition
-            .map(|condition| condition.as_str()),
+            .map(the_gathering::games::WinCondition::as_str),
         Some("infinite_combo")
     );
 }
@@ -721,7 +755,10 @@ fn parses_pasted_tsv_dates_notes_aliases_and_exact_kill_attribution() {
     assert_eq!(first.date.unwrap().to_string(), "2025-01-02");
     assert_eq!(first.notes, "comma, slash / kept");
     let zero = |name: &str| (name.to_owned(), 0);
-    assert_eq!(kill_counts(first), [zero("Daniel"), zero("Dan"), zero("Jesse")]);
+    assert_eq!(
+        kill_counts(first),
+        [zero("Daniel"), zero("Dan"), zero("Jesse")]
+    );
     assert_eq!(first.seats[0].kills, 0);
     assert_eq!(first.seats[1].kills, 0);
     assert_eq!(second.date.unwrap().to_string(), "2025-01-03");
@@ -768,7 +805,8 @@ nope\tDaniel\t\t-1\t\tRealty (Kenrith; Landon (Flubs)\t
     let [malformed, overflow, duplicate] = rows.as_slice() else {
         panic!("three rows")
     };
-    let has = |row: &google_sheet::SheetRow, text: &str| row.errors.iter().any(|e| e.contains(text));
+    let has =
+        |row: &google_sheet::SheetRow, text: &str| row.errors.iter().any(|e| e.contains(text));
     assert!(has(malformed, "malformed text"));
     assert!(has(malformed, "missing a deck"));
     assert!(has(malformed, "nonnegative integer"));
@@ -789,12 +827,19 @@ fn missing_opponents_errors_and_blank_or_na_winners_create_draws() {
 1/3/25\t\t\t\tMatt (A); Drew (B)\tDraw
 ";
     let rows = google_sheet::parse(payload).unwrap();
-    assert!(rows[0].errors.iter().any(|error| error.contains("Other Decks")));
+    assert!(
+        rows[0]
+            .errors
+            .iter()
+            .any(|error| error.contains("Other Decks"))
+    );
     for row in &rows[1..] {
         assert!(row.seats.iter().all(|seat| seat.result == "draw"));
         assert_eq!(
             row.warnings,
-            ["No winner: all listed players will be recorded as a draw. Notes do not change results."]
+            [
+                "No winner: all listed players will be recorded as a draw. Notes do not change results."
+            ]
         );
     }
 }
@@ -809,7 +854,12 @@ fn same_date_games_differ_by_complete_row_and_exact_duplicates_get_occurrence_ke
     };
     assert_ne!(first.key, second.key);
     assert_eq!(duplicate.key, format!("{}-2", first.key));
-    assert!(duplicate.warnings.iter().any(|w| w.contains("Duplicate row")));
+    assert!(
+        duplicate
+            .warnings
+            .iter()
+            .any(|w| w.contains("Duplicate row"))
+    );
 }
 
 #[test]
@@ -841,7 +891,13 @@ fn plain_pasted_quotes_survive_but_malformed_quoted_exports_are_rejected() {
 
 const DREW_DISCORD: &str = "200000000000000002";
 
-fn mythic_seat(name: &str, turn_order: Value, winner: bool, commander: &str, extra: &Value) -> Value {
+fn mythic_seat(
+    name: &str,
+    turn_order: Value,
+    winner: bool,
+    commander: &str,
+    extra: &Value,
+) -> Value {
     let mut commander_json = json!({
         "scryfallId": format!("sf-{}", commander.to_lowercase()),
         "name": commander,
@@ -912,9 +968,14 @@ async fn mythic_preview_raw(app: &TestApp, payload: &str) -> Preview {
 }
 
 async fn mythic_import(app: &TestApp, games: &Value, user_id: i64) -> ImportResult {
-    commit::run(&app.state, Source::MythicTrack, &games.to_string(), Some(user_id))
-        .await
-        .unwrap()
+    commit::run(
+        &app.state,
+        Source::MythicTrack,
+        &games.to_string(),
+        Some(user_id),
+    )
+    .await
+    .unwrap()
 }
 
 #[tokio::test]
@@ -932,7 +993,14 @@ async fn orders_seats_by_turn_order_derives_results_decks_colours_and_notes() {
     let seats: Vec<(i64, &str, &str, &str)> = parsed
         .seats
         .iter()
-        .map(|seat| (seat.seat, seat.player.as_str(), seat.result.as_str(), seat.deck.as_str()))
+        .map(|seat| {
+            (
+                seat.seat,
+                seat.player.as_str(),
+                seat.result.as_str(),
+                seat.deck.as_str(),
+            )
+        })
         .collect();
     assert_eq!(
         seats,
@@ -943,7 +1011,10 @@ async fn orders_seats_by_turn_order_derives_results_decks_colours_and_notes() {
         ]
     );
     let daniel = &parsed.seats[0];
-    assert_eq!(daniel.commander_card_id.as_deref(), Some("sf-tifa lockhart"));
+    assert_eq!(
+        daniel.commander_card_id.as_deref(),
+        Some("sf-tifa lockhart")
+    );
     assert_eq!(daniel.color_identity.as_deref(), Some("G"));
     assert_eq!(parsed.seats[1].discord_id.as_deref(), Some(DREW_DISCORD));
     assert_eq!(preview.players.create, ["Daniel", "Drew", "Kaylyn"]);
@@ -966,11 +1037,13 @@ async fn maps_every_mythic_track_win_condition_and_defaults_unrecognized_values_
         "concede",
     ];
     for (key, number) in expected.iter().zip(1..) {
-        let preview = mythic_preview(&app, &json!([mythic_game(json!({"winCondition": number}))])).await;
+        let preview =
+            mythic_preview(&app, &json!([mythic_game(json!({"winCondition": number}))])).await;
         assert_eq!(preview.games[0].win_condition.as_deref(), Some(*key));
     }
     for value in [json!(99), json!(0), json!(12), Value::Null, json!("10")] {
-        let preview = mythic_preview(&app, &json!([mythic_game(json!({"winCondition": value}))])).await;
+        let preview =
+            mythic_preview(&app, &json!([mythic_game(json!({"winCondition": value}))])).await;
         assert_eq!(preview.games[0].win_condition.as_deref(), Some("unknown"));
     }
 }
@@ -984,8 +1057,11 @@ async fn normalizes_naive_midnight_calendar_dates_to_noon_utc_and_preserves_real
         ("2025-03-17T00:00:01", "2025-03-17T00:00:01Z"),
         ("2025-03-17T00:00:00-04:00", "2025-03-17T04:00:00Z"),
     ] {
-        let preview =
-            mythic_preview(&app, &json!([mythic_game(json!({"createdOn": created_on}))])).await;
+        let preview = mythic_preview(
+            &app,
+            &json!([mythic_game(json!({"createdOn": created_on}))]),
+        )
+        .await;
         assert_eq!(preview.games[0].played_at, utc(expected), "{created_on}");
     }
 }
@@ -1046,10 +1122,14 @@ async fn skips_in_progress_games_with_a_warning_and_names_partner_decks() {
     let partner = json!({"scryfallId": "sf-bg", "name": "Candlekeep Sage", "colors": ["U"]});
     let mut players = mythic_game(json!({}))["players"].clone();
     players[1]["commanderPartner"] = partner;
-    let in_progress = mythic_game(json!({"id": "8f3a0a44-0000-4000-8000-000000000003", "gameStatus": 2}));
+    let in_progress =
+        mythic_game(json!({"id": "8f3a0a44-0000-4000-8000-000000000003", "gameStatus": 2}));
     let preview = mythic_preview(
         &app,
-        &json!([mythic_game(json!({"players": players.clone()})), in_progress]),
+        &json!([
+            mythic_game(json!({"players": players.clone()})),
+            in_progress
+        ]),
     )
     .await;
     assert!(preview.valid);
@@ -1067,7 +1147,10 @@ async fn skips_in_progress_games_with_a_warning_and_names_partner_decks() {
     let mut unnamed = players.clone();
     unnamed[1]["commander"]["deckName"] = json!("");
     let preview = mythic_preview(&app, &json!([mythic_game(json!({"players": unnamed}))])).await;
-    assert_eq!(preview.games[0].seats[0].deck, "Tifa Lockhart / Candlekeep Sage");
+    assert_eq!(
+        preview.games[0].seats[0].deck,
+        "Tifa Lockhart / Candlekeep Sage"
+    );
 
     // Mythic Track also writes partners as "A || B (Partners)" in the commander name.
     let mut piped = mythic_game(json!({}))["players"].clone();
@@ -1077,7 +1160,10 @@ async fn skips_in_progress_games_with_a_warning_and_names_partner_decks() {
     let preview = mythic_preview(&app, &json!([mythic_game(json!({"players": piped}))])).await;
     let piped_daniel = &preview.games[0].seats[0];
     assert_eq!(piped_daniel.commander, "Frodo, Adventurous Hobbit");
-    assert_eq!(piped_daniel.partner_name.as_deref(), Some("Sam, Loyal Attendant"));
+    assert_eq!(
+        piped_daniel.partner_name.as_deref(),
+        Some("Sam, Loyal Attendant")
+    );
     assert_eq!(
         piped_daniel.deck,
         "Frodo, Adventurous Hobbit / Sam, Loyal Attendant"
@@ -1094,7 +1180,10 @@ async fn skips_in_progress_games_with_a_warning_and_names_partner_decks() {
 
     let preview = mythic_preview(&app, &json!([mythic_game(json!({"id": ""}))])).await;
     assert_eq!(preview.errors.len(), 1);
-    assert_eq!((preview.errors[0].line, preview.errors[0].field.as_str()), (1, "id"));
+    assert_eq!(
+        (preview.errors[0].line, preview.errors[0].field.as_str()),
+        (1, "id")
+    );
 }
 
 #[tokio::test]
@@ -1145,7 +1234,10 @@ async fn imports_with_scryfall_ids_merges_discord_identities_and_skips_the_same_
     let names: Vec<&str> = seats.iter().map(|seat| seat.player.name.as_str()).collect();
     assert_eq!(names, ["daniel", "waxpoetik", "Kaylyn"]);
     let results: Vec<GameResult> = seats.iter().map(|seat| seat.result).collect();
-    assert_eq!(results, [GameResult::Win, GameResult::Loss, GameResult::Loss]);
+    assert_eq!(
+        results,
+        [GameResult::Win, GameResult::Loss, GameResult::Loss]
+    );
     let tifa = seats[0].deck.as_ref().unwrap();
     assert_eq!(tifa.name, "Tifa Punches");
     assert_eq!(tifa.commander_card_id.as_deref(), Some("sf-tifa lockhart"));
@@ -1165,7 +1257,12 @@ async fn commit_preserves_partner_name_card_id_and_combined_colors() {
     let mut players = mythic_game(json!({}))["players"].clone();
     players[1]["commanderPartner"] =
         json!({"scryfallId": "sf-candlekeep", "name": "Candlekeep Sage", "colors": ["U"]});
-    let result = mythic_import(&app, &json!([mythic_game(json!({"players": players}))]), user.id).await;
+    let result = mythic_import(
+        &app,
+        &json!([mythic_game(json!({"players": players}))]),
+        user.id,
+    )
+    .await;
     let imported = game(&app, result.game_ids[0]).await;
     let winner = imported.winner().unwrap().deck.as_ref().unwrap();
     assert_eq!(winner.partner_name.as_deref(), Some("Candlekeep Sage"));
@@ -1178,7 +1275,10 @@ async fn preview_and_import_create_a_distinct_player_for_a_conflicting_discord_i
     let app = TestApp::new().await;
     let user = app.unique_member().await;
     let existing_alice = app
-        .player_with(json!({"name": "Alice", "discord_id": "discord-alice-a"}), None)
+        .player_with(
+            json!({"name": "Alice", "discord_id": "discord-alice-a"}),
+            None,
+        )
         .await;
     let mut players = mythic_game(json!({}))["players"].clone();
     players[0]["player"]["name"] = json!("Alice");
@@ -1186,7 +1286,13 @@ async fn preview_and_import_create_a_distinct_player_for_a_conflicting_discord_i
     let payload = json!([mythic_game(json!({"players": players}))]);
     let preview = mythic_preview(&app, &payload).await;
     assert!(preview.players.create.contains(&"Alice (2)".to_owned()));
-    assert!(!preview.players.matched.iter().any(|p| p.id == existing_alice.id));
+    assert!(
+        !preview
+            .players
+            .matched
+            .iter()
+            .any(|p| p.id == existing_alice.id)
+    );
 
     let result = mythic_import(&app, &payload, user.id).await;
     assert_eq!(result.created, 1);
@@ -1196,8 +1302,18 @@ async fn preview_and_import_create_a_distinct_player_for_a_conflicting_discord_i
         imported_alice
     );
     let imported = game(&app, result.game_ids[0]).await;
-    assert!(imported.seats.iter().any(|seat| seat.player_id == imported_alice));
-    assert!(!imported.seats.iter().any(|seat| seat.player_id == existing_alice.id));
+    assert!(
+        imported
+            .seats
+            .iter()
+            .any(|seat| seat.player_id == imported_alice)
+    );
+    assert!(
+        !imported
+            .seats
+            .iter()
+            .any(|seat| seat.player_id == existing_alice.id)
+    );
 }
 
 #[tokio::test]
@@ -1216,7 +1332,12 @@ async fn matching_discord_identity_wins_when_the_imported_display_name_changed()
     assert!(!preview.players.create.contains(&"Drew".to_owned()));
     let result = mythic_import(&app, &payload, user.id).await;
     let imported = game(&app, result.game_ids[0]).await;
-    assert!(imported.seats.iter().any(|seat| seat.player_id == existing.id));
+    assert!(
+        imported
+            .seats
+            .iter()
+            .any(|seat| seat.player_id == existing.id)
+    );
 }
 
 #[tokio::test]
@@ -1291,7 +1412,10 @@ struct PortableCtx {
 async fn portable_setup(app: &TestApp) -> PortableCtx {
     let user = app.unique_member().await;
     let alice = app
-        .player_with(json!({"name": "Alice", "discord_id": "private-discord"}), Some(user.id))
+        .player_with(
+            json!({"name": "Alice", "discord_id": "private-discord"}),
+            Some(user.id),
+        )
         .await;
     let bob = app.player("Bob").await;
     let carol = app.player("Carol").await;
@@ -1356,11 +1480,13 @@ async fn portable_setup(app: &TestApp) -> PortableCtx {
     imported_attrs["source"] = json!("mythic_track");
     imported_attrs["external_id"] = json!("original-game");
     let imported = app.game(imported_attrs, None).await;
-    sqlx::query("INSERT INTO sheet_import_receipts (key, game_id) VALUES ('reviewed-sheet-row', ?)")
-        .bind(first.id)
-        .execute(app.pool())
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO sheet_import_receipts (key, game_id) VALUES ('reviewed-sheet-row', ?)",
+    )
+    .bind(first.id)
+    .execute(app.pool())
+    .await
+    .unwrap();
     PortableCtx {
         first,
         second,
@@ -1420,7 +1546,11 @@ async fn round_trip_preserves_gameplay_unused_records_art_and_receipts_with_diff
 
     let summary = portable::preview(&app.state, &json).await.unwrap();
     assert_eq!(
-        (summary.players.created, summary.decks.created, summary.games.created),
+        (
+            summary.players.created,
+            summary.decks.created,
+            summary.games.created
+        ),
         (4, 2, 3)
     );
     assert_eq!(count(&app, "players").await, 1);
@@ -1440,7 +1570,9 @@ async fn round_trip_preserves_gameplay_unused_records_art_and_receipts_with_diff
         (
             saved.duration_minutes,
             saved.turns,
-            saved.win_condition.map(|c| c.as_str()),
+            saved
+                .win_condition
+                .map(the_gathering::games::WinCondition::as_str),
             saved.notes.as_deref()
         ),
         (
@@ -1480,7 +1612,8 @@ async fn round_trip_preserves_gameplay_unused_records_art_and_receipts_with_diff
     );
     assert_eq!(deck.archived_at, Some(utc("2025-02-01T00:00:00Z")));
     assert_eq!(
-        deck.decklist_source.map(|source| source.as_str()),
+        deck.decklist_source
+            .map(the_gathering::games::DecklistSource::as_str),
         Some("moxfield")
     );
     assert_eq!(
@@ -1501,7 +1634,10 @@ async fn round_trip_preserves_gameplay_unused_records_art_and_receipts_with_diff
     .await
     .unwrap()
     .unwrap();
-    assert_eq!(printing.image_uris["art_crop"], "https://example.com/karn.jpg");
+    assert_eq!(
+        printing.image_uris["art_crop"],
+        "https://example.com/karn.jpg"
+    );
     assert_eq!(
         game_by_portable_id(&app, ctx.imported.portable_id.as_deref().unwrap())
             .await
@@ -1560,7 +1696,9 @@ async fn source_identities_recognize_independent_imports_and_conflicting_identit
     let data = export(&app).await;
     let mut independent = data.clone();
     independent["games"][2]["portable_id"] = json!(uuid::Uuid::new_v4().to_string());
-    let summary = import_portable(&app, &independent.to_string()).await.unwrap();
+    let summary = import_portable(&app, &independent.to_string())
+        .await
+        .unwrap();
     assert_eq!((summary.games.created, summary.games.reused), (0, 3));
     assert_eq!(
         game(&app, ctx.imported.id).await.portable_id,
@@ -1572,7 +1710,10 @@ async fn source_identities_recognize_independent_imports_and_conflicting_identit
     conflict["games"][0]["external_id"] = json!("original-game");
     match import_portable(&app, &conflict.to_string()).await {
         Err(ImportError::Message(message)) => {
-            assert_eq!(message, "Game identities refer to different existing games.");
+            assert_eq!(
+                message,
+                "Game identities refer to different existing games."
+            );
         }
         other => panic!("expected a conflict, got {other:?}"),
     }
@@ -1768,7 +1909,9 @@ async fn updates_in_place_preserves_cleaned_identity_and_fields_and_remembers_re
 
     let preview = preview_sheet(&app, &params).await;
     assert!(preview.valid, "{:?}", first(&preview).errors);
-    let result = import_sheet(&app, &params, &preview.revision).await.unwrap();
+    let result = import_sheet(&app, &params, &preview.revision)
+        .await
+        .unwrap();
     assert_eq!((result.updated, result.created), (1, 0));
 
     let saved = game(&app, ctx.game.id).await;
@@ -1824,10 +1967,14 @@ async fn updates_in_place_preserves_cleaned_identity_and_fields_and_remembers_re
 async fn blank_kills_and_explicit_zero_replace_counts_while_blank_notes_are_preserved() {
     let app = TestApp::new().await;
     let ctx = recon_setup(&app).await;
-    let text = format!("{RECON_HEADER}3/17/25\tDaniel\tEdgar\t0\t\t\t\tReality (Kenrith); Matt (Benton)\t\n");
+    let text = format!(
+        "{RECON_HEADER}3/17/25\tDaniel\tEdgar\t0\t\t\t\tReality (Kenrith); Matt (Benton)\t\n"
+    );
     let params = select_all(&app, with_text(input(&ctx), text), json!(ctx.game.id)).await;
     let preview = preview_sheet(&app, &params).await;
-    import_sheet(&app, &params, &preview.revision).await.unwrap();
+    import_sheet(&app, &params, &preview.revision)
+        .await
+        .unwrap();
     let saved = game(&app, ctx.game.id).await;
     assert_eq!(saved.notes.as_deref(), Some("Old notes"));
     let kills: Vec<Option<i64>> = saved.seats.iter().map(|seat| seat.kills).collect();
@@ -1856,7 +2003,9 @@ async fn deck_diffs_reflect_committed_mappings_and_do_not_invent_changes_when_cr
     assert!(changes.as_array().unwrap().contains(&json!(
         {"field": "deck", "player": "Daniel", "before": "Cleaned-up vampires", "after": "Replacement"}
     )));
-    import_sheet(&app, &params, &preview.revision).await.unwrap();
+    import_sheet(&app, &params, &preview.revision)
+        .await
+        .unwrap();
     let saved = game(&app, ctx.game.id).await;
     let daniel = saved
         .seats
@@ -1883,7 +2032,7 @@ async fn unchanged_values_are_skipped_despite_sheet_nicknames_and_different_turn
                 "seat": seat.seat,
                 "deck_id": seat.deck_id,
                 "result": if seat.player_id == daniel { "win" } else { "loss" },
-                "kills": if seat.player_id == reality { 0 } else { 1 }
+                "kills": i64::from(seat.player_id != reality)
             })
         })
         .collect();
@@ -1935,14 +2084,20 @@ async fn multiple_games_use_deck_evidence_never_the_recorded_winner_to_break_tie
 
     let params = with_text(
         input(&ctx),
-        format!("{RECON_HEADER}{}", RECON_ROW.replace("Edgar Markov", "Voja")),
+        format!(
+            "{RECON_HEADER}{}",
+            RECON_ROW.replace("Edgar Markov", "Voja")
+        ),
     );
     let preview = preview_sheet(&app, &params).await;
     assert_eq!(first(&preview).action, Choice::Id(other.id));
 
     let params = with_text(
         input(&ctx),
-        format!("{RECON_HEADER}{}", RECON_ROW.replace("Edgar Markov", "Nickname")),
+        format!(
+            "{RECON_HEADER}{}",
+            RECON_ROW.replace("Edgar Markov", "Nickname")
+        ),
     );
     let preview = preview_sheet(&app, &params).await;
     let row = first(&preview);
@@ -1966,7 +2121,10 @@ async fn unmapped_players_and_invalid_rows_never_auto_select_a_game() {
 
     let params = with_text(
         input(&ctx),
-        format!("{RECON_HEADER}{}", RECON_ROW.replace("\t1\t1\t", "\t5\t1\t")),
+        format!(
+            "{RECON_HEADER}{}",
+            RECON_ROW.replace("\t1\t1\t", "\t5\t1\t")
+        ),
     );
     let preview = preview_sheet(&app, &params).await;
     let row = first(&preview);
@@ -1984,7 +2142,11 @@ async fn skipping_a_matched_row_preserves_its_comparison_but_prevents_writes() {
     assert_eq!(first(&preview).target.as_ref().unwrap().id, ctx.game.id);
     assert!(!first(&preview).changes.is_empty());
     assert!(!preview.valid);
-    assert!(import_sheet(&app, &params, &preview.revision).await.is_err());
+    assert!(
+        import_sheet(&app, &params, &preview.revision)
+            .await
+            .is_err()
+    );
     assert_eq!(
         game(&app, ctx.game.id).await.notes.as_deref(),
         Some("Old notes")
@@ -2017,7 +2179,11 @@ async fn competing_sheet_rows_are_left_for_review_and_cannot_update_one_game() {
             .iter()
             .any(|error| error.contains("Two sheet rows"))
     }));
-    assert!(import_sheet(&app, &params, &invalid.revision).await.is_err());
+    assert!(
+        import_sheet(&app, &params, &invalid.revision)
+            .await
+            .is_err()
+    );
     assert_eq!(
         game(&app, ctx.game.id).await.notes.as_deref(),
         Some("Old notes")
@@ -2032,15 +2198,26 @@ async fn stale_notes_and_changed_input_invalidate_the_preview() {
     let preview = preview_sheet(&app, &params).await;
     let changed = with_text(
         params.clone(),
-        format!("{RECON_HEADER}{}", RECON_ROW.replace("Corrected", "Changed")),
+        format!(
+            "{RECON_HEADER}{}",
+            RECON_ROW.replace("Corrected", "Changed")
+        ),
     );
-    assert!(import_sheet(&app, &changed, &preview.revision).await.is_err());
+    assert!(
+        import_sheet(&app, &changed, &preview.revision)
+            .await
+            .is_err()
+    );
     app.state
         .games
         .update_game(&ctx.game, &json!({"notes": "Edited after preview"}))
         .await
         .unwrap();
-    assert!(import_sheet(&app, &params, &preview.revision).await.is_err());
+    assert!(
+        import_sheet(&app, &params, &preview.revision)
+            .await
+            .is_err()
+    );
     assert_eq!(
         game(&app, ctx.game.id).await.notes.as_deref(),
         Some("Edited after preview")
@@ -2063,7 +2240,11 @@ async fn invalid_selected_rows_block_the_batch_skipped_invalid_rows_do_not() {
     params["actions"] = json!({valid_key: ctx.game.id, invalid_key.clone(): "create"});
     let blocked = preview_sheet(&app, &params).await;
     assert!(!blocked.valid);
-    assert!(import_sheet(&app, &params, &blocked.revision).await.is_err());
+    assert!(
+        import_sheet(&app, &params, &blocked.revision)
+            .await
+            .is_err()
+    );
     assert_eq!(
         game(&app, ctx.game.id).await.notes.as_deref(),
         Some("Old notes")
@@ -2085,7 +2266,9 @@ async fn approved_jesse_correction_creates_a_missing_game_with_explicit_deck_map
     let params = new_decks(&app, params).await;
     let preview = preview_sheet(&app, &params).await;
     assert!(preview.valid, "{:?}", first(&preview).errors);
-    let result = import_sheet(&app, &params, &preview.revision).await.unwrap();
+    let result = import_sheet(&app, &params, &preview.revision)
+        .await
+        .unwrap();
     assert_eq!(result.created, 1);
     let created = game(&app, result.game_ids[0]).await;
     assert_eq!(created.seats[0].player.name, "Jesse");
@@ -2110,10 +2293,17 @@ async fn october_draw_preserves_the_funny_note_rather_than_inferring_a_loss() {
     let params = new_decks(&app, params).await;
     let preview = preview_sheet(&app, &params).await;
     assert!(preview.valid, "{:?}", first(&preview).errors);
-    let result = import_sheet(&app, &params, &preview.revision).await.unwrap();
+    let result = import_sheet(&app, &params, &preview.revision)
+        .await
+        .unwrap();
     let created = game(&app, result.game_ids[0]).await;
     assert_eq!(created.seats.len(), 5);
-    assert!(created.seats.iter().all(|seat| seat.result == GameResult::Draw));
+    assert!(
+        created
+            .seats
+            .iter()
+            .all(|seat| seat.result == GameResult::Draw)
+    );
     assert_eq!(
         created.notes.as_deref(),
         Some("4-way Tie due to Divine Intervention. Woo. Matt lost tho.")
@@ -2126,7 +2316,10 @@ async fn rejects_alias_collisions_misplaced_kills_and_foreign_owned_decks() {
     let ctx = recon_setup(&app).await;
     let collision = with_text(
         input(&ctx),
-        format!("{RECON_HEADER}{}", RECON_ROW.replace("Reality (Kenrith)", "Dan (Tyvar)")),
+        format!(
+            "{RECON_HEADER}{}",
+            RECON_ROW.replace("Reality (Kenrith)", "Dan (Tyvar)")
+        ),
     );
     let collision = select_all(&app, collision, json!(ctx.game.id)).await;
     let preview = preview_sheet(&app, &collision).await;
@@ -2156,7 +2349,11 @@ async fn rejects_alias_collisions_misplaced_kills_and_foreign_owned_decks() {
     params["decks"] = json!({json!(["Matt", "Sergeant John Benton"]).to_string(): ctx.deck});
     let preview = preview_sheet(&app, &params).await;
     assert!(!preview.valid);
-    assert!(import_sheet(&app, &params, &preview.revision).await.is_err());
+    assert!(
+        import_sheet(&app, &params, &preview.revision)
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -2172,7 +2369,11 @@ async fn a_persistence_failure_rolls_back_earlier_updates_and_new_identities() {
     params["players"] = json!({"Dan": ctx.players["Daniel"].id, "New player": "new"});
     let params = new_decks(&app, params).await;
     let preview = preview_sheet(&app, &params).await;
-    assert!(preview.valid, "{:?}", preview.rows.iter().map(|r| &r.errors).collect::<Vec<_>>());
+    assert!(
+        preview.valid,
+        "{:?}",
+        preview.rows.iter().map(|r| &r.errors).collect::<Vec<_>>()
+    );
     assert!(matches!(
         import_sheet(&app, &params, &preview.revision).await,
         Err(ImportError::Invalid(_))

@@ -20,7 +20,9 @@ lives here.
   - `accounts/`, `catalog/`, `decklists/`, `games/`, ...: domain modules, one per Elixir
     context. `catalog/` also holds the Scryfall sync (`the-gathering catalog-sync`, plus a
     scheduled run started at boot), the backfill (`the-gathering catalog-backfill`), and the
-    card image disk cache; `card_id/` serves the card-recognition bundle and corrections.
+    card image disk cache; `card_id/` serves the card-recognition bundle and corrections;
+    `imports/` parses and commits CSV, Mythic Track, and pasted Google Sheet history and
+    the portable export/import.
   - `web/`: router (mirrors `TheGatheringWeb.Router` pipelines), session cookie, CSRF,
     auth guards, SPA shell, static files, and `web/api/*` controllers.
   - `webcam/`: webcam table rooms (one tokio task per room), turns, timer, log, cards,
