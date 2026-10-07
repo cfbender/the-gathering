@@ -70,6 +70,9 @@ async fn serve(state: AppState) -> anyhow::Result<()> {
     } else {
         tracing::info!("Discord OAuth sign-in disabled: DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET are not both set");
     }
+    if state.config.webcam_table_pruning_enabled {
+        state.webcam_tables.spawn_pruner();
+    }
     let app = web::router(state.clone());
     let listener = tokio::net::TcpListener::bind(address).await.with_context(|| format!("binding {address}"))?;
     tracing::info!("listening on http://{address}");
