@@ -1,6 +1,11 @@
 //! Ported from `test/the_gathering/discord/spellbot_parser_test.exs`,
 //! `start_time_test.exs`, `command_test.exs`, and `test/the_gathering/discord_test.exs`.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 mod support;
 
@@ -208,7 +213,10 @@ fn tomorrow_and_rollover_use_calendar_days_across_spring_and_autumn_dst() {
         at("tomorrow 7pm", "2026-03-07T18:00:00Z"),
         utc("2026-03-08T23:00:00Z")
     );
-    assert_eq!(at("1pm", "2026-03-07T19:00:00Z"), utc("2026-03-08T17:00:00Z"));
+    assert_eq!(
+        at("1pm", "2026-03-07T19:00:00Z"),
+        utc("2026-03-08T17:00:00Z")
+    );
     assert_eq!(
         at("tomorrow 7pm", "2026-10-31T18:00:00Z"),
         utc("2026-11-02T00:00:00Z")
@@ -229,14 +237,14 @@ fn rejects_nonexistent_and_ambiguous_dst_wall_times_rather_than_guessing() {
 async fn registers_log_with_an_optional_winner_and_removes_only_won_in_each_scope() {
     for guild in [None, Some("333")] {
         let api = RecordingApi::with_commands(vec![
-                RegisteredCommand {
-                    id: "123".into(),
-                    name: "won".into(),
-                },
-                RegisteredCommand {
-                    id: "456".into(),
-                    name: "other".into(),
-                },
+            RegisteredCommand {
+                id: "123".into(),
+                name: "won".into(),
+            },
+            RegisteredCommand {
+                id: "456".into(),
+                name: "other".into(),
+            },
         ]);
         let description = command::register(&api, "888", guild).await.unwrap();
         assert!(description.contains("/log, /summary, and /newgame"));

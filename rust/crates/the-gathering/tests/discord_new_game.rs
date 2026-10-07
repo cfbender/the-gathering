@@ -1,6 +1,11 @@
 //! Ported from `test/the_gathering/discord/new_game_test.exs` (with
 //! `test/support/discord_new_game_api.ex` as `support::discord::RecordingApi`).
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 mod support;
 
@@ -15,16 +20,15 @@ use the_gathering::discord::api::{
     Button, Component, Embed, EmbedField, InteractionResponse, MessagePayload, ResponseKind,
 };
 use the_gathering::discord::interaction::{
-    CommandData, CommandOptionData, ComponentData, Interaction, InteractionData,
-    InteractionMember, InteractionUser, ModalData, OptionValue,
+    CommandData, CommandOptionData, ComponentData, Interaction, InteractionData, InteractionMember,
+    InteractionUser, ModalData, OptionValue,
 };
 use the_gathering::discord::new_game::{self, RespondError};
+use the_gathering::discord::new_game_message;
 use the_gathering::discord::scheduled::{
-    self, MAYBE_GRACE_SECONDS, NewQueue, QueueAction, QueueActor, QueueError, ScheduledGame,
-    Status,
+    self, MAYBE_GRACE_SECONDS, NewQueue, QueueAction, QueueActor, QueueError, ScheduledGame, Status,
 };
 use the_gathering::discord::scheduler::NewGameScheduler;
-use the_gathering::discord::new_game_message;
 
 const NOW: &str = "2026-09-23T18:00:00Z";
 const ADMINISTRATOR: u64 = 8;
@@ -60,12 +64,24 @@ impl Ctx {
         self.scheduler.sweep().await;
     }
 
-    async fn act(&self, id: i64, action: QueueAction, actor: &QueueActor) -> Result<ScheduledGame, QueueError> {
+    async fn act(
+        &self,
+        id: i64,
+        action: QueueAction,
+        actor: &QueueActor,
+    ) -> Result<ScheduledGame, QueueError> {
         self.scheduler.act(id, &action, actor).await
     }
 
     async fn respond(&self, event: &Interaction) -> Result<(), RespondError> {
-        new_game::respond(&self.app.state, self.api.as_ref(), &self.scheduler, event, now()).await
+        new_game::respond(
+            &self.app.state,
+            self.api.as_ref(),
+            &self.scheduler,
+            event,
+            now(),
+        )
+        .await
     }
 
     async fn game(&self, id: i64) -> ScheduledGame {
@@ -80,8 +96,12 @@ impl Ctx {
     }
 
     async fn queue(&self, queue: NewQueue) -> ScheduledGame {
-        let game = scheduled::create(&self.app.state, &queue, &actor("111")).await.unwrap();
-        scheduled::attach_message(self.app.pool(), game.id, "555").await.unwrap()
+        let game = scheduled::create(&self.app.state, &queue, &actor("111"))
+            .await
+            .unwrap();
+        scheduled::attach_message(self.app.pool(), game.id, "555")
+            .await
+            .unwrap()
     }
 
     fn edits(&self) -> Vec<MessagePayload> {
@@ -113,7 +133,11 @@ impl Ctx {
     }
 }
 
-fn scheduler(app: &TestApp, api: &Arc<RecordingApi>, clock: &Arc<Mutex<UtcDateTime>>) -> Arc<NewGameScheduler> {
+fn scheduler(
+    app: &TestApp,
+    api: &Arc<RecordingApi>,
+    clock: &Arc<Mutex<UtcDateTime>>,
+) -> Arc<NewGameScheduler> {
     let clock = Arc::clone(clock);
     Arc::new(NewGameScheduler::with_clock(
         app.state.clone(),
@@ -327,7 +351,10 @@ async fn join_and_leave_edit_original_roster_repeat_join_updates_name_without_du
             ..NewQueue::default()
         })
         .await;
-    let first = ctx.act(game.id, QueueAction::Join, &actor("11")).await.unwrap();
+    let first = ctx
+        .act(game.id, QueueAction::Join, &actor("11"))
+        .await
+        .unwrap();
     let edits = ctx.edits();
     assert_eq!(
         embed(&edits[0]).fields.last().unwrap(),
@@ -340,13 +367,27 @@ async fn join_and_leave_edit_original_roster_repeat_join_updates_name_without_du
     };
     let second = ctx.act(game.id, QueueAction::Join, &renamed).await.unwrap();
     assert_eq!(second.players.len(), 1);
-    assert_eq!(second.players["11"].joined_at, first.players["11"].joined_at);
+    assert_eq!(
+        second.players["11"].joined_at,
+        first.players["11"].joined_at
+    );
     assert_eq!(second.players["11"].display_name, "New name");
-    ctx.act(game.id, QueueAction::Join, &actor("12")).await.unwrap();
-    let left = ctx.act(game.id, QueueAction::Leave, &actor("11")).await.unwrap();
+    ctx.act(game.id, QueueAction::Join, &actor("12"))
+        .await
+        .unwrap();
+    let left = ctx
+        .act(game.id, QueueAction::Leave, &actor("11"))
+        .await
+        .unwrap();
     assert_eq!(keys(&left.players), ["12"]);
-    let again = ctx.act(game.id, QueueAction::Leave, &actor("11")).await.unwrap();
-    assert_eq!((&again.players, &again.maybe, again.status), (&left.players, &left.maybe, left.status));
+    let again = ctx
+        .act(game.id, QueueAction::Leave, &actor("11"))
+        .await
+        .unwrap();
+    assert_eq!(
+        (&again.players, &again.maybe, again.status),
+        (&left.players, &left.maybe, left.status)
+    );
     let edits = ctx.edits();
     assert_eq!(embed(edits.last().unwrap()).fields[3].value, "<@12>");
 }
@@ -361,17 +402,27 @@ async fn ten_player_cap_permits_repeat_joins_and_frees_a_seat_on_leave() {
         })
         .await;
     for id in 1..=10 {
-        ctx.act(game.id, QueueAction::Join, &actor(&id.to_string())).await.unwrap();
+        ctx.act(game.id, QueueAction::Join, &actor(&id.to_string()))
+            .await
+            .unwrap();
     }
     assert!(matches!(
         ctx.act(game.id, QueueAction::Join, &actor("11")).await,
         Err(QueueError::Full)
     ));
-    let full = ctx.act(game.id, QueueAction::Join, &actor("3")).await.unwrap();
+    let full = ctx
+        .act(game.id, QueueAction::Join, &actor("3"))
+        .await
+        .unwrap();
     assert_eq!(full.players.len(), 10);
     assert_eq!(full.status, Status::Open);
-    ctx.act(game.id, QueueAction::Leave, &actor("3")).await.unwrap();
-    let full = ctx.act(game.id, QueueAction::Join, &actor("11")).await.unwrap();
+    ctx.act(game.id, QueueAction::Leave, &actor("3"))
+        .await
+        .unwrap();
+    let full = ctx
+        .act(game.id, QueueAction::Join, &actor("11"))
+        .await
+        .unwrap();
     assert_eq!(full.players.len(), 10);
 }
 
@@ -384,10 +435,16 @@ async fn minimum_met_join_starts_immediately_once_and_mentions_only_the_joined_p
             ..NewQueue::default()
         })
         .await;
-    let open = ctx.act(game.id, QueueAction::Join, &actor("11")).await.unwrap();
+    let open = ctx
+        .act(game.id, QueueAction::Join, &actor("11"))
+        .await
+        .unwrap();
     assert_eq!(open.status, Status::Open);
     assert!(ctx.creates().is_empty());
-    let started = ctx.act(game.id, QueueAction::Join, &actor("12")).await.unwrap();
+    let started = ctx
+        .act(game.id, QueueAction::Join, &actor("12"))
+        .await
+        .unwrap();
     assert_eq!(started.status, Status::Started);
     let room = started.room_id.clone().unwrap();
     assert!(uuid::Uuid::parse_str(&room).is_ok());
@@ -396,21 +453,30 @@ async fn minimum_met_join_starts_immediately_once_and_mentions_only_the_joined_p
         panic!("{calls:?}")
     };
     assert_eq!(channel, "222");
-    assert!(payload
-        .content
-        .as_deref()
-        .unwrap()
-        .contains(&format!("{}/table/{room}", ctx.app.state.config.public_url())));
-    assert_eq!(mentions(payload), json!({"parse": [], "users": ["11", "12"]}));
+    assert!(payload.content.as_deref().unwrap().contains(&format!(
+        "{}/table/{room}",
+        ctx.app.state.config.public_url()
+    )));
+    assert_eq!(
+        mentions(payload),
+        json!({"parse": [], "users": ["11", "12"]})
+    );
     assert_eq!(payload.enforce_nonce, Some(true));
     assert_eq!(payload.nonce, Some(format!("newgame:{}", game.id)));
     let Call::Edit(_, _, edit) = &calls[1] else {
         panic!("{calls:?}")
     };
     assert!(embed(edit).description.starts_with("Your game is ready!"));
-    assert!(buttons(edit).iter().all(|button| button.disabled == Some(true)));
+    assert!(
+        buttons(edit)
+            .iter()
+            .all(|button| button.disabled == Some(true))
+    );
 
-    let repeated = ctx.act(game.id, QueueAction::Leave, &actor("11")).await.unwrap();
+    let repeated = ctx
+        .act(game.id, QueueAction::Leave, &actor("11"))
+        .await
+        .unwrap();
     assert_eq!(repeated.room_id, started.room_id);
     assert_eq!(repeated.players, started.players);
     ctx.scheduler.sweep().await;
@@ -429,7 +495,9 @@ async fn scheduled_queue_starts_at_the_boundary_but_not_a_second_earlier() {
         })
         .await;
     for id in ["11", "12"] {
-        ctx.act(game.id, QueueAction::Join, &actor(id)).await.unwrap();
+        ctx.act(game.id, QueueAction::Join, &actor(id))
+            .await
+            .unwrap();
     }
     ctx.set_now(plus(due, -1));
     ctx.scheduler.sweep().await;
@@ -452,10 +520,15 @@ async fn underfilled_queues_expire_at_deadline_and_cannot_accept_a_late_final_jo
             ..NewQueue::default()
         })
         .await;
-    ctx.act(game.id, QueueAction::Join, &actor("11")).await.unwrap();
+    ctx.act(game.id, QueueAction::Join, &actor("11"))
+        .await
+        .unwrap();
     ctx.api.take();
     ctx.set_now(due);
-    let expired = ctx.act(game.id, QueueAction::Join, &actor("12")).await.unwrap();
+    let expired = ctx
+        .act(game.id, QueueAction::Join, &actor("12"))
+        .await
+        .unwrap();
     assert_eq!(expired.status, Status::Expired);
     assert_eq!(keys(&expired.players), ["11"]);
     assert_eq!(expired.room_id, None);
@@ -464,7 +537,11 @@ async fn underfilled_queues_expire_at_deadline_and_cannot_accept_a_late_final_jo
     let Call::Edit(_, _, edit) = &calls[0] else {
         panic!("{calls:?}")
     };
-    assert!(embed(edit).description.starts_with("This game did not fill"));
+    assert!(
+        embed(edit)
+            .description
+            .starts_with("This game did not fill")
+    );
 }
 
 #[tokio::test]
@@ -476,8 +553,13 @@ async fn maybe_does_not_count_toward_the_minimum_and_moves_between_lists() {
             ..NewQueue::default()
         })
         .await;
-    ctx.act(game.id, QueueAction::Join, &actor("11")).await.unwrap();
-    let maybe = ctx.act(game.id, QueueAction::Maybe, &actor("12")).await.unwrap();
+    ctx.act(game.id, QueueAction::Join, &actor("11"))
+        .await
+        .unwrap();
+    let maybe = ctx
+        .act(game.id, QueueAction::Maybe, &actor("12"))
+        .await
+        .unwrap();
     assert_eq!(maybe.status, Status::Open);
     assert_eq!(keys(&maybe.players), ["11"]);
     assert_eq!(keys(&maybe.maybe), ["12"]);
@@ -488,16 +570,27 @@ async fn maybe_does_not_count_toward_the_minimum_and_moves_between_lists() {
         &EmbedField::new("Maybe (1) — not counted", "<@12>")
     );
 
-    let switched = ctx.act(game.id, QueueAction::Maybe, &actor("11")).await.unwrap();
+    let switched = ctx
+        .act(game.id, QueueAction::Maybe, &actor("11"))
+        .await
+        .unwrap();
     assert!(switched.players.is_empty());
     assert_eq!(keys(&switched.maybe), ["11", "12"]);
-    let left = ctx.act(game.id, QueueAction::Leave, &actor("11")).await.unwrap();
+    let left = ctx
+        .act(game.id, QueueAction::Leave, &actor("11"))
+        .await
+        .unwrap();
     assert_eq!(keys(&left.maybe), ["12"]);
-    let joined = ctx.act(game.id, QueueAction::Join, &actor("12")).await.unwrap();
+    let joined = ctx
+        .act(game.id, QueueAction::Join, &actor("12"))
+        .await
+        .unwrap();
     assert!(joined.maybe.is_empty());
     assert_eq!(joined.status, Status::Open);
     for id in 1..=10 {
-        ctx.act(game.id, QueueAction::Maybe, &actor(&format!("m{id}"))).await.unwrap();
+        ctx.act(game.id, QueueAction::Maybe, &actor(&format!("m{id}")))
+            .await
+            .unwrap();
     }
     assert!(matches!(
         ctx.act(game.id, QueueAction::Maybe, &actor("m11")).await,
@@ -517,9 +610,15 @@ async fn underfilled_game_pings_maybes_once_at_start_then_starts_when_a_maybe_jo
             ..NewQueue::default()
         })
         .await;
-    ctx.act(game.id, QueueAction::Join, &actor("11")).await.unwrap();
-    ctx.act(game.id, QueueAction::Maybe, &actor("13")).await.unwrap();
-    ctx.act(game.id, QueueAction::Maybe, &actor("12")).await.unwrap();
+    ctx.act(game.id, QueueAction::Join, &actor("11"))
+        .await
+        .unwrap();
+    ctx.act(game.id, QueueAction::Maybe, &actor("13"))
+        .await
+        .unwrap();
+    ctx.act(game.id, QueueAction::Maybe, &actor("12"))
+        .await
+        .unwrap();
     ctx.api.take();
     ctx.set_now(due);
     ctx.scheduler.sweep().await;
@@ -534,7 +633,10 @@ async fn underfilled_game_pings_maybes_once_at_start_then_starts_when_a_maybe_jo
     let Call::Create(_, payload) = &calls[0] else {
         panic!("{calls:?}")
     };
-    assert_eq!(mentions(payload), json!({"parse": [], "users": ["12", "13"]}));
+    assert_eq!(
+        mentions(payload),
+        json!({"parse": [], "users": ["12", "13"]})
+    );
     let content = payload.content.as_deref().unwrap();
     assert!(content.contains("<@12> <@13> **Friday pod** is 1 player short"));
     assert!(content.contains("https://discord.com/channels/333/222/555"));
@@ -550,10 +652,16 @@ async fn underfilled_game_pings_maybes_once_at_start_then_starts_when_a_maybe_jo
     ctx.scheduler.sweep().await;
     assert!(ctx.creates().is_empty());
 
-    let started = ctx.act(game.id, QueueAction::Join, &actor("12")).await.unwrap();
+    let started = ctx
+        .act(game.id, QueueAction::Join, &actor("12"))
+        .await
+        .unwrap();
     assert_eq!(started.status, Status::Started);
     let creates = ctx.creates();
-    assert_eq!(mentions(&creates[0]), json!({"parse": [], "users": ["11", "12"]}));
+    assert_eq!(
+        mentions(&creates[0]),
+        json!({"parse": [], "users": ["11", "12"]})
+    );
 }
 
 #[tokio::test]
@@ -567,7 +675,9 @@ async fn maybe_grace_period_expires_an_unfilled_game_changing_time_re_arms_the_p
             ..NewQueue::default()
         })
         .await;
-    ctx.act(game.id, QueueAction::Maybe, &actor("12")).await.unwrap();
+    ctx.act(game.id, QueueAction::Maybe, &actor("12"))
+        .await
+        .unwrap();
     ctx.set_now(due);
     ctx.scheduler.sweep().await;
     assert_eq!(ctx.creates().len(), 1);
@@ -599,7 +709,11 @@ async fn maybe_grace_period_expires_an_unfilled_game_changing_time_re_arms_the_p
     let Some(Call::Edit(_, _, edit)) = calls.last() else {
         panic!("{calls:?}")
     };
-    assert!(embed(edit).description.starts_with("This game did not fill"));
+    assert!(
+        embed(edit)
+            .description
+            .starts_with("This game did not fill")
+    );
 }
 
 #[tokio::test]
@@ -611,8 +725,13 @@ async fn maybe_button_confirms_privately() {
             ..NewQueue::default()
         })
         .await;
-    ctx.respond(&button(game.id, "maybe", "111", None)).await.unwrap();
-    assert_eq!(response(ctx.api.next()), InteractionResponse::deferred(true));
+    ctx.respond(&button(game.id, "maybe", "111", None))
+        .await
+        .unwrap();
+    assert_eq!(
+        response(ctx.api.next()),
+        InteractionResponse::deferred(true)
+    );
     let calls = ctx.api.take();
     let confirmation = calls
         .into_iter()
@@ -621,10 +740,12 @@ async fn maybe_button_confirms_privately() {
             _ => None,
         })
         .unwrap();
-    assert!(confirmation
-        .content
-        .unwrap()
-        .starts_with("You are on the maybe list. You'll be pinged"));
+    assert!(
+        confirmation
+            .content
+            .unwrap()
+            .starts_with("You are on the maybe list. You'll be pinged")
+    );
     assert_eq!(keys(&ctx.game(game.id).await.maybe), ["111"]);
 }
 
@@ -640,7 +761,11 @@ async fn boot_reloads_due_work_from_db_and_expires_underfilled_queues() {
     ctx.restart().await;
     assert_eq!(ctx.game(game.id).await.status, Status::Expired);
     let edits = ctx.edits();
-    assert!(buttons(&edits[0]).iter().all(|button| button.disabled == Some(true)));
+    assert!(
+        buttons(&edits[0])
+            .iter()
+            .all(|button| button.disabled == Some(true))
+    );
 }
 
 #[tokio::test]
@@ -665,7 +790,9 @@ async fn atomic_status_guard_does_not_replace_the_uuid_when_given_the_same_stale
         .unwrap();
     let stale = ctx.game(game.id).await;
     let mut conn = ctx.app.pool().acquire().await.unwrap();
-    let first = scheduled::settle(&mut conn, stale.clone(), now()).await.unwrap();
+    let first = scheduled::settle(&mut conn, stale.clone(), now())
+        .await
+        .unwrap();
     let second = scheduled::settle(&mut conn, stale, now()).await.unwrap();
     drop(conn);
     assert_eq!(first.status, Status::Started);
@@ -681,11 +808,21 @@ async fn host_cancellation_disables_buttons_and_never_starts_others_cannot_cance
         ctx.act(game.id, QueueAction::Cancel, &actor("12")).await,
         Err(QueueError::Forbidden)
     ));
-    let cancelled = ctx.act(game.id, QueueAction::Cancel, &actor("111")).await.unwrap();
+    let cancelled = ctx
+        .act(game.id, QueueAction::Cancel, &actor("111"))
+        .await
+        .unwrap();
     assert_eq!(cancelled.status, Status::Cancelled);
     let edits = ctx.edits();
-    assert!(buttons(&edits[0]).iter().all(|button| button.disabled == Some(true)));
-    let unchanged = ctx.act(game.id, QueueAction::Join, &actor("12")).await.unwrap();
+    assert!(
+        buttons(&edits[0])
+            .iter()
+            .all(|button| button.disabled == Some(true))
+    );
+    let unchanged = ctx
+        .act(game.id, QueueAction::Join, &actor("12"))
+        .await
+        .unwrap();
     assert!(unchanged.players.is_empty());
     assert!(ctx.creates().is_empty());
 }
@@ -694,12 +831,18 @@ async fn host_cancellation_disables_buttons_and_never_starts_others_cannot_cance
 async fn administrator_permission_can_cancel_manage_guild_alone_cannot() {
     let ctx = setup().await;
     let game = ctx.queue(NewQueue::default()).await;
-    for (permissions, expected) in [(MANAGE_GUILD, Status::Open), (ADMINISTRATOR, Status::Cancelled)] {
+    for (permissions, expected) in [
+        (MANAGE_GUILD, Status::Open),
+        (ADMINISTRATOR, Status::Cancelled),
+    ] {
         ctx.respond(&button(game.id, "cancel", "12", Some(permissions)))
             .await
             .unwrap();
         assert_eq!(ctx.game(game.id).await.status, expected);
-        assert_eq!(response(ctx.api.next()), InteractionResponse::deferred(true));
+        assert_eq!(
+            response(ctx.api.next()),
+            InteractionResponse::deferred(true)
+        );
         let calls = ctx.api.take();
         let confirmation = calls
             .into_iter()
@@ -716,8 +859,13 @@ async fn administrator_permission_can_cancel_manage_guild_alone_cannot() {
 async fn button_acknowledgements_are_private_and_mismatched_message_channel_guild_are_rejected() {
     let ctx = setup().await;
     let game = ctx.queue(NewQueue::default()).await;
-    ctx.respond(&button(game.id, "join", "111", None)).await.unwrap();
-    assert_eq!(response(ctx.api.next()), InteractionResponse::deferred(true));
+    ctx.respond(&button(game.id, "join", "111", None))
+        .await
+        .unwrap();
+    assert_eq!(
+        response(ctx.api.next()),
+        InteractionResponse::deferred(true)
+    );
     let confirmation = ctx
         .api
         .take()
@@ -727,7 +875,10 @@ async fn button_acknowledgements_are_private_and_mismatched_message_channel_guil
             _ => None,
         })
         .unwrap();
-    assert_eq!(confirmation.content.as_deref(), Some("You are on the roster."));
+    assert_eq!(
+        confirmation.content.as_deref(),
+        Some("You are on the roster.")
+    );
     assert_eq!(confirmation.flags, Some(64));
 
     for actor in [
@@ -763,11 +914,15 @@ async fn failed_acknowledgement_is_not_retried_or_published() {
     assert_eq!(ctx.only_game().await.status, Status::Cancelled);
     let calls = ctx.api.take();
     assert_eq!(calls.len(), 1);
-    assert_eq!(response(calls[0].clone()).kind, ResponseKind::DeferredChannelMessage);
+    assert_eq!(
+        response(calls[0].clone()).kind,
+        ResponseKind::DeferredChannelMessage
+    );
 }
 
 #[tokio::test]
-async fn restart_retries_failed_notifications_with_same_room_and_records_announcement_before_edit() {
+async fn restart_retries_failed_notifications_with_same_room_and_records_announcement_before_edit()
+{
     let mut ctx = setup().await;
     let game = ctx
         .queue(NewQueue {
@@ -775,10 +930,14 @@ async fn restart_retries_failed_notifications_with_same_room_and_records_announc
             ..NewQueue::default()
         })
         .await;
-    ctx.act(game.id, QueueAction::Join, &actor("11")).await.unwrap();
+    ctx.act(game.id, QueueAction::Join, &actor("11"))
+        .await
+        .unwrap();
     ctx.api.take();
     ctx.api.fail(&[Op::Create]);
-    ctx.act(game.id, QueueAction::Join, &actor("12")).await.unwrap();
+    ctx.act(game.id, QueueAction::Join, &actor("12"))
+        .await
+        .unwrap();
     let first = ctx.creates().remove(0);
     let room = ctx.game(game.id).await.room_id;
 
@@ -871,21 +1030,31 @@ async fn host_changes_the_start_time_through_a_modal_others_cannot_open_it() {
             ..NewQueue::default()
         })
         .await;
-    ctx.respond(&button(game.id, "time", "12", None)).await.unwrap();
+    ctx.respond(&button(game.id, "time", "12", None))
+        .await
+        .unwrap();
     let refused = response(ctx.api.next());
     assert_eq!(refused.kind, ResponseKind::ChannelMessage);
     assert_eq!(refused.message_data().unwrap().flags, Some(64));
     assert!(refused.content().starts_with("Use this game's"));
 
-    ctx.respond(&button(game.id, "time", "111", None)).await.unwrap();
+    ctx.respond(&button(game.id, "time", "111", None))
+        .await
+        .unwrap();
     let opened = response(ctx.api.next());
     assert_eq!(opened.kind, ResponseKind::Modal);
-    assert_eq!(opened.modal_data().unwrap().custom_id, format!("newgame:{}:time", game.id));
+    assert_eq!(
+        opened.modal_data().unwrap().custom_id,
+        format!("newgame:{}:time", game.id)
+    );
 
     ctx.respond(&time_submit(game.id, "111", "tomorrow 7pm", None))
         .await
         .unwrap();
-    assert_eq!(response(ctx.api.next()), InteractionResponse::deferred(true));
+    assert_eq!(
+        response(ctx.api.next()),
+        InteractionResponse::deferred(true)
+    );
     let calls = ctx.api.take();
     let confirmation = calls
         .iter()
@@ -909,7 +1078,10 @@ async fn host_changes_the_start_time_through_a_modal_others_cannot_open_it() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(embed(&edit).fields[0].value, "<t:1790290800:F> (<t:1790290800:R>)");
+    assert_eq!(
+        embed(&edit).fields[0].value,
+        "<t:1790290800:F> (<t:1790290800:R>)"
+    );
 
     ctx.respond(&time_submit(game.id, "111", "yesterday", None))
         .await
@@ -919,7 +1091,8 @@ async fn host_changes_the_start_time_through_a_modal_others_cannot_open_it() {
     assert_eq!(rejected.message_data().unwrap().flags, Some(64));
 
     assert!(matches!(
-        ctx.act(game.id, QueueAction::Time(None), &actor("12")).await,
+        ctx.act(game.id, QueueAction::Time(None), &actor("12"))
+            .await,
         Err(QueueError::Forbidden)
     ));
     assert_eq!(
@@ -942,7 +1115,9 @@ async fn clearing_the_start_time_starts_a_filled_queue_immediately() {
         })
         .await;
     for id in ["11", "12"] {
-        ctx.act(game.id, QueueAction::Join, &actor(id)).await.unwrap();
+        ctx.act(game.id, QueueAction::Join, &actor(id))
+            .await
+            .unwrap();
     }
     ctx.api.take();
     ctx.respond(&time_submit(game.id, "42", " ", Some(OWNER)))
@@ -956,7 +1131,12 @@ async fn clearing_the_start_time_starts_a_filled_queue_immediately() {
             _ => None,
         })
         .unwrap();
-    assert!(confirmation.content.unwrap().starts_with("Your game is ready!"));
+    assert!(
+        confirmation
+            .content
+            .unwrap()
+            .starts_with("Your game is ready!")
+    );
     let stored = ctx.game(game.id).await;
     assert_eq!((stored.status, stored.start_at), (Status::Started, None));
     assert!(calls.iter().any(|call| matches!(call, Call::Create(..))));
@@ -981,5 +1161,8 @@ async fn invalid_buttons_are_rejected_privately() {
         values: Vec::new(),
     });
     ctx.respond(&event).await.unwrap();
-    assert_eq!(response(ctx.api.next()).content(), "This game button is invalid.");
+    assert_eq!(
+        response(ctx.api.next()).content(),
+        "This game button is invalid."
+    );
 }

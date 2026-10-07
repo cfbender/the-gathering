@@ -9,12 +9,12 @@ use std::sync::{Arc, Mutex};
 use serde_json::Map;
 use the_gathering::db::UtcDateTime;
 use the_gathering::discord::api::{
-    ApiFuture, CommandDefinition, DiscordApi, DiscordError, InteractionResponse,
-    InteractionTarget, MessagePayload, RegisteredCommand, SentMessage,
+    ApiFuture, CommandDefinition, DiscordApi, DiscordError, InteractionResponse, InteractionTarget,
+    MessagePayload, RegisteredCommand, SentMessage,
 };
 use the_gathering::discord::interaction::{
-    CommandData, CommandOptionData, ComponentData, Interaction, InteractionData,
-    InteractionMember, InteractionUser, ModalData, OptionValue,
+    CommandData, CommandOptionData, ComponentData, Interaction, InteractionData, InteractionMember,
+    InteractionUser, ModalData, OptionValue,
 };
 use the_gathering::discord::{GameReport, ReportPlayer};
 
@@ -177,7 +177,11 @@ impl DiscordApi for RecordingApi {
     ) -> ApiFuture<'a, SentMessage> {
         let result = self.record(
             Some(Op::Edit),
-            Call::Edit(channel_id.to_owned(), message_id.to_owned(), message.clone()),
+            Call::Edit(
+                channel_id.to_owned(),
+                message_id.to_owned(),
+                message.clone(),
+            ),
             sent(message_id),
         );
         Box::pin(async move { result })
@@ -310,16 +314,28 @@ pub fn report(played_at: UtcDateTime, players: Vec<ReportPlayer>) -> GameReport 
 pub struct LogCapture(Arc<Mutex<Vec<u8>>>);
 
 impl LogCapture {
-    /// Captures `info` and above on this thread until the guard drops.
-    pub fn start() -> (Self, tracing::subscriber::DefaultGuard) {
-        let capture = Self::default();
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
-            .with_ansi(false)
-            .with_writer(capture.clone())
-            .finish();
-        let guard = tracing::subscriber::set_default(subscriber);
-        (capture, guard)
+    /// Captures `info` and above for the whole test binary. A thread-local subscriber
+    /// would race with other tests over tracing's cached callsite interest, so test files
+    /// that inspect logs keep them in one test.
+    pub fn global() -> Self {
+        static CAPTURE: std::sync::OnceLock<LogCapture> = std::sync::OnceLock::new();
+        CAPTURE
+            .get_or_init(|| {
+                let capture = Self::default();
+                let subscriber = tracing_subscriber::fmt()
+                    .with_max_level(tracing::Level::INFO)
+                    .with_ansi(false)
+                    .with_writer(capture.clone())
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber).expect("one global subscriber");
+                capture
+            })
+            .clone()
+    }
+
+    /// Forgets what was logged so far.
+    pub fn clear(&self) {
+        self.0.lock().unwrap().clear();
     }
 
     /// Everything logged so far.

@@ -1,6 +1,11 @@
 //! Ported from `test/the_gathering/discord/tracker_test.exs`, `sink/games_test.exs`, and
 //! `card_choice_test.exs`.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 mod support;
 
@@ -15,9 +20,7 @@ use the_gathering::db::UtcDateTime;
 use the_gathering::discord::api::ResponseKind;
 use the_gathering::discord::card_choice::{self, Mode};
 use the_gathering::discord::tracker::Tracker;
-use the_gathering::discord::{
-    self, GameReport, GamesSink, ResolveError, Sink, SinkError, won,
-};
+use the_gathering::discord::{self, GameReport, GamesSink, ResolveError, Sink, SinkError, won};
 use the_gathering::games::GameResult;
 
 #[derive(Default)]
@@ -52,9 +55,13 @@ impl Sink for FailingSink {
             if report.winner_discord_ids.is_empty() {
                 return Ok(());
             }
-            the_gathering::games::player::create_player(conn, &json!({"name": "Rolled Back"}), None)
-                .await
-                .unwrap();
+            the_gathering::games::player::create_player(
+                conn,
+                &json!({"name": "Rolled Back"}),
+                None,
+            )
+            .await
+            .unwrap();
             Err(SinkError::Other("forced_failure".into()))
         })
     }
@@ -98,7 +105,7 @@ async fn dispatches_observations_and_completed_winner_reports_to_the_sink() {
     let ctx = setup().await;
     let observed = tracker_report();
     ctx.tracker.observe(&observed).await.unwrap();
-    assert_eq!(ctx.sink.take(), [observed.clone()]);
+    assert_eq!(ctx.sink.take(), std::slice::from_ref(&observed));
 
     let completed = ctx.tracker.record_winner("12345", "111").await.unwrap();
     assert_eq!(completed.winner_discord_ids, ["111"]);
@@ -153,12 +160,20 @@ async fn listing_pending_reports_does_not_prune_expired_rows() {
     let ctx = setup().await;
     ctx.tracker.observe(&tracker_report()).await.unwrap();
     age_pending(&ctx.app, 31).await;
-    assert_eq!(discord::list_pending(ctx.app.pool()).await.unwrap().len(), 1);
+    assert_eq!(
+        discord::list_pending(ctx.app.pool()).await.unwrap().len(),
+        1
+    );
     assert!(pending(&ctx.app, "spellbot:SB12345").await.is_some());
     discord::prune_pending(ctx.app.pool(), UtcDateTime::now())
         .await
         .unwrap();
-    assert!(discord::list_pending(ctx.app.pool()).await.unwrap().is_empty());
+    assert!(
+        discord::list_pending(ctx.app.pool())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -204,10 +219,11 @@ async fn a_failed_bot_resolution_rolls_back_writes_and_leaves_the_pending_game_i
         "{error:?}"
     );
     assert!(pending(&app, "spellbot:SB12345").await.is_some());
-    let rolled_back: i64 = sqlx::query_scalar("SELECT count(*) FROM players WHERE name = 'Rolled Back'")
-        .fetch_one(app.pool())
-        .await
-        .unwrap();
+    let rolled_back: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM players WHERE name = 'Rolled Back'")
+            .fetch_one(app.pool())
+            .await
+            .unwrap();
     assert_eq!(rolled_back, 0);
 }
 
@@ -230,7 +246,11 @@ async fn without_a_game_id_completes_the_most_recently_started_game_in_the_chann
         ctx.tracker.observe(observed).await.unwrap();
     }
     ctx.sink.take();
-    let completed = ctx.tracker.record_latest_winner("444", "111").await.unwrap();
+    let completed = ctx
+        .tracker
+        .record_latest_winner("444", "111")
+        .await
+        .unwrap();
     assert_eq!(completed.external_id, "spellbot:SB20000");
     let dispatched = ctx.sink.take();
     assert_eq!(dispatched[0].external_id, "spellbot:SB20000");
@@ -298,7 +318,11 @@ async fn slash_command_without_options_uses_the_invoking_channel() {
 
     let elsewhere = interaction("999", "222", command("won", vec![]));
     let response = won::handle(&ctx.app.state, &elsewhere).await;
-    assert!(response.content().contains("haven't seen an unfinished SpellBot game"));
+    assert!(
+        response
+            .content()
+            .contains("haven't seen an unfinished SpellBot game")
+    );
 }
 
 #[tokio::test]
@@ -306,14 +330,22 @@ async fn slash_command_opens_a_modal_and_gives_ephemeral_errors() {
     let ctx = setup().await;
     ctx.tracker.observe(&tracker_report()).await.unwrap();
     ctx.sink.take();
-    let event = interaction("444", "111", command("won", vec![("game", string("SB12345"))]));
+    let event = interaction(
+        "444",
+        "111",
+        command("won", vec![("game", string("SB12345"))]),
+    );
     assert_eq!(
         won::handle(&ctx.app.state, &event).await.kind,
         ResponseKind::Modal
     );
     assert!(ctx.sink.take().is_empty());
 
-    let unknown = interaction("444", "111", command("won", vec![("game", string("SB99999"))]));
+    let unknown = interaction(
+        "444",
+        "111",
+        command("won", vec![("game", string("SB99999"))]),
+    );
     let response = won::handle(&ctx.app.state, &unknown).await;
     assert_eq!(response.message_data().unwrap().flags, Some(64));
     assert!(response.content().contains("haven't seen"));
@@ -451,7 +483,9 @@ async fn winnerless_reports_stay_pending_and_invalid_reports_return_errors() {
     let tracker = Tracker::new(app.pool().clone(), Arc::new(GamesSink));
     assert!(matches!(
         tracker.observe(&invalid).await,
-        Err(discord::tracker::ObserveError::Sink(SinkError::InvalidPlayerCount))
+        Err(discord::tracker::ObserveError::Sink(
+            SinkError::InvalidPlayerCount
+        ))
     ));
     assert!(pending(&app, &invalid.external_id).await.is_none());
 }
@@ -482,7 +516,12 @@ async fn resolves_a_unique_whole_leading_name_among_more_than_25_broad_matches()
     let app = TestApp::new().await;
     insert_card(&app, "bello", "Bello, Bard of the Brambles").await;
     for number in 1..=25 {
-        insert_card(&app, &format!("decoy-{number}"), &format!("Bellowing Decoy {number}")).await;
+        insert_card(
+            &app,
+            &format!("decoy-{number}"),
+            &format!("Bellowing Decoy {number}"),
+        )
+        .await;
     }
     let choice = resolve(&app, "Bello").await;
     assert_eq!(choice.id.as_deref(), Some("bello"));
@@ -510,7 +549,10 @@ async fn keeps_multiple_whole_leading_names_ambiguous_while_resolving_front_face
         Some("Choose a matching commander card below.")
     );
     assert_eq!(
-        resolve(&app, "sephiroth fabled soldier").await.id.as_deref(),
+        resolve(&app, "sephiroth fabled soldier")
+            .await
+            .id
+            .as_deref(),
         Some("sephiroth-fabled")
     );
     assert_eq!(
