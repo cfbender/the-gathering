@@ -21,8 +21,11 @@ lives here.
     context. `catalog/` also holds the Scryfall sync (`the-gathering catalog-sync`, plus a
     scheduled run started at boot), the backfill (`the-gathering catalog-backfill`), and the
     card image disk cache; `card_id/` serves the card-recognition bundle and corrections.
+  - `self_update.rs`: admin-triggered updates (a systemd request file or Watchtower's
+    HTTP API) and the newest-build check against GitHub.
   - `web/`: router (mirrors `TheGatheringWeb.Router` pipelines), session cookie, CSRF,
-    auth guards, SPA shell, static files, and `web/api/*` controllers.
+    auth guards, request ids and logging (parameters filtered like
+    `filter_parameters`), SPA shell, static files, and `web/api/*` controllers.
   - `webcam/`: webcam table rooms (one tokio task per room), turns, timer, log, cards,
     and saved sessions; `web/channels/`: the Phoenix Channels server (V2 JSON over
     `/socket/websocket`), pubsub, presence, and the `webcam_table:*` channel.

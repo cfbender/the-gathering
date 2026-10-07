@@ -458,3 +458,48 @@ async fn request_logging_never_shows_sensitive_parameters() {
     assert!(logs.contains("Sent 200 in"), "{logs}");
     assert!(logs.contains("Visible"), "{logs}");
 }
+
+// -- UserAuth -----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn anonymous_gets_remember_the_full_path_they_were_going_to() {
+    let app = TestApp::new().await;
+    app.get("/api/games?page=2").await.assert_json(401);
+    assert_eq!(
+        app.session().get_string("user_return_to").as_deref(),
+        Some("/api/games?page=2")
+    );
+}
+
+#[tokio::test]
+async fn week_old_session_tokens_are_reissued() {
+    let app = TestApp::new().await;
+    let member = app.unique_member().await;
+    app.log_in(&member).await;
+    let old = app.session().get_bytes("user_token").unwrap();
+    sqlx::query("UPDATE users_tokens SET inserted_at = ? WHERE token = ?")
+        .bind(the_gathering::db::UtcDateTime::now().plus(time::Duration::days(-7)))
+        .bind(&old)
+        .execute(app.pool())
+        .await
+        .unwrap();
+
+    app.get("/api/session").await.assert_json(200);
+    let new = app.session().get_bytes("user_token").unwrap();
+    assert_ne!(new, old);
+    let accounts = &app.state.accounts;
+    assert!(
+        accounts
+            .get_user_by_session_token(&old)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        accounts
+            .get_user_by_session_token(&new)
+            .await
+            .unwrap()
+            .is_some()
+    );
+}

@@ -128,7 +128,11 @@ pub async fn require_authenticated_user(request: Request, next: Next) -> Respons
     if request.method() == Method::GET
         && let Some(session) = request.extensions().get::<Session>()
     {
-        let path = request.uri().path().to_owned();
+        // Phoenix's `current_path/1`: the path plus any query string.
+        let path = request
+            .uri()
+            .path_and_query()
+            .map_or_else(|| request.uri().path(), |path| path.as_str());
         session.put("user_return_to", Term::Binary(path.as_bytes().into()));
     }
     ApiError::Unauthorized.into_response()
