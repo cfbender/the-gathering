@@ -1,6 +1,5 @@
 //! Ported from `test/the_gathering/stats_test.exs`, `stats/elo_test.exs`, and
 //! `stats/records_test.exs`.
-
 // Test crates: helpers outside `#[test]` functions may unwrap and index freely, like the
 // tests themselves (clippy.toml only exempts `#[test]` bodies).
 #![allow(

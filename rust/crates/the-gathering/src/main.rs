@@ -20,10 +20,15 @@ async fn main() -> anyhow::Result<()> {
     if !["debug", "info", "warning", "error"].contains(&level.as_str()) {
         anyhow::bail!("LOG_LEVEL must be one of debug, info, warning, error; got {level:?}");
     }
-    let level = if level == "warning" { "warn".to_owned() } else { level };
+    let level = if level == "warning" {
+        "warn".to_owned()
+    } else {
+        level
+    };
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_env("RUST_LOG").unwrap_or_else(|_| EnvFilter::new(format!("{level},sqlx=warn"))),
+            EnvFilter::try_from_env("RUST_LOG")
+                .unwrap_or_else(|_| EnvFilter::new(format!("{level},sqlx=warn"))),
         )
         .init();
 
@@ -41,7 +46,12 @@ async fn main() -> anyhow::Result<()> {
     }
     let state = AppState::new(config, pool)?;
 
-    match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+    match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
         [] | ["serve"] => serve(state).await,
         ["migrate"] => Ok(()),
         ["create-admin", username] => {
@@ -58,9 +68,13 @@ async fn main() -> anyhow::Result<()> {
         ["bootstrap-admin"] => the_gathering::bootstrap_admin(&state).await,
         ["catalog-sync"] => {
             // `mix the_gathering.catalog.sync`; the scheduled sync never starts here.
-            let count = catalog::sync::run(&state.pool, &state.scryfall, catalog::sync::Source::Scryfall)
-                .await
-                .map_err(|error| anyhow::anyhow!("Catalog sync failed: {error}"))?;
+            let count = catalog::sync::run(
+                &state.pool,
+                &state.scryfall,
+                catalog::sync::Source::Scryfall,
+            )
+            .await
+            .map_err(|error| anyhow::anyhow!("Catalog sync failed: {error}"))?;
             println!("Catalog synchronized: {count} cards");
             Ok(())
         }
@@ -69,7 +83,10 @@ async fn main() -> anyhow::Result<()> {
             let summary = catalog::backfill::run(&state.pool).await?;
             println!(
                 "Split {} partner decks, linked {} commanders, filled {} color identities, linked {} MVP cards",
-                summary.decks_split, summary.decks_linked, summary.colors_filled, summary.mvps_linked
+                summary.decks_split,
+                summary.decks_linked,
+                summary.colors_filled,
+                summary.mvps_linked
             );
             for name in &summary.unmatched {
                 println!("  unmatched: {name}");
@@ -88,7 +105,9 @@ async fn serve(state: AppState) -> anyhow::Result<()> {
             state.config.public_url()
         );
     } else {
-        tracing::info!("Discord OAuth sign-in disabled: DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET are not both set");
+        tracing::info!(
+            "Discord OAuth sign-in disabled: DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET are not both set"
+        );
     }
     catalog::sync_server::start(&state);
     decklists::start_cache_sweeper(&state);
@@ -96,11 +115,16 @@ async fn serve(state: AppState) -> anyhow::Result<()> {
         state.webcam_tables.spawn_pruner();
     }
     let app = web::router(state.clone());
-    let listener = tokio::net::TcpListener::bind(address).await.with_context(|| format!("binding {address}"))?;
+    let listener = tokio::net::TcpListener::bind(address)
+        .await
+        .with_context(|| format!("binding {address}"))?;
     tracing::info!("listening on http://{address}");
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(shutdown())
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown())
+    .await?;
     Ok(())
 }
 
@@ -110,7 +134,9 @@ async fn shutdown() {
     };
     #[cfg(unix)]
     let terminate = async {
-        if let Ok(mut signal) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+        if let Ok(mut signal) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
             signal.recv().await;
         }
     };

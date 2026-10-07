@@ -1,6 +1,12 @@
 //! Ported from `test/the_gathering_web/channels/webcam_table_channel/table_state_test.exs`:
 //! counters, monarch, seat order, reveal, timers, spectators, rolls, elimination, turns and
 //! identified cards.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 mod support;
 mod webcam_support;
@@ -897,6 +903,7 @@ async fn validates_turn_requests_and_rejects_forged_counts_times_and_unknown_pla
     }
 }
 
+#[allow(clippy::needless_pass_by_value)] // Call sites pass `json!` literals.
 fn card_entry(owner: &str, overrides: Value) -> Value {
     let mut entry = json!({
         "id": uuid::Uuid::new_v4().to_string(),

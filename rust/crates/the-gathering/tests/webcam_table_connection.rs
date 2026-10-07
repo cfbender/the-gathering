@@ -3,6 +3,12 @@
 //!
 //! Media negotiation and ICE restarts exercise the SFU's internals and are tested with the
 //! SFU crate; here signaling is checked up to the SFU boundary.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 mod support;
 mod webcam_support;
@@ -232,7 +238,7 @@ async fn validates_layer_requests_against_the_known_layers_and_seats() {
 
 #[tokio::test]
 async fn the_websocket_caps_inbound_frames_above_the_largest_legitimate_signal() {
-    assert!(MAX_FRAME_SIZE > 65_536);
+    const { assert!(MAX_FRAME_SIZE > 65_536) };
     let mut t = Table::new().await;
     // A card crop just over the relay limit still fits in a frame and is refused politely.
     let crop = json!({ "data": "a".repeat(262_145) });

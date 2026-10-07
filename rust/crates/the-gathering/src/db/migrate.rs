@@ -18,8 +18,7 @@ mod generated {
 pub use generated::MIGRATIONS;
 
 /// Ecto's `schema_migrations` table.
-const SCHEMA_MIGRATIONS: &str =
-    r#"CREATE TABLE IF NOT EXISTS "schema_migrations" ("version" INTEGER PRIMARY KEY, "inserted_at" TEXT)"#;
+const SCHEMA_MIGRATIONS: &str = r#"CREATE TABLE IF NOT EXISTS "schema_migrations" ("version" INTEGER PRIMARY KEY, "inserted_at" TEXT)"#;
 
 /// Errors while migrating.
 #[derive(Debug, thiserror::Error)]
@@ -41,11 +40,12 @@ pub enum MigrateError {
 pub async fn run(pool: &Pool) -> Result<Vec<i64>, MigrateError> {
     let mut conn = pool.acquire().await?;
     sqlx::raw_sql(SCHEMA_MIGRATIONS).execute(&mut *conn).await?;
-    let applied: HashSet<i64> = sqlx::query_scalar::<_, i64>("SELECT version FROM schema_migrations")
-        .fetch_all(&mut *conn)
-        .await?
-        .into_iter()
-        .collect();
+    let applied: HashSet<i64> =
+        sqlx::query_scalar::<_, i64>("SELECT version FROM schema_migrations")
+            .fetch_all(&mut *conn)
+            .await?
+            .into_iter()
+            .collect();
 
     let mut ran = Vec::new();
     for &(version, name, sql) in MIGRATIONS {
@@ -64,21 +64,32 @@ pub async fn run(pool: &Pool) -> Result<Vec<i64>, MigrateError> {
 async fn apply(conn: &mut SqliteConnection, version: i64, sql: &str) -> Result<(), sqlx::Error> {
     // `PRAGMA foreign_keys` is a no-op inside a transaction, so migrations that rebuild
     // tables (Ecto's `@disable_ddl_transaction`) run statement by statement.
-    let inserted_at = super::UtcDateTime::now().to_ecto_string().trim_end_matches('Z').to_owned();
+    let inserted_at = super::UtcDateTime::now()
+        .to_ecto_string()
+        .trim_end_matches('Z')
+        .to_owned();
     if sql.contains("PRAGMA foreign_keys = OFF") {
-        sqlx::raw_sql(AssertSqlSafe(sql.to_owned())).execute(&mut *conn).await?;
+        sqlx::raw_sql(AssertSqlSafe(sql.to_owned()))
+            .execute(&mut *conn)
+            .await?;
         data_step(&mut *conn, version).await?;
         record(&mut *conn, version, &inserted_at).await
     } else {
         let mut tx = conn.begin_with("BEGIN IMMEDIATE").await?;
-        sqlx::raw_sql(AssertSqlSafe(sql.to_owned())).execute(&mut *tx).await?;
+        sqlx::raw_sql(AssertSqlSafe(sql.to_owned()))
+            .execute(&mut *tx)
+            .await?;
         data_step(&mut tx, version).await?;
         record(&mut tx, version, &inserted_at).await?;
         tx.commit().await
     }
 }
 
-async fn record(conn: &mut SqliteConnection, version: i64, inserted_at: &str) -> Result<(), sqlx::Error> {
+async fn record(
+    conn: &mut SqliteConnection,
+    version: i64,
+    inserted_at: &str,
+) -> Result<(), sqlx::Error> {
     sqlx::query("INSERT INTO schema_migrations (version, inserted_at) VALUES (?, ?)")
         .bind(version)
         .bind(inserted_at)
@@ -115,7 +126,8 @@ async fn backfill_portable_ids(conn: &mut SqliteConnection) -> Result<(), sqlx::
 
 /// `RecomputeCommanderPairings`: recompute each card's pairing from its type line and text.
 async fn recompute_commander_pairings(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
-    let rows: Vec<(String, Option<String>, Option<String>, Option<String>)> =
+    type PairingRow = (String, Option<String>, Option<String>, Option<String>);
+    let rows: Vec<PairingRow> =
         sqlx::query_as("SELECT id, type_line, oracle_text, commander_pairing FROM cards")
             .fetch_all(&mut *conn)
             .await?;
@@ -139,7 +151,14 @@ async fn recompute_commander_pairings(conn: &mut SqliteConnection) -> Result<(),
 /// `IncludeCommanderColorsInDeckIdentities`: widen each deck's identity to cover every
 /// commander card, keeping colors already recorded.
 async fn include_commander_colors(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
-    type DeckRow = (i64, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>);
+    type DeckRow = (
+        i64,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
     let decks: Vec<DeckRow> = sqlx::query_as(
         "SELECT id, color_identity, commander_card_id, commander_name, partner_card_id, partner_name FROM decks",
     )
@@ -153,8 +172,10 @@ async fn include_commander_colors(conn: &mut SqliteConnection) -> Result<(), sql
             .fetch_all(&mut *conn)
             .await?;
     let decode = |colors: &str| serde_json::from_str::<Vec<String>>(colors).unwrap_or_default();
-    let by_id: HashMap<&str, Vec<String>> =
-        cards.iter().map(|(id, _, colors)| (id.as_str(), decode(colors))).collect();
+    let by_id: HashMap<&str, Vec<String>> = cards
+        .iter()
+        .map(|(id, _, colors)| (id.as_str(), decode(colors)))
+        .collect();
     // Stored names may predate the apostrophe-free normalization; compare both forms.
     let by_name: HashMap<String, Vec<String>> = cards
         .iter()
@@ -167,7 +188,10 @@ async fn include_commander_colors(conn: &mut SqliteConnection) -> Result<(), sql
             let colors = card_id
                 .as_deref()
                 .and_then(|card_id| by_id.get(card_id))
-                .or_else(|| name.as_deref().and_then(|name| by_name.get(&lotus::normalize_name(name))));
+                .or_else(|| {
+                    name.as_deref()
+                        .and_then(|name| by_name.get(&lotus::normalize_name(name)))
+                });
             if let Some(colors) = colors {
                 letters.extend(colors.iter().map(String::as_str));
             }
@@ -189,18 +213,21 @@ async fn include_commander_colors(conn: &mut SqliteConnection) -> Result<(), sql
 /// migration approximates this in SQL; this recomputes it exactly.
 async fn renormalize_card_names(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
     for table in ["cards", "catalog_cards_staging"] {
-        let rows: Vec<(String, String, String)> =
-            sqlx::query_as(AssertSqlSafe(format!("SELECT id, name, normalized_name FROM {table}")))
-                .fetch_all(&mut *conn)
-                .await?;
+        let rows: Vec<(String, String, String)> = sqlx::query_as(AssertSqlSafe(format!(
+            "SELECT id, name, normalized_name FROM {table}"
+        )))
+        .fetch_all(&mut *conn)
+        .await?;
         for (id, name, stored) in rows {
             let normalized = lotus::normalize_name(&name);
             if normalized != stored {
-                sqlx::query(AssertSqlSafe(format!("UPDATE {table} SET normalized_name = ? WHERE id = ?")))
-                    .bind(normalized)
-                    .bind(id)
-                    .execute(&mut *conn)
-                    .await?;
+                sqlx::query(AssertSqlSafe(format!(
+                    "UPDATE {table} SET normalized_name = ? WHERE id = ?"
+                )))
+                .bind(normalized)
+                .bind(id)
+                .execute(&mut *conn)
+                .await?;
             }
         }
     }

@@ -15,8 +15,18 @@ pub const ENCRYPTED_STRING_SALT: &str = "the_gathering.accounts.encrypted_string
 /// Palette ids; keep in sync with `PALETTES` in `assets/react/src/lib/theme.tsx` and
 /// `assets/react/src/palettes.css`.
 pub const PALETTES: [&str; 12] = [
-    "claret", "nord", "catppuccin", "tokyonight", "gruvbox", "everforest", "kanagawa", "nightowl",
-    "dracula", "rosepine", "solarized", "monochrome",
+    "claret",
+    "nord",
+    "catppuccin",
+    "tokyonight",
+    "gruvbox",
+    "everforest",
+    "kanagawa",
+    "nightowl",
+    "dracula",
+    "rosepine",
+    "solarized",
+    "monochrome",
 ];
 /// Surface styles.
 pub const THEME_STYLES: [&str; 2] = ["glass", "classic"];
@@ -132,7 +142,10 @@ pub fn normalize_username(value: Option<String>) -> Option<String> {
 }
 
 /// `default_display_name/1`.
-pub fn default_display_name(display_name: Option<String>, username: Option<&String>) -> Option<String> {
+pub fn default_display_name(
+    display_name: Option<String>,
+    username: Option<&String>,
+) -> Option<String> {
     match display_name {
         None => username.cloned(),
         Some(value) if value.is_empty() => username.cloned(),
@@ -173,7 +186,12 @@ pub fn validate_password(cs: &mut Changeset<'_>, password: Option<&str>) {
 /// Validates deck-host usernames (`profile_changeset/2`).
 pub fn validate_deck_host_username(cs: &mut Changeset<'_>, field: &str, value: Option<&str>) {
     cs.length(field, value, None, Some(80));
-    cs.format(field, value, &DECK_HOST_USERNAME, "must be a username, not a URL");
+    cs.format(
+        field,
+        value,
+        &DECK_HOST_USERNAME,
+        "must be a username, not a URL",
+    );
 }
 
 /// The profile form, cast from params.
@@ -201,7 +219,9 @@ pub fn profile_changes(
     // A blank key means "leave the stored key alone"; only an explicit nil clears it.
     let manavault_api_key = match cs.raw("manavault_api_key") {
         Some(Value::String(key)) if key.trim().is_empty() => Change::Unchanged,
-        _ => cs.string("manavault_api_key").map(|key| key.trim().to_owned()),
+        _ => cs
+            .string("manavault_api_key")
+            .map(|key| key.trim().to_owned()),
     };
     let display_name = cs.string("display_name").map(|name| name.trim().to_owned());
     let trimmed = |change: Change<String>| change.map(|value| value.trim().to_owned());
@@ -211,7 +231,12 @@ pub fn profile_changes(
 
     let display = display_name.clone().or(Some(user.display_name.clone()));
     cs.required("display_name", display.as_ref());
-    cs.length("display_name", display.as_deref().filter(|_| display_name.is_set()), Some(1), Some(80));
+    cs.length(
+        "display_name",
+        display.as_deref().filter(|_| display_name.is_set()),
+        Some(1),
+        Some(80),
+    );
     if let Change::Set(value) = &moxfield_username {
         validate_deck_host_username(&mut cs, "moxfield_username", value.as_deref());
     }
@@ -234,5 +259,11 @@ pub fn profile_changes(
         }
     }
     cs.finish()?;
-    Ok(ProfileChanges { display_name, moxfield_username, archidekt_username, manavault_url, manavault_api_key })
+    Ok(ProfileChanges {
+        display_name,
+        moxfield_username,
+        archidekt_username,
+        manavault_url,
+        manavault_api_key,
+    })
 }

@@ -1,5 +1,11 @@
 //! Ported from `test/the_gathering/webcam_tables/{timer,turns,log}_test.exs` and
 //! `test/the_gathering_web/channel_rate_limit_test.exs`.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 use std::collections::BTreeMap;
 use std::time::Duration;

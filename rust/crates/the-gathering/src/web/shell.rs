@@ -36,7 +36,11 @@ pub fn html_escape(value: &str) -> String {
 fn dev_server_tags(origin: &str, headers: &HeaderMap) -> String {
     // Requests proxied through the Vite dev server use relative URLs so the page also works
     // when served through a tunnel on the Vite port.
-    let origin = if headers.contains_key(PROXY_HEADER) { "" } else { origin };
+    let origin = if headers.contains_key(PROXY_HEADER) {
+        ""
+    } else {
+        origin
+    };
     format!(
         r#"<script type="module">
       import RefreshRuntime from "{origin}/@react-refresh"
@@ -54,16 +58,25 @@ fn dev_server_tags(origin: &str, headers: &HeaderMap) -> String {
 fn manifest_tags(state: &AppState) -> String {
     static TAGS: OnceLock<String> = OnceLock::new();
     TAGS.get_or_init(|| {
-        let path = state.config.static_dir().join("assets/react/.vite/manifest.json");
+        let path = state
+            .config
+            .static_dir()
+            .join("assets/react/.vite/manifest.json");
         let manifest: serde_json::Value = std::fs::read(&path)
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
         let Some(entry) = manifest.get(ENTRY) else {
-            tracing::error!("Vite manifest {} has no entry for {ENTRY}; run `aube run build`", path.display());
+            tracing::error!(
+                "Vite manifest {} has no entry for {ENTRY}; run `aube run build`",
+                path.display()
+            );
             return String::new();
         };
-        let file = entry.get("file").and_then(serde_json::Value::as_str).unwrap_or_default();
+        let file = entry
+            .get("file")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
         let styles: Vec<String> = entry
             .get("css")
             .and_then(serde_json::Value::as_array)
@@ -72,14 +85,22 @@ fn manifest_tags(state: &AppState) -> String {
             .filter_map(serde_json::Value::as_str)
             .map(|css| format!(r#"<link rel="stylesheet" href="{PUBLIC_PATH}{css}" />"#))
             .collect();
-        format!(r#"{}
-<script type="module" src="{PUBLIC_PATH}{file}"></script>"#, styles.join("\n"))
+        format!(
+            r#"{}
+<script type="module" src="{PUBLIC_PATH}{file}"></script>"#,
+            styles.join("\n")
+        )
     })
     .clone()
 }
 
 /// Serves the React app shell for every client-side route.
-pub async fn index(State(state): State<AppState>, MaybeUser(user): MaybeUser, session: Session, headers: HeaderMap) -> Response {
+pub async fn index(
+    State(state): State<AppState>,
+    MaybeUser(user): MaybeUser,
+    session: Session,
+    headers: HeaderMap,
+) -> Response {
     let appearance = user.as_ref().map_or_else(String::new, |user| {
         format!(
             r#" data-palette="{}" data-theme-style="{}""#,
@@ -87,9 +108,16 @@ pub async fn index(State(state): State<AppState>, MaybeUser(user): MaybeUser, se
             html_escape(&user.theme_style)
         )
     });
-    let manavault_meta = state.config.manavault_url.as_deref().map_or_else(String::new, |url| {
-        format!(r#"<meta name="manavault-url" content="{}" />"#, html_escape(url))
-    });
+    let manavault_meta = state
+        .config
+        .manavault_url
+        .as_deref()
+        .map_or_else(String::new, |url| {
+            format!(
+                r#"<meta name="manavault-url" content="{}" />"#,
+                html_escape(url)
+            )
+        });
     let tags = match &state.config.vite {
         ViteMode::DevServer { origin } => dev_server_tags(origin, &headers),
         ViteMode::Manifest => manifest_tags(&state),
@@ -143,8 +171,14 @@ pub async fn index(State(state): State<AppState>, MaybeUser(user): MaybeUser, se
     (
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8")),
-            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache, no-store, must-revalidate")),
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            ),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("no-cache, no-store, must-revalidate"),
+            ),
         ],
         html,
     )
@@ -156,7 +190,10 @@ pub async fn secure_browser_headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     for (name, value) in [
-        ("content-security-policy", "base-uri 'self'; frame-ancestors 'self';"),
+        (
+            "content-security-policy",
+            "base-uri 'self'; frame-ancestors 'self';",
+        ),
         ("referrer-policy", "strict-origin-when-cross-origin"),
         ("x-content-type-options", "nosniff"),
         ("x-download-options", "noopen"),
@@ -172,7 +209,13 @@ pub async fn secure_browser_headers(request: Request, next: Next) -> Response {
 pub async fn cross_origin_isolation(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
-    headers.insert("cross-origin-opener-policy", HeaderValue::from_static("same-origin"));
-    headers.insert("cross-origin-embedder-policy", HeaderValue::from_static("require-corp"));
+    headers.insert(
+        "cross-origin-opener-policy",
+        HeaderValue::from_static("same-origin"),
+    );
+    headers.insert(
+        "cross-origin-embedder-policy",
+        HeaderValue::from_static("require-corp"),
+    );
     response
 }

@@ -23,7 +23,12 @@ pub struct RateLimiter {
 }
 
 fn now_ms() -> u64 {
-    u64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis())).unwrap_or(u64::MAX)
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis()),
+    )
+    .unwrap_or(u64::MAX)
 }
 
 impl RateLimiter {
@@ -38,7 +43,9 @@ impl RateLimiter {
     }
 
     fn hit_at(&self, key: &str, limit: WindowLimit, now: u64) -> Decision {
-        let scale = u64::try_from(limit.scale.as_millis()).unwrap_or(u64::MAX).max(1);
+        let scale = u64::try_from(limit.scale.as_millis())
+            .unwrap_or(u64::MAX)
+            .max(1);
         let window = now / scale;
         let expires_at = window.saturating_add(1).saturating_mul(scale);
         let Ok(mut counters) = self.counters.lock() else {
@@ -47,7 +54,9 @@ impl RateLimiter {
         if counters.len() > 10_000 {
             counters.retain(|_, (_, expires)| *expires > now);
         }
-        let entry = counters.entry((key.to_owned(), window)).or_insert((0, expires_at));
+        let entry = counters
+            .entry((key.to_owned(), window))
+            .or_insert((0, expires_at));
         entry.0 = entry.0.saturating_add(1);
         if entry.0 <= limit.limit {
             Decision::Allow(entry.0)
@@ -128,7 +137,10 @@ mod tests {
     #[test]
     fn denies_after_the_limit_until_the_window_resets() {
         let limiter = RateLimiter::new();
-        let limit = WindowLimit { limit: 2, scale: Duration::from_secs(60) };
+        let limit = WindowLimit {
+            limit: 2,
+            scale: Duration::from_secs(60),
+        };
         assert_eq!(limiter.hit_at("k", limit, 120_000), Decision::Allow(1));
         assert_eq!(limiter.hit_at("k", limit, 120_001), Decision::Allow(2));
         assert_eq!(limiter.hit_at("k", limit, 150_000), Decision::Deny(30_000));
@@ -137,7 +149,10 @@ mod tests {
 
     #[test]
     fn buckets_refill() {
-        let mut bucket = TokenBucket::new(BucketLimit { capacity: 1.0, refill_per_second: 10.0 });
+        let mut bucket = TokenBucket::new(BucketLimit {
+            capacity: 1.0,
+            refill_per_second: 10.0,
+        });
         let start = bucket.at;
         assert!(bucket.take_at(start));
         assert!(!bucket.take_at(start));

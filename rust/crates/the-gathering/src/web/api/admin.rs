@@ -13,4 +13,3 @@ pub async fn software_update_create() -> ApiError {
 pub async fn software_update_show() -> ApiError {
     not_implemented()
 }
-

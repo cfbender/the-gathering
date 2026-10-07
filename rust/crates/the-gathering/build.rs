@@ -13,12 +13,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
     files.sort();
 
-    let mut out = String::from("/// Every Ecto migration as `(version, name, sql)`, oldest first.\npub const MIGRATIONS: &[(i64, &str, &str)] = &[\n");
+    let mut out = String::from(
+        "/// Every Ecto migration as `(version, name, sql)`, oldest first.\npub const MIGRATIONS: &[(i64, &str, &str)] = &[\n",
+    );
     for path in files {
-        let stem = path.file_stem().and_then(|s| s.to_str()).ok_or("bad migration name")?;
-        let (version, name) = stem.split_once('_').ok_or("migration name must be <version>_<name>")?;
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or("bad migration name")?;
+        let (version, name) = stem
+            .split_once('_')
+            .ok_or("migration name must be <version>_<name>")?;
         let version: i64 = version.parse()?;
-        writeln!(out, "    ({version}, {name:?}, include_str!({:?})),", path.display())?;
+        writeln!(
+            out,
+            "    ({version}, {name:?}, include_str!({:?})),",
+            path.display()
+        )?;
     }
     out.push_str("];\n");
     let target = Path::new(&std::env::var("OUT_DIR")?).join("migrations.rs");

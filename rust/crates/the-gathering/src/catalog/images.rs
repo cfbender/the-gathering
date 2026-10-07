@@ -24,7 +24,9 @@ pub fn valid_source(source: &str) -> bool {
 /// The cached URL for a Scryfall image, or the input unchanged when it is not one.
 pub fn url(source: &str) -> String {
     if valid_source(source) {
-        let query: String = url::form_urlencoded::Serializer::new(String::new()).append_pair("url", source).finish();
+        let query: String = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("url", source)
+            .finish();
         format!("/api/card-images?{query}")
     } else {
         source.to_owned()
@@ -38,7 +40,10 @@ pub fn url_opt(source: Option<&str>) -> Option<String> {
 
 /// [`url`] for every variant of an `image_uris` map.
 pub fn urls(images: &BTreeMap<String, String>) -> BTreeMap<String, String> {
-    images.iter().map(|(variant, source)| (variant.clone(), url(source))).collect()
+    images
+        .iter()
+        .map(|(variant, source)| (variant.clone(), url(source)))
+        .collect()
 }
 
 /// Cached `small` and `normal` front images of one printing, derived from its Scryfall id.
@@ -53,7 +58,12 @@ pub fn printing_urls(id: &str) -> Option<BTreeMap<String, String>> {
         ["small", "normal"]
             .into_iter()
             .map(|variant| {
-                (variant.to_owned(), url(&format!("https://cards.scryfall.io/{variant}/front/{a}/{b}/{id}.jpg")))
+                (
+                    variant.to_owned(),
+                    url(&format!(
+                        "https://cards.scryfall.io/{variant}/front/{a}/{b}/{id}.jpg"
+                    )),
+                )
             })
             .collect(),
     )
@@ -73,15 +83,17 @@ pub fn source(url: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    const SOURCE_URL: &str =
-        "https://cards.scryfall.io/art_crop/front/a/b/ab000000-0000-0000-0000-000000000000.jpg?1700000000";
+    const SOURCE_URL: &str = "https://cards.scryfall.io/art_crop/front/a/b/ab000000-0000-0000-0000-000000000000.jpg?1700000000";
 
     #[test]
     fn wraps_only_scryfall_sources() {
         let wrapped = url(SOURCE_URL);
         assert!(wrapped.starts_with("/api/card-images?url=https%3A%2F%2Fcards.scryfall.io"));
         assert_eq!(source(&wrapped).as_deref(), Some(SOURCE_URL));
-        assert_eq!(url("https://evil.example/x.jpg"), "https://evil.example/x.jpg");
+        assert_eq!(
+            url("https://evil.example/x.jpg"),
+            "https://evil.example/x.jpg"
+        );
         let printing = printing_urls("ab000000-0000-0000-0000-000000000000").unwrap();
         assert!(printing["normal"].contains("normal%2Ffront%2Fa%2Fb%2Fab000000"));
         assert!(printing_urls("nope").is_none());

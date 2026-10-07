@@ -11,18 +11,13 @@ use crate::db::{IsoDate, UtcDateTime};
 use crate::error::Errors;
 
 /// A cast param: absent (keep the stored value) or present (possibly `nil`).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum Change<T> {
     /// The key was not in the params, or failed to cast.
+    #[default]
     Unchanged,
     /// The key was present; `None` for `null` or blank strings.
     Set(Option<T>),
-}
-
-impl<T> Default for Change<T> {
-    fn default() -> Self {
-        Self::Unchanged
-    }
 }
 
 impl<T> Change<T> {
@@ -68,7 +63,10 @@ pub struct Changeset<'a> {
 impl<'a> Changeset<'a> {
     /// Casts from `params` (a JSON object; anything else casts nothing).
     pub fn new(params: &'a Value) -> Self {
-        Self { params: params.as_object(), errors: Errors::new() }
+        Self {
+            params: params.as_object(),
+            errors: Errors::new(),
+        }
     }
 
     /// A changeset with no params, for validating programmatic values.
@@ -85,13 +83,14 @@ impl<'a> Changeset<'a> {
         match self.raw(field) {
             None => Change::Unchanged,
             Some(value) if blank(value) => Change::Set(None),
-            Some(value) => match convert(value) {
-                Some(cast) => Change::Set(Some(cast)),
-                None => {
+            Some(value) => {
+                if let Some(cast) = convert(value) {
+                    Change::Set(Some(cast))
+                } else {
                     self.errors.add(field, "is invalid");
                     Change::Unchanged
                 }
-            },
+            }
         }
     }
 
@@ -154,25 +153,40 @@ impl<'a> Changeset<'a> {
     }
 
     /// `validate_length` counting graphemes (approximated by characters).
-    pub fn length(&mut self, field: &str, value: Option<&str>, min: Option<usize>, max: Option<usize>) {
+    pub fn length(
+        &mut self,
+        field: &str,
+        value: Option<&str>,
+        min: Option<usize>,
+        max: Option<usize>,
+    ) {
         let Some(value) = value else { return };
         let count = value.chars().count();
         if let Some(min) = min.filter(|min| count < *min) {
-            self.errors.add(field, format!("should be at least {min} character(s)"));
+            self.errors
+                .add(field, format!("should be at least {min} character(s)"));
         } else if let Some(max) = max.filter(|max| count > *max) {
-            self.errors.add(field, format!("should be at most {max} character(s)"));
+            self.errors
+                .add(field, format!("should be at most {max} character(s)"));
         }
     }
 
     /// `validate_length(..., count: :bytes)` maximum.
     pub fn max_bytes(&mut self, field: &str, value: Option<&str>, max: usize) {
         if value.is_some_and(|value| value.len() > max) {
-            self.errors.add(field, format!("should be at most {max} byte(s)"));
+            self.errors
+                .add(field, format!("should be at most {max} byte(s)"));
         }
     }
 
     /// `validate_format`.
-    pub fn format(&mut self, field: &str, value: Option<&str>, pattern: &regex::Regex, message: &str) {
+    pub fn format(
+        &mut self,
+        field: &str,
+        value: Option<&str>,
+        pattern: &regex::Regex,
+        message: &str,
+    ) {
         if value.is_some_and(|value| !pattern.is_match(value)) {
             self.errors.add(field, message);
         }
@@ -188,21 +202,24 @@ impl<'a> Changeset<'a> {
     /// `validate_number(greater_than: n)`.
     pub fn greater_than(&mut self, field: &str, value: Option<i64>, bound: i64) {
         if value.is_some_and(|value| value <= bound) {
-            self.errors.add(field, format!("must be greater than {bound}"));
+            self.errors
+                .add(field, format!("must be greater than {bound}"));
         }
     }
 
     /// `validate_number(greater_than_or_equal_to: n)`.
     pub fn at_least(&mut self, field: &str, value: Option<i64>, bound: i64) {
         if value.is_some_and(|value| value < bound) {
-            self.errors.add(field, format!("must be greater than or equal to {bound}"));
+            self.errors
+                .add(field, format!("must be greater than or equal to {bound}"));
         }
     }
 
     /// `validate_number(less_than_or_equal_to: n)`.
     pub fn at_most(&mut self, field: &str, value: Option<i64>, bound: i64) {
         if value.is_some_and(|value| value > bound) {
-            self.errors.add(field, format!("must be less than or equal to {bound}"));
+            self.errors
+                .add(field, format!("must be less than or equal to {bound}"));
         }
     }
 
@@ -250,7 +267,10 @@ mod tests {
         assert_eq!(cs.integer("count"), Change::Set(Some(12)));
         assert_eq!(cs.boolean("flag"), Change::Set(Some(false)));
         assert_eq!(cs.integer("bad"), Change::Unchanged);
-        assert_eq!(cs.datetime("when").or(None).unwrap().to_string(), "2026-01-02T03:04:00Z");
+        assert_eq!(
+            cs.datetime("when").or(None).unwrap().to_string(),
+            "2026-01-02T03:04:00Z"
+        );
         assert_eq!(cs.errors.messages("bad"), ["is invalid"]);
     }
 }

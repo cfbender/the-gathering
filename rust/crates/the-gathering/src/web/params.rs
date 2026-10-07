@@ -48,13 +48,18 @@ fn insert_nested(params: &mut Map<String, Value>, key: &str, value: Value) {
         return;
     };
     if inner.is_empty() && tail.is_empty() {
-        match params.entry(head.to_owned()).or_insert_with(|| Value::Array(Vec::new())) {
+        match params
+            .entry(head.to_owned())
+            .or_insert_with(|| Value::Array(Vec::new()))
+        {
             Value::Array(items) => items.push(value),
             other => *other = Value::Array(vec![value]),
         }
         return;
     }
-    let child = params.entry(head.to_owned()).or_insert_with(|| Value::Object(Map::new()));
+    let child = params
+        .entry(head.to_owned())
+        .or_insert_with(|| Value::Object(Map::new()));
     if !child.is_object() {
         *child = Value::Object(Map::new());
     }
@@ -73,7 +78,9 @@ impl<S: Send + Sync> FromRequest<S> for Params {
             .get(header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .is_some_and(|value| value.starts_with("application/json") || value.contains("+json"));
-        let body = Bytes::from_request(request, state).await.map_err(|_| ApiError::BadRequest)?;
+        let body = Bytes::from_request(request, state)
+            .await
+            .map_err(|_| ApiError::BadRequest)?;
         if is_json && !body.is_empty() {
             match serde_json::from_slice::<Value>(&body).map_err(|_| ApiError::BadRequest)? {
                 Value::Object(object) => params.extend(object),

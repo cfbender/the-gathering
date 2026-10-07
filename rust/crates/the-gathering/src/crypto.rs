@@ -114,7 +114,9 @@ pub fn encrypt_message(message: &[u8], aad: &[u8], secret: &[u8; 32]) -> String 
 
 /// `MessageEncryptor.decrypt(encrypted, aad, secret)` for `XCP.` tokens.
 pub fn decrypt_message(encrypted: &str, aad: &[u8], secret: &[u8; 32]) -> Option<Vec<u8>> {
-    let raw = URL_SAFE_NO_PAD.decode(encrypted.strip_prefix("XCP.")?).ok()?;
+    let raw = URL_SAFE_NO_PAD
+        .decode(encrypted.strip_prefix("XCP.")?)
+        .ok()?;
     let iv = raw.get(..24)?;
     let tag = raw.get(24..40)?;
     let cipher_text = raw.get(40..)?;
@@ -166,11 +168,20 @@ pub fn binary_to_term(bytes: &[u8]) -> Option<Term> {
 
 fn executable_free(term: &Term) -> bool {
     match term {
-        Term::ExternalFun(_) | Term::InternalFun(_) | Term::Pid(_) | Term::Port(_) | Term::Reference(_) => false,
+        Term::ExternalFun(_)
+        | Term::InternalFun(_)
+        | Term::Pid(_)
+        | Term::Port(_)
+        | Term::Reference(_) => false,
         Term::List(list) => list.elements.iter().all(executable_free),
-        Term::ImproperList(list) => list.elements.iter().all(executable_free) && executable_free(&list.last),
+        Term::ImproperList(list) => {
+            list.elements.iter().all(executable_free) && executable_free(&list.last)
+        }
         Term::Tuple(tuple) => tuple.elements.iter().all(executable_free),
-        Term::Map(map) => map.map.iter().all(|(key, value)| executable_free(key) && executable_free(value)),
+        Term::Map(map) => map
+            .map
+            .iter()
+            .all(|(key, value)| executable_free(key) && executable_free(value)),
         _ => true,
     }
 }
@@ -183,12 +194,21 @@ pub fn encrypt(secret_key_base: &str, salt: &str, data: &[u8], max_age_seconds: 
         integer(now_ms()),
         integer(max_age_seconds),
     ]));
-    encrypt_message(&term_to_binary(&payload), DEFAULT_AAD, &derive_key(secret_key_base, salt))
+    encrypt_message(
+        &term_to_binary(&payload),
+        DEFAULT_AAD,
+        &derive_key(secret_key_base, salt),
+    )
 }
 
 /// `Plug.Crypto.decrypt(secret_key_base, salt, token, max_age: ...)` for binary payloads.
 /// `max_age_seconds` of `None` uses the age stored in the token (`:infinity` when `Some(i64::MAX)`).
-pub fn decrypt(secret_key_base: &str, salt: &str, token: &str, max_age_seconds: Option<i64>) -> Option<Vec<u8>> {
+pub fn decrypt(
+    secret_key_base: &str,
+    salt: &str,
+    token: &str,
+    max_age_seconds: Option<i64>,
+) -> Option<Vec<u8>> {
     let plain = decrypt_message(token, DEFAULT_AAD, &derive_key(secret_key_base, salt))?;
     let Term::Tuple(Tuple { elements }) = binary_to_term(&plain)? else {
         return None;
@@ -231,7 +251,10 @@ pub mod csrf {
     /// Masks a session token for a page or response header.
     pub fn mask(token: &str) -> String {
         let mask = generate();
-        format!("{}{mask}", URL_SAFE.encode(xor(token.as_bytes(), mask.as_bytes())))
+        format!(
+            "{}{mask}",
+            URL_SAFE.encode(xor(token.as_bytes(), mask.as_bytes()))
+        )
     }
 
     /// Whether `submitted` is a masked form of `session_token`.
@@ -245,7 +268,8 @@ pub mod csrf {
         let Ok(user_token) = URL_SAFE.decode(masked) else {
             return false;
         };
-        user_token.len() == 24 && secure_compare(&xor(session_token.as_bytes(), &user_token), mask.as_bytes())
+        user_token.len() == 24
+            && secure_compare(&xor(session_token.as_bytes(), &user_token), mask.as_bytes())
     }
 }
 
@@ -283,17 +307,29 @@ mod tests {
         );
         let stored = "XCP.AMB52kLujURW-VRD3fCoZ-IaLvueQYDiiEVPAKF_dWuq7QCoKbEj8syhxNrdBVZE5BxgIxr1ekz1vZuRihpd6tyyQPg";
         assert_eq!(
-            decrypt(SECRET, "the_gathering.accounts.encrypted_string", stored, Some(i64::MAX)).unwrap(),
+            decrypt(
+                SECRET,
+                "the_gathering.accounts.encrypted_string",
+                stored,
+                Some(i64::MAX)
+            )
+            .unwrap(),
             b"mv-key"
         );
         let cookie = "SFMyNTY.g3QAAAADbQAAAAtfY3NyZl90b2tlbm0AAAAYQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBbQAAAA1kaXNjb3JkX29hdXRodAAAAAN3CXJldHVybl90b20AAAABL3cPc3Vkb19kaXNjb3JkX2lkdwNuaWx3DnNlc3Npb25fcGFyYW1zdAAAAAF3BXN0YXRlbQAAAAJzdG0AAAAKdXNlcl90b2tlbm0AAAAgBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc.pUDs6sz-57hgvqOMKePxBo6BZ9Sax-r67oGkDY7iRP4";
         let payload = verify(cookie, &derive_key(SECRET, "sQwWhYdP")).unwrap();
-        let Term::Map(map) = binary_to_term(&payload).unwrap() else { panic!("not a map") };
+        let Term::Map(map) = binary_to_term(&payload).unwrap() else {
+            panic!("not a map")
+        };
         assert_eq!(map.map.len(), 3);
     }
 
     fn hex(bytes: &[u8]) -> String {
-        bytes.iter().map(|b| format!("{b:02x}")).collect()
+        bytes.iter().fold(String::new(), |mut out, b| {
+            use std::fmt::Write as _;
+            let _ = write!(out, "{b:02x}");
+            out
+        })
     }
 
     #[test]

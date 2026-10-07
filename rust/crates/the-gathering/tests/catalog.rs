@@ -627,7 +627,9 @@ async fn splits_piped_partners_links_both_cards_and_renames_default_deck_names()
     let default_named = app
         .sql_deck(player, piped, piped, json!({"color_identity": "WBG"}))
         .await;
-    let custom = app.sql_deck(player, "Hobbit friends", piped, json!({})).await;
+    let custom = app
+        .sql_deck(player, "Hobbit friends", piped, json!({}))
+        .await;
 
     let summary = backfill::run(app.pool()).await.unwrap();
     assert_eq!(
@@ -731,7 +733,9 @@ async fn bounded_repair_returns_a_cursor_and_reports_update_conflicts() {
     )
     .await;
     let piped_name = "Frodo, Adventurous Hobbit || Sam, Loyal Attendant (Partners)";
-    let piped = app.sql_deck(player, piped_name, piped_name, json!({})).await;
+    let piped = app
+        .sql_deck(player, piped_name, piped_name, json!({}))
+        .await;
 
     let first = backfill::repair_batch(app.pool(), Cursor::default(), 1)
         .await

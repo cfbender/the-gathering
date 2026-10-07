@@ -11,9 +11,9 @@ use crate::card_id::corrections::Corrections;
 use crate::catalog::image_cache::CardImages;
 use crate::catalog::scryfall::Scryfall;
 use crate::catalog::sync_server::SyncServer;
-use crate::decklists::Decklists;
 use crate::config::Config;
 use crate::db::Pool;
+use crate::decklists::Decklists;
 use crate::games::Games;
 use crate::rate_limit::RateLimiter;
 use crate::web::channels::presence::Presence;
@@ -87,7 +87,11 @@ impl AppState {
         let sfu = the_gathering_sfu::Sfu::new(the_gathering_sfu::Settings {
             port_min: config.sfu.port_min,
             port_max: config.sfu.port_max,
-            public_ip: config.sfu.public_ip.as_deref().and_then(|ip| ip.parse().ok()),
+            public_ip: config
+                .sfu
+                .public_ip
+                .as_deref()
+                .and_then(|ip| ip.parse().ok()),
             ipv6: config.sfu.ipv6,
             relay: relay_servers(&config, &http),
         });
@@ -123,13 +127,18 @@ impl AppState {
     /// Disconnects realtime sockets opened with this session token (logging out or a
     /// password change broadcasts `disconnect` to the session topic).
     pub fn disconnect_session(&self, token: &[u8]) {
-        let _ = self.session_disconnects.send(crate::web::auth::user_session_topic(token));
+        let _ = self
+            .session_disconnects
+            .send(crate::web::auth::user_session_topic(token));
     }
 }
 
 /// Relay-only SFU mode (`Sfu.relay_servers/0`): every connection fetches fresh Cloudflare
 /// TURN credentials. Without Cloudflare TURN configured the SFU listens directly.
-fn relay_servers(config: &Config, http: &reqwest::Client) -> Option<the_gathering_sfu::RelayServers> {
+fn relay_servers(
+    config: &Config,
+    http: &reqwest::Client,
+) -> Option<the_gathering_sfu::RelayServers> {
     if !config.sfu.relay_only || !crate::cloudflare_turn::configured(&config.cloudflare_turn) {
         return None;
     }
@@ -144,5 +153,8 @@ fn relay_servers(config: &Config, http: &reqwest::Client) -> Option<the_gatherin
 
 /// The User-Agent sent to third parties.
 pub fn user_agent() -> String {
-    format!("the-gathering/{} (+https://github.com/cfbender/the-gathering)", env!("CARGO_PKG_VERSION"))
+    format!(
+        "the-gathering/{} (+https://github.com/cfbender/the-gathering)",
+        env!("CARGO_PKG_VERSION")
+    )
 }

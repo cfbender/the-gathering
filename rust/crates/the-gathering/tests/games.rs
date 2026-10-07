@@ -1,6 +1,5 @@
 //! Ported from `test/the_gathering/games_test.exs` and `test/the_gathering/games/*_test.exs`
 //! (color identity, deck picker, summary card).
-
 // Test crates: helpers outside `#[test]` functions may unwrap and index freely, like the
 // tests themselves (clippy.toml only exempts `#[test]` bodies).
 #![allow(

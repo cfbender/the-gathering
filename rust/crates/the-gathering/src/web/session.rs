@@ -38,7 +38,9 @@ pub struct Session(Arc<Mutex<Inner>>);
 
 impl Session {
     fn lock(&self) -> MutexGuard<'_, Inner> {
-        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Decodes a signed session cookie; invalid cookies give an empty session.
@@ -56,7 +58,11 @@ impl Session {
                 _ => None,
             })
             .unwrap_or_default();
-        Self(Arc::new(Mutex::new(Inner { data, changed: false, masked_csrf: None })))
+        Self(Arc::new(Mutex::new(Inner {
+            data,
+            changed: false,
+            masked_csrf: None,
+        })))
     }
 
     /// Signs the session into a cookie value.
@@ -86,7 +92,8 @@ impl Session {
 
     /// A UTF-8 string value.
     pub fn get_string(&self, key: &str) -> Option<String> {
-        self.get_bytes(key).and_then(|bytes| String::from_utf8(bytes).ok())
+        self.get_bytes(key)
+            .and_then(|bytes| String::from_utf8(bytes).ok())
     }
 
     /// Stores a value.
@@ -124,11 +131,19 @@ impl Session {
         if let Some(masked) = &inner.masked_csrf {
             return masked.clone();
         }
-        let token = match inner.data.get(CSRF_KEY).and_then(term_string).filter(|token| token.len() == 24) {
+        let token = match inner
+            .data
+            .get(CSRF_KEY)
+            .and_then(term_string)
+            .filter(|token| token.len() == 24)
+        {
             Some(token) => token,
             None => {
                 let token = crypto::csrf::generate();
-                inner.data.insert(CSRF_KEY.to_owned(), Term::Binary(Binary::from(token.as_bytes())));
+                inner.data.insert(
+                    CSRF_KEY.to_owned(),
+                    Term::Binary(Binary::from(token.as_bytes())),
+                );
                 inner.changed = true;
                 token
             }
@@ -172,8 +187,17 @@ pub fn term_string(term: &Term) -> Option<String> {
 impl<S: Send + Sync> FromRequestParts<S> for Session {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        parts.extensions.get::<Session>().cloned().ok_or(ApiError::Internal(anyhow::anyhow!("session layer missing")))
+    fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        std::future::ready(
+            parts
+                .extensions
+                .get::<Session>()
+                .cloned()
+                .ok_or(ApiError::Internal(anyhow::anyhow!("session layer missing"))),
+        )
     }
 }
 
@@ -190,7 +214,11 @@ fn read_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
 }
 
 /// Loads the session, runs the request, and writes the cookie back when it changed.
-pub async fn session_layer(State(state): State<AppState>, mut request: Request, next: Next) -> Response {
+pub async fn session_layer(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
     let session = read_cookie(request.headers(), COOKIE)
         .map(|cookie| Session::from_cookie(&cookie, &state.config.secret_key_base))
         .unwrap_or_default();
@@ -216,14 +244,24 @@ pub async fn session_layer(State(state): State<AppState>, mut request: Request, 
 /// `protect_from_forgery`: state-changing requests must carry the masked token in
 /// `x-csrf-token`. Failures are Phoenix's JSON 403.
 pub async fn csrf_layer(request: Request, next: Next) -> Response {
-    if matches!(*request.method(), Method::GET | Method::HEAD | Method::OPTIONS) {
+    if matches!(
+        *request.method(),
+        Method::GET | Method::HEAD | Method::OPTIONS
+    ) {
         return next.run(request).await;
     }
-    let valid = match (request.extensions().get::<Session>(), request.headers().get("x-csrf-token")) {
+    let valid = match (
+        request.extensions().get::<Session>(),
+        request.headers().get("x-csrf-token"),
+    ) {
         (Some(session), Some(token)) => token.to_str().is_ok_and(|token| session.csrf_valid(token)),
         _ => false,
     };
-    if valid { next.run(request).await } else { ApiError::Forbidden.into_response() }
+    if valid {
+        next.run(request).await
+    } else {
+        ApiError::Forbidden.into_response()
+    }
 }
 
 #[cfg(test)]

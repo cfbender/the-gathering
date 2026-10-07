@@ -28,4 +28,3 @@ pub async fn result_draft_create() -> ApiError {
 pub async fn result_draft_show() -> ApiError {
     not_implemented()
 }
-

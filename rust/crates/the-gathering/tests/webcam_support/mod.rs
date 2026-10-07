@@ -1,7 +1,7 @@
 //! Webcam table channel test harness (`test/support/webcam_table_channel_case.ex`): the real
 //! router served on 127.0.0.1:0, a Phoenix V2 WebSocket client, and fixtures.
 //!
-//! Phoenix's ChannelTest delivered every push and broadcast to the test process; here each
+//! Phoenix's `ChannelTest` delivered every push and broadcast to the test process; here each
 //! client has its own queue, so tests assert on the client that should receive a message.
 #![allow(dead_code)]
 
@@ -170,7 +170,7 @@ impl Client {
     /// Joins `topic`; returns the reply status and response.
     pub async fn join(&mut self, topic: &str, payload: Value) -> (String, Value) {
         let join_ref = self.make_ref();
-        self.topic = topic.to_owned();
+        topic.clone_into(&mut self.topic);
         self.join_ref = Some(join_ref.clone());
         self.send(Some(&join_ref), &join_ref, topic, "phx_join", payload)
             .await;

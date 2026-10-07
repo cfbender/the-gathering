@@ -1,5 +1,11 @@
 //! Ported from `test/the_gathering_web/controllers/api/webcam_table_config_controller_test.exs`
 //! and `webcam_table_room_controller_test.exs`.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 mod support;
 mod webcam_support;
@@ -264,7 +270,7 @@ async fn keeps_an_empty_room_listed_until_it_is_closed_as_idle() {
     server.wait_departed(&room, player).await;
     assert_eq!(
         server.state().webcam_tables.close_idle_rooms(0).await,
-        [room.clone()]
+        std::slice::from_ref(&room)
     );
     assert_eq!(rooms(&server).await, json!({ "data": [] }));
 }

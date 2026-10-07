@@ -24,7 +24,12 @@ const SESSION_REISSUE_AGE_DAYS: i64 = 7;
 pub struct CurrentUser(pub Option<User>);
 
 /// Creates a tracked session token and signs `user` in (`UserAuth.log_in_user/3`).
-pub async fn log_in_user(state: &AppState, session: &Session, current: Option<&User>, user: &User) -> Result<(), ApiError> {
+pub async fn log_in_user(
+    state: &AppState,
+    session: &Session,
+    current: Option<&User>,
+    user: &User,
+) -> Result<(), ApiError> {
     create_or_extend_session(state, session, current, user).await?;
     session.delete("user_return_to");
     Ok(())
@@ -72,7 +77,11 @@ pub fn put_fresh_csrf_token(session: &Session, response: &mut Response) {
 
 /// `fetch_current_scope_for_user`: loads the user behind the session token, reissuing tokens
 /// older than a week, or signs in as the development administrator when enabled.
-pub async fn current_user_layer(State(state): State<AppState>, mut request: Request, next: Next) -> Response {
+pub async fn current_user_layer(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
     let Some(session) = request.extensions().get::<Session>().cloned() else {
         return next.run(request).await;
     };
@@ -88,7 +97,7 @@ async fn load_user(state: &AppState, session: &Session) -> Result<Option<User>, 
     if let Some(token) = session.get_bytes("user_token")
         && let Some((user, inserted_at)) = state.accounts.get_user_by_session_token(&token).await?
     {
-        if inserted_at < UtcDateTime::now().add(Duration::days(-SESSION_REISSUE_AGE_DAYS)) {
+        if inserted_at < UtcDateTime::now().plus(Duration::days(-SESSION_REISSUE_AGE_DAYS)) {
             create_or_extend_session(state, session, Some(&user), &user).await?;
             state.accounts.delete_user_session_token(&token).await?;
         }
@@ -97,7 +106,10 @@ async fn load_user(state: &AppState, session: &Session) -> Result<Option<User>, 
     if state.config.dev_auto_login {
         let user = state.accounts.get_or_create_dev_admin().await?;
         log_in_user(state, session, None, &user).await?;
-        return Ok(Some(User { authenticated_at: Some(UtcDateTime::now()), ..user }));
+        return Ok(Some(User {
+            authenticated_at: Some(UtcDateTime::now()),
+            ..user
+        }));
     }
     Ok(None)
 }
@@ -105,7 +117,10 @@ async fn load_user(state: &AppState, session: &Session) -> Result<Option<User>, 
 /// `require_authenticated_user`: the API's 401 for anonymous requests. GET requests remember
 /// where the visitor was going.
 pub async fn require_authenticated_user(request: Request, next: Next) -> Response {
-    let signed_in = request.extensions().get::<CurrentUser>().is_some_and(|current| current.0.is_some());
+    let signed_in = request
+        .extensions()
+        .get::<CurrentUser>()
+        .is_some_and(|current| current.0.is_some());
     if signed_in {
         return next.run(request).await;
     }
@@ -125,22 +140,38 @@ pub async fn require_admin(request: Request, next: Next) -> Response {
         .get::<CurrentUser>()
         .and_then(|current| current.0.as_ref())
         .is_some_and(User::is_admin);
-    if admin { next.run(request).await } else { ApiError::Forbidden.into_response() }
+    if admin {
+        next.run(request).await
+    } else {
+        ApiError::Forbidden.into_response()
+    }
 }
 
 /// `require_sudo_mode`: a password authentication within the last ten minutes.
-pub async fn require_sudo_mode(State(state): State<AppState>, request: Request, next: Next) -> Response {
+pub async fn require_sudo_mode(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
     let sudo = state.config.dev_auto_login
         || request
             .extensions()
             .get::<CurrentUser>()
             .and_then(|current| current.0.as_ref())
             .is_some_and(|user| accounts::sudo_mode(user, 10));
-    if sudo { next.run(request).await } else { ApiError::SudoRequired.into_response() }
+    if sudo {
+        next.run(request).await
+    } else {
+        ApiError::SudoRequired.into_response()
+    }
 }
 
 /// `ApiKeyAuth`: `Authorization: Bearer tg_…` acts as the key's owner.
-pub async fn api_key_layer(State(state): State<AppState>, mut request: Request, next: Next) -> Response {
+pub async fn api_key_layer(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Response {
     let token = request
         .headers()
         .get(header::AUTHORIZATION)
@@ -156,14 +187,18 @@ pub async fn api_key_layer(State(state): State<AppState>, mut request: Request, 
     };
     let Some(user) = user else {
         let mut response = ApiError::Unauthorized.into_response();
-        response
-            .headers_mut()
-            .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static(r#"Bearer realm="the-gathering""#));
+        response.headers_mut().insert(
+            header::WWW_AUTHENTICATE,
+            HeaderValue::from_static(r#"Bearer realm="the-gathering""#),
+        );
         return response;
     };
     request.extensions_mut().insert(CurrentUser(Some(user)));
     let mut response = next.run(request).await;
-    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
     response
 }
 
@@ -173,8 +208,16 @@ pub struct MaybeUser(pub Option<User>);
 impl<S: Send + Sync> FromRequestParts<S> for MaybeUser {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        Ok(Self(parts.extensions.get::<CurrentUser>().and_then(|current| current.0.clone())))
+    fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        std::future::ready(Ok(Self(
+            parts
+                .extensions
+                .get::<CurrentUser>()
+                .and_then(|current| current.0.clone()),
+        )))
     }
 }
 
@@ -184,12 +227,17 @@ pub struct AuthUser(pub User);
 impl<S: Send + Sync> FromRequestParts<S> for AuthUser {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        parts
-            .extensions
-            .get::<CurrentUser>()
-            .and_then(|current| current.0.clone())
-            .map(Self)
-            .ok_or(ApiError::Unauthorized)
+    fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        std::future::ready(
+            parts
+                .extensions
+                .get::<CurrentUser>()
+                .and_then(|current| current.0.clone())
+                .map(Self)
+                .ok_or(ApiError::Unauthorized),
+        )
     }
 }

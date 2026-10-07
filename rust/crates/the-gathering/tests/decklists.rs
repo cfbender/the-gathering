@@ -76,7 +76,7 @@ impl Resolver for QueuedResolver {
 async fn stub_app(server: &MockServer, adjust: impl FnOnce(&mut Config)) -> TestApp {
     let uri = server.uri();
     TestApp::with_config(|config| {
-        config.moxfield_api_base = uri.clone();
+        config.moxfield_api_base.clone_from(&uri);
         config.archidekt_api_base = uri;
         adjust(config);
     })

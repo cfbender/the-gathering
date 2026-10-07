@@ -579,7 +579,7 @@ async fn refetches_printing_details_once_the_cached_copy_is_a_day_old() {
         .await
         .assert_json(200);
     assert_eq!(body["data"]["prices"]["usd"], "0.25");
-    let stale = the_gathering::db::UtcDateTime::now().add(time::Duration::seconds(-86_400));
+    let stale = the_gathering::db::UtcDateTime::now().plus(time::Duration::seconds(-86_400));
     sqlx::query("UPDATE card_details_cache SET fetched_at = ?")
         .bind(stale)
         .execute(app.pool())
@@ -1065,7 +1065,7 @@ async fn caches_empty_results_and_refreshes_expired_results() {
         .mount(&server)
         .await;
     let app = printing_app(&server).await;
-    let stale = the_gathering::db::UtcDateTime::now().add(time::Duration::seconds(-86_400));
+    let stale = the_gathering::db::UtcDateTime::now().plus(time::Duration::seconds(-86_400));
     sqlx::query("INSERT INTO card_rulings_cache (id, rulings, fetched_at) VALUES (?, ?, ?)")
         .bind(EXPIRED)
         .bind(json!([{"comment": "Outdated"}]).to_string())

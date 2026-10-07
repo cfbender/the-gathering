@@ -32,7 +32,10 @@ impl Errors {
 
     /// Adds `message` to `field` (it renders before earlier messages for the same field).
     pub fn add(&mut self, field: &str, message: impl Into<String>) {
-        self.fields.entry(field.to_owned()).or_default().insert(0, message.into());
+        self.fields
+            .entry(field.to_owned())
+            .or_default()
+            .insert(0, message.into());
     }
 
     /// Sets the per-row errors of a nested list.
@@ -44,7 +47,11 @@ impl Errors {
 
     /// Whether there are no errors at all.
     pub fn is_empty(&self) -> bool {
-        self.fields.is_empty() && self.nested.values().all(|rows| rows.iter().all(Errors::is_empty))
+        self.fields.is_empty()
+            && self
+                .nested
+                .values()
+                .all(|rows| rows.iter().all(Errors::is_empty))
     }
 
     /// Whether `field` has an error.
@@ -148,9 +155,10 @@ fn detail(status: StatusCode) -> Value {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, body) = match self {
-            Self::Validation(errors) => {
-                (StatusCode::UNPROCESSABLE_ENTITY, json!({ "errors": errors.to_json() }))
-            }
+            Self::Validation(errors) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                json!({ "errors": errors.to_json() }),
+            ),
             Self::BadRequest => (StatusCode::BAD_REQUEST, detail(StatusCode::BAD_REQUEST)),
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, detail(StatusCode::UNAUTHORIZED)),
             Self::Forbidden => (StatusCode::FORBIDDEN, detail(StatusCode::FORBIDDEN)),
@@ -176,7 +184,10 @@ impl IntoResponse for ApiError {
             Self::Custom(status, body) => (status, body),
             Self::Internal(error) => {
                 tracing::error!("internal error: {error:#}");
-                (StatusCode::INTERNAL_SERVER_ERROR, detail(StatusCode::INTERNAL_SERVER_ERROR))
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    detail(StatusCode::INTERNAL_SERVER_ERROR),
+                )
             }
         };
         (status, Json(body)).into_response()
@@ -201,11 +212,23 @@ mod tests {
         );
 
         let mut nested = Errors::new();
-        nested.set_nested("seats", vec![Errors::new(), Errors::single("seat", "has already been taken")]);
-        assert_eq!(nested.to_json(), json!({ "seats": [{}, { "seat": ["has already been taken"] }] }));
+        nested.set_nested(
+            "seats",
+            vec![
+                Errors::new(),
+                Errors::single("seat", "has already been taken"),
+            ],
+        );
+        assert_eq!(
+            nested.to_json(),
+            json!({ "seats": [{}, { "seat": ["has already been taken"] }] })
+        );
 
         // Like Ecto, per-row errors replace the list's own messages.
         nested.add("seats", "must contain between 2 and 10 players");
-        assert_eq!(nested.to_json(), json!({ "seats": [{}, { "seat": ["has already been taken"] }] }));
+        assert_eq!(
+            nested.to_json(),
+            json!({ "seats": [{}, { "seat": ["has already been taken"] }] })
+        );
     }
 }

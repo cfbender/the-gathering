@@ -1,6 +1,5 @@
 //! `StatsController` routes (no Elixir controller test exists; the views are covered by
 //! `tests/stats.rs`): `{"data": stats}`, Ecto id casting, and 404s.
-
 // Test crates: helpers outside `#[test]` functions may unwrap and index freely, like the
 // tests themselves (clippy.toml only exempts `#[test]` bodies).
 #![allow(

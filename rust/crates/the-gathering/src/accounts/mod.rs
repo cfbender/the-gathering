@@ -12,7 +12,10 @@ use crate::db::{self, IsoDate, Pool, UtcDateTime};
 use crate::error::{ApiError, Errors};
 
 pub use self::user::User;
-use self::user::{ENCRYPTED_STRING_SALT, default_display_name, normalize_username, validate_account_fields, validate_password};
+use self::user::{
+    ENCRYPTED_STRING_SALT, default_display_name, normalize_username, validate_account_fields,
+    validate_password,
+};
 
 /// Days a cookie session stays valid.
 pub const SESSION_VALIDITY_DAYS: i64 = 14;
@@ -54,8 +57,13 @@ impl UserRow {
             archidekt_username: self.archidekt_username,
             manavault_url: self.manavault_url,
             manavault_api_key: self.manavault_api_key.and_then(|stored| {
-                crypto::decrypt(secret_key_base, ENCRYPTED_STRING_SALT, &stored, Some(i64::MAX))
-                    .and_then(|plain| String::from_utf8(plain).ok())
+                crypto::decrypt(
+                    secret_key_base,
+                    ENCRYPTED_STRING_SALT,
+                    &stored,
+                    Some(i64::MAX),
+                )
+                .and_then(|plain| String::from_utf8(plain).ok())
             }),
             palette: self.palette,
             theme_style: self.theme_style,
@@ -163,7 +171,9 @@ impl ApiKey {
 
 /// Digest of an API key; `None` for values that cannot be keys.
 pub fn api_key_hash(token: &str) -> Option<Vec<u8>> {
-    token.starts_with("tg_").then(|| crypto::sha256(token.as_bytes()))
+    token
+        .starts_with("tg_")
+        .then(|| crypto::sha256(token.as_bytes()))
 }
 
 /// Digest of a registration invitation; `None` unless it has the generated length.
@@ -190,7 +200,10 @@ impl Accounts {
     }
 
     /// By Discord id.
-    pub async fn get_user_by_discord_id(&self, discord_id: &str) -> Result<Option<User>, sqlx::Error> {
+    pub async fn get_user_by_discord_id(
+        &self,
+        discord_id: &str,
+    ) -> Result<Option<User>, sqlx::Error> {
         Ok(select_users!("WHERE discord_id = ?", discord_id)
             .fetch_optional(&self.pool)
             .await?
@@ -256,7 +269,11 @@ impl Accounts {
     }
 
     /// `create_admin/1`.
-    pub async fn create_admin(&self, username: &str, password: &str) -> Result<User, RegisterError> {
+    pub async fn create_admin(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<User, RegisterError> {
         self.create_user(&json!({
             "username": username,
             "display_name": username,
@@ -274,13 +291,19 @@ impl Accounts {
     ) -> Result<User, RegisterError> {
         let mut cs = Changeset::new(attrs);
         let username = normalize_username(cs.string("username").or(None));
-        let display_name = default_display_name(cs.string("display_name").or(None), username.as_ref());
+        let display_name =
+            default_display_name(cs.string("display_name").or(None), username.as_ref());
         let password = cs.string("password").or(None);
         let role = match forced_role {
             Some(role) => Some(role.to_owned()),
             None => cs.string("role").or(Some("member".to_owned())),
         };
-        validate_account_fields(&mut cs, username.as_deref(), display_name.as_deref(), role.as_deref());
+        validate_account_fields(
+            &mut cs,
+            username.as_deref(),
+            display_name.as_deref(),
+            role.as_deref(),
+        );
         validate_password(&mut cs, password.as_deref());
         if let Some(name) = &username {
             let taken = sqlx::query_scalar!(
@@ -294,11 +317,17 @@ impl Accounts {
             }
         }
         cs.finish().map_err(RegisterError::Invalid)?;
-        let (Some(username), Some(display_name), Some(password), Some(role)) = (username, display_name, password, role)
+        let (Some(username), Some(display_name), Some(password), Some(role)) =
+            (username, display_name, password, role)
         else {
-            return Err(RegisterError::Invalid(Errors::single("username", "can't be blank")));
+            return Err(RegisterError::Invalid(Errors::single(
+                "username",
+                "can't be blank",
+            )));
         };
-        let hashed = self.hash_password(&password).map_err(|_| RegisterError::Invalid(Errors::single("password", "is invalid")))?;
+        let hashed = self
+            .hash_password(&password)
+            .map_err(|_| RegisterError::Invalid(Errors::single("password", "is invalid")))?;
         let now = UtcDateTime::now();
         let id = sqlx::query_scalar!(
             r#"INSERT INTO users (username, display_name, hashed_password, role, inserted_at, updated_at)
@@ -312,17 +341,18 @@ impl Accounts {
         )
         .fetch_one(&mut **tx)
         .await?;
-        let row = select_users!("WHERE id = ?", id).fetch_one(&mut **tx).await?;
+        let row = select_users!("WHERE id = ?", id)
+            .fetch_one(&mut **tx)
+            .await?;
         Ok(row.into_user(&self.secret_key_base))
     }
 
     /// The first enabled administrator, creating a passwordless `dev` one if none exists.
     pub async fn get_or_create_dev_admin(&self) -> Result<User, sqlx::Error> {
-        if let Some(row) = select_users!(
-            "WHERE role = 'admin' AND disabled_at IS NULL ORDER BY id ASC LIMIT 1"
-        )
-        .fetch_optional(&self.pool)
-        .await?
+        if let Some(row) =
+            select_users!("WHERE role = 'admin' AND disabled_at IS NULL ORDER BY id ASC LIMIT 1")
+                .fetch_optional(&self.pool)
+                .await?
         {
             return Ok(row.into_user(&self.secret_key_base));
         }
@@ -382,9 +412,15 @@ impl Accounts {
         let changes = user::profile_changes(user, attrs, allow_insecure)?;
         let stored_key = self.stored_api_key(user.id).await?;
         let mut tx = db::begin(&self.pool).await?;
-        let display_name = changes.display_name.clone().or(Some(user.display_name.clone())).unwrap_or_default();
+        let display_name = changes
+            .display_name
+            .clone()
+            .or(Some(user.display_name.clone()))
+            .unwrap_or_default();
         let moxfield = changes.moxfield_username.or(user.moxfield_username.clone());
-        let archidekt = changes.archidekt_username.or(user.archidekt_username.clone());
+        let archidekt = changes
+            .archidekt_username
+            .or(user.archidekt_username.clone());
         let manavault_url = changes.manavault_url.or(user.manavault_url.clone());
         let api_key: Option<String> = match changes.manavault_api_key {
             Change::Unchanged => stored_key,
@@ -418,10 +454,12 @@ impl Accounts {
     }
 
     async fn stored_api_key(&self, user_id: i64) -> Result<Option<String>, sqlx::Error> {
-        Ok(sqlx::query_scalar!("SELECT manavault_api_key FROM users WHERE id = ?", user_id)
-            .fetch_optional(&self.pool)
-            .await?
-            .flatten())
+        Ok(
+            sqlx::query_scalar!("SELECT manavault_api_key FROM users WHERE id = ?", user_id)
+                .fetch_optional(&self.pool)
+                .await?
+                .flatten(),
+        )
     }
 
     /// `update_appearance/2`.
@@ -465,10 +503,17 @@ impl Accounts {
         let hashed = self.hash_password(password.as_deref().unwrap_or_default())?;
         let mut tx = db::begin(&self.pool).await?;
         let now = UtcDateTime::now();
-        sqlx::query!("UPDATE users SET hashed_password = ?, updated_at = ? WHERE id = ?", hashed, now, user.id)
+        sqlx::query!(
+            "UPDATE users SET hashed_password = ?, updated_at = ? WHERE id = ?",
+            hashed,
+            now,
+            user.id
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query!("DELETE FROM users_tokens WHERE user_id = ?", user.id)
             .execute(&mut *tx)
             .await?;
-        sqlx::query!("DELETE FROM users_tokens WHERE user_id = ?", user.id).execute(&mut *tx).await?;
         tx.commit().await?;
         self.get_user(user.id).await?.ok_or(ApiError::NotFound)
     }
@@ -493,7 +538,7 @@ impl Accounts {
 
     /// Deletes expired sessions.
     pub async fn prune_expired_user_session_tokens(&self) -> Result<u64, sqlx::Error> {
-        let cutoff = UtcDateTime::now().add(Duration::days(-SESSION_VALIDITY_DAYS));
+        let cutoff = UtcDateTime::now().plus(Duration::days(-SESSION_VALIDITY_DAYS));
         Ok(sqlx::query!(
             "DELETE FROM users_tokens WHERE context = 'session' AND inserted_at <= ?",
             cutoff
@@ -508,7 +553,7 @@ impl Accounts {
         &self,
         token: &[u8],
     ) -> Result<Option<(User, UtcDateTime)>, sqlx::Error> {
-        let cutoff = UtcDateTime::now().add(Duration::days(-SESSION_VALIDITY_DAYS));
+        let cutoff = UtcDateTime::now().plus(Duration::days(-SESSION_VALIDITY_DAYS));
         let found = sqlx::query!(
             r#"SELECT user_id AS "user_id!: i64", authenticated_at AS "authenticated_at: UtcDateTime",
                       inserted_at AS "inserted_at!: UtcDateTime"
@@ -519,7 +564,9 @@ impl Accounts {
         .fetch_optional(&self.pool)
         .await?;
         let Some(found) = found else { return Ok(None) };
-        let Some(mut user) = self.get_user(found.user_id).await? else { return Ok(None) };
+        let Some(mut user) = self.get_user(found.user_id).await? else {
+            return Ok(None);
+        };
         if user.disabled_at.is_some() {
             return Ok(None);
         }
@@ -529,15 +576,20 @@ impl Accounts {
 
     /// Deletes one session token.
     pub async fn delete_user_session_token(&self, token: &[u8]) -> Result<(), sqlx::Error> {
-        sqlx::query!("DELETE FROM users_tokens WHERE token = ? AND context = 'session'", token)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query!(
+            "DELETE FROM users_tokens WHERE token = ? AND context = 'session'",
+            token
+        )
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
     /// Signs the user out everywhere.
     pub async fn revoke_all_sessions(&self, user_id: i64) -> Result<(), sqlx::Error> {
-        sqlx::query!("DELETE FROM users_tokens WHERE user_id = ?", user_id).execute(&self.pool).await?;
+        sqlx::query!("DELETE FROM users_tokens WHERE user_id = ?", user_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -555,13 +607,23 @@ impl Accounts {
     }
 
     /// Creates a key, returning the one-time secret with the stored key.
-    pub async fn create_api_key(&self, user_id: i64, attrs: &Value) -> Result<(String, ApiKey), ApiError> {
+    pub async fn create_api_key(
+        &self,
+        user_id: i64,
+        attrs: &Value,
+    ) -> Result<(String, ApiKey), ApiError> {
         let mut cs = Changeset::new(attrs);
-        let name = cs.string("name").or(None).map(|name| name.trim().to_owned());
+        let name = cs
+            .string("name")
+            .or(None)
+            .map(|name| name.trim().to_owned());
         cs.required("name", name.as_ref());
         cs.length("name", name.as_deref(), None, Some(60));
         cs.finish()?;
-        let token = format!("tg_{}", crypto::url_encode64_unpadded(&crypto::random_bytes::<32>()));
+        let token = format!(
+            "tg_{}",
+            crypto::url_encode64_unpadded(&crypto::random_bytes::<32>())
+        );
         let hash = api_key_hash(&token).unwrap_or_default();
         let prefix: String = token.chars().take(10).collect();
         let now = UtcDateTime::now();
@@ -576,22 +638,39 @@ impl Accounts {
         )
         .fetch_one(&self.pool)
         .await?;
-        let key = ApiKey { id, user_id, name: name.unwrap_or_default(), prefix, last_used_at: None, inserted_at: now };
+        let key = ApiKey {
+            id,
+            user_id,
+            name: name.unwrap_or_default(),
+            prefix,
+            last_used_at: None,
+            inserted_at: now,
+        };
         Ok((token, key))
     }
 
     /// Deletes one of the user's keys.
     pub async fn delete_api_key(&self, user_id: i64, id: i64) -> Result<(), ApiError> {
-        let deleted = sqlx::query!("DELETE FROM api_keys WHERE id = ? AND user_id = ?", id, user_id)
-            .execute(&self.pool)
-            .await?
-            .rows_affected();
-        if deleted == 0 { Err(ApiError::NotFound) } else { Ok(()) }
+        let deleted = sqlx::query!(
+            "DELETE FROM api_keys WHERE id = ? AND user_id = ?",
+            id,
+            user_id
+        )
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        if deleted == 0 {
+            Err(ApiError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 
     /// The enabled owner of an API key, touching `last_used_at` at most once a minute.
     pub async fn authenticate_api_key(&self, token: &str) -> Result<Option<User>, sqlx::Error> {
-        let Some(hash) = api_key_hash(token) else { return Ok(None) };
+        let Some(hash) = api_key_hash(token) else {
+            return Ok(None);
+        };
         let found = sqlx::query!(
             r#"SELECT k.id AS "id!: i64", k.user_id AS "user_id!: i64" FROM api_keys k
                JOIN users u ON u.id = k.user_id WHERE k.token_hash = ? AND u.disabled_at IS NULL"#,
@@ -601,7 +680,7 @@ impl Accounts {
         .await?;
         let Some(found) = found else { return Ok(None) };
         let now = UtcDateTime::now();
-        let stale = now.add(Duration::seconds(-60));
+        let stale = now.plus(Duration::seconds(-60));
         sqlx::query!(
             "UPDATE api_keys SET last_used_at = ? WHERE id = ? AND (last_used_at IS NULL OR last_used_at < ?)",
             now,
@@ -620,10 +699,18 @@ impl Accounts {
             Change::Unchanged => Some(user.username.clone()),
             Change::Set(value) => normalize_username(value),
         };
-        let display_name = cs.string("display_name").map(|name| name.trim().to_owned()).or(Some(user.display_name.clone()));
+        let display_name = cs
+            .string("display_name")
+            .map(|name| name.trim().to_owned())
+            .or(Some(user.display_name.clone()));
         let role = cs.string("role").or(Some(user.role.clone()));
         let disabled_at = cs.datetime("disabled_at").or(user.disabled_at);
-        validate_account_fields(&mut cs, username.as_deref(), display_name.as_deref(), role.as_deref());
+        validate_account_fields(
+            &mut cs,
+            username.as_deref(),
+            display_name.as_deref(),
+            role.as_deref(),
+        );
         if let Some(name) = username.as_deref().filter(|name| *name != user.username) {
             let taken = sqlx::query_scalar!(
                 r#"SELECT EXISTS(SELECT 1 FROM users WHERE username = ? AND id != ?) AS "taken!: bool""#,
@@ -670,9 +757,12 @@ impl Accounts {
             rename_linked_player(&mut tx, user.id, &display_name).await?;
         }
         if user.disabled_at.is_none() && disabled_at.is_some() {
-            sqlx::query!("DELETE FROM users_tokens WHERE user_id = ? AND context = 'session'", user.id)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query!(
+                "DELETE FROM users_tokens WHERE user_id = ? AND context = 'session'",
+                user.id
+            )
+            .execute(&mut *tx)
+            .await?;
         }
         tx.commit().await?;
         self.get_user(user.id).await?.ok_or(ApiError::NotFound)
@@ -680,7 +770,11 @@ impl Accounts {
 
     /// `disable_user/1`.
     pub async fn disable_user(&self, user: &User) -> Result<User, ApiError> {
-        self.update_user(user, &json!({ "disabled_at": UtcDateTime::now().to_string() })).await
+        self.update_user(
+            user,
+            &json!({ "disabled_at": UtcDateTime::now().to_string() }),
+        )
+        .await
     }
 
     /// `delete_user/2`: refuses self-deletion, the last administrator, and players with games.
@@ -712,7 +806,9 @@ impl Accounts {
         .fetch_one(&mut *tx)
         .await?;
         if referenced {
-            return Err(Errors::single("player", "must have zero games before deleting this user").into());
+            return Err(
+                Errors::single("player", "must have zero games before deleting this user").into(),
+            );
         }
         sqlx::query!(
             "DELETE FROM decks WHERE player_id IN (SELECT id FROM players WHERE user_id = ?)",
@@ -720,13 +816,24 @@ impl Accounts {
         )
         .execute(&mut *tx)
         .await?;
-        sqlx::query!("DELETE FROM players WHERE user_id = ?", user.id).execute(&mut *tx).await?;
-        sqlx::query!("UPDATE games SET created_by_user_id = NULL WHERE created_by_user_id = ?", user.id)
+        sqlx::query!("DELETE FROM players WHERE user_id = ?", user.id)
             .execute(&mut *tx)
             .await?;
-        sqlx::query!("DELETE FROM users_tokens WHERE user_id = ?", user.id).execute(&mut *tx).await?;
-        sqlx::query!("DELETE FROM api_keys WHERE user_id = ?", user.id).execute(&mut *tx).await?;
-        sqlx::query!("DELETE FROM users WHERE id = ?", user.id).execute(&mut *tx).await?;
+        sqlx::query!(
+            "UPDATE games SET created_by_user_id = NULL WHERE created_by_user_id = ?",
+            user.id
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query!("DELETE FROM users_tokens WHERE user_id = ?", user.id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query!("DELETE FROM api_keys WHERE user_id = ?", user.id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query!("DELETE FROM users WHERE id = ?", user.id)
+            .execute(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -748,8 +855,12 @@ impl Accounts {
     pub async fn update_settings(&self, attrs: &Value) -> Result<ServerSettings, ApiError> {
         let current = self.get_settings().await?;
         let mut cs = Changeset::new(attrs);
-        let enabled = cs.boolean("registration_enabled").or(Some(current.registration_enabled));
-        let from = cs.date("detailed_stats_from").or(current.detailed_stats_from);
+        let enabled = cs
+            .boolean("registration_enabled")
+            .or(Some(current.registration_enabled));
+        let from = cs
+            .date("detailed_stats_from")
+            .or(current.detailed_stats_from);
         cs.required_value("registration_enabled", enabled.as_ref());
         cs.finish()?;
         let now = UtcDateTime::now();
@@ -780,8 +891,13 @@ impl Accounts {
     }
 
     /// Whether `hash` is the current invitation's digest.
-    pub async fn valid_registration_invite_hash(&self, hash: Option<&[u8]>) -> Result<bool, sqlx::Error> {
-        let Some(hash) = hash.filter(|hash| hash.len() == 32) else { return Ok(false) };
+    pub async fn valid_registration_invite_hash(
+        &self,
+        hash: Option<&[u8]>,
+    ) -> Result<bool, sqlx::Error> {
+        let Some(hash) = hash.filter(|hash| hash.len() == 32) else {
+            return Ok(false);
+        };
         Ok(self
             .get_settings()
             .await?
@@ -792,16 +908,30 @@ impl Accounts {
 
 /// Games, stats, and Discord show a player's name, so a new display name reaches the
 /// linked player. A clash with another player's name is a display-name error.
-async fn rename_linked_player(tx: &mut db::Tx, user_id: i64, display_name: &str) -> Result<(), ApiError> {
+async fn rename_linked_player(
+    tx: &mut db::Tx,
+    user_id: i64,
+    display_name: &str,
+) -> Result<(), ApiError> {
     let name = display_name.trim();
-    let player = sqlx::query_scalar!(r#"SELECT id AS "id!: i64" FROM players WHERE user_id = ?"#, user_id)
-        .fetch_optional(&mut **tx)
-        .await?;
-    let Some(player_id) = player else { return Ok(()) };
+    let player = sqlx::query_scalar!(
+        r#"SELECT id AS "id!: i64" FROM players WHERE user_id = ?"#,
+        user_id
+    )
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(player_id) = player else {
+        return Ok(());
+    };
     let now = UtcDateTime::now();
-    match sqlx::query!("UPDATE players SET name = ?, updated_at = ? WHERE id = ?", name, now, player_id)
-        .execute(&mut **tx)
-        .await
+    match sqlx::query!(
+        "UPDATE players SET name = ?, updated_at = ? WHERE id = ?",
+        name,
+        now,
+        player_id
+    )
+    .execute(&mut **tx)
+    .await
     {
         Ok(_) => Ok(()),
         Err(error) if db::is_unique_violation(&error, &[]) => {
@@ -814,5 +944,5 @@ async fn rename_linked_player(tx: &mut db::Tx, user_id: i64, display_name: &str)
 /// `sudo_mode?/2`: whether the session authenticated within the last `minutes`.
 pub fn sudo_mode(user: &User, minutes: i64) -> bool {
     user.authenticated_at
-        .is_some_and(|at| at > UtcDateTime::now().add(Duration::minutes(-minutes)))
+        .is_some_and(|at| at > UtcDateTime::now().plus(Duration::minutes(-minutes)))
 }

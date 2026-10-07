@@ -80,22 +80,49 @@ impl RateLimits {
     fn defaults() -> Self {
         let minutes = |m: u64| Duration::from_secs(m * 60);
         Self {
-            credentials: WindowLimit { limit: 10, scale: minutes(5) },
-            corrections: WindowLimit { limit: 30, scale: minutes(1) },
-            api_keys: WindowLimit { limit: 120, scale: minutes(1) },
-            sudo: WindowLimit { limit: 5, scale: minutes(5) },
+            credentials: WindowLimit {
+                limit: 10,
+                scale: minutes(5),
+            },
+            corrections: WindowLimit {
+                limit: 30,
+                scale: minutes(1),
+            },
+            api_keys: WindowLimit {
+                limit: 120,
+                scale: minutes(1),
+            },
+            sudo: WindowLimit {
+                limit: 5,
+                scale: minutes(5),
+            },
             sudo_global: 100,
-            turn_credentials: WindowLimit { limit: 20, scale: minutes(5) },
-            webcam_table_events: BucketLimit { capacity: 60.0, refill_per_second: 20.0 },
-            webcam_table_signals: BucketLimit { capacity: 300.0, refill_per_second: 50.0 },
-            webcam_table_joins: WindowLimit { limit: 30, scale: minutes(1) },
+            turn_credentials: WindowLimit {
+                limit: 20,
+                scale: minutes(5),
+            },
+            webcam_table_events: BucketLimit {
+                capacity: 60.0,
+                refill_per_second: 20.0,
+            },
+            webcam_table_signals: BucketLimit {
+                capacity: 300.0,
+                refill_per_second: 50.0,
+            },
+            webcam_table_joins: WindowLimit {
+                limit: 30,
+                scale: minutes(1),
+            },
             trust_proxy_headers: false,
         }
     }
 
     /// Effectively unlimited buckets, as `config/test.exs` sets them.
     pub fn unlimited() -> Self {
-        let big = WindowLimit { limit: 1_000_000, scale: Duration::from_secs(300) };
+        let big = WindowLimit {
+            limit: 1_000_000,
+            scale: Duration::from_secs(300),
+        };
         Self {
             credentials: big,
             corrections: big,
@@ -103,9 +130,18 @@ impl RateLimits {
             sudo: big,
             sudo_global: 1_000_000,
             turn_credentials: big,
-            webcam_table_events: BucketLimit { capacity: 1e6, refill_per_second: 1e6 },
-            webcam_table_signals: BucketLimit { capacity: 1e6, refill_per_second: 1e6 },
-            webcam_table_joins: WindowLimit { limit: 1_000_000, scale: Duration::from_secs(60) },
+            webcam_table_events: BucketLimit {
+                capacity: 1e6,
+                refill_per_second: 1e6,
+            },
+            webcam_table_signals: BucketLimit {
+                capacity: 1e6,
+                refill_per_second: 1e6,
+            },
+            webcam_table_joins: WindowLimit {
+                limit: 1_000_000,
+                scale: Duration::from_secs(60),
+            },
             trust_proxy_headers: false,
         }
     }
@@ -193,6 +229,7 @@ pub struct SelfUpdateConfig {
 
 /// Everything the server reads at boot.
 #[derive(Clone, Debug)]
+#[allow(clippy::struct_excessive_bools)] // Independent on/off settings, as in runtime.exs.
 pub struct Config {
     /// Which defaults apply.
     pub env: Env,
@@ -320,10 +357,15 @@ impl Config {
                 (data_dir, database_path, secret)
             }
             Env::Dev | Env::Test => {
-                let data_dir = var("DATA_DIR").map_or_else(|| repo_root.join("data"), PathBuf::from);
+                let data_dir =
+                    var("DATA_DIR").map_or_else(|| repo_root.join("data"), PathBuf::from);
                 let database_path = var("DATABASE_PATH")
                     .map_or_else(|| repo_root.join("the_gathering_dev.db"), PathBuf::from);
-                (data_dir, database_path, var("SECRET_KEY_BASE").unwrap_or_else(|| DEV_SECRET.into()))
+                (
+                    data_dir,
+                    database_path,
+                    var("SECRET_KEY_BASE").unwrap_or_else(|| DEV_SECRET.into()),
+                )
             }
         };
         if secret.len() < 64 {
@@ -331,7 +373,11 @@ impl Config {
         }
 
         let scheme = var("PHX_SCHEME").unwrap_or_else(|| {
-            if env == Env::Prod { "https".into() } else { "http".into() }
+            if env == Env::Prod {
+                "https".into()
+            } else {
+                "http".into()
+            }
         });
         let port: u16 = parse_var("PORT", 4000)?;
         let default_url_port = match (env, scheme.as_str()) {
@@ -357,7 +403,10 @@ impl Config {
         };
 
         let stun_urls = match split_urls("WEBRTC_STUN_URLS").as_slice() {
-            [] => vec!["stun:stun.l.google.com:19302".into(), "stun:stun.cloudflare.com:3478".into()],
+            [] => vec![
+                "stun:stun.l.google.com:19302".into(),
+                "stun:stun.cloudflare.com:3478".into(),
+            ],
             [none] if none == "none" => Vec::new(),
             urls => urls.to_vec(),
         };
@@ -375,7 +424,11 @@ impl Config {
             .and_then(|id| id.parse::<i64>().ok())
             .filter(|id| *id > 0);
 
-        let mut rate_limits = if env == Env::Test { RateLimits::unlimited() } else { RateLimits::defaults() };
+        let mut rate_limits = if env == Env::Test {
+            RateLimits::unlimited()
+        } else {
+            RateLimits::defaults()
+        };
         rate_limits.trust_proxy_headers = flag("TRUST_PROXY_HEADERS");
 
         let catalog_sync_hours: u64 = parse_var("CATALOG_SYNC_INTERVAL_HOURS", 168)?;
@@ -398,7 +451,10 @@ impl Config {
             secret_key_base: secret,
             vite: if env == Env::Dev {
                 ViteMode::DevServer {
-                    origin: format!("http://127.0.0.1:{}", var("VITE_PORT").unwrap_or_else(|| "5173".into())),
+                    origin: format!(
+                        "http://127.0.0.1:{}",
+                        var("VITE_PORT").unwrap_or_else(|| "5173".into())
+                    ),
                 }
             } else {
                 ViteMode::Manifest
@@ -417,7 +473,8 @@ impl Config {
                 .unwrap_or_else(|| "America/New_York".into()),
             cardid_corrections_token: var("CARDID_CORRECTIONS_TOKEN"),
             cardid_corrections_admin_id: corrections_admin_id,
-            catalog_sync_enabled: env != Env::Test && var("CATALOG_SYNC_ENABLED").as_deref() != Some("false"),
+            catalog_sync_enabled: env != Env::Test
+                && var("CATALOG_SYNC_ENABLED").as_deref() != Some("false"),
             catalog_sync_interval: Duration::from_secs(catalog_sync_hours.saturating_mul(3600)),
             webcam_table_pruning_enabled: env != Env::Test,
             webcam_table: WebcamTableConfig {
@@ -475,8 +532,11 @@ impl Config {
             pool_size: 1,
             data_dir,
             priv_dir: PathBuf::from("priv"),
-            secret_key_base: "BxVic2xATqUYX7g8UgEVQl/MU+DF57PUsRKqbop07yJKwjbf0bLH69WiPtbXtkHl".into(),
-            vite: ViteMode::DevServer { origin: "http://127.0.0.1:5173".into() },
+            secret_key_base: "BxVic2xATqUYX7g8UgEVQl/MU+DF57PUsRKqbop07yJKwjbf0bLH69WiPtbXtkHl"
+                .into(),
+            vite: ViteMode::DevServer {
+                origin: "http://127.0.0.1:5173".into(),
+            },
             dev_auto_login: false,
             bcrypt_cost: 4,
             rate_limits: RateLimits::unlimited(),
@@ -491,7 +551,7 @@ impl Config {
             cardid_corrections_token: None,
             cardid_corrections_admin_id: None,
             catalog_sync_enabled: false,
-            catalog_sync_interval: Duration::from_secs(168 * 3600),
+            catalog_sync_interval: Duration::from_hours(168),
             webcam_table_pruning_enabled: false,
             webcam_table: WebcamTableConfig::default(),
             cloudflare_turn: CloudflareTurnConfig {
@@ -499,7 +559,13 @@ impl Config {
                 api_base: "https://rtc.live.cloudflare.com".into(),
                 ..CloudflareTurnConfig::default()
             },
-            sfu: SfuConfig { port_min: 50_000, port_max: 50_100, public_ip: None, ipv6: false, relay_only: false },
+            sfu: SfuConfig {
+                port_min: 50_000,
+                port_max: 50_100,
+                public_ip: None,
+                ipv6: false,
+                relay_only: false,
+            },
             manavault_url: Some("https://manavault.example.com".into()),
             manavault_allowed_hosts: Vec::new(),
             manavault_allow_insecure_urls: false,

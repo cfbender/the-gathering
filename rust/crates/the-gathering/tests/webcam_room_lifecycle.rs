@@ -3,6 +3,12 @@
 //!
 //! "A seated player cannot be merged away" exercises `Games.merge_players`; only its
 //! `WebcamTables.seated?/1` half is ported here.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 mod support;
 mod webcam_support;

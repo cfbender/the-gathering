@@ -38,7 +38,10 @@ impl DiscordClaims {
             .filter(|avatar| !avatar.is_empty())
             .map(|avatar| format!("https://cdn.discordapp.com/avatars/{sub}/{avatar}"));
         Some(Self {
-            preferred_username: user.get("username").and_then(serde_json::Value::as_str).map(str::to_owned),
+            preferred_username: user
+                .get("username")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
             picture,
             sub,
         })
@@ -90,7 +93,7 @@ async fn available_username(
     let sliced: String = replaced.chars().take(32).collect();
     let mut base = edges.replace_all(&sliced, "").into_owned();
     if base.chars().count() < 3 {
-        base = "discord".to_owned();
+        "discord".clone_into(&mut base);
     }
     let prefix: String = base.chars().take(38).collect();
     let mut candidates = vec![base.clone()];
@@ -141,11 +144,23 @@ impl Accounts {
                     .execute(&mut *tx)
                     .await?;
                 }
-                User { avatar_url: claims.picture.clone(), ..user }
+                User {
+                    avatar_url: claims.picture.clone(),
+                    ..user
+                }
             }
-            None => self.create_discord_user(&mut tx, claims, invite_hash).await?,
+            None => {
+                self.create_discord_user(&mut tx, claims, invite_hash)
+                    .await?
+            }
         };
-        resolve_player::run(&mut tx, &user.display_name, user.discord_id.as_deref(), Some(user.id)).await?;
+        resolve_player::run(
+            &mut tx,
+            &user.display_name,
+            user.discord_id.as_deref(),
+            Some(user.id),
+        )
+        .await?;
         tx.commit().await?;
         Ok(user)
     }
@@ -164,7 +179,10 @@ impl Accounts {
         )
         .fetch_one(&mut **tx)
         .await?;
-        let invited = match (invite_hash.filter(|hash| hash.len() == 32), &settings.registration_invite_hash) {
+        let invited = match (
+            invite_hash.filter(|hash| hash.len() == 32),
+            &settings.registration_invite_hash,
+        ) {
             (Some(hash), Some(current)) => crate::crypto::secure_compare(current, hash),
             _ => false,
         };
@@ -172,7 +190,8 @@ impl Accounts {
             return Err(SignInError::RegistrationClosed);
         }
 
-        let username = available_username(tx, claims.preferred_username.as_deref(), &claims.sub).await?;
+        let username =
+            available_username(tx, claims.preferred_username.as_deref(), &claims.sub).await?;
         let username = normalize_username(Some(username));
         let display_name = claims
             .preferred_username
@@ -181,7 +200,12 @@ impl Accounts {
             .or_else(|| username.clone())
             .map(|name| name.trim().to_owned());
         let mut cs = Changeset::empty();
-        validate_account_fields(&mut cs, username.as_deref(), display_name.as_deref(), Some("member"));
+        validate_account_fields(
+            &mut cs,
+            username.as_deref(),
+            display_name.as_deref(),
+            Some("member"),
+        );
         let taken = sqlx::query_scalar!(
             r#"SELECT EXISTS(SELECT 1 FROM users WHERE discord_id = ?) AS "taken!: bool""#,
             claims.sub
@@ -206,7 +230,9 @@ impl Accounts {
         )
         .fetch_one(&mut **tx)
         .await?;
-        let row: UserRow = select_users!("WHERE id = ?", id).fetch_one(&mut **tx).await?;
+        let row: UserRow = select_users!("WHERE id = ?", id)
+            .fetch_one(&mut **tx)
+            .await?;
         Ok(row.into_user(&self.secret_key_base))
     }
 }

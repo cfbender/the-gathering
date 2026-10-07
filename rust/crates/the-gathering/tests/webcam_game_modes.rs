@@ -1,5 +1,11 @@
 //! Ported from `test/the_gathering_web/channels/webcam_table_channel/game_modes_test.exs`:
 //! owner/admin controls, Two-Headed Giant and start-of-game seat randomization.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 mod support;
 mod webcam_support;

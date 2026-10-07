@@ -1,6 +1,12 @@
 //! Test harness: a fresh migrated SQLite database per test, the real router, a cookie jar,
 //! and automatic CSRF tokens (Phoenix's `ConnTest` skipped CSRF; this sends valid tokens).
-#![allow(dead_code, clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#![allow(
+    dead_code,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -253,7 +259,10 @@ impl TestApp {
     /// Inserts a catalog card from Scryfall-shaped JSON merged over the defaults the
     /// Elixir tests used (`insert_card!/1`): English paper, `tst` set, common, Commander
     /// legal, released 2024-01-01. `id`, `oracle_id`, and `name` are required.
-    pub async fn catalog_card(&self, overrides: Value) -> the_gathering::catalog::card_data::CardData {
+    pub async fn catalog_card(
+        &self,
+        overrides: Value,
+    ) -> the_gathering::catalog::card_data::CardData {
         let mut record = json!({
             "lang": "en",
             "games": ["paper"],
@@ -324,7 +333,7 @@ impl TestApp {
     }
 
     /// Inserts a game and its seats directly: `(player_id, deck_id, seat, result, mvp_card_name)`.
-    pub async fn sql_game(&self, seats: &[(i64, Option<i64>, i64, &str, Option<&str>)]) -> i64 {
+    pub async fn sql_game(&self, seats: &[SqlSeat<'_>]) -> i64 {
         let now = db::UtcDateTime::now();
         let game_id = sqlx::query_scalar::<_, i64>(
             "INSERT INTO games (played_at, source, inserted_at, updated_at) VALUES (?, 'manual', ?, ?) RETURNING id",
@@ -361,6 +370,9 @@ impl TestApp {
 
 static UNIQUE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+/// `(player_id, deck_id, seat, result, mvp_card_name)` for [`TestApp::sql_game`].
+pub type SqlSeat<'a> = (i64, Option<i64>, i64, &'a str, Option<&'a str>);
+
 /// A process-unique number (`System.unique_integer([:positive])`).
 pub fn unique() -> u64 {
     UNIQUE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
@@ -388,7 +400,11 @@ impl TestApp {
     }
 
     /// `Games.create_player(attrs, user_id)`.
-    pub async fn player_with(&self, attrs: Value, user_id: Option<i64>) -> the_gathering::games::Player {
+    pub async fn player_with(
+        &self,
+        attrs: Value,
+        user_id: Option<i64>,
+    ) -> the_gathering::games::Player {
         self.state
             .games
             .create_player(&attrs, user_id)
@@ -397,13 +413,23 @@ impl TestApp {
     }
 
     /// `Games.create_deck(%{player_id, name, commander_name})`.
-    pub async fn deck(&self, player_id: i64, name: &str, commander: &str) -> the_gathering::games::Deck {
-        self.deck_with(json!({ "player_id": player_id, "name": name, "commander_name": commander })).await
+    pub async fn deck(
+        &self,
+        player_id: i64,
+        name: &str,
+        commander: &str,
+    ) -> the_gathering::games::Deck {
+        self.deck_with(json!({ "player_id": player_id, "name": name, "commander_name": commander }))
+            .await
     }
 
     /// `Games.create_deck(attrs)`.
     pub async fn deck_with(&self, attrs: Value) -> the_gathering::games::Deck {
-        self.state.games.create_deck(&attrs).await.unwrap_or_else(|error| panic!("deck fixture: {error:?}"))
+        self.state
+            .games
+            .create_deck(&attrs)
+            .await
+            .unwrap_or_else(|error| panic!("deck fixture: {error:?}"))
     }
 
     /// `Games.create_game(attrs, created_by_user_id)`.
@@ -416,7 +442,13 @@ impl TestApp {
     }
 
     /// A two-seat game the first player won.
-    pub async fn simple_game(&self, played_at: &str, winner: i64, loser: i64, created_by: Option<i64>) -> the_gathering::games::Game {
+    pub async fn simple_game(
+        &self,
+        played_at: &str,
+        winner: i64,
+        loser: i64,
+        created_by: Option<i64>,
+    ) -> the_gathering::games::Game {
         self.game(
             json!({
                 "played_at": played_at,
@@ -431,8 +463,16 @@ impl TestApp {
     }
 
     /// Inserts a catalog card (`%Card{}` with test defaults).
-    pub async fn card(&self, id: &str, name: &str, colors: &[&str], image_uris: Value, can_be_commander: bool) {
-        self.card_with(id, name, colors, image_uris, can_be_commander, false).await;
+    pub async fn card(
+        &self,
+        id: &str,
+        name: &str,
+        colors: &[&str],
+        image_uris: Value,
+        can_be_commander: bool,
+    ) {
+        self.card_with(id, name, colors, image_uris, can_be_commander, false)
+            .await;
     }
 
     /// Inserts a catalog card, optionally on the Game Changers list.
@@ -487,7 +527,7 @@ impl TestApp {
     /// Moves the current session's password authentication `seconds_ago` into the past.
     pub async fn expire_sudo(&self, seconds_ago: i64) {
         let token = self.session().get_bytes("user_token").expect("signed in");
-        let at = db::UtcDateTime::now().add(time::Duration::seconds(-seconds_ago));
+        let at = db::UtcDateTime::now().plus(time::Duration::seconds(-seconds_ago));
         sqlx::query("UPDATE users_tokens SET authenticated_at = ? WHERE token = ?")
             .bind(at)
             .bind(token)
@@ -500,7 +540,10 @@ impl TestApp {
     pub async fn get_bearer(&self, path: &str, token: &str) -> TestResponse {
         self.clear_cookies();
         let mut headers = HeaderMap::new();
-        headers.insert(header::AUTHORIZATION, format!("Bearer {token}").parse().unwrap());
+        headers.insert(
+            header::AUTHORIZATION,
+            format!("Bearer {token}").parse().unwrap(),
+        );
         self.request_with(Method::GET, path, None, headers).await
     }
 
@@ -527,4 +570,3 @@ pub fn fixture(relative: &str) -> Vec<u8> {
 pub fn json_fixture(relative: &str) -> Value {
     serde_json::from_slice(&fixture(relative)).expect("JSON fixture")
 }
-

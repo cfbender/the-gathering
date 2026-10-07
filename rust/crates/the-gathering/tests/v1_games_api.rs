@@ -1,5 +1,4 @@
 //! Ported from `test/the_gathering_web/controllers/api/v1/game_controller_test.exs`.
-
 // Test crates: helpers outside `#[test]` functions may unwrap and index freely, like the
 // tests themselves (clippy.toml only exempts `#[test]` bodies).
 #![allow(

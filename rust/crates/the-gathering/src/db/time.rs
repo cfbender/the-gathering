@@ -1,6 +1,6 @@
 //! Timestamps stored the way Ecto's `:utc_datetime` and `:date` fields store them in SQLite.
 //!
-//! ecto_sqlite3 writes `2026-10-06T21:21:40Z`; rows inserted by raw SQL migrations use
+//! `ecto_sqlite3` writes `2026-10-06T21:21:40Z`; rows inserted by raw SQL migrations use
 //! SQLite's `CURRENT_TIMESTAMP` (`2026-10-06 21:21:40`). Both decode; encoding always uses
 //! Ecto's form so both backends can read every row.
 
@@ -52,7 +52,7 @@ impl UtcDateTime {
 
     /// Adds a (possibly negative) duration.
     #[must_use]
-    pub fn add(self, duration: Duration) -> Self {
+    pub fn plus(self, duration: Duration) -> Self {
         self.0.checked_add(duration).map_or(self, Self)
     }
 
@@ -66,7 +66,9 @@ impl UtcDateTime {
     /// seconds, or without seconds (HTML `datetime-local`).
     pub fn parse(value: &str) -> Option<Self> {
         let value = value.trim();
-        if let Ok(parsed) = OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339) {
+        if let Ok(parsed) =
+            OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
+        {
             return Some(Self::from_offset(parsed));
         }
         let normalized = value.replacen(' ', "T", 1);
@@ -82,9 +84,12 @@ impl UtcDateTime {
             .map(|primitive| Self::from_offset(primitive.assume_utc()))
             .or_else(|| {
                 // Offsets without seconds or a colon, which RFC 3339 rejects but ISO 8601 allows.
-                OffsetDateTime::parse(value, &time::format_description::well_known::Iso8601::DEFAULT)
-                    .ok()
-                    .map(Self::from_offset)
+                OffsetDateTime::parse(
+                    value,
+                    &time::format_description::well_known::Iso8601::DEFAULT,
+                )
+                .ok()
+                .map(Self::from_offset)
             })
     }
 
@@ -217,9 +222,16 @@ mod tests {
             "2026-10-06T21:21:40.123456Z",
             "2026-10-06T17:21:40-04:00",
         ] {
-            assert_eq!(UtcDateTime::parse(input).unwrap().to_string(), expected, "{input}");
+            assert_eq!(
+                UtcDateTime::parse(input).unwrap().to_string(),
+                expected,
+                "{input}"
+            );
         }
-        assert_eq!(UtcDateTime::parse("2026-10-06T21:21").unwrap().to_string(), "2026-10-06T21:21:00Z");
+        assert_eq!(
+            UtcDateTime::parse("2026-10-06T21:21").unwrap().to_string(),
+            "2026-10-06T21:21:00Z"
+        );
         assert!(UtcDateTime::parse("yesterday").is_none());
     }
 }

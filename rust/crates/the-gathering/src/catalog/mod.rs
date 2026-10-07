@@ -224,24 +224,44 @@ pub struct ArtUrls {
 
 impl ArtUrls {
     /// `Catalog.art_crop_url/4`: the printing's crop, else the card's.
-    pub fn art_crop_url(&self, id: Option<&str>, name: Option<&str>, printing_id: Option<&str>) -> Option<String> {
+    pub fn art_crop_url(
+        &self,
+        id: Option<&str>,
+        name: Option<&str>,
+        printing_id: Option<&str>,
+    ) -> Option<String> {
         printing_id
             .and_then(|printing| self.printings.get(printing))
             .and_then(|(crop, _)| crop.clone())
-            .or_else(|| self.summaries.get(id, name).and_then(|summary| summary.art_crop_url.clone()))
+            .or_else(|| {
+                self.summaries
+                    .get(id, name)
+                    .and_then(|summary| summary.art_crop_url.clone())
+            })
     }
 
     /// `Catalog.card_image_url/4`.
-    pub fn card_image_url(&self, id: Option<&str>, name: Option<&str>, printing_id: Option<&str>) -> Option<String> {
+    pub fn card_image_url(
+        &self,
+        id: Option<&str>,
+        name: Option<&str>,
+        printing_id: Option<&str>,
+    ) -> Option<String> {
         printing_id
             .and_then(|printing| self.printings.get(printing))
             .and_then(|(_, image)| image.clone())
-            .or_else(|| self.summaries.get(id, name).and_then(|summary| summary.image_url.clone()))
+            .or_else(|| {
+                self.summaries
+                    .get(id, name)
+                    .and_then(|summary| summary.image_url.clone())
+            })
     }
 
     /// `Catalog.game_changer?/3`.
     pub fn game_changer(&self, id: Option<&str>, name: Option<&str>) -> bool {
-        self.summaries.get(id, name).is_some_and(|summary| summary.game_changer)
+        self.summaries
+            .get(id, name)
+            .is_some_and(|summary| summary.game_changer)
     }
 
     /// The summaries behind these URLs.
@@ -260,7 +280,10 @@ pub enum CardRef {
 }
 
 fn escape_like(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 fn strip_search_punctuation(value: &str) -> String {
@@ -268,7 +291,10 @@ fn strip_search_punctuation(value: &str) -> String {
 }
 
 /// `face_query/1`: a double-faced, split, or flip card one of whose halves is `normalized`.
-async fn find_by_face(conn: &mut SqliteConnection, normalized: &str) -> Result<Option<Card>, sqlx::Error> {
+async fn find_by_face(
+    conn: &mut SqliteConnection,
+    normalized: &str,
+) -> Result<Option<Card>, sqlx::Error> {
     let prefix = format!("{normalized} // ");
     let suffix = format!(" // {normalized}");
     let prefix_len = i64::try_from(prefix.chars().count()).unwrap_or(i64::MAX);
@@ -296,11 +322,17 @@ impl Catalog {
 
     /// How many cards are cached.
     pub async fn count_cards(&self) -> Result<i64, sqlx::Error> {
-        sqlx::query_scalar!(r#"SELECT count(*) AS "count!: i64" FROM cards"#).fetch_one(&self.pool).await
+        sqlx::query_scalar!(r#"SELECT count(*) AS "count!: i64" FROM cards"#)
+            .fetch_one(&self.pool)
+            .await
     }
 
     /// `resolve_card/2`: by id, else by name.
-    pub async fn resolve_card(&self, id: Option<&str>, name: Option<&str>) -> Result<Option<Card>, sqlx::Error> {
+    pub async fn resolve_card(
+        &self,
+        id: Option<&str>,
+        name: Option<&str>,
+    ) -> Result<Option<Card>, sqlx::Error> {
         resolve_card_in(&mut *self.pool.acquire().await?, id, name).await
     }
 
@@ -316,7 +348,10 @@ impl Catalog {
     }
 
     /// `cards_by_name/1`: every given name that resolves, keyed by the given name.
-    pub async fn cards_by_name(&self, names: &[String]) -> Result<HashMap<String, Card>, sqlx::Error> {
+    pub async fn cards_by_name(
+        &self,
+        names: &[String],
+    ) -> Result<HashMap<String, Card>, sqlx::Error> {
         let mut conn = self.pool.acquire().await?;
         let mut found = HashMap::new();
         let mut exact: HashMap<String, Option<Card>> = HashMap::new();
@@ -395,7 +430,10 @@ impl Catalog {
     }
 
     /// `card_summaries/1`: one lookup for many `(id, name)` references.
-    pub async fn card_summaries(&self, refs: &[(Option<String>, Option<String>)]) -> Result<CardSummaries, sqlx::Error> {
+    pub async fn card_summaries(
+        &self,
+        refs: &[(Option<String>, Option<String>)],
+    ) -> Result<CardSummaries, sqlx::Error> {
         card_summaries_in(&mut *self.pool.acquire().await?, refs).await
     }
 
@@ -430,8 +468,14 @@ impl Catalog {
 }
 
 /// [`Catalog::get_card`] on a connection (for callers inside a transaction).
-pub async fn get_card_in(conn: &mut SqliteConnection, id: &str) -> Result<Option<Card>, sqlx::Error> {
-    Ok(select_cards!("WHERE id = ?", id).fetch_optional(&mut *conn).await?.map(Card::from))
+pub async fn get_card_in(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<Option<Card>, sqlx::Error> {
+    Ok(select_cards!("WHERE id = ?", id)
+        .fetch_optional(&mut *conn)
+        .await?
+        .map(Card::from))
 }
 
 /// [`Catalog::resolve_card`] on a connection.
@@ -452,7 +496,10 @@ pub async fn resolve_card_in(
 }
 
 /// [`Catalog::get_printing`] on a connection.
-pub async fn get_printing_in(conn: &mut SqliteConnection, id: &str) -> Result<Option<Printing>, sqlx::Error> {
+pub async fn get_printing_in(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<Option<Printing>, sqlx::Error> {
     let row = sqlx::query!(
         r#"SELECT id AS "id!", oracle_id, name, set_code, set_name, collector_number, lang, image_uris,
                   game_changer AS "game_changer: bool" FROM card_printings WHERE id = ?"#,
@@ -474,7 +521,10 @@ pub async fn get_printing_in(conn: &mut SqliteConnection, id: &str) -> Result<Op
 }
 
 /// [`Catalog::find_card_by_name`] on a connection.
-pub async fn find_card_by_name_in(conn: &mut SqliteConnection, name: &str) -> Result<Option<Card>, sqlx::Error> {
+pub async fn find_card_by_name_in(
+    conn: &mut SqliteConnection,
+    name: &str,
+) -> Result<Option<Card>, sqlx::Error> {
     let normalized = lotus::normalize_name(name);
     if let Some(card) = select_cards!(
         "WHERE normalized_name = ? ORDER BY can_be_commander DESC, released_at DESC LIMIT 1",
@@ -496,7 +546,10 @@ pub async fn card_summaries_in(
     let mut ids: Vec<String> = refs.iter().filter_map(|(id, _)| id.clone()).collect();
     ids.sort();
     ids.dedup();
-    let mut names: Vec<String> = refs.iter().filter_map(|(_, name)| name.as_deref().map(lotus::normalize_name)).collect();
+    let mut names: Vec<String> = refs
+        .iter()
+        .filter_map(|(_, name)| name.as_deref().map(lotus::normalize_name))
+        .collect();
     names.sort();
     names.dedup();
     let mut summaries = CardSummaries::default();
@@ -525,14 +578,19 @@ pub async fn card_summaries_in(
             image_url: images::url_opt(images.get("normal").map(String::as_str)),
             color_identity: color_identity::canonical(&identity.concat()),
         };
-        summaries.by_name.insert(row.normalized_name, summary.clone());
+        summaries
+            .by_name
+            .insert(row.normalized_name, summary.clone());
         summaries.by_id.insert(row.id, summary);
     }
     Ok(summaries)
 }
 
 /// [`Catalog::art_crop_urls`] on a connection.
-pub async fn art_crop_urls_in(conn: &mut SqliteConnection, refs: &[CardRef]) -> Result<ArtUrls, sqlx::Error> {
+pub async fn art_crop_urls_in(
+    conn: &mut SqliteConnection,
+    refs: &[CardRef],
+) -> Result<ArtUrls, sqlx::Error> {
     let mut identities = Vec::new();
     let mut printing_ids = Vec::new();
     for card_ref in refs {
@@ -565,6 +623,8 @@ pub async fn art_crop_urls_in(conn: &mut SqliteConnection, refs: &[CardRef]) -> 
             );
         }
     }
-    Ok(ArtUrls { summaries, printings })
+    Ok(ArtUrls {
+        summaries,
+        printings,
+    })
 }
-
