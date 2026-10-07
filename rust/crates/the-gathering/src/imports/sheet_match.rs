@@ -1,4 +1,4 @@
-//! Finding the recorded game a sheet row describes (`TheGathering.Imports.SheetMatch`).
+//! Finding the recorded game a sheet row describes.
 
 use time::Date;
 

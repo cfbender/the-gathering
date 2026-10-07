@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260924222547_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260924222547: add appearance to users.
 
 ALTER TABLE "users" ADD COLUMN "palette" TEXT DEFAULT 'claret' NOT NULL;
 

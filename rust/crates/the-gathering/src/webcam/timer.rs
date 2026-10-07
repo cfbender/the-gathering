@@ -1,4 +1,4 @@
-//! `TheGathering.WebcamTables.Timer`: the pure shared game clock.
+//! The pure shared game clock.
 //!
 //! The server stamps every transition, so clients cannot forge times. Repeated actions are
 //! idempotent: starting again never resets and resuming a running clock changes nothing.

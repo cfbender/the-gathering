@@ -1,5 +1,4 @@
-//! Ported from `test/the_gathering/discord/tracker_test.exs`, `sink/games_test.exs`, and
-//! `card_choice_test.exs`.
+//! SpellBot game tracking, recording reported games, and commander card choices.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

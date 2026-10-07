@@ -1,4 +1,4 @@
-//! One deck's statistics (`TheGathering.Stats.Deck`).
+//! One deck's statistics.
 
 use serde_json::{Value, json};
 use sqlx::SqliteConnection;

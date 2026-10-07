@@ -1,4 +1,4 @@
-//! CSV imports that create, update, or skip games (`TheGathering.Imports.CSVTransfer`).
+//! CSV imports that create, update, or skip games.
 //!
 //! The preview runs the whole import in a transaction and rolls it back, so it reports
 //! exactly what the commit would do, plus a revision fingerprint of the file and the

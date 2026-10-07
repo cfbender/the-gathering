@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/admin_player_controller_test.exs`.
+//! The admin player identities API.
 // Test crates: helpers outside `#[test]` functions may unwrap and index freely, like the
 // tests themselves (clippy.toml only exempts `#[test]` bodies).
 #![allow(

@@ -1,4 +1,4 @@
-//! `TheGathering.WebcamTables.Room`: one webcam table's serialized admission and durable game
+//! One webcam table's serialized admission and durable game
 //! state, as a tokio task.
 //!
 //! Each room loads its saved session on start and keeps running after its last connection

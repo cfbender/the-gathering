@@ -1,4 +1,4 @@
-//! `TheGatheringWeb.Presence`: single-node Phoenix Presence.
+//! Single-node presence tracking, compatible with the `phoenix` JS client's `Presence`.
 //!
 //! Each tracked entry belongs to an owner (a channel task) and a key (a peer id). Every change
 //! broadcasts `presence_diff` (`{joins, leaves}` keyed like `presence_state`, metas carrying

@@ -1,4 +1,4 @@
-//! `TheGathering.WebcamTables.Cards`: the shared list of identified cards.
+//! The shared list of identified cards.
 //!
 //! Entries stay client-shaped JSON (`id`, `ownerPeerId`, `byPlayerName`, `at`, `card`), so
 //! fields the browser adds pass through untouched; the server only validates and dedupes.

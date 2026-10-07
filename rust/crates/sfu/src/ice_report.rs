@@ -1,5 +1,4 @@
-//! One log line describing a peer connection's ICE state
-//! (`TheGathering.WebcamTables.Sfu.IceReport`): the transport summary and every candidate
+//! One log line describing a peer connection's ICE state: the transport summary and every candidate
 //! pair with how long ago the browser was last heard on it. This is what tells a NAT
 //! rebinding apart from a browser that stopped answering.
 //!

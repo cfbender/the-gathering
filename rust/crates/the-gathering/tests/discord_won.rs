@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering/discord/won_command_test.exs`.
+//! The legacy Discord `/won` command and form.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

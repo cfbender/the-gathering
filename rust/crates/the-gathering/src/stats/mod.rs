@@ -1,4 +1,4 @@
-//! Read-only statistics derived from games and their seats (`TheGathering.Stats`).
+//! Read-only statistics derived from games and their seats.
 //!
 //! Every win/loss/draw figure uses all games. Figures built from data a playgroup may only
 //! have started recording later (seat positions, duration, turns, MVP cards) use only games

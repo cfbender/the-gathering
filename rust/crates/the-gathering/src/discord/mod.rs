@@ -1,4 +1,4 @@
-//! The optional Discord bot and staged Discord reports (`TheGathering.Discord`).
+//! The optional Discord bot and staged Discord reports.
 //!
 //! - SpellBot's "game ready" embeds are parsed ([`spellbot`]) and staged as pending games
 //!   ([`pending`], [`tracker`]); a winner completes them through a [`sink::Sink`].

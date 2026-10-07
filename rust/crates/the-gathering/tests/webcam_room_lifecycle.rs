@@ -1,8 +1,8 @@
-//! Ported from `test/the_gathering_web/channels/webcam_table_channel/room_lifecycle_test.exs`:
-//! reloads, crashes, closing, rematches, the shared log, idle cleanup and saved sessions.
+//! Webcam table room lifecycle: reloads, crashes, closing, rematches, the shared log, idle
+//! cleanup and saved sessions.
 //!
-//! "A seated player cannot be merged away" exercises `Games.merge_players`; only its
-//! `WebcamTables.seated?/1` half is ported here.
+//! "A seated player cannot be merged away" is covered by `WebcamTables::seated` here and
+//! the merge itself in the games tests.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

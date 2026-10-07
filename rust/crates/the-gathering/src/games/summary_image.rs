@@ -1,4 +1,4 @@
-//! Rendering the summary card to PNG (`TheGathering.Games.SummaryImage`).
+//! Rendering the summary card to PNG.
 //!
 //! Elixir shelled out to `rsvg-convert`; this renders in-process with `resvg`, using the
 //! system fonts (the container ships the `DejaVu` family). Commander art is downloaded from Scryfall's CDN

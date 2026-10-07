@@ -322,8 +322,7 @@ preserving the player's games and decks. It does not delete the account or chang
 a future sign-in or import may create a separate player. Use **Admin → Users** to link the account
 to the correct player. Identity management requires recent administrator authentication.
 
-Sessions use random tokens stored in the `users_tokens` table, following Phoenix's generated-auth
-design. The session cookie and its token last 14 days and are reissued after 7, so members who
+Sessions use random tokens stored in the `users_tokens` table. The session cookie and its token last 14 days and are reissued after 7, so members who
 visit at least every two weeks stay signed in; Discord sign-in skips the consent screen once a
 member has authorized the app. Signing out ends only the current device's session. Changing the
 administrator password expires every session for that account, and expired session rows are pruned
@@ -399,13 +398,11 @@ Images are published to `ghcr.io/cfbender/the-gathering` by the [container workf
 
 The backend is a Rust server in [`rust/`](rust/README.md) (axum + sqlx on SQLite, the shared
 [lotus](https://github.com/cfbender/lotus) crate for Scryfall and deck-list sources). The
-original Elixir/Phoenix app in `lib/` is kept for reference and for the Ecto migrations, which
-remain the schema definition. The toolchain (Rust, SQLite, Erlang, Elixir, Node, aube) is
-pinned in `mise.toml`. Install [mise](https://mise.jdx.dev), then:
+toolchain (Rust, SQLite, Node, aube) is pinned in `mise.toml`. Install
+[mise](https://mise.jdx.dev), then:
 
 ```sh
-mise install
-mise exec -- aube install --frozen-lockfile
+mise run setup                # tools, JavaScript dependencies, server build, demo data
 mise run dev                  # Rust server on $PORT (4000) + Vite on http://localhost:5173
 ```
 
@@ -421,17 +418,18 @@ login flow; `/login` stays reachable either way.
 Other commands:
 
 ```sh
-mise run rust:check                    # cargo fmt --check, clippy -D warnings, cargo test
+mise run rust:check                    # schema check, cargo fmt --check, clippy -D warnings, cargo test
 mise run test                          # Rust tests only
 mise run precommit                     # Rust checks + frontend checks, tests, and build
 mise exec -- aube exec vp check        # frontend fmt + lint + typecheck
 mise exec -- aube run build            # production frontend bundle
-mise run rust:migrations               # after adding an Ecto migration
+mise run rust:new-migration add_thing  # new rust/migrations/<timestamp>_add_thing.sql
 mise run rust:sqlx-prepare             # after a migration or a query change
 ```
 
-Layout: `rust/` (server), `assets/react` (frontend), `priv/repo/migrations` (schema),
-`lib/` and `test/` (the Elixir app and its ExUnit suite). See [`AGENTS.md`](AGENTS.md) for
+Layout: `rust/` (server, with the SQL migrations in `rust/migrations`), `assets/react`
+(frontend), `priv/static` (static files). The version lives in `rust/crates/the-gathering/Cargo.toml`
+and `package.json`; releases are cut by tagging `vX.Y.Z`. See [`AGENTS.md`](AGENTS.md) for
 conventions.
 
 ## License

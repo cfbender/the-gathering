@@ -1,4 +1,4 @@
-//! Lets an administrator update the server from the admin UI (`TheGathering.SelfUpdate`).
+//! Lets an administrator update the server from the admin UI.
 //!
 //! The app never replaces itself; it hands the job to whatever runs it, and that updater
 //! decides what "newest" means for the installed channel:

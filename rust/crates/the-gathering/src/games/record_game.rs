@@ -1,4 +1,4 @@
-//! Recording and editing games (`TheGathering.Games.RecordGame`).
+//! Recording and editing games.
 //!
 //! Every function runs on a connection and opens a savepoint (or transaction) of its own,
 //! so it can run inside a caller's transaction (imports) or on its own.

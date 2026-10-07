@@ -1,5 +1,4 @@
-//! Converting between stored UTC timestamps and a viewer's IANA time zone
-//! (`TheGathering.LocalTime`), so date, weekday, and hour filters match the local calendar
+//! Converting between stored UTC timestamps and a viewer's IANA time zone, so date, weekday, and hour filters match the local calendar
 //! the browser shows. Zones come from jiff's bundled tzdb.
 
 use jiff::Timestamp;

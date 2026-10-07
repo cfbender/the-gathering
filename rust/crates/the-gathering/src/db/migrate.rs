@@ -1,9 +1,9 @@
-//! Applies the Ecto migrations a database is missing, recording them in `schema_migrations`
-//! exactly as Ecto does, so the Elixir and Rust servers can share a database file.
+//! Applies the SQL migrations a database is missing, recording each version in
+//! `schema_migrations`. The table and its version numbers predate the Rust server, so
+//! databases created by earlier releases upgrade in place.
 //!
-//! Each migration's SQL is generated from `mix ecto.migrate --log-migrations-sql` by
-//! `rust/scripts/dump-migrations.py` and embedded at build time. The few Elixir migrations
-//! that computed data in Elixir code have that step ported here ([`data_step`]).
+//! Migrations are `rust/migrations/<version>_<name>.sql`, embedded at build time. Steps
+//! that compute data in code instead of SQL live in [`data_step`].
 
 use std::collections::{HashMap, HashSet};
 
@@ -17,7 +17,7 @@ mod generated {
 }
 pub use generated::MIGRATIONS;
 
-/// Ecto's `schema_migrations` table.
+/// The `schema_migrations` table that records applied versions.
 const SCHEMA_MIGRATIONS: &str = r#"CREATE TABLE IF NOT EXISTS "schema_migrations" ("version" INTEGER PRIMARY KEY, "inserted_at" TEXT)"#;
 
 /// Errors while migrating.
@@ -63,9 +63,9 @@ pub async fn run(pool: &Pool) -> Result<Vec<i64>, MigrateError> {
 
 async fn apply(conn: &mut SqliteConnection, version: i64, sql: &str) -> Result<(), sqlx::Error> {
     // `PRAGMA foreign_keys` is a no-op inside a transaction, so migrations that rebuild
-    // tables (Ecto's `@disable_ddl_transaction`) run statement by statement.
+    // tables run statement by statement.
     let inserted_at = super::UtcDateTime::now()
-        .to_ecto_string()
+        .to_db_string()
         .trim_end_matches('Z')
         .to_owned();
     if sql.contains("PRAGMA foreign_keys = OFF") {
@@ -98,7 +98,7 @@ async fn record(
         .map(|_| ())
 }
 
-/// The data each migration computed in Elixir code.
+/// The data steps that run in code after a migration's SQL.
 async fn data_step(conn: &mut SqliteConnection, version: i64) -> Result<(), sqlx::Error> {
     match version {
         20_260_921_203_255 => backfill_portable_ids(conn).await,
@@ -210,8 +210,8 @@ async fn include_commander_colors(conn: &mut SqliteConnection) -> Result<(), sql
 }
 
 /// `DropApostrophesFromNormalizedCardNames`: stored names follow lotus's
-/// [`lotus::normalize_name`], which drops apostrophes and squashes whitespace. The Ecto
-/// migration approximates this in SQL; this recomputes it exactly.
+/// [`lotus::normalize_name`], which drops apostrophes and squashes whitespace. The
+/// migration's SQL approximates this; this recomputes it exactly.
 async fn renormalize_card_names(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
     for table in ["cards", "catalog_cards_staging"] {
         let rows: Vec<(String, String, String)> = sqlx::query_as(AssertSqlSafe(format!(

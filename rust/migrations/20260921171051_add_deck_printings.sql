@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260921171051_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260921171051: add deck printings.
 
 CREATE TABLE "card_printings" ("id" TEXT PRIMARY KEY, "oracle_id" TEXT NOT NULL, "name" TEXT NOT NULL, "set_code" TEXT NOT NULL, "set_name" TEXT NOT NULL, "collector_number" TEXT NOT NULL, "lang" TEXT DEFAULT 'en' NOT NULL, "image_uris" TEXT NOT NULL);
 

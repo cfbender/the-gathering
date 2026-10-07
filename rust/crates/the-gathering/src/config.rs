@@ -1,8 +1,8 @@
-//! Runtime configuration read from the environment, mirroring `config/*.exs`.
+//! Runtime configuration read from the environment.
 //!
 //! `THE_GATHERING_ENV` picks the defaults (`prod` unless set): `dev` uses the repository's
 //! development database and the Vite dev server, `prod` requires `SECRET_KEY_BASE` and keeps
-//! data under `DATA_DIR`. Every variable the Elixir `runtime.exs` read keeps its name.
+//! data under `DATA_DIR`. Variable names are unchanged from earlier releases.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use anyhow::{Context, bail};
 
-/// Which defaults apply (Mix's `config_env()`).
+/// Which defaults apply.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Env {
     /// Local development: Vite dev server, development database, auto sign-in.
@@ -51,7 +51,7 @@ pub struct BucketLimit {
     pub refill_per_second: f64,
 }
 
-/// `config :the_gathering, TheGatheringWeb.RateLimit`.
+/// Rate limits for credentials, sudo, API keys, and webcam table channels.
 #[derive(Clone, Debug)]
 pub struct RateLimits {
     /// Password login and bootstrap registration, per client address.
@@ -117,7 +117,7 @@ impl RateLimits {
         }
     }
 
-    /// Effectively unlimited buckets, as `config/test.exs` sets them.
+    /// Effectively unlimited buckets, for tests.
     pub fn unlimited() -> Self {
         let big = WindowLimit {
             limit: 1_000_000,
@@ -229,7 +229,7 @@ pub struct SelfUpdateConfig {
 
 /// Everything the server reads at boot.
 #[derive(Clone, Debug)]
-#[allow(clippy::struct_excessive_bools)] // Independent on/off settings, as in runtime.exs.
+#[allow(clippy::struct_excessive_bools)] // Independent on/off settings.
 pub struct Config {
     /// Which defaults apply.
     pub env: Env,
@@ -581,7 +581,7 @@ impl Config {
         }
     }
 
-    /// The public base URL, such as `https://games.example.com` (Phoenix's `Endpoint.url/0`).
+    /// The public base URL, such as `https://games.example.com`.
     pub fn public_url(&self) -> String {
         let default_port = matches!(
             (self.url_scheme.as_str(), self.url_port),

@@ -1,5 +1,4 @@
-//! Kill totals and recorded win conditions, independent of the detailed-stats cutoff
-//! (`TheGathering.Stats.Outcomes`).
+//! Kill totals and recorded win conditions, independent of the detailed-stats cutoff.
 
 use serde_json::{Value, json};
 

@@ -1,8 +1,5 @@
-//! Ported from `test/the_gathering/decklists_test.exs`, `decklists/destination_test.exs`,
-//! `decklists/cache_test.exs` (the remote-deck cache key test; the cache itself is unit
-//! tested in `decklists::cache`), `test/the_gathering_web/controllers/api/decklist_controller_test.exs`,
-//! the index and sync tests of `remote_deck_controller_test.exs`, and
-//! `test/the_gathering/games/sync_remote_decks_test.exs`.
+//! Deck lists: link parsing and resolution, ManaVault destinations, the cache, the
+//! decklist API, remote deck listings, and syncing remote decks into a player's decks.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -84,7 +81,7 @@ async fn stub_app(server: &MockServer, adjust: impl FnOnce(&mut Config)) -> Test
     .await
 }
 
-// ---- decklists_test.exs ----
+// ---- decklists ----
 
 #[tokio::test]
 async fn parses_and_canonicalizes_provider_url_variants() {
@@ -586,7 +583,7 @@ async fn caches_successful_resolutions_but_not_failures() {
     }
 }
 
-// ---- destination_test.exs ----
+// ---- destination ----
 
 #[test]
 fn accepts_only_normalized_https_origins() {
@@ -702,7 +699,7 @@ async fn operator_allowlist_permits_a_private_http_host() {
     assert_eq!(origin.port_or_default(), 4000);
 }
 
-// ---- decklist_controller_test.exs ----
+// ---- decklist controller ----
 
 async fn member(app: &TestApp) -> User {
     let user = app.member("member").await;
@@ -939,7 +936,7 @@ async fn decklist_maps_private_lists_to_404_and_upstream_failures_to_502() {
         .assert_json(502);
 }
 
-// ---- remote_deck_controller_test.exs (index) and cache_test.exs ----
+// ---- remote deck controller (index) and cache ----
 
 async fn set_profile(app: &TestApp, user: &User, attrs: Value) -> User {
     let mut attrs = attrs;
@@ -1357,7 +1354,7 @@ async fn remote_cache_keys_and_values_do_not_contain_plaintext_api_keys() {
     assert!(!format!("{:?}", cache.values()).contains(secret));
 }
 
-// ---- games/sync_remote_decks_test.exs and remote_deck_controller_test.exs (sync) ----
+// ---- sync remote decks and remote deck controller (sync) ----
 
 mod sync {
     use super::*;

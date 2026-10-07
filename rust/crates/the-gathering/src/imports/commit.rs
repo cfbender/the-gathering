@@ -1,4 +1,4 @@
-//! Committing a CSV or Mythic Track import (`TheGathering.Imports.Commit`).
+//! Committing a CSV or Mythic Track import.
 
 use serde_json::{Map, Value, json};
 use sqlx::SqliteConnection;

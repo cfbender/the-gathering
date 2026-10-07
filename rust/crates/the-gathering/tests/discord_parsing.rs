@@ -1,5 +1,4 @@
-//! Ported from `test/the_gathering/discord/spellbot_parser_test.exs`,
-//! `start_time_test.exs`, `command_test.exs`, and `test/the_gathering/discord_test.exs`.
+//! SpellBot message parsing, start times, command routing, and pending-game pruning.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -21,7 +20,7 @@ const SPELLBOT_ID: &str = "725510263251402832";
 
 fn fixture() -> Value {
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../test/fixtures/discord/spellbot_game_ready.json");
+        .join("tests/fixtures/discord/spellbot_game_ready.json");
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
 

@@ -10,7 +10,7 @@ use tracing_subscriber::EnvFilter;
 
 fn usage() -> anyhow::Error {
     anyhow::anyhow!(
-        "usage: the-gathering [serve | migrate | create-admin USERNAME | bootstrap-admin | catalog-sync | catalog-backfill]"
+        "usage: the-gathering [serve | migrate | seed | create-admin USERNAME | bootstrap-admin | catalog-sync | catalog-backfill]"
     )
 }
 
@@ -56,6 +56,14 @@ async fn main() -> anyhow::Result<()> {
     {
         [] | ["serve"] => serve(state).await,
         ["migrate"] => Ok(()),
+        ["seed"] => {
+            if state.config.env == the_gathering::config::Env::Dev {
+                println!("{}", the_gathering::seed::run(&state.games).await?);
+            } else {
+                println!("Skipping development demo data outside THE_GATHERING_ENV=dev.");
+            }
+            Ok(())
+        }
         ["create-admin", username] => {
             let password = std::env::var("THE_GATHERING_ADMIN_PASSWORD")
                 .context("THE_GATHERING_ADMIN_PASSWORD must be set")?;
@@ -69,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
         }
         ["bootstrap-admin"] => the_gathering::bootstrap_admin(&state).await,
         ["catalog-sync"] => {
-            // `mix the_gathering.catalog.sync`; the scheduled sync never starts here.
+            // A one-off sync; the scheduled sync never starts here.
             let count = catalog::sync::run(
                 &state.pool,
                 &state.scryfall,
@@ -81,7 +89,6 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         ["catalog-backfill"] => {
-            // `mix the_gathering.catalog.backfill`
             let summary = catalog::backfill::run(&state.pool).await?;
             println!(
                 "Split {} partner decks, linked {} commanders, filled {} color identities, linked {} MVP cards",

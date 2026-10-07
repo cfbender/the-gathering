@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20261006212354_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20261006212354: add maybe to discord scheduled games.
 
 ALTER TABLE "discord_scheduled_games" ADD COLUMN "maybe" TEXT DEFAULT ('{}') NOT NULL;
 

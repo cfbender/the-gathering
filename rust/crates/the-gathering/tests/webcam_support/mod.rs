@@ -1,8 +1,8 @@
-//! Webcam table channel test harness (`test/support/webcam_table_channel_case.ex`): the real
-//! router served on 127.0.0.1:0, a Phoenix V2 WebSocket client, and fixtures.
+//! Webcam table channel test harness: the real router served on 127.0.0.1:0, a Phoenix
+//! Channels V2 WebSocket client, and fixtures.
 //!
-//! Phoenix's `ChannelTest` delivered every push and broadcast to the test process; here each
-//! client has its own queue, so tests assert on the client that should receive a message.
+//! Each client has its own message queue, so tests assert on the client that should receive
+//! a message.
 #![allow(dead_code)]
 
 use std::collections::VecDeque;

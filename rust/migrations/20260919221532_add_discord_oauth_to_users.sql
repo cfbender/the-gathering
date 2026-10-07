@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260919221532_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260919221532: add discord oauth to users.
 
 ALTER TABLE "users" ADD COLUMN "oauth_hashed_password" TEXT;
 

@@ -104,7 +104,7 @@ impl PendingGame {
         let players: Value = serde_json::from_str(&self.players_json).unwrap_or(Value::Null);
         let canonical = serde_json::json!([
             players,
-            self.played_at.to_ecto_string(),
+            self.played_at.to_db_string(),
             self.guild_id,
             self.channel_id
         ]);

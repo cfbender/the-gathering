@@ -1,9 +1,8 @@
 # the-gathering-sfu
 
-The webcam table's selective forwarding unit, ported from `TheGathering.WebcamTables.Sfu`
-and `Sfu.Room`. The channel calls the `Sfu` methods in `src/lib.rs`; the SFU answers with
-`SfuEvent`s whose payloads are the maps the Elixir room sent, pushed verbatim to the
-browser.
+The webcam table's selective forwarding unit, a port of the earlier Elixir server's SFU.
+The channel calls the `Sfu` methods in `src/lib.rs`; the SFU answers with `SfuEvent`s
+whose payloads are pushed verbatim to the browser.
 
 ## Design
 
@@ -46,7 +45,7 @@ Fixed Elixir bugs are noted at the code (`answer`, `munger.rs`).
 
 ## Tests
 
-`cargo test -p the-gathering-sfu`: the four ported ExUnit modules (as unit tests), STUN/TURN
+`cargo test -p the-gathering-sfu`: unit tests, STUN/TURN
 units, real-browser offer shapes (`tests/browser_offers.rs`), and end-to-end tests with str0m
 clients over loopback (`tests/e2e.rs`; relay-only through a fake TURN server in
 `src/relay_tests.rs`).

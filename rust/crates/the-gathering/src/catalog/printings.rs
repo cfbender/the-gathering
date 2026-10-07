@@ -1,5 +1,5 @@
 //! Alternate printings and full printing details fetched from Scryfall on demand
-//! (`TheGathering.Catalog.Printings`) plus cached rulings (`TheGathering.Catalog.Rulings`).
+//! plus cached rulings.
 //!
 //! These work on Scryfall's raw JSON: faces are selected by copying a face's fields over the
 //! card, and the details keep fields (prices, `scryfall_uri`) the shared card model omits.

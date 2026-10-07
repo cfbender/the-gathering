@@ -1,4 +1,4 @@
-//! The SQLite database: connection pool, transactions, and Ecto-compatible migrations.
+//! The SQLite database: connection pool, transactions, and migrations.
 
 pub mod migrate;
 pub mod time;
@@ -18,8 +18,8 @@ pub type Pool = SqlitePool;
 /// An open write transaction.
 pub type Tx = Transaction<'static, Sqlite>;
 
-/// Opens (creating if missing) the database at `path` with the settings the Elixir repo used:
-/// WAL, foreign keys on, and a five-second busy timeout.
+/// Opens (creating if missing) the database at `path` with WAL, foreign keys on,
+/// and a five-second busy timeout.
 pub async fn connect(path: &Path, pool_size: u32) -> Result<Pool, sqlx::Error> {
     let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", path.display()))?
         .create_if_missing(true)
@@ -49,7 +49,7 @@ pub async fn connect_memory() -> Result<Pool, sqlx::Error> {
 ///
 /// Deferred transactions that read before writing fail at once with "database is locked"
 /// when another connection commits in between; `BEGIN IMMEDIATE` waits for the busy timeout
-/// instead (Ecto's `default_transaction_mode: :immediate`).
+/// instead.
 pub async fn begin(pool: &Pool) -> Result<Tx, sqlx::Error> {
     pool.begin_with("BEGIN IMMEDIATE").await
 }

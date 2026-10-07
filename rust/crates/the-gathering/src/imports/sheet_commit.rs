@@ -1,4 +1,4 @@
-//! Committing a reviewed Google Sheet reconciliation (`TheGathering.Imports.SheetCommit`).
+//! Committing a reviewed Google Sheet reconciliation.
 
 use serde::Serialize;
 use serde_json::{Value, json};

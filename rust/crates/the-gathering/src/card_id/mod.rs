@@ -1,5 +1,4 @@
-//! The published card-recognition bundle the webcam table loads in the browser
-//! (`TheGathering.CardId`).
+//! The published card-recognition bundle the webcam table loads in the browser.
 //!
 //! Bundles are built by Oracle (<https://github.com/cfbender/oracle>, `python -m cardid.export`)
 //! and copied to the server with `python -m cardid.publish <bundle> --to host:DATA_DIR/cardid`,

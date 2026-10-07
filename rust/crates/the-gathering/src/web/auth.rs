@@ -1,5 +1,4 @@
-//! Cookie-session authentication (`TheGatheringWeb.UserAuth`) and API-key authentication
-//! (`TheGatheringWeb.ApiKeyAuth`).
+//! Cookie-session authentication and API-key authentication.
 
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::request::Parts;

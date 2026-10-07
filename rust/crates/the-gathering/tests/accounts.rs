@@ -1,5 +1,5 @@
-//! Ported from `test/the_gathering/accounts_test.exs`, `test/the_gathering/accounts/user_test.exs`,
-//! and `test/the_gathering/repo_test.exs`.
+//! Accounts: registration, sign-in, sessions, profiles, administration, and the
+//! immediate write transactions accounts rely on.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -436,7 +436,7 @@ async fn reissued_session_tokens_preserve_the_original_password_authentication_t
     assert_eq!(fetched.authenticated_at, Some(authenticated_at));
 }
 
-// -- user_test.exs ------------------------------------------------------------------------
+// -- user ------------------------------------------------------------------------
 
 fn react_src(relative: &str) -> String {
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -472,7 +472,7 @@ fn palette_ids_match_the_react_picker_and_every_palette_has_light_and_dark_css()
     assert_eq!(css_blocks, expected);
 }
 
-// -- repo_test.exs ------------------------------------------------------------------------
+// -- repo ------------------------------------------------------------------------
 
 /// Deferred SQLite transactions that read before writing fail immediately with "database is
 /// locked" when another connection commits in between, e.g. registering the first admin

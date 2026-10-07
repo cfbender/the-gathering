@@ -1,5 +1,5 @@
-//! The Gathering's server, ported from the Elixir/Phoenix application: the JSON API,
-//! realtime webcam tables, the Discord bot, and background jobs, on the same SQLite schema.
+//! The Gathering's server: the JSON API, realtime webcam tables, the Discord bot, and
+//! background jobs, on a SQLite database.
 
 pub mod accounts;
 pub mod card_id;
@@ -17,13 +17,14 @@ pub mod imports;
 pub mod local_time;
 pub mod rate_limit;
 pub mod regex;
+pub mod seed;
 pub mod self_update;
 pub mod state;
 pub mod stats;
 pub mod web;
 pub mod webcam;
 
-/// `TheGathering.Release.bootstrap_admin/0`: creates the administrator named by
+/// Creates the administrator named by
 /// `THE_GATHERING_ADMIN_USERNAME`/`THE_GATHERING_ADMIN_PASSWORD` unless it exists.
 pub async fn bootstrap_admin(state: &state::AppState) -> anyhow::Result<()> {
     let username = std::env::var("THE_GATHERING_ADMIN_USERNAME")?;

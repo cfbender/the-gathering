@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260924001757_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260924001757: add format to games.
 
 ALTER TABLE "games" ADD COLUMN "format" TEXT DEFAULT 'commander' NOT NULL;
 

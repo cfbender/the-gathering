@@ -1,5 +1,4 @@
-//! The material differences a CSV correction would make to a game
-//! (`TheGathering.Imports.CSVChanges`).
+//! The material differences a CSV correction would make to a game.
 
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -122,7 +121,7 @@ fn seat_values(seat: Option<&SeatView>) -> [(&'static str, Value); 7] {
 
 fn game_values(game: &GameView) -> [(&'static str, Value); 5] {
     [
-        ("played_at", json!(game.played_at.to_ecto_string())),
+        ("played_at", json!(game.played_at.to_db_string())),
         ("duration_minutes", json!(game.duration_minutes)),
         ("turns", json!(game.turns)),
         (

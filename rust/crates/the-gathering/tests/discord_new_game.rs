@@ -1,5 +1,5 @@
-//! Ported from `test/the_gathering/discord/new_game_test.exs` (with
-//! `test/support/discord_new_game_api.ex` as `support::discord::RecordingApi`).
+//! The Discord `/newgame` queue (with `support::discord::RecordingApi` standing in for
+//! Discord).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

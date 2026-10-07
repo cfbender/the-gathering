@@ -1,6 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/card_controller_test.exs`,
-//! `card_printing_controller_test.exs`, `card_rulings_controller_test.exs`,
-//! and `card_image_controller_test.exs`.
+//! Card search, printings, details, rulings, and the card image cache APIs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -44,7 +42,7 @@ async fn sync_fixture(app: &TestApp) {
     );
 }
 
-// ---- card_controller_test.exs ----
+// ---- card controller ----
 
 async fn card_app() -> TestApp {
     let app = TestApp::new().await;
@@ -220,7 +218,7 @@ async fn catalog_admin_triggers_report_their_outcome() {
     assert_eq!(status["data"]["status"], "failed");
 }
 
-// ---- card_printing_controller_test.exs ----
+// ---- card printing controller ----
 
 fn scryfall_card(id: &str, name: &str) -> Value {
     json!({
@@ -996,7 +994,7 @@ async fn saved_printing_art_survives_a_catalog_replacement_and_a_missing_crop_fa
     );
 }
 
-// ---- card_printing_controller_test.exs (deck surfaces) ----
+// ---- card printing controller (deck surfaces) ----
 
 struct DeckCtx {
     app: TestApp,
@@ -1322,7 +1320,7 @@ async fn saved_deck_printing_art_survives_a_catalog_replacement() {
     assert_art(&save(&ctx, json!({"name": "After sync"})).await);
 }
 
-// ---- card_rulings_controller_test.exs ----
+// ---- card rulings controller ----
 
 const PRINTING: &str = "00000000-0000-0000-0000-000000000001";
 const EXPIRED: &str = "00000000-0000-0000-0000-000000000002";
@@ -1445,7 +1443,7 @@ async fn rulings_require_authentication_and_do_not_cache_missing_malformed_or_fa
         .assert_json(401);
 }
 
-// ---- card_image_controller_test.exs ----
+// ---- card image controller ----
 
 const SOURCE: &str =
     "https://cards.scryfall.io/normal/back/a/b/abcdef01-2345-6789-abcd-ef0123456789.jpg?123";

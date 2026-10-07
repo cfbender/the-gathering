@@ -1,5 +1,5 @@
 //! Folding a member's hosted decks (Moxfield, Archidekt, ManaVault) into their player's
-//! local deck list (`TheGathering.Games.SyncRemoteDecks`).
+//! local deck list.
 //!
 //! Each remote deck is matched against the player's decks in order:
 //!

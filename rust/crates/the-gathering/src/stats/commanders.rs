@@ -1,5 +1,4 @@
-//! Commander statistics aggregated across every player and deck
-//! (`TheGathering.Stats.Commanders`).
+//! Commander statistics aggregated across every player and deck.
 //!
 //! A seat counts once for each commander card its deck ran, so a partner deck contributes
 //! to both partners, and a mirror match contributes every matching seat. Every stored

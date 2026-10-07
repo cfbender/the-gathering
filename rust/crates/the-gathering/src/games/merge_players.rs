@@ -1,5 +1,4 @@
-//! Folding one player into another and linking players to accounts
-//! (`TheGathering.Games.MergePlayers`).
+//! Folding one player into another and linking players to accounts.
 
 use std::collections::HashMap;
 

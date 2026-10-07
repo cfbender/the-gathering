@@ -65,7 +65,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
           # amd64 only: the image runs on an x86 Ubuntu server, and building arm64 under
-          # QEMU emulation made every lib/assets change cost ~2.5 extra minutes.
+          # QEMU emulation made every build cost ~2.5 extra minutes.
           platforms: linux/amd64
           push: true
           pull: true

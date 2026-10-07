@@ -1,6 +1,5 @@
-//! Discord test doubles (`test/support/discord_new_game_api.ex` and the stub modules the
-//! Elixir Discord tests passed as `api`): a recording [`DiscordApi`] whose operations can
-//! be made to fail once, interaction builders, and report fixtures.
+//! Discord test doubles: a recording [`DiscordApi`] whose operations can be made to fail
+//! once, interaction builders, and report fixtures.
 
 use std::collections::VecDeque;
 use std::io::Write;

@@ -1,4 +1,4 @@
-//! `TheGatheringWeb.WebcamTableRooms`: which webcam tables are open right now.
+//! Which webcam tables are open right now.
 //!
 //! Every running room is listed, including empty ones, until the pruner closes it after 30
 //! idle minutes. Presence on the `webcam_tables` lobby topic supplies each room's connected

@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260921203255_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260921203255: add portable id to games.
 
 ALTER TABLE "games" ADD COLUMN "portable_id" TEXT;
 

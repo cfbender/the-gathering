@@ -1,5 +1,5 @@
-//! A Phoenix Channels server compatible with the `phoenix` JS client
-//! (`TheGatheringWeb.UserSocket` and its transport).
+//! A channels server speaking the Phoenix Channels V2 protocol, so the frontend's `phoenix`
+//! JS client connects to it unchanged.
 //!
 //! * One task per WebSocket ([`run_socket`]) decodes V2 JSON frames, answers `heartbeat`,
 //!   routes `phx_join` to a new channel task per topic and other events to the joined

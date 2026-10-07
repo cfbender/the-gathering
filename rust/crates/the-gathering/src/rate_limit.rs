@@ -73,7 +73,7 @@ impl RateLimiter {
     }
 }
 
-/// A token bucket owned by one channel connection (`TheGatheringWeb.ChannelRateLimit`).
+/// A token bucket owned by one channel connection.
 #[derive(Clone, Copy, Debug)]
 pub struct TokenBucket {
     capacity: f64,

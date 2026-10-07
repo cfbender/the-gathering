@@ -1,5 +1,4 @@
-//! Resolving one sheet row against players, decks, nearby games, and the admin's choices
-//! (`TheGathering.Imports.SheetResolution`).
+//! Resolving one sheet row against players, decks, nearby games, and the admin's choices.
 
 use serde::Serialize;
 use serde_json::{Value, json};

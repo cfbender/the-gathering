@@ -1,4 +1,4 @@
-//! Finding the game a summary card shows (`TheGathering.Games.Summary`).
+//! Finding the game a summary card shows.
 
 use std::sync::LazyLock;
 

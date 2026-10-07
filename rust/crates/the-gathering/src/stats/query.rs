@@ -1,4 +1,4 @@
-//! Scoped and date-filtered queries shared by statistics views (`TheGathering.Stats.Query`).
+//! Scoped and date-filtered queries shared by statistics views.
 
 use std::collections::HashSet;
 

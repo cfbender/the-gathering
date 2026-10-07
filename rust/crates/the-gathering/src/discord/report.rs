@@ -1,4 +1,4 @@
-//! Normalized game data from Discord sources (`TheGathering.Discord.GameReport`).
+//! Normalized game data from Discord sources.
 
 use std::collections::BTreeMap;
 

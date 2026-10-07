@@ -1,5 +1,4 @@
-//! Parses game rows exported (or pasted) from the group's Google Sheet
-//! (`TheGathering.Imports.GoogleSheet`). The sheet is never fetched: admins paste its
+//! Parses game rows exported (or pasted) from the group's Google Sheet. The sheet is never fetched: admins paste its
 //! cells (TSV) or upload a CSV download.
 
 use std::collections::HashMap;

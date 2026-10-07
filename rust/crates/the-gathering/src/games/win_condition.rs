@@ -1,5 +1,4 @@
-//! Canonical game win conditions and Mythic Track's persisted numeric mapping
-//! (`TheGathering.Games.WinCondition`).
+//! Canonical game win conditions and Mythic Track's persisted numeric mapping.
 
 use std::fmt;
 

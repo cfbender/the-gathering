@@ -1,4 +1,4 @@
-//! `TheGathering.WebcamTables.Log`: the table log, newest first, kept with the room's durable
+//! The table log, newest first, kept with the room's durable
 //! state so every seat sees the same history and a reload restores it.
 //!
 //! An entry is `{id, at, text}` plus optional merge metadata (`actor`, `kind`, `life`,

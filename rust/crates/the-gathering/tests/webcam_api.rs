@@ -1,5 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/webcam_table_config_controller_test.exs`
-//! and `webcam_table_room_controller_test.exs`.
+//! Webcam table config and room list APIs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

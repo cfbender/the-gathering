@@ -479,7 +479,7 @@ fn put_entry(list: &mut Roster, actor: &QueueActor, now: UtcDateTime) {
     let entry = list
         .entry(actor.discord_id.clone())
         .or_insert_with(|| Entry {
-            joined_at: now.to_ecto_string(),
+            joined_at: now.to_db_string(),
             display_name: String::new(),
         });
     entry.display_name.clone_from(&actor.display_name);

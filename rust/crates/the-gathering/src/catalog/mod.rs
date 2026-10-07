@@ -1,4 +1,4 @@
-//! The local card catalog synchronized from Scryfall (`TheGathering.Catalog`): lookups,
+//! The local card catalog synchronized from Scryfall: lookups,
 //! search, and the batched summaries other areas use for names, art, and identities, plus
 //! the write side (sync, backfill) and the on-demand Scryfall lookups (printings, details,
 //! rulings, images).

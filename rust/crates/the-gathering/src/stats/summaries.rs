@@ -1,4 +1,4 @@
-//! Response shaping shared by statistics views (`TheGathering.Stats.Summaries`).
+//! Response shaping shared by statistics views.
 
 use serde_json::{Value, json};
 use sqlx::SqliteConnection;

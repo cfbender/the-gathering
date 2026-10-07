@@ -1,7 +1,7 @@
 name: Quality
 
-# Parallel jobs: Elixir lint plus the ExUnit suite in partitions (the Ecto migrations remain
-# the schema definition), the Rust server (fmt, clippy, tests), and the frontend checks.
+# Parallel jobs: the Rust server (schema dump, query check, fmt, clippy, tests, and the
+# Proxmox installer test) and the frontend (format, lint, typecheck, tests, build).
 # "Precommit quality gate" aggregates them so branch protection keeps a single required check.
 on:
   pull_request:
@@ -19,89 +19,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  elixir:
-    name: Elixir lint and tests
-    runs-on: ubuntu-latest
-    env:
-      MIX_ENV: test
-      TEST_PARTITIONS: 4
-      # Four BEAMs share the runner's cores; idle schedulers should not spin on them.
-      ELIXIR_ERL_OPTIONS: +sbwt none +sbwtdcpu none +sbwtdio none
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # Only the summary PNG test shells out to rsvg-convert. Install it in the background
-      # while the toolchain is restored and the code is linted; the tests wait for it.
-      - name: Start installing the summary image renderer
-        run: |
-          (
-            set +e
-            # Skip the man-db trigger, the slowest part of an apt install on runners.
-            sudo rm -f /var/lib/man-db/auto-update
-            sudo apt-get update -qq &&
-              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-                librsvg2-bin fonts-dejavu-core
-            echo $? > "$RUNNER_TEMP/renderer.status"
-          ) > "$RUNNER_TEMP/renderer.log" 2>&1 &
-
-      - name: Set up mise tools
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
-        with:
-          install: true
-          cache: true
-
-      - name: Install Hex and Rebar
-        run: mise exec -- mix local.hex --force && mise exec -- mix local.rebar --force
-
-      - name: Cache Elixir dependencies and build
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            deps
-            _build
-          key: mix-${{ runner.os }}-${{ hashFiles('mix.lock') }}
-          restore-keys: mix-${{ runner.os }}-
-
-      - name: Install Elixir dependencies
-        run: mise exec -- mix deps.get
-
-      - name: Compile, format and credo
-        run: mise exec -- mix precommit.lint
-
-      - name: Wait for the summary image renderer
-        timeout-minutes: 3
-        run: |
-          while [ ! -f "$RUNNER_TEMP/renderer.status" ]; do sleep 1; done
-          status="$(cat "$RUNNER_TEMP/renderer.status")"
-          if [ "$status" != 0 ]; then cat "$RUNNER_TEMP/renderer.log"; exit "$status"; fi
-          rsvg-convert --version
-
-      # Each partition has its own SQLite file (config/test.exs), so they run side by side.
-      - name: Run ExUnit in parallel partitions
-        run: |
-          pids=()
-          for partition in $(seq "$TEST_PARTITIONS"); do
-            MIX_TEST_PARTITION="$partition" mise exec -- mix test --partitions "$TEST_PARTITIONS" \
-              > "$RUNNER_TEMP/test-$partition.log" 2>&1 &
-            pids+=("$!")
-          done
-
-          failed=0
-          for partition in $(seq "$TEST_PARTITIONS"); do
-            if wait "${pids[$((partition - 1))]}"; then
-              echo "::group::Partition $partition passed"
-              cat "$RUNNER_TEMP/test-$partition.log"
-              echo "::endgroup::"
-            else
-              failed=1
-              echo "::error::ExUnit partition $partition failed"
-              cat "$RUNNER_TEMP/test-$partition.log"
-            fi
-          done
-          exit "$failed"
-
   frontend:
     name: Frontend checks, tests and build
     runs-on: ubuntu-latest
@@ -119,8 +36,14 @@ jobs:
       - name: Install JavaScript dependencies
         run: mise exec -- aube install --frozen-lockfile
 
-      - name: Check, test and build
-        run: mise exec -- aube run precommit
+      - name: Format, lint and typecheck
+        run: mise exec -- aube exec vp check
+
+      - name: React tests
+        run: mise exec -- aube exec vp test run
+
+      - name: Production build
+        run: mise exec -- aube run build
 
   rust:
     name: Rust server lint and tests
@@ -150,26 +73,13 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock', 'mise.toml') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      # The server applies rust/migrations/<version>_*.sql for every Ecto migration a database
-      # is missing, so each Ecto migration needs its generated SQL (`mise run rust:migrations`).
-      - name: Check that every Ecto migration has its Rust SQL
-        run: |
-          missing=0
-          for path in priv/repo/migrations/*.exs; do
-            version="$(basename "$path" | cut -d_ -f1)"
-            if ! ls rust/migrations/"${version}"_*.sql >/dev/null 2>&1; then
-              echo "::error::rust/migrations has no SQL for ${path}; run mise run rust:migrations"
-              missing=1
-            fi
-          done
-          exit "$missing"
+      # rust/migrations is the schema's only source; schema.sql is its committed dump.
+      - name: Check that rust/schema.sql matches rust/migrations
+        run: mise exec -- bash rust/scripts/schema.sh --check
 
-      - name: Check queries against priv/repo/structure.sql
+      - name: Check queries against the migrated schema
         working-directory: rust
         run: |
-          mkdir -p target
-          rm -f target/schema.db
-          grep -v '^CREATE TABLE sqlite_' ../priv/repo/structure.sql | mise exec -- sqlite3 target/schema.db
           SQLX_OFFLINE=false DATABASE_URL="sqlite://$PWD/target/schema.db?mode=ro" \
             mise exec -- cargo check --workspace --all-targets --locked
 
@@ -181,7 +91,7 @@ jobs:
 
   precommit:
     name: Precommit quality gate
-    needs: [elixir, rust, frontend]
+    needs: [rust, frontend]
     if: always()
     runs-on: ubuntu-latest
 

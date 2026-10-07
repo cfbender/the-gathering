@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/player_controller_test.exs`.
+//! The players API.
 // Test crates: helpers outside `#[test]` functions may unwrap and index freely, like the
 // tests themselves (clippy.toml only exempts `#[test]` bodies).
 #![allow(
@@ -196,7 +196,7 @@ async fn admins_link_an_account_to_a_player_and_the_players_list_exposes_user_id
 }
 
 #[tokio::test]
-async fn player_paths_follow_ectos_id_casting_and_players_with_history_cannot_be_deleted() {
+async fn player_paths_reject_non_integer_ids_and_players_with_history_cannot_be_deleted() {
     let ctx = setup().await;
     ctx.app.log_in(&ctx.member).await;
     ctx.app.get("/api/players/abc").await.assert_json(400);

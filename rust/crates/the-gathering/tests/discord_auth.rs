@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/discord_auth_controller_test.exs`.
+//! Discord OAuth sign-in, registration invitations, and Discord sudo.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260920142610_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260920142610: create pending discord games.
 
 CREATE TABLE "pending_discord_games" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "external_id" TEXT NOT NULL, "guild_id" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "played_at" TEXT NOT NULL, "players" TEXT NOT NULL, "raw" TEXT DEFAULT ('{}') NOT NULL, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL);
 

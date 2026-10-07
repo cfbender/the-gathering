@@ -1,5 +1,4 @@
-//! Parses the JSON returned by Mythic Track's `POST api/games/get` endpoint
-//! (`TheGathering.Imports.MythicTrack`).
+//! Parses the JSON returned by Mythic Track's `POST api/games/get` endpoint.
 //!
 //! Mythic Track has no export feature, but its Blazor client fetches the signed-in user's
 //! full game list from that endpoint as a `List<GameViewModel>`. Users save that response

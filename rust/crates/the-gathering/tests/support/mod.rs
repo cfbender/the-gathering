@@ -555,10 +555,10 @@ impl TestApp {
     }
 }
 
-/// A file under the repository's `test/support/fixtures`.
+/// A file under `tests/fixtures`.
 pub fn fixture_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../test/support/fixtures")
+        .join("tests/fixtures")
         .join(relative)
 }
 

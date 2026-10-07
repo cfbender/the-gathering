@@ -1,5 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/admin_discord_pending_controller_test.exs`
-//! and `discord_result_draft_controller_test.exs`.
+//! Admin pending Discord games and Discord result draft APIs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

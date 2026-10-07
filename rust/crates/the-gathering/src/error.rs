@@ -1,4 +1,4 @@
-//! API errors, rendered the way `TheGatheringWeb.API.FallbackController` renders them.
+//! API errors and the JSON bodies the frontend expects for them.
 
 use std::collections::BTreeMap;
 
@@ -7,7 +7,7 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
 
-/// Field errors as `TheGatheringWeb.ChangesetJSON` renders them: `{"field": ["message"]}`,
+/// Field errors as the API renders them: `{"field": ["message"]}`,
 /// with nested rows (`cast_assoc`) as `{"seats": [{}, {"seat": ["message"]}]}`.
 ///
 /// Messages for one field are newest first, matching `Ecto.Changeset.traverse_errors/2`.

@@ -1,4 +1,4 @@
-//! `TheGathering.CloudflareTurn`: mints short-lived Cloudflare Realtime TURN credentials for
+//! Mints short-lived Cloudflare Realtime TURN credentials for
 //! webcam tables.
 //!
 //! A Cloudflare TURN key (`CLOUDFLARE_TURN_KEY_ID` + `CLOUDFLARE_TURN_API_TOKEN`) is a

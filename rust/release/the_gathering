@@ -1,5 +1,5 @@
 #!/bin/sh
-# Compatibility launcher for the release layout the Elixir app shipped
+# Compatibility launcher for the release layout earlier versions shipped
 # (`the_gathering/bin/the_gathering start | eval ...`), so existing installs, the Proxmox
 # helper, and the container entrypoint keep working with the Rust server.
 set -eu

@@ -1,5 +1,5 @@
 //! The bounded, shared disk cache for unchanged Scryfall JPEGs
-//! (`TheGathering.Catalog.CardImages`, the `GenServer` half). Never fetches arbitrary
+//! (the download and storage half). Never fetches arbitrary
 //! origins: only sources [`images::valid_source`] accepts.
 //!
 //! Files live in `DATA_DIR/card-images/<sha256(source)>.jpg` for 30 days, the directory is

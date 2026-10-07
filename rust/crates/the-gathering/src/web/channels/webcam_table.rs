@@ -1,5 +1,4 @@
-//! `TheGatheringWeb.WebcamTableChannel` (`webcam_table:<room id>`) and
-//! `TheGatheringWeb.ChannelRateLimit`.
+//! The webcam table channel (`webcam_table:<room id>`) and its per-connection rate limits.
 //!
 //! Every event spends a token from the connection's bucket before it is handled, so floods
 //! are refused before they validate, broadcast or write SQLite. Signals have their own,

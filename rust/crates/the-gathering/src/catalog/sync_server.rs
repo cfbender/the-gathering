@@ -1,5 +1,4 @@
-//! One catalog sync at a time, on demand or on a schedule
-//! (`TheGathering.Catalog.SyncServer`).
+//! One catalog sync at a time, on demand or on a schedule.
 
 use std::sync::Mutex;
 use std::time::Duration;

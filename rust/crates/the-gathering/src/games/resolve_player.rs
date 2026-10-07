@@ -1,4 +1,4 @@
-//! Resolving a player by Discord identity or name (`TheGathering.Games.ResolvePlayer`).
+//! Resolving a player by Discord identity or name.
 //!
 //! Discord identities match only by `discord_id`; when none matches, a distinct name is
 //! chosen. Name matching is used only when `discord_id` is absent.

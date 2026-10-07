@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260921205311_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260921205311: add win condition to games.
 
 ALTER TABLE "games" ADD COLUMN "win_condition" TEXT;
 

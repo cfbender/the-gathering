@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260920142607_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260920142607: add user foreign keys to players and games.
 
 PRAGMA foreign_keys = OFF;
 

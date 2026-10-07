@@ -1,4 +1,4 @@
-//! One viewer's copy of one publisher's video (`TheGathering.WebcamTables.Sfu.Subscription`).
+//! One viewer's copy of one publisher's video.
 //!
 //! The publisher sends up to three simulcast layers; the viewer receives exactly one. This
 //! module decides, packet by packet, which layer's packets are forwarded and rewrites their

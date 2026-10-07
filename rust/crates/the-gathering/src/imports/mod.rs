@@ -1,4 +1,4 @@
-//! Importing game history from external data sources (`TheGathering.Imports`).
+//! Importing game history from external data sources.
 //!
 //! CSV and Mythic Track parse into normalized [`ImportGame`]/[`ImportSeat`] values.
 //! [`preview::run`] matches players and decks against existing records, and the commits

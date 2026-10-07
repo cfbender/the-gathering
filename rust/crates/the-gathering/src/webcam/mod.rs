@@ -1,4 +1,4 @@
-//! `TheGathering.WebcamTables`: live rooms where remote players share cameras, life totals,
+//! Live rooms where remote players share cameras, life totals,
 //! turns, a shared clock, identified cards and a shared table log.
 //!
 //! Each room runs as its own task ([`room::Room`]), started on first join and registered by
@@ -445,7 +445,7 @@ impl WebcamTables {
     }
 
     /// Runs the pruner forever: every minute, closes rooms idle for 30 minutes and deletes
-    /// expired sessions (`TheGathering.WebcamTables.Pruner`).
+    /// expired sessions.
     pub fn spawn_pruner(&self) -> tokio::task::JoinHandle<()> {
         let tables = self.clone();
         tokio::spawn(async move {

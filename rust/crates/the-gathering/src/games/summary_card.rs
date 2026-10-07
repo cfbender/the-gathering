@@ -1,5 +1,4 @@
-//! The game summary card as SVG (`TheGathering.Games.SummaryCard` and
-//! `summary_card.svg.eex`).
+//! The game summary card as SVG.
 
 use std::collections::HashMap;
 use std::fmt::Write;

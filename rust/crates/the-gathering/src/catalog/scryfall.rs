@@ -1,4 +1,4 @@
-//! Scryfall API calls the app makes on demand (`TheGathering.Catalog.Scryfall`): printing
+//! Scryfall API calls the app makes on demand: printing
 //! searches, single printings, rulings, and the bulk-data download. Requests go through
 //! lotus's [`ScryfallClient`]; the shared per-server limit lives here.
 

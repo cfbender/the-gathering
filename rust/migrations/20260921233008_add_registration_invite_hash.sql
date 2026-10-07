@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260921233008_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260921233008: add registration invite hash.
 
 ALTER TABLE "server_settings" ADD COLUMN "registration_invite_hash" BLOB;
 

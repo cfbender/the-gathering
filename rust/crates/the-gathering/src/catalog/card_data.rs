@@ -1,4 +1,4 @@
-//! Turning a Scryfall record into a catalog row (`TheGathering.Catalog.CardData`).
+//! Turning a Scryfall record into a catalog row.
 //!
 //! Parsing, the catalog policy, the printing ranking, and the commander rules come from
 //! lotus; this module only maps them onto the `cards` / `catalog_cards_staging` columns.
@@ -221,7 +221,6 @@ mod tests {
         serde_json::from_value(value).unwrap()
     }
 
-    // Ported from `test/the_gathering/catalog/card_data_test.exs`.
     #[test]
     fn copies_the_game_changer_flag_defaulting_to_false() {
         let base = json!({"id": "rhystic", "oracle_id": "oracle-rhystic", "name": "Rhystic Study"});

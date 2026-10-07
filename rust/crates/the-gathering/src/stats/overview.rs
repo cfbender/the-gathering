@@ -1,4 +1,4 @@
-//! The playgroup overview (`TheGathering.Stats.Overview`).
+//! The playgroup overview.
 
 use serde_json::{Value, json};
 use sqlx::SqliteConnection;

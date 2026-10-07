@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering_web/dev_auto_login_test.exs`.
+//! Development auto sign-in.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

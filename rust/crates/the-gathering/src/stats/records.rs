@@ -1,4 +1,4 @@
-//! Win/loss/draw arithmetic shared by every statistics view (`TheGathering.Stats.Records`).
+//! Win/loss/draw arithmetic shared by every statistics view.
 //!
 //! Rows are seats; games come newest first. Groups are visited in key order before the
 //! stable sort, which is how Elixir's small maps iterate, so ties keep the same order.

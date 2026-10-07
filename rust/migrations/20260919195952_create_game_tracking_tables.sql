@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260919195952_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260919195952: create game tracking tables.
 
 CREATE TABLE "players" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "name" TEXT NOT NULL, "user_id" INTEGER, "discord_id" TEXT, "archived_at" TEXT, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL);
 

@@ -1,4 +1,4 @@
-//! URLs for the shared Scryfall image cache (`TheGathering.Catalog.CardImages`, pure parts).
+//! URLs for the shared Scryfall image cache.
 //!
 //! Browsers load card images through `/api/card-images?url=<scryfall source>`, which only
 //! accepts Scryfall CDN JPEG URLs.

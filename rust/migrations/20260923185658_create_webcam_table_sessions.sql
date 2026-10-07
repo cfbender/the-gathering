@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260923185658_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260923185658: create webcam table sessions.
 
 CREATE TABLE "webcam_table_sessions" ("id" TEXT PRIMARY KEY, "snapshot" BLOB NOT NULL, "expires_at" TEXT NOT NULL);
 

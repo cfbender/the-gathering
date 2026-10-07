@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/v1/game_controller_test.exs`.
+//! The read-only `/api/v1/games` API for personal API keys.
 // Test crates: helpers outside `#[test]` functions may unwrap and index freely, like the
 // tests themselves (clippy.toml only exempts `#[test]` bodies).
 #![allow(

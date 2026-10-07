@@ -1,5 +1,5 @@
-//! The log assertions of `test/the_gathering/discord/summary_command_test.exs`, in one
-//! test so a global subscriber captures them without racing other tests.
+//! The `/summary` command's log lines, in one test so a global subscriber captures them
+//! without racing other tests.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

@@ -1,4 +1,4 @@
-//! Deck lists from Moxfield, Archidekt, and ManaVault (`TheGathering.Decklists`), built on
+//! Deck lists from Moxfield, Archidekt, and ManaVault, built on
 //! lotus's link parsing and fetchers.
 //!
 //! Only the configured ManaVault origin (`MANAVAULT_URL`) resolves share links, which keeps
@@ -93,8 +93,7 @@ pub struct DeckCard {
     pub printing_id: Option<String>,
 }
 
-/// Public metadata and the playable list of a resolved deck
-/// (`TheGathering.Decklists.Decklist`).
+/// Public metadata and the playable list of a resolved deck.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Decklist {
     /// The service.

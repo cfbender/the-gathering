@@ -1,4 +1,4 @@
-//! The SFU for one webcam table (`TheGathering.WebcamTables.Sfu.Room`): a server-side str0m
+//! The SFU for one webcam table: a server-side str0m
 //! `Rtc` per connected browser, and the forwarding of every publisher's chosen simulcast layer
 //! to every other connection.
 //!

@@ -551,7 +551,7 @@ EOF
     in_ct "$ctid" "set -a; . ${ENV_FILE}; set +a; \
       THE_GATHERING_ADMIN_USERNAME=$(printf %q "$ADMIN_USERNAME") \
       THE_GATHERING_ADMIN_PASSWORD=$(printf %q "$ADMIN_PASSWORD") \
-      DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp \
+      DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db \
       setpriv --reuid=${APP_USER} --regid=${APP_USER} --init-groups \
       ${APP_DIR}/current/bin/the_gathering bootstrap-admin"
   fi
@@ -665,7 +665,7 @@ bootstrap_admin() {
   in_ct "$ctid" "set -a; . ${ENV_FILE}; set +a; \
     THE_GATHERING_ADMIN_USERNAME=$(printf %q "$ADMIN_USERNAME") \
     THE_GATHERING_ADMIN_PASSWORD=$(printf %q "$ADMIN_PASSWORD") \
-    DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp \
+    DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db \
     setpriv --reuid=${APP_USER} --regid=${APP_USER} --init-groups \
     ${APP_DIR}/current/bin/the_gathering bootstrap-admin"
   in_ct "$ctid" "systemctl start ${SERVICE}"

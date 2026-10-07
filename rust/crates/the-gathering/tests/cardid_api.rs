@@ -1,5 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/card_id_bundle_controller_test.exs`
-//! and `card_id_correction_controller_test.exs`.
+//! Card-recognition bundle and correction APIs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -18,7 +17,7 @@ use serde_json::{Value, json};
 use support::{TestApp, fixture};
 use the_gathering::config::WindowLimit;
 
-// ---- card_id_bundle_controller_test.exs ----
+// ---- card id bundle controller ----
 
 fn bundle_root(app: &TestApp) -> PathBuf {
     the_gathering::card_id::bundle_dir(&app.state.config.data_dir)
@@ -179,7 +178,7 @@ async fn bundle_requires_authentication() {
         .assert_json(401);
 }
 
-// ---- card_id_correction_controller_test.exs ----
+// ---- card id correction controller ----
 
 const TOKEN_LENGTH: usize = 40;
 

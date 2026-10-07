@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260920143006_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260920143006: add deck sources to users.
 
 ALTER TABLE "users" ADD COLUMN "moxfield_username" TEXT;
 

@@ -1,5 +1,4 @@
-//! Linking decks and MVP cards recorded by name to catalog cards
-//! (`TheGathering.Games.LinkCatalogCards`), after imports and as a batched repair.
+//! Linking decks and MVP cards recorded by name to catalog cards, after imports and as a batched repair.
 
 use std::sync::LazyLock;
 

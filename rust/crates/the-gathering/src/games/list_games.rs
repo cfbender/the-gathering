@@ -1,5 +1,4 @@
-//! Filtered, paginated game history behind `GET /api/games`, newest first
-//! (`TheGathering.Games.ListGames`).
+//! Filtered, paginated game history behind `GET /api/games`, newest first.
 //!
 //! Deck filters (`commander`, `colors`, `color`) match the `player_id` seat when a player is
 //! chosen, so "Alice with Golgari" means Alice piloted Golgari; otherwise they match any

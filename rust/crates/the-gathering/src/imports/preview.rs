@@ -1,5 +1,4 @@
-//! Parsing an import and matching its players and decks against existing records
-//! (`TheGathering.Imports.Preview`).
+//! Parsing an import and matching its players and decks against existing records.
 
 use std::collections::HashMap;
 

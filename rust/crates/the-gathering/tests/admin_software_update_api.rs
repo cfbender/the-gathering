@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/admin_software_update_controller_test.exs`.
+//! The admin software update API.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

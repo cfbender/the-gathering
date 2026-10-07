@@ -1,4 +1,4 @@
-//! One player's statistics (`TheGathering.Stats.Player`).
+//! One player's statistics.
 
 use std::collections::HashMap;
 

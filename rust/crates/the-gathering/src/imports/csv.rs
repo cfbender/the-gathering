@@ -1,5 +1,4 @@
-//! The seat-per-row CSV template and Mythic Track's spreadsheet export
-//! (`TheGathering.Imports.CSV`).
+//! The seat-per-row CSV template and Mythic Track's spreadsheet export.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -507,7 +506,7 @@ fn external_id(first: &Row, seats: &[&Row]) -> String {
         .map(|seat| {
             [
                 first.game_id.clone(),
-                first.date.to_ecto_string(),
+                first.date.to_db_string(),
                 seat.player.clone(),
                 seat.deck.clone(),
                 seat.commander.clone(),

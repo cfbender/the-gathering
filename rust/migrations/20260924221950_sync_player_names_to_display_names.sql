@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260924221950_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260924221950: sync player names to display names.
 
 UPDATE players
 SET name = (SELECT trim(u.display_name) FROM users u WHERE u.id = players.user_id),

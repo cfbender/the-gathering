@@ -1,4 +1,4 @@
-//! Human-labelled click crops for card recognition (`TheGathering.CardId.Corrections`).
+//! Human-labelled click crops for card recognition.
 //!
 //! JPEGs stay native; Oracle's offline importer creates `card.png`. An outline drawn with
 //! Shift+click arrives as `quad_source: "manual"` and is detector ground truth for Oracle;

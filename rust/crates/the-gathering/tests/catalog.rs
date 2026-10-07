@@ -1,5 +1,4 @@
-//! Ported from `test/the_gathering/catalog_test.exs`, `catalog/sync_test.exs`,
-//! `catalog/backfill_test.exs`, and the commander rules in `catalog/card_data_test.exs`.
+//! The Scryfall catalog: search, sync, backfill, and commander rules.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -312,7 +311,7 @@ async fn treats_sql_wildcard_characters_literally() {
     );
 }
 
-// ---- sync_test.exs ----
+// ---- sync ----
 
 fn write_lines(dir: &tempfile::TempDir, name: &str, lines: &[Value]) -> std::path::PathBuf {
     let path = dir.path().join(name);
@@ -522,7 +521,7 @@ async fn does_not_replace_a_good_catalog_when_decoding_fails_after_a_batch_is_st
     assert_unchanged(&app, &original).await;
 }
 
-// ---- backfill_test.exs ----
+// ---- backfill ----
 
 async fn backfill_card(
     app: &TestApp,
@@ -768,7 +767,7 @@ fn splits_partner_notation() {
     );
 }
 
-// ---- card_data_test.exs (commander rules now live in lotus) ----
+// ---- card data (commander rules now live in lotus) ----
 
 #[test]
 fn derives_commander_eligibility_without_treating_backgrounds_as_commanders() {

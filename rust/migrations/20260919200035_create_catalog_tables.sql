@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260919200035_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260919200035: create catalog tables.
 
 CREATE TABLE "cards" ("id" TEXT PRIMARY KEY, "oracle_id" TEXT NOT NULL, "name" TEXT NOT NULL, "normalized_name" TEXT NOT NULL, "mana_cost" TEXT, "cmc" NUMERIC DEFAULT 0.0 NOT NULL, "type_line" TEXT NOT NULL, "oracle_text" TEXT, "colors" TEXT DEFAULT ('[]') NOT NULL, "color_identity" TEXT DEFAULT ('[]') NOT NULL, "image_uris" TEXT DEFAULT ('{}') NOT NULL, "set_code" TEXT NOT NULL, "collector_number" TEXT NOT NULL, "released_at" TEXT, "layout" TEXT NOT NULL, "rarity" TEXT NOT NULL, "commander_legal" INTEGER DEFAULT false NOT NULL, "can_be_commander" INTEGER DEFAULT false NOT NULL, "commander_pairing" TEXT, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL);
 

@@ -1,2 +1,2 @@
--- Generated from priv/repo/migrations/20260926020644_*.exs by rust/scripts/dump-migrations.py.
-
+-- Migration 20260926020644: recompute commander pairings.
+-- No schema change: db/migrate.rs (`data_step`) computes this migration's data.

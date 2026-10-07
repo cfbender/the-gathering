@@ -8,7 +8,7 @@ export type FieldErrors = Record<
   string | Array<string | RowErrors> | Record<string, unknown> | undefined
 >
 
-/** Error body from the Phoenix API: `{ errors: { detail: "Not Found" } }` or field errors. */
+/** Error body from the JSON API: `{ errors: { detail: "Not Found" } }` or field errors. */
 export interface ApiErrorBody {
   errors: FieldErrors
 }
@@ -75,7 +75,7 @@ async function readErrorBody(response: Response): Promise<ApiErrorBody["errors"]
 }
 
 /**
- * Thin fetch wrapper for the Phoenix JSON API: same-origin cookies, JSON
+ * Thin fetch wrapper for the JSON API: same-origin cookies, JSON
  * bodies, and the CSRF token from the SPA shell on mutating requests.
  *
  * Non-2xx responses reject with an `ApiError` carrying the parsed `errors`

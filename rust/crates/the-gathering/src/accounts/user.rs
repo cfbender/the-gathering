@@ -1,4 +1,4 @@
-//! The `users` table (`TheGathering.Accounts.User`).
+//! The `users` table.
 
 use std::sync::LazyLock;
 
@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::changeset::{Change, Changeset};
 use crate::db::UtcDateTime;
 
-/// Salt for credentials stored with `TheGathering.Accounts.EncryptedString`.
+/// Salt for encrypted stored credentials (such as ManaVault API keys).
 pub const ENCRYPTED_STRING_SALT: &str = "the_gathering.accounts.encrypted_string";
 
 /// Palette ids; keep in sync with `PALETTES` in `assets/react/src/lib/theme.tsx` and
@@ -117,7 +117,7 @@ impl User {
         self.role == "admin"
     }
 
-    /// `TheGatheringWeb.API.UserJSON.data/1`.
+    /// The user as the API renders it.
     pub fn to_json(&self) -> Value {
         serde_json::to_value(UserJson {
             id: self.id,

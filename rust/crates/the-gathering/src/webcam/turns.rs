@@ -1,4 +1,4 @@
-//! `TheGathering.WebcamTables.Turns`: pure turn accounting.
+//! Pure turn accounting.
 //!
 //! Times are measured against the shared game's elapsed milliseconds, so pauses freeze a turn
 //! without a second set of pause bookkeeping. Counts increment when a turn starts, including

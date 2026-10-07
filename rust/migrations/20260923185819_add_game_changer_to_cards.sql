@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260923185819_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260923185819: add game changer to cards.
 
 ALTER TABLE "cards" ADD COLUMN "game_changer" INTEGER DEFAULT false NOT NULL;
 

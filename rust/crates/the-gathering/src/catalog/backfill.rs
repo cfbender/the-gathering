@@ -1,5 +1,5 @@
 //! Bounded historical repair linking decks and MVP picks to catalog cards by name
-//! (`TheGathering.Catalog.Backfill` over `Games.LinkCatalogCards.repair_batch/2`).
+//! (batches of `games::link_catalog_cards::repair_batch`).
 //!
 //! Decks whose `commander_name` holds Mythic Track partner notation
 //! (`A || B (Partners)`) are split into commander and partner; decks still named after

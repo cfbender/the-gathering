@@ -1,2 +1,2 @@
--- Generated from priv/repo/migrations/20260929224420_*.exs by rust/scripts/dump-migrations.py.
-
+-- Migration 20260929224420: include commander colors in deck identities.
+-- No schema change: db/migrate.rs (`data_step`) computes this migration's data.

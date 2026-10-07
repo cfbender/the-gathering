@@ -1,4 +1,4 @@
-//! User accounts, authentication, and server registration settings (`TheGathering.Accounts`).
+//! User accounts, authentication, and server registration settings.
 
 pub mod discord;
 pub mod user;

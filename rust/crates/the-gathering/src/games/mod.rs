@@ -1,4 +1,4 @@
-//! Players, decks, and games (`TheGathering.Games`).
+//! Players, decks, and games.
 //!
 //! [`Games`] is the pool-level API (each call runs in its own transaction when it writes).
 //! The submodules expose the same operations on a `&mut SqliteConnection`, so callers that

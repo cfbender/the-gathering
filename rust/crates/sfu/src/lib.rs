@@ -1,4 +1,4 @@
-//! The webcam table SFU (`TheGathering.WebcamTables.Sfu` and `Sfu.Room`).
+//! The webcam table SFU.
 //!
 //! Every seat (and spectator) holds one WebRTC connection to this server. Each seat
 //! publishes its camera as simulcast layers `l`, `m`, and `h`; the server forwards one

@@ -1,5 +1,4 @@
-//! Keeps a browser's simulcast alive across the server's offers
-//! (`TheGathering.WebcamTables.Sfu.SimulcastSdp`).
+//! Keeps a browser's simulcast alive across the server's offers.
 //!
 //! The browser's first offer declares its camera's layers (`a=rid:… send` and
 //! `a=simulcast:send …`), and the server reverses them in its answer. A browser that is later

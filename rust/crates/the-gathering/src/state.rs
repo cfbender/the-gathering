@@ -53,9 +53,9 @@ pub struct Inner {
     pub decklists: Decklists,
     /// Card-recognition corrections.
     pub corrections: Corrections,
-    /// Channel topic subscriptions (`TheGathering.PubSub`).
+    /// Channel topic subscriptions.
     pub pubsub: PubSub,
-    /// Channel presence (`TheGatheringWeb.Presence`).
+    /// Channel presence.
     pub presence: Presence,
     /// Running webcam table rooms.
     pub webcam_tables: WebcamTables,

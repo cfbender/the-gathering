@@ -1,4 +1,4 @@
-//! `Plug.Static` and `ViteAssets` manifest mode (`endpoint.ex`, `vite_assets.ex`).
+//! Static files and the SPA shell's Vite manifest mode.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

@@ -1,4 +1,4 @@
-//! The HTTP layer (`TheGatheringWeb.Router` and its pipelines).
+//! The HTTP layer: the router and its pipelines.
 //!
 //! Route groups mirror the Phoenix router's `pipe_through` lists. Every `/api` route is
 //! session-authenticated except `/api/v1`, which uses personal API keys.

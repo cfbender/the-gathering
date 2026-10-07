@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/auth_controller_test.exs`.
+//! Session, registration, profile, appearance, password, and sudo APIs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

@@ -96,7 +96,7 @@ jobs:
         working-directory: rust
         run: cargo build --release --locked --bin the-gathering
 
-      # Same layout as the Elixir release (the_gathering/bin/the_gathering start | eval ...),
+      # Same layout earlier releases shipped (the_gathering/bin/the_gathering start | eval ...),
       # so deploy/proxmox/the-gathering.sh and existing installs keep working.
       - name: Assemble release
         id: release

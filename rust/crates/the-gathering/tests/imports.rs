@@ -1,6 +1,5 @@
-//! Ported from `test/the_gathering/imports_test.exs` and `test/the_gathering/imports/*_test.exs`
-//! (CSV transfer, Google Sheet parsing, Mythic Track, portable transfer, and sheet
-//! reconciliation).
+//! Imports: CSV transfer, Google Sheet parsing, Mythic Track, portable transfer, and sheet
+//! reconciliation.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -76,7 +75,7 @@ async fn player_by_discord(app: &TestApp, discord_id: &str) -> Option<i64> {
         .unwrap()
 }
 
-// imports_test.exs
+// imports
 
 const CSV: &str =
     "game_id,date,player,deck,commander,seat,result,mvp_card,duration_minutes,turns,notes
@@ -299,7 +298,7 @@ async fn accepts_the_official_mythic_track_spreadsheet_headers() {
     );
 }
 
-// csv_transfer_test.exs
+// csv transfer
 
 struct TransferCtx {
     game: Game,
@@ -726,7 +725,7 @@ async fn database_and_csv_changes_after_preview_make_the_revision_stale_without_
     assert!(player_named(&app, "Dave").await.is_none());
 }
 
-// google_sheet_test.exs
+// google sheet
 
 const SHEET_HEADER: &str = "Date\tWinner\tDeck\tDaniel\tDan\tJesse\tWin Con\tOther Decks\tNotes";
 
@@ -887,7 +886,7 @@ fn plain_pasted_quotes_survive_but_malformed_quoted_exports_are_rejected() {
     );
 }
 
-// mythic_track_test.exs
+// mythic track
 
 const DREW_DISCORD: &str = "200000000000000002";
 
@@ -1399,7 +1398,7 @@ async fn links_the_first_key_card_to_the_winner_as_mvp_and_keeps_the_rest_in_not
     );
 }
 
-// portable_transfer_test.exs
+// portable transfer
 
 struct PortableCtx {
     first: Game,
@@ -1787,7 +1786,7 @@ async fn same_name_commander_conflict_blocks_instead_of_replacing_destination_me
     );
 }
 
-// sheet_reconciliation_test.exs
+// sheet reconciliation
 
 const RECON_HEADER: &str = "Date\tWinner\tDeck\tDan\tMatt\tJesse\tWin Con\tOther Decks\tNotes\n";
 const RECON_ROW: &str = "3/17/25\tDaniel\tEdgar Markov\t1\t1\t\tSwing Out\tReality (Kenrith); Matt (Sergeant John Benton)\tCorrected history\n";

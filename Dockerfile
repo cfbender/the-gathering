@@ -47,7 +47,6 @@ RUN apk add --no-cache build-base cmake perl git
 
 WORKDIR /app/rust
 COPY rust ./
-COPY priv/repo/structure.sql ../priv/repo/structure.sql
 # Queries are checked against the committed .sqlx metadata (SQLX_OFFLINE in .cargo/config.toml).
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/rust/target \

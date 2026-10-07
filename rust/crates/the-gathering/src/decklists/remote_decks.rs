@@ -1,5 +1,4 @@
-//! Lists and normalizes the public decks on a member's configured deck hosts
-//! (`TheGathering.Decklists.RemoteDecks`): Moxfield and Archidekt by username, and the
+//! Lists and normalizes the public decks on a member's configured deck hosts: Moxfield and Archidekt by username, and the
 //! member's own ManaVault instance with their API key.
 //!
 //! Each source is fetched within a budget (pages, decks, response bytes, and wall time);

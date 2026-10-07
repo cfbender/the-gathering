@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260919195831_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260919195831: create users and server settings.
 
 CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "username" TEXT NOT NULL, "display_name" TEXT NOT NULL, "hashed_password" TEXT NOT NULL, "role" TEXT DEFAULT 'member' NOT NULL, "disabled_at" TEXT, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL);
 

@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260920162256_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260920162256: add deck chooser fields.
 
 ALTER TABLE "decks" ADD COLUMN "skip_count" INTEGER DEFAULT 0 NOT NULL;
 

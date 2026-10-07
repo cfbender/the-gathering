@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20261007074539_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20261007074539: drop apostrophes from normalized card names.
 
 UPDATE cards SET normalized_name = replace(replace(normalized_name, '''', ''), '’', '');
 

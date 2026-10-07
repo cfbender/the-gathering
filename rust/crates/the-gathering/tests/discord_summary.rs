@@ -1,5 +1,5 @@
-//! Ported from `test/the_gathering/discord/summary_command_test.exs` and
-//! `summary_upload_test.exs` (the authenticated PNG preview test lives in `games_api.rs`).
+//! The Discord `/summary` command and its image upload (the authenticated PNG preview
+//! test lives in `games_api.rs`).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

@@ -1,4 +1,4 @@
-//! `TheGathering.WebcamTables.Session`: versioned server-owned snapshots in
+//! Versioned server-owned snapshots in
 //! `webcam_table_sessions`, retained for seven days after last activity or until their room
 //! closes as idle. Writes finish before an action is acknowledged.
 //!

@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering/self_update_test.exs`.
+//! Self-update: version, channel, GitHub checks, and update requests.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

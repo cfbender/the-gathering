@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/registration_invite_controller_test.exs`.
+//! The registration invitation API.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

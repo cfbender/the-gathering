@@ -1,4 +1,4 @@
-//! Signing in with Discord (`TheGathering.Accounts.SignInWithDiscord`).
+//! Signing in with Discord.
 
 use crate::changeset::{Changeset, TAKEN};
 use crate::db::{self, UtcDateTime};

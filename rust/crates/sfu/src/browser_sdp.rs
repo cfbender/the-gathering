@@ -1,5 +1,4 @@
-//! Smooths over browser SDP that a strict parser rejects but the browser means harmlessly
-//! (`TheGathering.WebcamTables.Sfu.BrowserSdp`).
+//! Smooths over browser SDP that a strict parser rejects but the browser means harmlessly.
 //!
 //! Firefox and Safari answer the server's re-offers with their original DTLS role
 //! (`a=setup:passive`) on the media sections they already had and `a=setup:active` on the ones

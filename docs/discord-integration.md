@@ -22,7 +22,7 @@ Use the same Discord application for OAuth and the optional game-tracking bot:
    `<PHX_SCHEME>://<PHX_HOST>:<PHX_URL_PORT>/auth/discord/callback`. Omit the port
    when it is the scheme default (for example,
    `https://games.example.com/auth/discord/callback`). The application derives
-   this URL from the Phoenix endpoint settings.
+   this URL from those settings.
 3. Restart the app. The login page shows **Continue with Discord** when both
    credentials are present. Authorization requests the `identify email` scopes;
    email is not persisted.
@@ -127,7 +127,7 @@ or private API access and is not an MVP dependency.
 | Option | Benefits | Costs / blockers |
 | --- | --- | --- |
 | Gateway bot | Sees SpellBot's message create/update events and receives slash commands; no public URL required. | Persistent WebSocket, bot token, `GUILDS` + `GUILD_MESSAGES`, and privileged `MESSAGE_CONTENT` intent because embeds are message content. |
-| Interactions-only HTTP | No gateway or Message Content intent; Phoenix can verify Discord's Ed25519 signatures. | Requires a stable public HTTPS endpoint and cannot passively see SpellBot's roster. Discord requires every request signature to be verified. |
+| Interactions-only HTTP | No gateway or Message Content intent; the server can verify Discord's Ed25519 signatures. | Requires a stable public HTTPS endpoint and cannot passively see SpellBot's roster. Discord requires every request signature to be verified. |
 | Poll channel history | Can recover games after downtime. | Requires Read Message History, polling/state, rate-limit handling, and still needs Message Content access; it cannot discover winners. |
 
 Discord documents the mutually exclusive [gateway and HTTP interaction delivery modes](https://docs.discord.com/developers/interactions/overview),
@@ -135,21 +135,14 @@ the public endpoint and Ed25519 requirements for HTTP interactions, and that
 message `content`, `embeds`, `attachments`, and `components` require the
 [Message Content intent](https://docs.discord.com/developers/events/gateway#message-content-intent).
 
-The client uses [Nostrum 0.10.4](https://hex.pm/packages/nostrum/0.10.4), the
-stable Elixir Discord gateway library. It is maintained, but its [published CI
-matrix](https://github.com/Kraigie/nostrum/blob/master/.github/workflows/test_and_lint.yml#L51-L82)
-does not cover this project's Elixir 1.20 / OTP 29 combination. The
-skeleton compiles and its isolated tests run on OTP 29. Nostrum's current Gun /
-Cowlib dependency set also has [published 2026 security advisories](https://hex.pm/packages/gun/advisories);
-the gateway
-does not construct headers from untrusted game data, but the dependency should
-be upgraded when Nostrum publishes a patched stable release. These are reasons
-to revisit the library choice before broad distribution, not reasons to write a
-home-grown gateway state machine.
+The gateway client is [twilight-gateway](https://crates.io/crates/twilight-gateway),
+which handles identify, resume, heartbeats, and reconnects. REST calls go through a small
+`reqwest` client behind the `DiscordApi` trait (tests swap in a recording fake), so the bot
+does not depend on a full Discord framework.
 
 ## Recommended MVP
 
-**Primary:** run a gateway bot alongside Phoenix. Accept only messages authored
+**Primary:** run a gateway bot inside the server. Accept only messages authored
 by the configured SpellBot user ID, then require the known started color, title,
 footer, start timestamp, and player field. Emit an incomplete normalized report
 when a game starts. Any server member finishes it with `/log`, which defaults to
@@ -247,9 +240,8 @@ discard a report that should not be recorded. The corresponding sudo-protected
 API is `GET /api/admin/discord/pending`, `PATCH
 /api/admin/discord/pending/:id`, and `DELETE /api/admin/discord/pending/:id`.
 Pending reports are retained for 30 days after their latest observation.
-`TheGathering.Discord.StageReport` owns staging,
-`ResolvePendingGame` owns resolution and discard, and the `Discord` context is
-the entry point used by both Tracker and the admin API. Tracker explicitly
+`discord/pending.rs` owns staging, resolution, and discard, and the `discord`
+module is the entry point used by both Tracker and the admin API. Tracker explicitly
 prunes stale rows after staging; reading the pending list never writes. Game
 persistence and pending-row consumption occur in one transaction. This bounds
 storage while leaving a month for `/log` or administrator recovery. The staged
@@ -257,9 +249,9 @@ data is normalized; raw Discord payloads are never stored in full or logged.
 
 ## Game tracking
 
-The Discord supervisor uses `TheGathering.Discord.Sink.Games` by default. A
+The bot records games through `GamesSink` (`discord/sink.rs`) by default. A
 winnerless SpellBot start remains in durable staging rather than being recorded
-as a draw. `/log` hands off to `WebGameDraft` and `SaveWebGame`, which create or
+as a draw. `/log` hands off to the web game draft (`discord/web_draft.rs`), which creates or
 reuse players by Discord ID and record `source: "discord"` with the SpellBot ID
 as `external_id`. The submitted seat order, results, decks, win condition,
 turns, duration, notes, kills, and MVP cards are saved through the games context.
@@ -296,14 +288,14 @@ only the host or a Discord **Administrator** (including the guild owner) can
 cancel. The same people can click **Change time**, which opens a form that
 accepts the `start` syntax below; leave it blank to start as soon as the minimum
 joins (immediately, if the roster is already full enough). The app's admin role
-and Discord Manage Guild alone do not grant these permissions. Guild roles come from Nostrum's cache because version 0.10 drops
-the interaction's member permission field. All buttons are bound to the original
+and Discord Manage Guild alone do not grant these permissions. Administrator is read from the member
+permissions Discord computes for each interaction, so no guild cache is needed. All buttons are bound to the original
 guild, channel and message, and disabled once started, cancelled or expired.
 
 Any member of the server can queue, without first linking an app account. To
 enter the actual table, players must sign in with Discord; normal registration
 and disabled-account restrictions still apply. The roster is coordination, not
-a seat reservation or room access list. The lobby URL uses the Phoenix endpoint's
+a seat reservation or room access list. The lobby URL uses the configured
 `PHX_HOST`, `PHX_SCHEME`, and `PHX_URL_PORT`; it identifies a UUID room without
 creating presence. It appears in active tables only after someone enters.
 
@@ -367,8 +359,8 @@ three-second acknowledgement deadline, with a server-wide cap of 30 renders
 per minute. An acknowledgement failure is not retried to avoid duplicate posts.
 
 Summary uploads use a direct HTTPS interaction-webhook request with a 15-second
-request timeout and three-second connection/pool limits, rather than Nostrum's
-indefinitely waiting REST queue. Uploads do not follow redirects or retry,
+request timeout and three-second connection/pool limits, rather than a
+shared, indefinitely waiting REST queue. Uploads do not follow redirects or retry,
 including on rate limits. Logs separately mark rendering, rendered PNG size/time,
 and upload start/completion; failures include safe HTTP/Discord codes or timeout
 reasons, never interaction tokens or response bodies.

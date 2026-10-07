@@ -1,6 +1,4 @@
-//! Streams a Scryfall generation into staging and atomically publishes it
-//! (`TheGathering.Catalog.Sync`), recording each run in `catalog_syncs`
-//! (`TheGathering.Catalog.SyncState`).
+//! Streams a Scryfall generation into staging and atomically publishes it, recording each run in `catalog_syncs`.
 
 use std::collections::HashMap;
 use std::fs::File;

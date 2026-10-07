@@ -1,4 +1,4 @@
-//! Previewing a Google Sheet reconciliation (`TheGathering.Imports.SheetPreview`).
+//! Previewing a Google Sheet reconciliation.
 
 use std::collections::HashMap;
 

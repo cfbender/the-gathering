@@ -1,4 +1,4 @@
-//! The deck chooser (`TheGathering.Games.DeckPicker`): a weighted random pick among the
+//! The deck chooser: a weighted random pick among the
 //! signed-in member's playable decks that favors never-played, older, skipped, and
 //! less-played decks.
 

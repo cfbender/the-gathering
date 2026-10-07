@@ -1,8 +1,8 @@
-//! Timestamps stored the way Ecto's `:utc_datetime` and `:date` fields store them in SQLite.
+//! Timestamps and dates as the database stores them.
 //!
-//! `ecto_sqlite3` writes `2026-10-06T21:21:40Z`; rows inserted by raw SQL migrations use
-//! SQLite's `CURRENT_TIMESTAMP` (`2026-10-06 21:21:40`). Both decode; encoding always uses
-//! Ecto's form so both backends can read every row.
+//! Rows written by the server hold `2026-10-06T21:21:40Z`; rows inserted by raw SQL
+//! migrations use SQLite's `CURRENT_TIMESTAMP` (`2026-10-06 21:21:40`). Both decode;
+//! encoding always uses the first form, which every existing row also uses.
 
 use std::fmt;
 
@@ -15,7 +15,7 @@ use time::format_description::FormatItem;
 use time::macros::format_description;
 use time::{Date, Duration, OffsetDateTime, PrimitiveDateTime, UtcOffset};
 
-const ECTO_FORMAT: &[FormatItem<'static>] =
+const DB_FORMAT: &[FormatItem<'static>] =
     format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]Z");
 const DATE_FORMAT: &[FormatItem<'static>] = format_description!("[year]-[month]-[day]");
 
@@ -61,7 +61,7 @@ impl UtcDateTime {
         self.0.date()
     }
 
-    /// Parses every timestamp form Ecto accepts or SQLite writes: `2026-10-06T21:21:40Z`,
+    /// Parses every timestamp form the database holds: `2026-10-06T21:21:40Z`,
     /// with an offset, without a zone (taken as UTC), with a space separator, with fractional
     /// seconds, or without seconds (HTML `datetime-local`).
     pub fn parse(value: &str) -> Option<Self> {
@@ -94,8 +94,8 @@ impl UtcDateTime {
     }
 
     /// `2026-10-06T21:21:40Z`.
-    pub fn to_ecto_string(self) -> String {
-        self.0.format(ECTO_FORMAT).unwrap_or_default()
+    pub fn to_db_string(self) -> String {
+        self.0.format(DB_FORMAT).unwrap_or_default()
     }
 }
 
@@ -108,7 +108,7 @@ impl Default for UtcDateTime {
 
 impl fmt::Display for UtcDateTime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.to_ecto_string())
+        f.write_str(&self.to_db_string())
     }
 }
 
@@ -120,7 +120,7 @@ impl From<OffsetDateTime> for UtcDateTime {
 
 impl Serialize for UtcDateTime {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_ecto_string())
+        serializer.serialize_str(&self.to_db_string())
     }
 }
 
@@ -150,7 +150,7 @@ impl<'r> Decode<'r, Sqlite> for UtcDateTime {
 
 impl Encode<'_, Sqlite> for UtcDateTime {
     fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
-        <String as Encode<Sqlite>>::encode(self.to_ecto_string(), buf)
+        <String as Encode<Sqlite>>::encode(self.to_db_string(), buf)
     }
 }
 

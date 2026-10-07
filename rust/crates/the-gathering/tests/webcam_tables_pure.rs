@@ -1,5 +1,4 @@
-//! Ported from `test/the_gathering/webcam_tables/{timer,turns,log}_test.exs` and
-//! `test/the_gathering_web/channel_rate_limit_test.exs`.
+//! Webcam table timers, turns, log, and channel rate limits.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

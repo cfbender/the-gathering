@@ -1,5 +1,5 @@
 //! Webcam tables: `WebcamTableConfigController`, `WebcamTableRoomController` (and its JSON
-//! view), and the `/socket/websocket` upgrade (`TheGatheringWeb.UserSocket`).
+//! view), and the `/socket/websocket` upgrade.
 
 use std::collections::HashSet;
 

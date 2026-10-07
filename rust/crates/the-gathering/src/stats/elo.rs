@@ -1,4 +1,4 @@
-//! Multiplayer Elo ratings replayed over a list of games (`TheGathering.Stats.Elo`).
+//! Multiplayer Elo ratings replayed over a list of games.
 //!
 //! Every player starts at 1000. After each game, each seat is compared with every other
 //! seat at the table: the winner scores 1 against each loser, two drawing seats score 0.5

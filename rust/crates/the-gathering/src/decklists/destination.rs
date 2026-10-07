@@ -1,5 +1,5 @@
 //! Validating member-supplied ManaVault origins and resolving them to an address the
-//! server may contact (`TheGathering.Decklists.Destination`), on lotus's [`Allowlist`].
+//! server may contact, on lotus's [`Allowlist`].
 
 use std::net::IpAddr;
 

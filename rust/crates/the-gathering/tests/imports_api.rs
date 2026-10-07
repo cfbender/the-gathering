@@ -1,6 +1,4 @@
-//! Ported from `test/the_gathering_web/controllers/api/csv_import_controller_test.exs`,
-//! `mythic_track_import_controller_test.exs`, `sheet_import_controller_test.exs`, and
-//! `portable_import_controller_test.exs`.
+//! CSV, Mythic Track, sheet, and portable import APIs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -20,7 +18,7 @@ async fn admin_app() -> (TestApp, the_gathering::accounts::User) {
     (app, admin)
 }
 
-// csv_import_controller_test.exs
+// csv import controller
 
 const CSV: &str =
     "game_id,date,player,deck,commander,seat,result,mvp_card,duration_minutes,turns,notes
@@ -140,7 +138,7 @@ async fn csv_create_without_a_csv_is_a_bad_request() {
         .assert_json(400);
 }
 
-// mythic_track_import_controller_test.exs
+// mythic track import controller
 
 fn mythic_json() -> String {
     json!([{
@@ -244,7 +242,7 @@ async fn mythic_member_receives_403() {
     assert_eq!(body, json!({"errors": {"detail": "Forbidden"}}));
 }
 
-// sheet_import_controller_test.exs
+// sheet import controller
 
 const SHEET: &str = "Date\tWinner\tDeck\tA\tWin Con\tOther Decks\tNotes\n3/7/25\tA\tBirds\t1\tCombat\tB (Goblins)\tNote\n";
 
@@ -332,7 +330,7 @@ async fn malformed_selections_return_errors_rather_than_crashing() {
     assert_eq!(body["errors"]["import"].as_array().unwrap().len(), 1);
 }
 
-// portable_import_controller_test.exs
+// portable import controller
 
 #[tokio::test]
 async fn download_is_versioned_private_and_can_be_previewed_and_reimported() {

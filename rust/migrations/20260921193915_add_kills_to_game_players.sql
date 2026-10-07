@@ -1,4 +1,4 @@
--- Generated from priv/repo/migrations/20260921193915_*.exs by rust/scripts/dump-migrations.py.
+-- Migration 20260921193915: add kills to game players.
 
 ALTER TABLE "game_players" ADD COLUMN "kills" INTEGER;
 

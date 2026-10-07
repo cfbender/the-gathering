@@ -1,5 +1,5 @@
 //! Scryfall printing ids with an optional `-1` suffix for the second face (side or half)
-//! of a printing (`TheGathering.Catalog.PrintingId`).
+//! of a printing.
 
 use std::sync::LazyLock;
 
@@ -21,7 +21,6 @@ pub fn parse(id: &str) -> Option<(&str, usize)> {
 mod tests {
     use super::*;
 
-    // Ported from `test/the_gathering/catalog/printing_id_test.exs`.
     #[test]
     fn second_halves_use_the_same_face_identity_as_reverse_sides() {
         let id = "c2e085dd-a448-4f5a-9cfa-5c2034234e7c";

@@ -1,7 +1,5 @@
-//! Ported from `test/the_gathering_web/controllers/app_controller_test.exs`,
-//! `controllers/api/fallback_controller_test.exs`, `controllers/api/health_controller_test.exs`,
-//! `controllers/error_json_test.exs`, and `parameter_filter_test.exs`, plus checks of the
-//! endpoint and router behavior Phoenix provided (request ids, HEAD, CSRF, body parsing,
+//! The SPA shell, JSON 404s and errors, the health check, parameter filtering in logs, and
+//! the endpoint and router behavior around them (request ids, HEAD, CSRF, body parsing,
 //! secure browser headers).
 #![allow(
     clippy::unwrap_used,
@@ -36,7 +34,7 @@ async fn render(error: ApiError) -> (StatusCode, Value) {
     (status, serde_json::from_slice(&body).unwrap())
 }
 
-// -- app_controller_test.exs --------------------------------------------------------------
+// -- app controller --------------------------------------------------------------
 
 #[tokio::test]
 async fn get_root_serves_the_spa_shell_with_a_csrf_token_and_the_react_entrypoint() {
@@ -239,7 +237,7 @@ async fn every_routed_response_carries_a_request_id() {
     assert_ne!(replaced.header("x-request-id"), Some("short"));
 }
 
-// -- fallback_controller_test.exs ---------------------------------------------------------
+// -- fallback controller ---------------------------------------------------------
 
 #[tokio::test]
 async fn renders_changeset_errors_per_field_with_interpolated_placeholders() {
@@ -378,7 +376,7 @@ async fn url_encoded_bodies_are_parsed_like_plug_parsers() {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
-// -- health_controller_test.exs -----------------------------------------------------------
+// -- health controller -----------------------------------------------------------
 
 #[tokio::test]
 async fn get_api_health_reports_the_database_as_reachable() {
@@ -389,7 +387,7 @@ async fn get_api_health_reports_the_database_as_reachable() {
     );
 }
 
-// -- error_json_test.exs ------------------------------------------------------------------
+// -- error json ------------------------------------------------------------------
 
 #[tokio::test]
 async fn renders_404_and_500() {
@@ -402,7 +400,7 @@ async fn renders_404_and_500() {
     assert_eq!(body, json!({"errors": {"detail": "Internal Server Error"}}));
 }
 
-// -- parameter_filter_test.exs ------------------------------------------------------------
+// -- parameter filter ------------------------------------------------------------
 
 #[test]
 fn filter_values_redacts_manavault_and_oauth_parameters() {

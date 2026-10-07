@@ -1,4 +1,4 @@
-//! A bounded in-memory cache with expiry (`TheGathering.Decklists.Cache`).
+//! A bounded in-memory cache with expiry.
 
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -133,7 +133,6 @@ impl<K: Eq + Hash + Clone, V: Clone> TtlCache<K, V> {
 mod tests {
     use super::*;
 
-    // Ported from `test/the_gathering/decklists/cache_test.exs`.
     #[tokio::test]
     async fn sweep_removes_expired_entries_that_are_never_fetched_again() {
         let cache = TtlCache::new(Duration::ZERO, 10);

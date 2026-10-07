@@ -1,6 +1,5 @@
-//! Ported from `test/the_gathering_web/channels/webcam_table_channel/table_state_test.exs`:
-//! counters, monarch, seat order, reveal, timers, spectators, rolls, elimination, turns and
-//! identified cards.
+//! Webcam table state: counters, monarch, seat order, reveal, timers, spectators, rolls,
+//! elimination, turns and identified cards.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

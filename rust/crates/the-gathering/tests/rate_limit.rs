@@ -1,4 +1,4 @@
-//! Ported from `test/the_gathering_web/rate_limit_test.exs`.
+//! Rate limits on credentials, sudo, and API keys.
 //!
 //! Requests go through `oneshot` without `ConnectInfo`, so the peer address is 127.0.0.1;
 //! clients are told apart with `x-forwarded-for` and `trust_proxy_headers`.

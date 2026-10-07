@@ -1,5 +1,4 @@
-//! Canonical WUBRG ordering and community names for color combinations
-//! (`TheGathering.Games.ColorIdentity`).
+//! Canonical WUBRG ordering and community names for color combinations.
 
 const ORDER: [char; 5] = ['W', 'U', 'B', 'R', 'G'];
 

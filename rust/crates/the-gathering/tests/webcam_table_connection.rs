@@ -1,5 +1,5 @@
-//! Ported from `test/the_gathering_web/channels/webcam_table_channel/connection_test.exs`:
-//! socket authentication, SFU signaling validation, seat admission and presence/status.
+//! Webcam table connections: socket authentication, SFU signaling validation, seat
+//! admission and presence/status.
 //!
 //! Media negotiation and ICE restarts exercise the SFU's internals and are tested with the
 //! SFU crate; here signaling is checked up to the SFU boundary.

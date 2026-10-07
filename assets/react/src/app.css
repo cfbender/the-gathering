@@ -1,7 +1,7 @@
 @import "tailwindcss" source(none);
 @import "./palettes.css";
 @source "./";
-@source "../../../lib/the_gathering_web/controllers";
+@source "../../../rust/crates/the-gathering/src/web/shell.rs";
 
 @plugin "daisyui" {
   themes: false;
