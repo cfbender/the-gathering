@@ -787,6 +787,101 @@ fn derives_commander_eligibility_without_treating_backgrounds_as_commanders() {
     ));
 }
 
+/// CR 903.3 (lotus): legendary Vehicles and Spacecraft lead decks, and a multi-faced card is
+/// judged by its front face. The Elixir rule accepted only legendary creatures and read the
+/// whole type line, so it rejected legendary Vehicles and accepted a card whose back face is
+/// a legendary creature.
+#[test]
+fn follows_cr_903_3_for_vehicles_spacecraft_and_front_faces() {
+    assert!(lotus::can_be_commander("Legendary Artifact — Vehicle", ""));
+    assert!(lotus::can_be_commander(
+        "Legendary Artifact — Spacecraft",
+        ""
+    ));
+    assert!(lotus::can_be_commander(
+        "Legendary Creature — God // Legendary Enchantment",
+        ""
+    ));
+    assert!(!lotus::can_be_commander(
+        "Legendary Enchantment — Saga // Legendary Creature — Snake",
+        ""
+    ));
+    assert!(!lotus::can_be_commander(
+        "Legendary Artifact — Equipment",
+        ""
+    ));
+}
+
+/// A sync stores the CR 903.3 flag, and Scryfall vocabulary lotus does not know (here a new
+/// rarity, finish, color, and legality) no longer drops the card.
+#[tokio::test]
+async fn sync_stores_cr_903_3_eligibility_and_keeps_cards_with_unknown_vocabulary() {
+    let app = TestApp::new().await;
+    let dir = tempfile::tempdir().unwrap();
+    let cards = [
+        json!({"id": "parhelion", "oracle_id": "oracle-parhelion", "name": "Parhelion II",
+               "type_line": "Legendary Artifact — Vehicle", "rarity": "rare"}),
+        json!({"id": "kumano", "oracle_id": "oracle-kumano", "name": "The Kami War // O-Kagachi Made Manifest",
+               "type_line": "Enchantment — Saga // Enchantment Creature — Dragon Spirit",
+               "layout": "transform", "rarity": "mythic"}),
+        json!({"id": "fable", "oracle_id": "oracle-fable", "name": "Fable of the Mirror-Breaker // Reflection of Kiki-Jiki",
+               "type_line": "Legendary Enchantment — Saga // Legendary Enchantment Creature — Goblin Shaman",
+               "layout": "transform", "rarity": "rare"}),
+        json!({"id": "oddity", "oracle_id": "oracle-oddity", "name": "Future Oddity",
+               "type_line": "Legendary Creature — Alien", "rarity": "ultra_rare",
+               "colors": ["W", "X"], "color_identity": ["W"], "finishes": ["nonfoil", "glitter"],
+               "legalities": {"commander": "legal", "newformat": "preview"}}),
+    ];
+    let source = write_lines(&dir, "cr-903-3.jsonl", &cards);
+    assert_eq!(run(&app, Source::File(source)).await, Ok(4));
+    assert!(get(&app, "parhelion").await.can_be_commander);
+    assert!(!get(&app, "kumano").await.can_be_commander);
+    assert!(!get(&app, "fable").await.can_be_commander);
+    let oddity = get(&app, "oddity").await;
+    assert!(oddity.can_be_commander);
+    assert!(oddity.commander_legal);
+    assert_eq!(oddity.rarity, "common");
+    assert_eq!(oddity.colors, ["W"]);
+}
+
+/// Migration `20261007125350` recomputes the stored flag for catalogs synced under the old
+/// rule, without waiting for the next Scryfall sync.
+#[tokio::test]
+async fn migration_recomputes_stored_commander_eligibility() {
+    let app = TestApp::new().await;
+    for (id, type_line, stored) in [
+        ("vehicle", "Legendary Artifact — Vehicle", false),
+        (
+            "backface",
+            "Legendary Enchantment — Saga // Legendary Creature — Snake",
+            true,
+        ),
+        ("creature", "Legendary Creature — Elf", true),
+        ("artifact", "Artifact", false),
+    ] {
+        app.catalog_card(json!({
+            "id": id, "oracle_id": format!("oracle-{id}"), "name": id, "type_line": type_line
+        }))
+        .await;
+        sqlx::query("UPDATE cards SET can_be_commander = ? WHERE id = ?")
+            .bind(stored)
+            .bind(id)
+            .execute(app.pool())
+            .await
+            .unwrap();
+    }
+    sqlx::query("DELETE FROM schema_migrations WHERE version = 20261007125350")
+        .execute(app.pool())
+        .await
+        .unwrap();
+    let applied = the_gathering::db::migrate::run(app.pool()).await.unwrap();
+    assert_eq!(applied, [20_261_007_125_350]);
+    assert!(get(&app, "vehicle").await.can_be_commander);
+    assert!(!get(&app, "backface").await.can_be_commander);
+    assert!(get(&app, "creature").await.can_be_commander);
+    assert!(!get(&app, "artifact").await.can_be_commander);
+}
+
 #[test]
 fn recognizes_pairing_wording() {
     let pairing = |type_line: &str, text: &str| {

@@ -63,15 +63,19 @@ defmodule TheGathering.Catalog.CardData do
     |> Enum.join(" ")
   end
 
+  # Comprehensive Rules 903.3, matching the shared lotus crate (used by the Rust server): a
+  # legendary creature, Vehicle, or Spacecraft, judged by the front face of a multi-faced card,
+  # or any card whose text says it can be your commander. This used to accept only legendary
+  # creatures and judge the whole type line, which rejected legendary Vehicles and accepted
+  # cards whose back face is a legendary creature.
   def can_be_commander?(type_line, oracle_text) do
-    background? = Regex.match?(~r/(?:^|\s|—)Background(?:\s|$)/i, type_line)
+    front = type_line |> String.split("//", parts: 2) |> hd()
 
-    legendary_creature? =
-      String.contains?(type_line, "Legendary") and String.contains?(type_line, "Creature")
+    commander_type? =
+      String.contains?(front, "Legendary") and
+        Regex.match?(~r/\b(?:Creature|Vehicle|Spacecraft)\b/, front)
 
-    explicit? = Regex.match?(~r/can be your commander/i, oracle_text)
-
-    not background? and (legendary_creature? or explicit?)
+    commander_type? or Regex.match?(~r/can be your commander/i, oracle_text)
   end
 
   def commander_pairing(type_line, oracle_text) do

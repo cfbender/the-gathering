@@ -105,6 +105,7 @@ async fn data_step(conn: &mut SqliteConnection, version: i64) -> Result<(), sqlx
         20_260_926_020_644 => recompute_commander_pairings(conn).await,
         20_260_929_224_420 => include_commander_colors(conn).await,
         20_261_007_074_539 => renormalize_card_names(conn).await,
+        20_261_007_125_350 => recompute_can_be_commander(conn).await,
         _ => Ok(()),
     }
 }
@@ -229,6 +230,32 @@ async fn renormalize_card_names(conn: &mut SqliteConnection) -> Result<(), sqlx:
                 .execute(&mut *conn)
                 .await?;
             }
+        }
+    }
+    Ok(())
+}
+
+/// `RecomputeCanBeCommander`: the stored flag follows [`lotus::can_be_commander`] (CR 903.3:
+/// legendary creature, Vehicle, or Spacecraft judged by the front face, or "can be your
+/// commander" text). The Elixir rule accepted only legendary creatures and judged the whole
+/// type line, so legendary Vehicles were missing and cards with a legendary-creature back face
+/// were wrongly eligible.
+async fn recompute_can_be_commander(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
+    let rows: Vec<(String, Option<String>, Option<String>, bool)> =
+        sqlx::query_as("SELECT id, type_line, oracle_text, can_be_commander FROM cards")
+            .fetch_all(&mut *conn)
+            .await?;
+    for (id, type_line, oracle_text, current) in rows {
+        let eligible = lotus::can_be_commander(
+            type_line.as_deref().unwrap_or_default(),
+            oracle_text.as_deref().unwrap_or_default(),
+        );
+        if eligible != current {
+            sqlx::query("UPDATE cards SET can_be_commander = ? WHERE id = ?")
+                .bind(eligible)
+                .bind(id)
+                .execute(&mut *conn)
+                .await?;
         }
     }
     Ok(())

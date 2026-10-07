@@ -22,6 +22,20 @@ defmodule TheGathering.Catalog.CardDataTest do
     refute CardData.can_be_commander?("Legendary Enchantment — Background", "")
   end
 
+  test "follows CR 903.3: legendary Vehicles and Spacecraft, judged by the front face" do
+    assert CardData.can_be_commander?("Legendary Artifact — Vehicle", "")
+    assert CardData.can_be_commander?("Legendary Artifact — Spacecraft", "")
+    assert CardData.can_be_commander?("Legendary Creature — God // Legendary Enchantment", "")
+
+    refute CardData.can_be_commander?(
+             "Legendary Enchantment — Saga // Legendary Creature — Snake",
+             ""
+           )
+
+    refute CardData.can_be_commander?("Legendary Artifact — Equipment", "")
+    refute CardData.can_be_commander?("Creature — Cat", "")
+  end
+
   test "represents partner mechanics separately from commander eligibility" do
     assert CardData.commander_pairing("Legendary Creature — Human", "Partner") == "partner"
 

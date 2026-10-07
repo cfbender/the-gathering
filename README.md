@@ -370,7 +370,7 @@ can wait or run; excess requests return 502. Scryfall's current [rate limits](ht
 exempt image file origins; the separate card-data API limits remain in force. Images are not
 resized, transformed, or stripped of artist/copyright information.
 
-A card can be a commander when it is a legendary creature or its oracle text says it can be your commander. Backgrounds are deliberately excluded. Partner, Partner with, Friends forever, Choose a Background, and Background are stored as a separate pairing classification for deck-building interfaces.
+A card can be a commander when, per Comprehensive Rules 903.3, its front face is a legendary creature, Vehicle, or Spacecraft, or its oracle text says it can be your commander. Backgrounds are deliberately excluded. Partner, Partner with, Friends forever, Choose a Background, and Background are stored as a separate pairing classification for deck-building interfaces.
 
 ### Building the image yourself
 
