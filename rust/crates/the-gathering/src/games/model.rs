@@ -92,7 +92,7 @@ text_enum! {
         Moxfield => "moxfield",
         /// archidekt.com.
         Archidekt => "archidekt",
-        /// manavault.app.
+        /// manavault.app or the configured self-hosted ManaVault origin.
         Manavault => "manavault",
         /// Any other URL.
         Other => "other",
@@ -100,24 +100,60 @@ text_enum! {
 }
 
 impl DecklistSource {
-    /// `Deck.source/1`: by host, including subdomains.
-    ///
-    /// `lotus::decklist::DeckLink` only recognizes the bare and `www.` hosts and has no
-    /// "other" source, so this keeps the Elixir rule.
+    /// `Deck.source/1` without a configured ManaVault origin; see [`DeckLinks::source`].
     pub fn of_url(url: &str) -> Self {
+        DeckLinks::default().source(url)
+    }
+}
+
+/// Classifies deck-list URLs into [`DecklistSource`]s for the server's configuration.
+///
+/// This is an app-level label for stored decks, so it keeps an `Other` value that lotus's
+/// fetchable `Source` deliberately lacks, and it accepts subdomains as `Deck.source/1` did.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DeckLinks {
+    /// Lowercased host of `MANAVAULT_URL`, when one is configured.
+    manavault_host: Option<String>,
+}
+
+impl DeckLinks {
+    /// Rules with no configured ManaVault origin.
+    pub const EMPTY: Self = Self {
+        manavault_host: None,
+    };
+
+    /// Rules for a server whose self-hosted ManaVault lives at `manavault_url`.
+    pub fn new(manavault_url: Option<&str>) -> Self {
+        Self {
+            manavault_host: manavault_url
+                .and_then(lotus::decklist::Origin::parse)
+                .map(|origin| origin.host),
+        }
+    }
+
+    /// `Deck.source/1`: by host, including subdomains of the public sites.
+    ///
+    /// Fixes an Elixir inconsistency: `Decklists.parse_url/1` resolves share links on the
+    /// configured `MANAVAULT_URL` host (and its `www.` alias), but `Deck.source/1` only knew
+    /// `manavault.app`, so a deck linked to a self-hosted ManaVault elsewhere was stored as
+    /// `other`. The configured origin's host and its `www.` alias count as `manavault` here.
+    pub fn source(&self, url: &str) -> DecklistSource {
         let host = url::Url::parse(url)
             .ok()
-            .and_then(|url| url.host_str().map(str::to_owned))
+            .and_then(|url| url.host_str().map(str::to_lowercase))
             .unwrap_or_default();
         let matches = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
+        let configured_manavault = self.manavault_host.as_deref().is_some_and(|configured| {
+            host == configured || host.strip_prefix("www.") == Some(configured)
+        });
         if matches("moxfield.com") {
-            Self::Moxfield
+            DecklistSource::Moxfield
         } else if matches("archidekt.com") {
-            Self::Archidekt
-        } else if matches("manavault.app") {
-            Self::Manavault
+            DecklistSource::Archidekt
+        } else if matches("manavault.app") || configured_manavault {
+            DecklistSource::Manavault
         } else {
-            Self::Other
+            DecklistSource::Other
         }
     }
 }

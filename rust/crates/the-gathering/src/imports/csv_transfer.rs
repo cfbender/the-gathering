@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use sqlx::SqliteConnection;
 
 use crate::db;
+use crate::games::DeckLinks;
 use crate::games::{Game, deck, fold_name, load_game, model, player, record_game};
 use crate::state::AppState;
 
@@ -76,7 +77,7 @@ pub async fn preview(state: &AppState, csv: &str) -> Result<Preview, sqlx::Error
     }
     let mut tx = db::begin(&state.pool).await?;
     let revision = revision(&mut tx, csv).await?;
-    let result = execute(&mut tx, &base.games, None).await;
+    let result = execute(&mut tx, state.games.deck_links(), &base.games, None).await;
     tx.rollback().await?;
     match result {
         Ok(review) => Ok(Preview {
@@ -115,7 +116,7 @@ pub async fn run(
                 "Preview is stale or missing. Preview again before updating games.".to_owned(),
             ));
         }
-        execute(&mut tx, &base.games, user_id).await
+        execute(&mut tx, state.games.deck_links(), &base.games, user_id).await
     }
     .await;
     let reviews = match result {
@@ -156,6 +157,7 @@ pub async fn run(
 
 async fn execute(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     games: &[ImportGame],
     user_id: Option<i64>,
 ) -> Result<Vec<Review>, ImportError> {
@@ -179,7 +181,7 @@ async fn execute(
     }
     let mut reviews = Vec::with_capacity(games.len());
     for (game, target) in games.iter().zip(targets) {
-        reviews.push(transfer(conn, game, target, user_id).await?);
+        reviews.push(transfer(conn, links, game, target, user_id).await?);
     }
     Ok(reviews)
 }
@@ -244,6 +246,7 @@ async fn target(
 
 async fn transfer(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     game: &ImportGame,
     target: Option<Game>,
     user_id: Option<i64>,
@@ -259,7 +262,7 @@ async fn transfer(
     }
     let mut seats = Vec::with_capacity(game.seats.len());
     for seat in &game.seats {
-        seats.push(seat_attrs(conn, seat).await?);
+        seats.push(seat_attrs(conn, links, seat).await?);
     }
     let mut attrs = Map::new();
     attrs.insert("played_at".into(), json!(game.played_at));
@@ -319,6 +322,7 @@ async fn transfer(
 /// commander.
 async fn seat_attrs(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     seat: &ImportSeat,
 ) -> Result<SeatAttrs, ImportError> {
     if let Some(found) = player::find_player_by_name(conn, &seat.player).await?
@@ -333,7 +337,7 @@ async fn seat_attrs(
             seat.player, seat.deck
         )));
     }
-    commit::commit_seat(conn, seat).await
+    commit::commit_seat(conn, links, seat).await
 }
 
 fn pair(commander: Option<&str>, partner: Option<&str>) -> Vec<String> {

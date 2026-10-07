@@ -10,7 +10,7 @@ use crate::db::{self, UtcDateTime};
 use crate::error::Errors;
 
 use super::color_identity;
-use super::model::{Deck, DecklistSource, GameFormat, GameResult, Player, select_decks};
+use super::model::{Deck, DeckLinks, DecklistSource, GameFormat, GameResult, Player, select_decks};
 use super::player::SeatGame;
 use super::{GamesError, fold_name};
 
@@ -234,12 +234,12 @@ async fn changeset(
     Ok(fields)
 }
 
-fn decklist_source(fields: &Fields) -> Option<DecklistSource> {
+fn decklist_source(links: &DeckLinks, fields: &Fields) -> Option<DecklistSource> {
     fields
         .decklist_url
         .as_deref()
         .filter(|url| !url.is_empty())
-        .map(DecklistSource::of_url)
+        .map(|url| links.source(url))
 }
 
 fn unique_error(error: sqlx::Error) -> GamesError {
@@ -252,9 +252,13 @@ fn unique_error(error: sqlx::Error) -> GamesError {
 
 /// `Games.create_deck/1`: casts `player_id`, names, commander/partner cards and printings,
 /// `color_identity`, `decklist_url`, `archived_at`, and `included_for_play`.
-pub async fn create_deck(conn: &mut SqliteConnection, attrs: &Value) -> Result<Deck, GamesError> {
+pub async fn create_deck(
+    conn: &mut SqliteConnection,
+    links: &DeckLinks,
+    attrs: &Value,
+) -> Result<Deck, GamesError> {
     let fields = changeset(conn, None, attrs).await?;
-    let source = decklist_source(&fields);
+    let source = decklist_source(links, &fields);
     let now = UtcDateTime::now();
     let id = sqlx::query_scalar!(
         r#"INSERT INTO decks (player_id, name, commander_card_id, commander_name, commander_printing_id,
@@ -298,11 +302,12 @@ pub async fn validate_new_deck(
 /// `Games.update_deck/2`: the same fields as [`create_deck`] except the owner.
 pub async fn update_deck(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     deck: &Deck,
     attrs: &Value,
 ) -> Result<Deck, GamesError> {
     let fields = changeset(conn, Some(deck), attrs).await?;
-    let source = decklist_source(&fields);
+    let source = decklist_source(links, &fields);
     if fields == Fields::of(deck) && source == deck.decklist_source {
         return Ok(deck.clone());
     }
@@ -440,6 +445,7 @@ fn commander_key(commander_name: Option<&str>, partner_name: Option<&str>) -> Ve
 /// concurrent insert of the same name returns that deck.
 pub async fn find_or_create_deck(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     player_id: i64,
     name: &str,
     attrs: &Value,
@@ -452,7 +458,7 @@ pub async fn find_or_create_deck(
     let mut merged = attrs.as_object().cloned().unwrap_or_default();
     merged.insert("player_id".into(), Value::from(player_id));
     merged.insert("name".into(), Value::String(name.to_owned()));
-    match create_deck(conn, &Value::Object(merged)).await {
+    match create_deck(conn, links, &Value::Object(merged)).await {
         Err(GamesError::Invalid(errors)) => match deck_by_name(conn, player_id, name).await? {
             Some(deck) => Ok(deck),
             None => Err(GamesError::Invalid(errors)),
@@ -519,6 +525,30 @@ mod tests {
         assert_eq!(
             commander_key(Some("Tymna"), Some(" Thrasios ")),
             vec!["thrasios".to_owned(), "tymna".to_owned()]
+        );
+
+        // A self-hosted ManaVault (`MANAVAULT_URL`) is labeled manavault too, with its
+        // `www.` alias; other hosts stay other.
+        let links = DeckLinks::new(Some("https://Vault.Example.com:8443"));
+        assert_eq!(
+            links.source("https://vault.example.com:8443/share/decks/abc"),
+            DecklistSource::Manavault
+        );
+        assert_eq!(
+            links.source("https://www.vault.example.com/share/decks/abc"),
+            DecklistSource::Manavault
+        );
+        assert_eq!(
+            links.source("https://me.manavault.app/share/d/x"),
+            DecklistSource::Manavault
+        );
+        assert_eq!(
+            links.source("https://evil-vault.example.com/share/decks/abc"),
+            DecklistSource::Other
+        );
+        assert_eq!(
+            DecklistSource::of_url("https://vault.example.com/share/decks/abc"),
+            DecklistSource::Other
         );
     }
 }

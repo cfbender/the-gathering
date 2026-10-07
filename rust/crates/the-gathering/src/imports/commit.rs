@@ -4,6 +4,7 @@ use serde_json::{Map, Value, json};
 use sqlx::SqliteConnection;
 
 use crate::db;
+use crate::games::DeckLinks;
 use crate::games::{deck, record_game, resolve_player};
 use crate::state::AppState;
 
@@ -60,7 +61,14 @@ pub async fn run(
         return Err(ImportError::Validation(Box::new(preview)));
     }
     let mut tx = db::begin(&state.pool).await?;
-    let result = commit_games(&mut tx, &preview.games, source.as_str(), user_id).await?;
+    let result = commit_games(
+        &mut tx,
+        state.games.deck_links(),
+        &preview.games,
+        source.as_str(),
+        user_id,
+    )
+    .await?;
     tx.commit().await?;
     for id in &result.game_ids {
         state.games.link_catalog_cards(*id).await?;
@@ -70,6 +78,7 @@ pub async fn run(
 
 async fn commit_games(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     games: &[ImportGame],
     source: &str,
     user_id: Option<i64>,
@@ -90,7 +99,7 @@ async fn commit_games(
         }
         let mut seats = Vec::with_capacity(game.seats.len());
         for seat in &game.seats {
-            seats.push(commit_seat(conn, seat).await?.to_json());
+            seats.push(commit_seat(conn, links, seat).await?.to_json());
         }
         let attrs = json!({
             "played_at": game.played_at,
@@ -113,6 +122,7 @@ async fn commit_games(
 /// creates the deck by name or commander pairing.
 pub async fn commit_seat(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     seat: &ImportSeat,
 ) -> Result<SeatAttrs, ImportError> {
     let player = resolve_player::run(conn, &seat.player, seat.discord_id.as_deref(), None).await?;
@@ -133,7 +143,8 @@ pub async fn commit_seat(
         Value::String(seat.commander.clone()),
     );
     let found =
-        deck::find_or_create_deck(conn, player.id, &seat.deck, &Value::Object(attrs)).await?;
+        deck::find_or_create_deck(conn, links, player.id, &seat.deck, &Value::Object(attrs))
+            .await?;
     Ok(SeatAttrs {
         player_id: player.id,
         deck_id: found.id,

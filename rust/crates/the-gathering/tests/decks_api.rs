@@ -333,3 +333,71 @@ async fn creating_a_deck_validates_like_the_changeset() {
         .await
         .assert_json(400);
 }
+
+/// Deck links on the configured self-hosted ManaVault (`MANAVAULT_URL`, here
+/// `https://manavault.example.com`) are labeled `manavault`, like manavault.app links. The
+/// Elixir `Deck.source/1` only knew manavault.app and stored them as `other`, although
+/// `Decklists.parse_url/1` resolves them.
+#[tokio::test]
+async fn labels_links_to_the_configured_manavault_as_manavault() {
+    let ctx = setup().await;
+    ctx.app.log_in(&ctx.owner).await;
+    let path = format!("/api/decks/{}", ctx.deck.id);
+    for (url, source) in [
+        (
+            "https://manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx",
+            "manavault",
+        ),
+        (
+            "https://www.manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx",
+            "manavault",
+        ),
+        (
+            "https://app.manavault.app/share/decks/AbCdEfGhIjKlMnOpQrStUvWx",
+            "manavault",
+        ),
+        (
+            "https://vault.elsewhere.example/share/decks/AbCdEfGhIjKlMnOpQrStUvWx",
+            "other",
+        ),
+    ] {
+        let body = ctx
+            .app
+            .patch(&path, json!({"deck": {"decklist_url": url}}))
+            .await
+            .assert_json(200);
+        assert_eq!(body["data"]["decklist_source"], source, "{url}");
+    }
+
+    let body = ctx
+        .app
+        .post(
+            "/api/decks",
+            json!({"deck": {
+                "player_id": ctx.owner_player.id, "name": "Vaulted", "commander_name": "Krenko",
+                "decklist_url": "https://manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"
+            }}),
+        )
+        .await
+        .assert_json(201);
+    assert_eq!(body["data"]["decklist_source"], "manavault");
+}
+
+#[tokio::test]
+async fn without_a_configured_manavault_only_manavault_app_is_manavault() {
+    let app = TestApp::with_config(|config| config.manavault_url = None).await;
+    let admin = app.unique_admin().await;
+    let player = app.player("Solo").await;
+    app.log_in(&admin).await;
+    let body = app
+        .post(
+            "/api/decks",
+            json!({"deck": {
+                "player_id": player.id, "name": "Vaulted", "commander_name": "Krenko",
+                "decklist_url": "https://manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"
+            }}),
+        )
+        .await
+        .assert_json(201);
+    assert_eq!(body["data"]["decklist_source"], "other");
+}

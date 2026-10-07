@@ -226,7 +226,7 @@ pub async fn save(
     attrs: &Map<String, Value>,
 ) -> Result<Game, GamesError> {
     let mut tx = db::begin(&state.pool).await?;
-    let result = save_in(&mut tx, id, user, attrs).await;
+    let result = save_in(&mut tx, state.games.deck_links(), id, user, attrs).await;
     match result {
         Ok(game) => {
             tx.commit().await?;
@@ -241,12 +241,13 @@ pub async fn save(
 
 async fn save_in(
     conn: &mut SqliteConnection,
+    links: &games::DeckLinks,
     id: &str,
     user: &User,
     attrs: &Map<String, Value>,
 ) -> Result<Game, GamesError> {
     let (_draft, pending) = load(conn, id, user).await?.ok_or(GamesError::NotFound)?;
-    let seats = seats(conn, &pending.players(), attrs.get("seats")).await?;
+    let seats = seats(conn, links, &pending.players(), attrs.get("seats")).await?;
     let mut game_attrs = take(attrs, &GAME_FIELDS);
     game_attrs.insert("source".into(), json!("discord"));
     game_attrs.insert("external_id".into(), json!(pending.external_id));
@@ -258,6 +259,7 @@ async fn save_in(
 
 async fn seats(
     conn: &mut SqliteConnection,
+    links: &games::DeckLinks,
     roster: &[ReportPlayer],
     seats: Option<&Value>,
 ) -> Result<Vec<Value>, GamesError> {
@@ -298,7 +300,7 @@ async fn seats(
             ResolveError::Database(error) => GamesError::Database(error),
             ResolveError::DiscordIdentityConflict => GamesError::BadRequest,
         })?;
-        let deck_id = deck(conn, player.id, seat).await?;
+        let deck_id = deck(conn, links, player.id, seat).await?;
         let mut attrs = take(seat, &SEAT_FIELDS);
         attrs.insert("player_id".into(), json!(player.id));
         attrs.insert("deck_id".into(), json!(deck_id));
@@ -319,6 +321,7 @@ fn cast_id(value: &Value) -> Option<i64> {
 
 async fn deck(
     conn: &mut SqliteConnection,
+    links: &games::DeckLinks,
     player_id: i64,
     seat: &Map<String, Value>,
 ) -> Result<Option<i64>, GamesError> {
@@ -344,9 +347,14 @@ async fn deck(
                     )
                 })
                 .collect();
-            let deck =
-                games::deck::find_or_create_deck(conn, player_id, name, &Value::Object(fields))
-                    .await?;
+            let deck = games::deck::find_or_create_deck(
+                conn,
+                links,
+                player_id,
+                name,
+                &Value::Object(fields),
+            )
+            .await?;
             Ok(Some(deck.id))
         }
         None | Some(Value::Null) => Ok(None),

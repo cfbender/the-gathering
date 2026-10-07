@@ -201,6 +201,9 @@ async fn build_seats(
     Ok(seats)
 }
 
+/// Discord reports never carry deck-list URLs, so no server-specific link rules apply.
+const NO_URLS: &games::DeckLinks = &games::DeckLinks::EMPTY;
+
 async fn find_or_create_deck(
     conn: &mut SqliteConnection,
     player_id: i64,
@@ -220,7 +223,8 @@ async fn find_or_create_deck(
                 .take(100)
                 .collect();
             let attrs = serde_json::to_value(attrs).map_err(|_| SinkError::InvalidPlayer)?;
-            let deck = games::deck::find_or_create_deck(conn, player_id, &name, &attrs).await?;
+            let deck =
+                games::deck::find_or_create_deck(conn, NO_URLS, player_id, &name, &attrs).await?;
             Ok(Some(deck.id))
         }
         None => match reported.commander_name.as_deref() {
@@ -228,6 +232,7 @@ async fn find_or_create_deck(
             Some(commander) => {
                 let deck = games::deck::find_or_create_deck(
                     conn,
+                    NO_URLS,
                     player_id,
                     commander,
                     &json!({ "commander_name": commander }),

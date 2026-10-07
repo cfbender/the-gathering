@@ -37,8 +37,8 @@ use crate::error::{ApiError, Errors};
 pub use self::deck_picker::{Candidate, DeckPick, Outcome};
 pub use self::merge_players::LinkPlan;
 pub use self::model::{
-    Deck, DecklistSource, Game, GameFormat, GameResult, GameSource, Player, Seat, get_deck,
-    get_player, load_game, load_games,
+    Deck, DeckLinks, DecklistSource, Game, GameFormat, GameResult, GameSource, Player, Seat,
+    get_deck, get_player, load_game, load_games,
 };
 pub use self::player::{PlayerDetail, PlayerIdentityRow, SeatGame};
 pub use self::resolve_player::{PlayerIdentity, Resolution, ResolveError};
@@ -145,6 +145,7 @@ pub struct Games {
     /// Database.
     pub pool: Pool,
     seated: Arc<OnceLock<SeatedCheck>>,
+    links: DeckLinks,
 }
 
 impl std::fmt::Debug for Games {
@@ -169,11 +170,17 @@ macro_rules! write_tx {
 
 impl Games {
     /// The API over `pool`.
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: Pool, links: DeckLinks) -> Self {
         Self {
             pool,
             seated: Arc::new(OnceLock::new()),
+            links,
         }
+    }
+
+    /// How this server labels deck-list URLs (`decks.decklist_source`).
+    pub fn deck_links(&self) -> &DeckLinks {
+        &self.links
     }
 
     /// Installs the webcam-table seat check merges consult (set once at startup).
@@ -339,12 +346,19 @@ impl Games {
 
     /// `Games.create_deck/1`.
     pub async fn create_deck(&self, attrs: &Value) -> Result<Deck, GamesError> {
-        write_tx!(self, |conn| deck::create_deck(conn, attrs).await)
+        write_tx!(self, |conn| deck::create_deck(conn, &self.links, attrs)
+            .await)
     }
 
     /// `Games.update_deck/2`.
     pub async fn update_deck(&self, deck: &Deck, attrs: &Value) -> Result<Deck, GamesError> {
-        write_tx!(self, |conn| deck::update_deck(conn, deck, attrs).await)
+        write_tx!(self, |conn| deck::update_deck(
+            conn,
+            &self.links,
+            deck,
+            attrs
+        )
+        .await)
     }
 
     /// `Games.delete_deck/2`.
@@ -383,7 +397,11 @@ impl Games {
         attrs: &Value,
     ) -> Result<Deck, GamesError> {
         write_tx!(self, |conn| deck::find_or_create_deck(
-            conn, player_id, name, attrs
+            conn,
+            &self.links,
+            player_id,
+            name,
+            attrs
         )
         .await)
     }
@@ -526,8 +544,12 @@ impl Games {
         &self,
         game_id: i64,
     ) -> Result<link_catalog_cards::LinkResult, GamesError> {
-        write_tx!(self, |conn| link_catalog_cards::link_game(conn, game_id)
-            .await)
+        write_tx!(self, |conn| link_catalog_cards::link_game(
+            conn,
+            &self.links,
+            game_id
+        )
+        .await)
     }
 
     /// `LinkCatalogCards.repair_batch/2`.
@@ -537,7 +559,10 @@ impl Games {
         limit: Option<i64>,
     ) -> Result<link_catalog_cards::BatchResult, GamesError> {
         write_tx!(self, |conn| link_catalog_cards::repair_batch(
-            conn, cursor, limit
+            conn,
+            &self.links,
+            cursor,
+            limit
         )
         .await)
     }

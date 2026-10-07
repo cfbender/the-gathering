@@ -74,7 +74,10 @@ impl Deref for AppState {
 impl AppState {
     /// Builds the state around an open, migrated pool.
     pub fn new(config: Config, pool: Pool) -> anyhow::Result<Self> {
-        let games = Games::new(pool.clone());
+        let games = Games::new(
+            pool.clone(),
+            crate::games::DeckLinks::new(config.manavault_url.as_deref()),
+        );
         let accounts = Accounts {
             pool: pool.clone(),
             secret_key_base: config.secret_key_base.clone(),

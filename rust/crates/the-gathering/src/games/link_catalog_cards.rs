@@ -13,7 +13,7 @@ use crate::regex::{Regex, compile};
 
 use super::GamesError;
 use super::deck::update_deck;
-use super::model::{Deck, select_decks};
+use super::model::{Deck, DeckLinks, select_decks};
 
 const DEFAULT_BATCH_SIZE: i64 = 100;
 const MAX_BATCH_SIZE: i64 = 500;
@@ -156,7 +156,11 @@ fn unmatched(pairs: &[(Option<&str>, Option<&Card>)]) -> Vec<String> {
         .collect()
 }
 
-async fn link_deck(conn: &mut SqliteConnection, deck: &Deck) -> Result<ItemResult, GamesError> {
+async fn link_deck(
+    conn: &mut SqliteConnection,
+    links: &DeckLinks,
+    deck: &Deck,
+) -> Result<ItemResult, GamesError> {
     let (commander_name, split_partner) = split_partners(&deck.commander_name);
     let split = split_partner.is_some();
     let partner_name = deck.partner_name.clone().or(split_partner);
@@ -194,7 +198,7 @@ async fn link_deck(conn: &mut SqliteConnection, deck: &Deck) -> Result<ItemResul
         (Some(commander_name.as_str()), commander.as_ref()),
         (partner_name.as_deref(), partner.as_ref()),
     ]);
-    match update_deck(conn, deck, &attrs).await {
+    match update_deck(conn, links, deck, &attrs).await {
         Ok(_) => Ok(ItemResult {
             split,
             linked: commander.is_some(),
@@ -254,12 +258,13 @@ async fn link_mvp(
 
 async fn link_rows(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     decks: &[Deck],
     seats: &[(i64, Option<String>, Option<String>)],
 ) -> Result<LinkResult, GamesError> {
     let mut deck_results = Vec::with_capacity(decks.len());
     for deck in decks {
-        deck_results.push(link_deck(conn, deck).await?);
+        deck_results.push(link_deck(conn, links, deck).await?);
     }
     let mut mvp_results = Vec::with_capacity(seats.len());
     for (id, mvp_card_id, mvp_card_name) in seats {
@@ -300,6 +305,7 @@ async fn link_rows(
 /// `link_game/1`: the game's unlinked decks and its seats' MVP cards.
 pub async fn link_game(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     game_id: i64,
 ) -> Result<LinkResult, GamesError> {
     let mut tx = conn.begin().await?;
@@ -318,7 +324,7 @@ pub async fn link_game(
     .into_iter()
     .map(|row| (row.id, row.mvp_card_id, row.mvp_card_name))
     .collect();
-    let result = link_rows(&mut tx, &decks, &seats).await?;
+    let result = link_rows(&mut tx, links, &decks, &seats).await?;
     tx.commit().await?;
     Ok(result)
 }
@@ -327,6 +333,7 @@ pub async fn link_game(
 /// unlinked MVP seats after `cursor`.
 pub async fn repair_batch(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     cursor: Cursor,
     limit: Option<i64>,
 ) -> Result<BatchResult, GamesError> {
@@ -350,7 +357,7 @@ pub async fn repair_batch(
     .into_iter()
     .map(|row| (row.id, row.mvp_card_id, row.mvp_card_name))
     .collect();
-    let result = link_rows(&mut tx, &decks, &seats).await?;
+    let result = link_rows(&mut tx, links, &decks, &seats).await?;
     tx.commit().await?;
     let limit = usize::try_from(limit).unwrap_or(usize::MAX);
     Ok(BatchResult {

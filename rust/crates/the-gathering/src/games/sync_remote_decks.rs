@@ -21,6 +21,7 @@ use crate::accounts::User;
 use crate::catalog::{self, CardSummaries};
 use crate::db;
 use crate::decklists::remote_decks::RemoteDeck;
+use crate::games::DeckLinks;
 use crate::state::AppState;
 
 use super::model::{Deck, select_decks};
@@ -89,7 +90,14 @@ pub async fn run(state: &AppState, user: &User) -> Result<SyncResult, GamesError
         .collect();
     let summaries = catalog::card_summaries_in(&mut *state.pool.acquire().await?, &refs).await?;
     let mut tx = db::begin(&state.pool).await?;
-    let (created, updated) = sync(&mut tx, player.id, &decks, &summaries).await?;
+    let (created, updated) = sync(
+        &mut tx,
+        state.games.deck_links(),
+        player.id,
+        &decks,
+        &summaries,
+    )
+    .await?;
     tx.commit().await?;
     Ok(SyncResult {
         created,
@@ -183,6 +191,7 @@ fn link_attrs(deck: &Deck, attrs: &Map<String, Value>) -> Value {
 
 async fn sync(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     player_id: i64,
     remote_decks: &[&RemoteDeck],
     summaries: &CardSummaries,
@@ -221,12 +230,12 @@ async fn sync(
         let by_name = remote.name.as_deref().map(fold_name);
         let saved = if let Some(found) = state.by_url.get(&remote.url).cloned() {
             (
-                deck::update_deck(conn, &found, &Value::Object(attrs)).await?,
+                deck::update_deck(conn, links, &found, &Value::Object(attrs)).await?,
                 false,
             )
         } else if let Some(found) = by_name.and_then(|name| state.by_name.get(&name).cloned()) {
             (
-                deck::update_deck(conn, &found, &Value::Object(attrs)).await?,
+                deck::update_deck(conn, links, &found, &Value::Object(attrs)).await?,
                 false,
             )
         } else if let Some(found) = state
@@ -235,9 +244,15 @@ async fn sync(
             .cloned()
         {
             let linked = link_attrs(&found, &attrs);
-            (deck::update_deck(conn, &found, &linked).await?, false)
+            (
+                deck::update_deck(conn, links, &found, &linked).await?,
+                false,
+            )
         } else {
-            (deck::create_deck(conn, &Value::Object(attrs)).await?, true)
+            (
+                deck::create_deck(conn, links, &Value::Object(attrs)).await?,
+                true,
+            )
         };
         state.remember(saved.0, saved.1);
     }

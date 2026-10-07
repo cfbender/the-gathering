@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use sqlx::SqliteConnection;
 
 use crate::db;
+use crate::games::DeckLinks;
 use crate::games::{deck, load_game, player, record_game};
 use crate::state::AppState;
 
@@ -47,7 +48,7 @@ pub async fn run(
     }
     let mut result = SheetResult::default();
     for row in &preview.rows {
-        commit_row(&mut tx, row, &mut result, user_id).await?;
+        commit_row(&mut tx, state.games.deck_links(), row, &mut result, user_id).await?;
     }
     tx.commit().await?;
     Ok(result)
@@ -55,6 +56,7 @@ pub async fn run(
 
 async fn commit_row(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     row: &ResolvedRow,
     result: &mut SheetResult,
     user_id: Option<i64>,
@@ -67,7 +69,7 @@ async fn commit_row(
         Choice::Text(_) => {
             let mut seats = Vec::with_capacity(row.seats.len());
             for (seat, index) in row.seats.iter().zip(1_i64..) {
-                seats.push(create_seat(conn, seat, index).await?);
+                seats.push(create_seat(conn, links, seat, index).await?);
             }
             let attrs = json!({
                 "played_at": row.date.map(|date| noon(date.0)),
@@ -95,7 +97,7 @@ async fn commit_row(
                     "id": existing.id,
                     "player_id": existing.player_id,
                     "seat": existing.seat,
-                    "deck_id": deck_id(conn, seat, existing.player_id).await?,
+                    "deck_id": deck_id(conn, links, seat, existing.player_id).await?,
                     "result": seat.result,
                     "kills": seat.kills,
                 }));
@@ -124,6 +126,7 @@ async fn commit_row(
 
 async fn create_seat(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     seat: &ResolvedSeat,
     index: i64,
 ) -> Result<Value, ImportError> {
@@ -137,7 +140,7 @@ async fn create_seat(
     };
     Ok(json!({
         "player_id": player_id,
-        "deck_id": deck_id(conn, seat, player_id).await?,
+        "deck_id": deck_id(conn, links, seat, player_id).await?,
         "seat": index,
         "result": seat.result,
         "kills": seat.kills,
@@ -146,6 +149,7 @@ async fn create_seat(
 
 async fn deck_id(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     seat: &ResolvedSeat,
     player_id: i64,
 ) -> Result<Value, ImportError> {
@@ -153,7 +157,7 @@ async fn deck_id(
         Some(Choice::Text(text)) if text == "new" => {
             let attrs = json!({"commander_name": seat.deck});
             json!(
-                deck::find_or_create_deck(conn, player_id, &seat.deck, &attrs)
+                deck::find_or_create_deck(conn, links, player_id, &seat.deck, &attrs)
                     .await?
                     .id
             )

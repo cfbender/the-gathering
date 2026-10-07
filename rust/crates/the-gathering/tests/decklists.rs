@@ -453,6 +453,79 @@ async fn follows_manavault_deck_card_pages() {
     assert_eq!(deck.commanders, ["Shorikai, Genesis Engine"]);
 }
 
+/// Answers `pages` deck pages of one card each, then stops (or never stops with `None`).
+struct ManyPages(Option<u32>);
+
+impl Respond for ManyPages {
+    fn respond(&self, request: &Request) -> ResponseTemplate {
+        let body: Value = serde_json::from_slice(&request.body).unwrap();
+        let page: u32 = body["variables"]["after"].as_str().map_or(1, |cursor| {
+            cursor.trim_start_matches('c').parse::<u32>().unwrap() + 1
+        });
+        let more = self.0.is_none_or(|pages| page < pages);
+        ResponseTemplate::new(200).set_body_json(json!({"data": {"deck": {
+            "name": "Long", "cardCount": page, "commanderColorIdentity": ["G"],
+            "deckCards": {
+                "pageInfo": {"endCursor": format!("c{page}"), "hasNextPage": more},
+                "edges": [node("mainboard", &format!("Card {page}"), 1)]
+            }
+        }}}))
+    }
+}
+
+/// The Elixir adapter stopped after four pages and returned a truncated list; the Rust
+/// server follows lotus's default budget (ten pages) and keeps every card.
+#[tokio::test]
+async fn follows_manavault_decks_past_four_pages() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/share/graphql"))
+        .respond_with(ManyPages(Some(6)))
+        .expect(6)
+        .mount(&server)
+        .await;
+    let (app, origin) = manavault_app(&server).await;
+    let deck = app
+        .state
+        .decklists
+        .resolve(&format!("{origin}/share/decks/LongLongLongLongLongLong"))
+        .await
+        .unwrap();
+    let names: Vec<&str> = deck.cards.iter().map(|card| card.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["Card 1", "Card 2", "Card 3", "Card 4", "Card 5", "Card 6"]
+    );
+}
+
+/// A deck that needs more than the page budget is an error, never a silently shortened list.
+#[tokio::test]
+async fn refuses_a_manavault_deck_over_the_page_budget() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/share/graphql"))
+        .respond_with(ManyPages(None))
+        .mount(&server)
+        .await;
+    let (app, origin) = manavault_app(&server).await;
+    let result = app
+        .state
+        .decklists
+        .resolve(&format!(
+            "{origin}/share/decks/EndlessEndlessEndlessEndless"
+        ))
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(the_gathering::decklists::DecklistError::UpstreamError)
+        ),
+        "{result:?}"
+    );
+    let requests = server.received_requests().await.unwrap().len();
+    assert_eq!(requests, 10, "lotus's default budget is ten pages");
+}
+
 #[tokio::test]
 async fn maps_missing_and_private_upstream_responses() {
     let server = MockServer::start().await;

@@ -18,6 +18,7 @@ use crate::catalog;
 use crate::changeset::Changeset;
 use crate::db::{self, IsoDate, UtcDateTime};
 use crate::error::Errors;
+use crate::games::DeckLinks;
 use crate::games::model::select_decks;
 use crate::games::{Deck, Player, deck, fold_name, load_games, player, record_game};
 use crate::state::AppState;
@@ -608,6 +609,7 @@ fn commander_pair(commander: Option<&str>, partner: Option<&str>) -> Vec<String>
 
 async fn restore_deck(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     row: &Value,
     players: &HashMap<i64, Player>,
 ) -> Result<(Deck, bool), ImportError> {
@@ -675,7 +677,7 @@ async fn restore_deck(
         }
         return Ok((existing, false));
     }
-    let created = deck::create_deck(conn, &attrs)
+    let created = deck::create_deck(conn, links, &attrs)
         .await
         .map_err(|error| labeled(&format!("Deck {name}"), error))?;
     let skip_count = skip_count.unwrap_or_default();
@@ -834,6 +836,7 @@ fn rows<'a>(data: &'a Map<String, Value>, key: &str) -> &'a [Value] {
 
 async fn restore(
     conn: &mut SqliteConnection,
+    links: &DeckLinks,
     data: &Map<String, Value>,
     user_id: Option<i64>,
 ) -> Result<Summary, ImportError> {
@@ -854,7 +857,7 @@ async fn restore(
     }
     let mut decks = HashMap::new();
     for row in rows(data, "decks") {
-        let (deck, created) = restore_deck(conn, row, &players).await?;
+        let (deck, created) = restore_deck(conn, links, row, &players).await?;
         bump(&mut summary.decks, created);
         if let Some(id) = row.get("id").and_then(local_id) {
             decks.insert(id, deck);
@@ -878,7 +881,7 @@ async fn restore(
 pub async fn preview(state: &AppState, json: &str) -> Result<Summary, ImportError> {
     let data = decode(json).map_err(ImportError::Message)?;
     let mut tx = db::begin(&state.pool).await?;
-    let result = restore(&mut tx, &data, None).await;
+    let result = restore(&mut tx, state.games.deck_links(), &data, None).await;
     tx.rollback().await?;
     result
 }
@@ -891,7 +894,7 @@ pub async fn run(
 ) -> Result<Summary, ImportError> {
     let data = decode(json).map_err(ImportError::Message)?;
     let mut tx = db::begin(&state.pool).await?;
-    let summary = restore(&mut tx, &data, user_id).await?;
+    let summary = restore(&mut tx, state.games.deck_links(), &data, user_id).await?;
     tx.commit().await?;
     Ok(summary)
 }
