@@ -95,3 +95,7 @@ Local measurements (8-core orb):
 | `rust:ci`, cold               | n/a                       | 3m45s                     |
 | image, cold                   | 7m47s (cook 224s on musl) | 3m15s (cook 117s)         |
 | image, one `.rs` file changed | 3m49s (workspace 223s)    | 1m01s (workspace crates 56s) |
+
+GitHub Actions after the change (4-core runners, warm caches): Quality's Rust
+job 1m30s–1m35s (was 5m10s–9m41s), a Container build with the dependency
+layer cached 2m49s (was about 7m), and the preview Release 3m26s (was 5m34s).
