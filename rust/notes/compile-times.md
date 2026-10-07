@@ -62,3 +62,36 @@ The test binaries and the linker were the real cost, and both are fixed above. R
 split if an edit-then-build climbs past roughly 15 s. The obvious first cut is a core crate
 (config, db, error, changeset, crypto, regex) under the domain crates, with jobs that need
 `AppState` moved into the server crate.
+
+## CI and image builds
+
+Before: the Quality workflow's Rust job ran an online `cargo check` for the
+queries and then `rust:check` (clippy and tests), on an `actions/cache` keyed
+only on `Cargo.lock` and `mise.toml`. An exact hit never re-saves, so after a
+profile or linker change every run rebuilt from a stale cache (581s for
+51341fd). The image compiled the server on Alpine, where rustc allocates
+through musl's malloc, and BuildKit cache mounts do not survive between
+GitHub runners, so every image rebuilt every dependency.
+
+Now:
+
+- `mise run rust:ci` compiles the workspace once per profile: clippy runs with
+  the query macros online, which checks queries against `rust/migrations` and
+  rewrites `rust/.sqlx` (a diff fails the job), then `cargo test` builds
+  against that metadata.
+- `Swatinem/rust-cache` replaces `actions/cache` in Quality and Release. It
+  keys on the lockfile, manifests, and cargo config, and caches dependencies
+  only. Quality saves from main and manual runs only, so pull requests restore
+  main's cache without evicting it.
+- The Dockerfile compiles on Debian and cross-compiles the static musl binary
+  for the Alpine runner, with dependencies cooked by cargo-chef into their own
+  layer that `cache-to: type=gha,mode=max` keeps until `Cargo.lock` or a
+  `Cargo.toml` changes.
+
+Local measurements (8-core orb):
+
+| Build                         | Before                    | After                     |
+| ----------------------------- | ------------------------- | ------------------------- |
+| `rust:ci`, cold               | n/a                       | 3m45s                     |
+| image, cold                   | 7m47s (cook 224s on musl) | 3m15s (cook 117s)         |
+| image, one `.rs` file changed | 3m49s (workspace 223s)    | 1m01s (workspace crates 56s) |

@@ -66,28 +66,23 @@ jobs:
           install_args: rust sqlite
           cache: true
 
-      - name: Cache Cargo registry and build
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Caches the registry and compiled dependencies (not the workspace crates), keyed on
+      # the lockfile, manifests, and cargo config, so a profile change cannot leave a stale
+      # cache that every later run rebuilds from. Pull requests only restore; main and manual
+      # runs save, so pull requests cannot evict the cache main's next run starts from.
+      - name: Cache Cargo registry and compiled dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            rust/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock', 'mise.toml') }}
-          restore-keys: cargo-${{ runner.os }}-
+          workspaces: rust -> target
+          shared-key: rust
+          save-if: ${{ github.event_name != 'pull_request' }}
+          cache-on-failure: true
 
-      # rust/migrations is the schema's only source; schema.sql is its committed dump.
-      - name: Check that rust/schema.sql matches rust/migrations
-        run: mise exec -- bash rust/scripts/schema.sh --check
-
-      - name: Check queries against the migrated schema
-        working-directory: rust
-        run: |
-          SQLX_OFFLINE=false DATABASE_URL="sqlite://$PWD/target/schema.db?mode=ro" \
-            mise exec -- cargo check --workspace --all-targets --locked
-
-      - name: Format, lint, and test against the committed query metadata
-        run: mise run rust:check
+      # One debug compile does everything: clippy runs with the query macros online, which
+      # checks every query against rust/migrations and rewrites rust/.sqlx; then the tests
+      # build against that metadata offline.
+      - name: Check schema and query metadata, format, lint, and test
+        run: mise run rust:ci
 
       - name: Test the Proxmox LXC installer's channel handling
         run: bash deploy/proxmox/test.sh

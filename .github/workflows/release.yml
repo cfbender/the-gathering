@@ -73,15 +73,14 @@ jobs:
           node --version
           aube --version
 
-      - name: Cache Cargo registry and build
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Registry and compiled release dependencies (not the workspace crates), keyed on the
+      # lockfile, manifests, and cargo config, so a profile change cannot leave a stale cache.
+      - name: Cache Cargo registry and compiled dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            /usr/local/cargo/registry
-            /usr/local/cargo/git
-            rust/target
-          key: release-cargo-${{ hashFiles('rust/Cargo.lock', '.github/workflows/release.yml') }}
-          restore-keys: release-cargo-
+          workspaces: rust -> target
+          shared-key: release
+          cache-on-failure: true
 
       - name: Cache JavaScript dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
