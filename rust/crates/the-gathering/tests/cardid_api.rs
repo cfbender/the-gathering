@@ -71,15 +71,27 @@ async fn describes_the_current_bundle_and_serves_its_files_immutably() {
     assert_eq!(data["gallery"]["topk"], 5);
     assert_eq!(data["constants"]["scene"], 640);
     let detector = data["files"]["detector.onnx"].as_str().unwrap();
-    assert_eq!(detector, "/api/cardid/bundles/2026-09-22-full-3/detector.onnx");
+    assert_eq!(
+        detector,
+        "/api/cardid/bundles/2026-09-22-full-3/detector.onnx"
+    );
 
     let response = app.get(detector).await;
     assert_eq!(response.status.as_u16(), 200);
     assert_eq!(response.text(), "onnx-bytes");
-    assert_eq!(response.header("content-type"), Some("application/octet-stream"));
-    assert_eq!(response.header("cache-control"), Some("private, max-age=31536000, immutable"));
+    assert_eq!(
+        response.header("content-type"),
+        Some("application/octet-stream")
+    );
+    assert_eq!(
+        response.header("cache-control"),
+        Some("private, max-age=31536000, immutable")
+    );
 
-    let arts = app.get(data["files"]["arts.json"].as_str().unwrap()).await.assert_json(200);
+    let arts = app
+        .get(data["files"]["arts.json"].as_str().unwrap())
+        .await
+        .assert_json(200);
     assert_eq!(arts[0]["name"], "Forest");
     assert_eq!(arts.as_array().unwrap().len(), 2);
 }
@@ -89,8 +101,17 @@ async fn an_old_version_stays_addressable_after_current_moves_on() {
     let app = member_app().await;
     publish(&bundle_root(&app), "v1");
     publish(&bundle_root(&app), "v2");
-    assert_eq!(app.get("/api/cardid/bundle").await.assert_json(200)["data"]["version"], "v2");
-    assert_eq!(app.get("/api/cardid/bundles/v1/embed.onnx").await.status.as_u16(), 200);
+    assert_eq!(
+        app.get("/api/cardid/bundle").await.assert_json(200)["data"]["version"],
+        "v2"
+    );
+    assert_eq!(
+        app.get("/api/cardid/bundles/v1/embed.onnx")
+            .await
+            .status
+            .as_u16(),
+        200
+    );
 }
 
 #[tokio::test]
@@ -102,15 +123,26 @@ async fn only_advertises_the_optional_sibling_file_when_the_manifest_includes_it
     assert!(data["data"]["files"].get("printings.json").is_none());
 
     let manifest_path = root.join("v1/manifest.json");
-    let mut manifest: Value = serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
+    let mut manifest: Value =
+        serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
     manifest["files"]["printings.json"] = json!({});
     std::fs::write(&manifest_path, manifest.to_string()).unwrap();
-    std::fs::write(root.join("v1/printings.json"), r#"{"a":[{"id":"sibling"}]}"#).unwrap();
+    std::fs::write(
+        root.join("v1/printings.json"),
+        r#"{"a":[{"id":"sibling"}]}"#,
+    )
+    .unwrap();
     let data = app.get("/api/cardid/bundle").await.assert_json(200);
-    let url = data["data"]["files"]["printings.json"].as_str().unwrap().to_owned();
+    let url = data["data"]["files"]["printings.json"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     assert_eq!(url, "/api/cardid/bundles/v1/printings.json");
     let response = app.get(&url).await;
-    assert_eq!(response.header("cache-control"), Some("private, max-age=31536000, immutable"));
+    assert_eq!(
+        response.header("cache-control"),
+        Some("private, max-age=31536000, immutable")
+    );
     assert_eq!(response.assert_json(200), json!({"a": [{"id": "sibling"}]}));
 }
 
@@ -136,7 +168,9 @@ async fn bundle_requires_authentication() {
     let app = TestApp::new().await;
     publish(&bundle_root(&app), "v1");
     app.get("/api/cardid/bundle").await.assert_json(401);
-    app.get("/api/cardid/bundles/v1/detector.onnx").await.assert_json(401);
+    app.get("/api/cardid/bundles/v1/detector.onnx")
+        .await
+        .assert_json(401);
 }
 
 // ---- card_id_correction_controller_test.exs ----
@@ -183,7 +217,10 @@ async fn stores_native_jpeg_and_label_metadata_retries_once_and_allows_relabelli
     let app = member_app().await;
     let p = payload();
     for _ in 0..2 {
-        let body = app.post("/api/cardid/corrections", p.clone()).await.assert_json(201);
+        let body = app
+            .post("/api/cardid/corrections", p.clone())
+            .await
+            .assert_json(201);
         assert_eq!(body["data"]["capture_id"], p["capture_id"]);
     }
     let first = page(&app, 0).await;
@@ -198,11 +235,21 @@ async fn stores_native_jpeg_and_label_metadata_retries_once_and_allows_relabelli
     assert_eq!(row["source"], "webcam-table");
     assert!(row.get("image").is_none());
     assert!(row.get("up_correct").is_none());
-    let crop = app.state.corrections.crop_path(p["capture_id"].as_str().unwrap()).await.unwrap();
+    let crop = app
+        .state
+        .corrections
+        .crop_path(p["capture_id"].as_str().unwrap())
+        .await
+        .unwrap();
     assert_eq!(std::fs::read(crop).unwrap(), fixture("cardid-crop.jpg"));
 
-    let relabelled = with(p.clone(), json!({"label": uuid::Uuid::new_v4().to_string()}));
-    app.post("/api/cardid/corrections", relabelled.clone()).await.assert_json(201);
+    let relabelled = with(
+        p.clone(),
+        json!({"label": uuid::Uuid::new_v4().to_string()}),
+    );
+    app.post("/api/cardid/corrections", relabelled.clone())
+        .await
+        .assert_json(201);
     let next = page(&app, 1).await;
     assert_eq!(next.cursor, 2);
     assert_eq!(next.corrections[0]["label"], relabelled["label"]);
@@ -214,7 +261,12 @@ async fn preserves_face_labels_and_top1_through_storage_and_export() {
     let app = member_app().await;
     let p = payload();
     let face = format!("{}-1", p["label"].as_str().unwrap());
-    app.post("/api/cardid/corrections", with(p.clone(), json!({"label": face, "top1": face}))).await.assert_json(201);
+    app.post(
+        "/api/cardid/corrections",
+        with(p.clone(), json!({"label": face, "top1": face})),
+    )
+    .await
+    .assert_json(201);
     admin_session(&app).await;
     let body = app.get("/api/cardid/corrections").await.assert_json(200);
     let rows = body["data"]["corrections"].as_array().unwrap();
@@ -235,11 +287,21 @@ async fn stores_exact_sibling_and_revised_printing_labels_independently_of_the_r
         "6d6deae3-3ed4-47eb-bf4a-4a766ce18135",
     ];
     for label in labels {
-        let payload = with(p.clone(), json!({"label": label, "capture_id": uuid::Uuid::new_v4().to_string()}));
-        app.post("/api/cardid/corrections", payload).await.assert_json(201);
+        let payload = with(
+            p.clone(),
+            json!({"label": label, "capture_id": uuid::Uuid::new_v4().to_string()}),
+        );
+        app.post("/api/cardid/corrections", payload)
+            .await
+            .assert_json(201);
     }
     let rows = page(&app, 0).await.corrections;
-    assert_eq!(rows.iter().map(|row| row["label"].as_str().unwrap()).collect::<Vec<_>>(), labels);
+    assert_eq!(
+        rows.iter()
+            .map(|row| row["label"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        labels
+    );
     assert!(rows.iter().all(|row| row["top1"] == p["top1"]));
 }
 
@@ -247,7 +309,12 @@ async fn stores_exact_sibling_and_revised_printing_labels_independently_of_the_r
 async fn keeps_a_drawn_outlines_manual_source_for_the_exporter() {
     let app = member_app().await;
     let p = payload();
-    app.post("/api/cardid/corrections", with(p.clone(), json!({"quad_source": "manual"}))).await.assert_json(201);
+    app.post(
+        "/api/cardid/corrections",
+        with(p.clone(), json!({"quad_source": "manual"})),
+    )
+    .await
+    .assert_json(201);
     let rows = page(&app, 0).await.corrections;
     assert_eq!(rows[0]["quad_source"], "manual");
     assert_eq!(rows[0]["quad"], p["quad"]);
@@ -279,7 +346,9 @@ async fn rejects_malformed_oversized_and_traversing_payloads() {
         json!({"similarity": "0.5"}),
         json!({"bundle_version": "a".repeat(121)}),
     ] {
-        let response = app.post("/api/cardid/corrections", with(p.clone(), change.clone())).await;
+        let response = app
+            .post("/api/cardid/corrections", with(p.clone(), change.clone()))
+            .await;
         assert_eq!(response.status.as_u16(), 400, "{change}");
     }
     assert_eq!(page(&app, 0).await.cursor, 0);
@@ -289,32 +358,45 @@ async fn rejects_malformed_oversized_and_traversing_payloads() {
 async fn anonymous_users_cannot_upload_and_another_user_cannot_overwrite_a_capture() {
     let app = TestApp::new().await;
     let p = payload();
-    app.post("/api/cardid/corrections", p.clone()).await.assert_json(401);
+    app.post("/api/cardid/corrections", p.clone())
+        .await
+        .assert_json(401);
     let owner = app.member("owner").await;
     app.log_in(&owner).await;
-    app.post("/api/cardid/corrections", p.clone()).await.assert_json(201);
+    app.post("/api/cardid/corrections", p.clone())
+        .await
+        .assert_json(201);
     let other = app.member("other").await;
     app.clear_cookies();
     app.log_in(&other).await;
-    app.post("/api/cardid/corrections", p).await.assert_json(403);
+    app.post("/api/cardid/corrections", p)
+        .await
+        .assert_json(403);
 }
 
 #[tokio::test]
 async fn correction_rate_limit_is_per_user() {
     let app = TestApp::with_config(|config| {
-        config.rate_limits.corrections = WindowLimit { limit: 1, scale: Duration::from_secs(60) };
+        config.rate_limits.corrections = WindowLimit {
+            limit: 1,
+            scale: Duration::from_secs(60),
+        };
     })
     .await;
     let user = app.member("member").await;
     app.log_in(&user).await;
-    app.post("/api/cardid/corrections", payload()).await.assert_json(201);
+    app.post("/api/cardid/corrections", payload())
+        .await
+        .assert_json(201);
     let denied = app.post("/api/cardid/corrections", payload()).await;
     denied.assert_json(429);
     assert!(denied.header("retry-after").is_some());
     let other = app.member("other").await;
     app.clear_cookies();
     app.log_in(&other).await;
-    app.post("/api/cardid/corrections", payload()).await.assert_json(201);
+    app.post("/api/cardid/corrections", payload())
+        .await
+        .assert_json(201);
 }
 
 #[tokio::test]
@@ -322,9 +404,13 @@ async fn exports_require_admin_and_cursor_pages_do_not_expose_owner_ids() {
     let app = member_app().await;
     let p = payload();
     let capture = p["capture_id"].as_str().unwrap().to_owned();
-    app.post("/api/cardid/corrections", p).await.assert_json(201);
+    app.post("/api/cardid/corrections", p)
+        .await
+        .assert_json(201);
     app.get("/api/cardid/corrections").await.assert_json(403);
-    app.get(&format!("/api/cardid/corrections/{capture}/crop")).await.assert_json(403);
+    app.get(&format!("/api/cardid/corrections/{capture}/crop"))
+        .await
+        .assert_json(403);
 
     admin_session(&app).await;
     let response = app.get("/api/cardid/corrections").await;
@@ -335,12 +421,27 @@ async fn exports_require_admin_and_cursor_pages_do_not_expose_owner_ids() {
     let rows = body["data"]["corrections"].as_array().unwrap();
     assert_eq!(rows.len(), 1);
     assert!(rows[0].get("user_id").is_none());
-    let body = app.get("/api/cardid/corrections?cursor=1").await.assert_json(200);
+    let body = app
+        .get("/api/cardid/corrections?cursor=1")
+        .await
+        .assert_json(200);
     assert_eq!(body["data"]["corrections"], json!([]));
-    app.get("/api/cardid/corrections?cursor=-1").await.assert_json(400);
-    app.get("/api/cardid/corrections?cursor[]=1").await.assert_json(400);
-    assert_eq!(app.get("/api/cardid/corrections/..%2Fescape/crop").await.status.as_u16(), 404);
-    let crop = app.get(&format!("/api/cardid/corrections/{capture}/crop")).await;
+    app.get("/api/cardid/corrections?cursor=-1")
+        .await
+        .assert_json(400);
+    app.get("/api/cardid/corrections?cursor[]=1")
+        .await
+        .assert_json(400);
+    assert_eq!(
+        app.get("/api/cardid/corrections/..%2Fescape/crop")
+            .await
+            .status
+            .as_u16(),
+        404
+    );
+    let crop = app
+        .get(&format!("/api/cardid/corrections/{capture}/crop"))
+        .await;
     assert_eq!(crop.status.as_u16(), 200);
     assert_eq!(crop.header("content-type"), Some("image/jpeg"));
     assert_eq!(crop.header("cache-control"), Some("private, no-store"));
@@ -358,13 +459,27 @@ async fn scoped_bearer_token_is_read_only_and_revoked_when_its_administrator_is_
     let admin = app.admin("admin").await;
     assert_eq!(admin.id, 1);
     let mut bearer = HeaderMap::new();
-    bearer.insert("authorization", HeaderValue::from_str(&format!("Bearer {token}")).unwrap());
+    bearer.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+    );
 
-    app.request_with(Method::GET, "/api/cardid/corrections", None, bearer.clone()).await.assert_json(200);
-    app.request_with(Method::POST, "/api/cardid/corrections", Some(payload()), bearer.clone()).await.assert_json(401);
+    app.request_with(Method::GET, "/api/cardid/corrections", None, bearer.clone())
+        .await
+        .assert_json(200);
+    app.request_with(
+        Method::POST,
+        "/api/cardid/corrections",
+        Some(payload()),
+        bearer.clone(),
+    )
+    .await
+    .assert_json(401);
     let mut wrong = HeaderMap::new();
     wrong.insert("authorization", HeaderValue::from_static("Bearer wrong"));
-    app.request_with(Method::GET, "/api/cardid/corrections", None, wrong).await.assert_json(403);
+    app.request_with(Method::GET, "/api/cardid/corrections", None, wrong)
+        .await
+        .assert_json(403);
 
     sqlx::query("UPDATE users SET disabled_at = ? WHERE id = ?")
         .bind(the_gathering::db::UtcDateTime::now())
@@ -372,5 +487,7 @@ async fn scoped_bearer_token_is_read_only_and_revoked_when_its_administrator_is_
         .execute(app.pool())
         .await
         .unwrap();
-    app.request_with(Method::GET, "/api/cardid/corrections", None, bearer).await.assert_json(403);
+    app.request_with(Method::GET, "/api/cardid/corrections", None, bearer)
+        .await
+        .assert_json(403);
 }
