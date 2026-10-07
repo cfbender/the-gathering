@@ -26,6 +26,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # One-off release builds: incremental state is never reused.
+  CARGO_INCREMENTAL: 0
   NODE_VERSION: 26.9.0
   NODE_SHA256: c6ecd8efc1c1d395265891675319da7a7b3785c6be174bd78933cf4f057624d1
   AUBE_VERSION: 1.21.0

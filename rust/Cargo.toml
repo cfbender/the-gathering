@@ -35,10 +35,13 @@ similar_names = "allow"
 assert_is_empty = "allow"
 
 [profile.dev.package."*"]
-# Dependencies (bcrypt, resvg, WebRTC crypto) are unbearably slow unoptimized.
+# Dependencies (bcrypt, resvg, WebRTC crypto) are unbearably slow unoptimized. No debug info
+# for them: backtraces still name their functions, and it keeps links and the target small.
 opt-level = 2
+debug = 0
 
 [profile.dev]
-# Dozens of integration-test binaries each link the whole server; full debug info made
-# the target directory tens of gigabytes.
+# Line tables are enough for backtraces with file and line; full debug info made the target
+# directory tens of gigabytes. Incremental compilation stays on (the dev default); CI and the
+# release builds turn it off with CARGO_INCREMENTAL=0, since they start from scratch.
 debug = "line-tables-only"

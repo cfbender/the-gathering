@@ -48,6 +48,8 @@ RUN apk add --no-cache build-base cmake perl git
 WORKDIR /app/rust
 COPY rust ./
 # Queries are checked against the committed .sqlx metadata (SQLX_OFFLINE in .cargo/config.toml).
+# Release builds are not incremental by default; the variable keeps it that way explicitly.
+ENV CARGO_INCREMENTAL=0
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/rust/target \
     cargo build --release --locked --bin the-gathering \

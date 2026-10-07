@@ -659,10 +659,10 @@ can still save or share what they saw; this feature cannot revoke frames already
   saves every change before broadcasting it, and stops when its last connection leaves. A failing
   room only disconnects its own channels, which rejoin from the saved snapshot. A pruner closes
   idle rooms and deletes expired sessions; running rooms refresh their own expiry (covered by
-  `tests/webcam_room_lifecycle.rs`).
+  `tests/integration/webcam_room_lifecycle.rs`).
 - `webcam/turns.rs` owns pure turn advancement, elimination skipping, counts and
   accumulated-time accounting, and `webcam/timer.rs` the pause-aware game clock
-  (`tests/webcam_tables_pure.rs`).
+  (`tests/integration/webcam_tables_pure.rs`).
 - `GET /api/webcam-table/config` exposes authenticated ICE configuration and the SFU transport mode.
 - `rust/crates/sfu` is the media server: one room task per table, one str0m `Rtc` per seat,
   per-viewer layer selection and packet rewriting, and the simulcast SDP repair (its unit tests

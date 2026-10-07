@@ -8,7 +8,7 @@ The Gathering is a self-hosted Commander (Magic: The Gathering) game tracker: a 
   - `rust/migrations/*.sql` — the schema's only source, one file per migration (`<14-digit UTC version>_<name>.sql`). The versions continue the numbering existing databases record in `schema_migrations`.
   - `rust/schema.sql` — the generated dump of those migrations, committed for review; `rust/.sqlx` — committed query metadata for offline builds.
   - `rust/crates/the-gathering/src/web/` — router (`mod.rs`), auth guards, session/CSRF, the SPA shell, and the `/api` handlers in `web/api/`.
-  - `rust/crates/the-gathering/tests/` — HTTP and domain tests; `tests/support` is the harness and `tests/fixtures` holds recorded payloads.
+  - `rust/crates/the-gathering/tests/integration/` — HTTP and domain tests, compiled as one test binary (`main.rs` lists the modules; add a new file there); `support/` is the harness. `tests/fixtures` holds recorded payloads.
 - `assets/react/` — the React app. Product code is organized under `src/features/` (games, decks, imports, and admin); thin TanStack Router adapters live in `src/routes/`, and `routeTree.gen.ts` is generated. Shared presentation and UI primitives remain in `src/components/`. Tailwind 4 + daisyUI themes live in `src/app.css`.
 - `priv/static/` — static files the server serves; the frontend build writes `priv/static/assets/react`.
 - Card-recognition models (dataset, training, evaluation, ONNX bundle export and publishing) live in the separate [Oracle](https://github.com/cfbender/oracle) repository, which ManaVault shares; this app only serves published bundles from `DATA_DIR/cardid`.
@@ -76,7 +76,8 @@ Production/container commands are documented in `README.md`.
 - Rust backend: keep the lotus conventions (no `unsafe`; no `unwrap`/`expect`/`panic!`/indexing/`as` outside tests; literal regexes via `crate::regex::compile`; `sqlx::query!` macros checked against the schema; `crate::db::begin` for write transactions). JSON shapes, status codes, and error messages are what the frontend depends on; change them together with the frontend and add tests alongside behavior.
 - Comments that mention "Elixir" record behavior of the earlier Elixir server that the Rust server stays compatible with (session cookies, signed tokens, stored import identities) or bugs it fixed; there is no Elixir code left.
 - Run the narrowest relevant tests before reporting completion, and `mise run precommit` when a change is complete.
-- Each Rust integration test gets its own temporary SQLite database (`tests/support`), so tests run in parallel.
+- Each Rust integration test gets its own temporary SQLite database (`tests/integration/support`), so tests run in parallel in one process. Process-wide state (the tracing subscriber) is shared: capture logs with `support::capture_logs()`, which is per thread.
+- Compile times: dev builds are incremental and link with mold when installed (`rust/scripts/link-gcc`; `.agents/setup` installs it). `mise run rust:sweep` drops stale incremental caches; `mise run rust:bench` measures the dev loop (numbers in `rust/notes/compile-times.md`).
 - CI (`.github/workflows/quality.yml`) runs the `precommit` steps as parallel jobs: the Rust job (schema dump check, online query check, `rust:check`, `deploy/proxmox/test.sh`) and the frontend job (`vp check`, `vp test run`, build). Keep the workflow in sync with the `precommit` task.
 - For UI changes, verify the rendered result through the review portal and leave the service running.
 - Update documentation when project structure, setup, or runtime behavior changes.

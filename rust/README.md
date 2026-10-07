@@ -34,8 +34,8 @@ lives here.
   - `webcam/`: webcam table rooms (one tokio task per room), turns, timer, log, cards,
     and saved sessions; `web/channels/`: the channels server (V2 JSON over
     `/socket/websocket`), pubsub, presence, and the `webcam_table:*` channel.
-  - `tests/`: HTTP and domain tests (`tests/support` is the harness, `tests/fixtures`
-    holds recorded decklist, Discord, and Scryfall payloads).
+  - `tests/integration/`: HTTP and domain tests, compiled as one binary (`support/` is the
+    harness); `tests/fixtures` holds recorded decklist, Discord, and Scryfall payloads.
 - `crates/sfu/`: the webcam table's WebRTC SFU (see its README).
 - `migrations/`: the schema, one SQL file per migration.
 - `schema.sql`: the schema those migrations produce (generated, committed for review).
@@ -62,6 +62,20 @@ cd rust
 export SQLX_OFFLINE=false DATABASE_URL="sqlite://$PWD/target/schema.db?mode=ro"
 cargo test
 ```
+
+## Compile times
+
+Dev builds are incremental and link through `scripts/link-gcc` (mold when installed, else lld,
+else the system linker); dependencies build optimized without debug info. CI, the release
+workflow, and the Docker build set `CARGO_INCREMENTAL=0`. The integration tests are a single
+binary, so an edit links the server into one test executable rather than forty.
+
+```sh
+mise run rust:bench    # cold, edit-then-build, edit-then-check, edit-then-test timings
+mise run rust:sweep    # drop incremental caches untouched for a week; cargo clean if still large
+```
+
+`notes/compile-times.md` has the measurements and why the server is still one crate.
 
 ## Schema and migrations
 

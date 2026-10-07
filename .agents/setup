@@ -34,6 +34,7 @@ if [[ "$(uname -s)" == "Linux" ]] && command -v apt-get >/dev/null 2>&1; then
     curl
     fonts-dejavu-core
     git
+    mold
     pkg-config
     python3
     unzip
@@ -154,7 +155,8 @@ run_step "Installing JavaScript dependencies" \
   mise exec -- aube install --frozen-lockfile
 
 # Build the server and its tests against the committed sqlx metadata so the first
-# `mise run dev` / `mise run test` starts quickly.
+# `mise run dev` / `mise run test` starts quickly. This stays incremental (unlike CI and the
+# release builds): it is the cache the next edit-and-build in this orb reuses.
 run_step "Building the Rust server and tests" \
   bash -c 'cd rust && mise exec -- cargo build --locked --bin the-gathering && mise exec -- cargo test --locked --no-run'
 

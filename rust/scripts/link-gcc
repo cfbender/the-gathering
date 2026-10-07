@@ -1,0 +1,16 @@
+#!/bin/sh
+# Linker for Linux GNU targets (rust/.cargo/config.toml; the name ends in -gcc so rustc
+# passes gcc-style arguments): the C compiler driving mold when it is
+# installed, else lld, else the system linker. Linking dozens of test binaries dominates an
+# edit-and-test cycle, and mold links them several times faster than GNU ld.
+#
+# THE_GATHERING_LINKER=default skips the faster linkers (for comparing, or if one misbehaves).
+cc="${CC:-cc}"
+if [ "${THE_GATHERING_LINKER:-}" != default ]; then
+  if command -v mold >/dev/null 2>&1; then
+    exec "$cc" -fuse-ld=mold "$@"
+  elif command -v ld.lld >/dev/null 2>&1; then
+    exec "$cc" -fuse-ld=lld "$@"
+  fi
+fi
+exec "$cc" "$@"

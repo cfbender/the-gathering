@@ -38,6 +38,22 @@ run = [
   "cargo test --locked",
 ]
 
+[tasks."rust:sweep"]
+description = "Drop incremental-compilation caches untouched for 7 days (DAYS=n to change) and show rust/target's size."
+dir = "rust"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+days="${DAYS:-7}"
+find target -mindepth 3 -maxdepth 3 -path 'target/*/incremental/*' -type d -mtime "+$days" -exec rm -rf {} + 2>/dev/null || true
+du -sh target 2>/dev/null || true
+echo "Run cargo clean in rust/ when that is still too large; the next build is a cold one."
+'''
+
+[tasks."rust:bench"]
+description = "Measure cold, edit-then-build, edit-then-check, and edit-then-test compile times (see rust/notes/compile-times.md)."
+run = "bash rust/scripts/bench-build.sh"
+
 [tasks."rust:new-migration"]
 description = "Create rust/migrations/<UTC timestamp>_<name>.sql: mise run rust:new-migration add_widgets"
 run = '''

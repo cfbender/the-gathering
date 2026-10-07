@@ -44,7 +44,11 @@ helpers="$scratch/helpers"
 mkdir -p "$helpers"
 put_file() { cat >"$helpers/$(basename "$2")"; }
 push_update_hook() { :; }
+NETWORK_DROPIN="$scratch/dropin/wait-for-ipv4.conf"
 push_helpers ""
+grep -q '^ExecStartPre=-/bin/sh -c .*ip -4 -o addr show scope global' "$helpers/wait-for-ipv4.conf" &&
+  grep -q '^After=network-online.target' "$helpers/wait-for-ipv4.conf"
+check "the service waits for a global IPv4 address before starting" 0 $?
 grep -q 'ref=preview' "$helpers/update"
 check "update helper fetches the script from the preview tag on preview installs" 0 $?
 bash -n "$helpers/update" && bash -n "$helpers/the-gathering-install"
