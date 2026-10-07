@@ -32,3 +32,8 @@ must_use_candidate = "allow"
 [profile.dev.package."*"]
 # Dependencies (bcrypt, resvg, WebRTC crypto) are unbearably slow unoptimized.
 opt-level = 2
+
+[profile.dev]
+# Dozens of integration-test binaries each link the whole server; full debug info made
+# the target directory tens of gigabytes.
+debug = "line-tables-only"
