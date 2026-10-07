@@ -89,7 +89,6 @@ pub(crate) fn h264_keyframe(payload: &[u8]) -> bool {
         return false;
     };
     match header & 0x1f {
-        0 => false,
         // A single NAL unit.
         nalu_type @ 1..=23 => nalu_type == 7,
         // STAP-A.

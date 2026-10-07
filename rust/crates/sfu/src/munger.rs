@@ -94,7 +94,7 @@ impl Munger {
             if let Some(vp8) = &mut self.vp8 {
                 vp8.update(packet.payload);
             }
-            let vp8 = self.vp8.as_mut().map(|vp8| vp8.munge(packet.payload));
+            let vp8 = self.vp8.as_mut().and_then(|vp8| vp8.munge(packet.payload));
 
             // At least one tick, in case the last packet of the old encoding and the first of
             // the new one arrived (almost) together.
@@ -123,7 +123,7 @@ impl Munger {
             return out;
         }
 
-        let vp8 = self.vp8.as_mut().map(|vp8| vp8.munge(packet.payload));
+        let vp8 = self.vp8.as_mut().and_then(|vp8| vp8.munge(packet.payload));
         let out = self.adjust(packet, vp8);
         let delta = i32::from(out.sequence_number) - i32::from(last.sequence_number);
         if delta < -BREAKPOINT || (delta > 0 && delta < BREAKPOINT) {
@@ -136,11 +136,11 @@ impl Munger {
         out
     }
 
-    fn adjust(&self, packet: &RtpIn<'_>, vp8: Option<Option<Vp8Rewrite>>) -> RtpOut {
+    fn adjust(&self, packet: &RtpIn<'_>, vp8: Option<Vp8Rewrite>) -> RtpOut {
         RtpOut {
             sequence_number: packet.sequence_number.wrapping_sub(self.sn_offset),
             timestamp: packet.timestamp.wrapping_sub(self.ts_offset),
-            vp8: vp8.flatten(),
+            vp8,
         }
     }
 }
@@ -161,7 +161,7 @@ impl Field {
 
     /// The new encoding's value continues one past the last value forwarded.
     ///
-    /// ex_webrtc subtracted from a missing value and crashed the room when the new encoding's
+    /// `ex_webrtc` subtracted from a missing value and crashed the room when the new encoding's
     /// descriptor lacked the field; a missing field keeps the old offset here.
     fn update(&mut self, value: Option<i32>) {
         if let (true, Some(value)) = (self.used, value) {
@@ -171,7 +171,7 @@ impl Field {
 
     fn munge(&mut self, value: Option<i32>, modulus: i32) -> Option<i32> {
         let munged = value.map(|value| (value + modulus - self.offset).rem_euclid(modulus));
-        // ex_webrtc stored the missing value and crashed on the next switch.
+        // `ex_webrtc` stored the missing value and crashed on the next switch.
         if let Some(munged) = munged {
             self.last = munged;
         }
@@ -197,7 +197,7 @@ struct Vp8Fields {
 }
 
 impl Vp8Fields {
-    /// ex_webrtc crashed the room on a payload it could not parse; such a packet is forwarded
+    /// `ex_webrtc` crashed the room on a payload it could not parse; such a packet is forwarded
     /// unchanged here.
     fn parse(payload: &[u8]) -> Option<Self> {
         let descriptor = Vp8Descriptor::parse(payload).ok()?;

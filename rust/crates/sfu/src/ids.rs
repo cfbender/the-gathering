@@ -9,12 +9,6 @@ macro_rules! id {
         #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
         pub(crate) struct $name(Arc<str>);
 
-        impl $name {
-            pub(crate) fn as_str(&self) -> &str {
-                &self.0
-            }
-        }
-
         impl From<&str> for $name {
             fn from(value: &str) -> Self {
                 Self(Arc::from(value))

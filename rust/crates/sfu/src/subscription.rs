@@ -12,7 +12,6 @@
 use str0m::media::Mid;
 
 use crate::codec::CodecParams;
-use crate::ids::PeerId;
 use crate::layer::Encoding;
 use crate::munger::{Munger, RtpIn, RtpOut};
 
@@ -30,7 +29,6 @@ pub(crate) enum Route {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Subscription {
-    pub(crate) owner: PeerId,
     /// The viewer's `sendonly` media section carrying this board, once offered.
     pub(crate) mid: Option<Mid>,
     pub(crate) wanted: Encoding,
@@ -43,13 +41,14 @@ pub(crate) struct Subscription {
     /// the ones before it were forwarded.
     newest: Option<u16>,
     seen: SeenWindow,
+    /// The highest sequence number written to the viewer, extended past 16 bits.
+    written: Option<u64>,
 }
 
 impl Subscription {
     /// A subscription that starts on `wanted` as soon as that layer sends a keyframe.
-    pub(crate) fn new(owner: PeerId, wanted: Encoding) -> Self {
+    pub(crate) fn new(wanted: Encoding) -> Self {
         Self {
-            owner,
             mid: None,
             wanted,
             layer: None,
@@ -59,7 +58,27 @@ impl Subscription {
             started: false,
             newest: None,
             seen: SeenWindow::default(),
+            written: None,
         }
+    }
+
+    /// The forwarded 16-bit sequence number extended with the rollovers before it, as the
+    /// viewer's send stream counts them.
+    pub(crate) fn extend_sequence(&mut self, seq: u16) -> u64 {
+        let Some(highest) = self.written else {
+            self.written = Some(u64::from(seq));
+            return u64::from(seq);
+        };
+        let candidate = (highest & !0xFFFF) | u64::from(seq);
+        let extended = if candidate > highest.saturating_add(0x8000) && candidate >= 0x1_0000 {
+            candidate - 0x1_0000
+        } else if candidate.saturating_add(0x8000) < highest {
+            candidate + 0x1_0000
+        } else {
+            candidate
+        };
+        self.written = Some(highest.max(extended));
+        extended
     }
 
     /// Records the codec the viewer's sender sends in. Packets are rewritten in that codec's
@@ -152,10 +171,10 @@ impl Subscription {
         self.layer = Some(rid);
         self.newest = None;
         self.seen = SeenWindow::default();
-        if self.started {
-            if let Some((_, munger)) = &mut self.sender {
-                munger.update();
-            }
+        if self.started
+            && let Some((_, munger)) = &mut self.sender
+        {
+            munger.update();
         }
     }
 
@@ -287,12 +306,12 @@ mod tests {
             pt: Pt::from(96),
             codec: VideoCodec::H264,
             clock_rate: 90_000,
-            bitstream: Some((Some(0x42e0_1f), 1)),
+            bitstream: Some((Some(0x0042_e01f), 1)),
         }
     }
 
     fn subscription(wanted: Encoding) -> Subscription {
-        let mut sub = Subscription::new(PeerId::from("owner"), wanted);
+        let mut sub = Subscription::new(wanted);
         sub.set_codec(codec());
         sub
     }
@@ -319,7 +338,7 @@ mod tests {
 
     #[test]
     fn nothing_is_forwarded_until_the_sender_codec_is_applied() {
-        let mut sub = Subscription::new(PeerId::from("o"), M);
+        let mut sub = Subscription::new(M);
         assert!(!sub.ready());
         assert_eq!(sub.route(M, &packet(1), true), Route::Skip);
     }
@@ -478,6 +497,20 @@ mod tests {
         forwarded(sub.route(H, &packet(500), true));
         forwarded(sub.route(H, &packet(501), false));
         assert_eq!(sub.route(H, &packet(501), false), Route::Skip);
+    }
+
+    #[test]
+    fn written_sequence_numbers_extend_across_rollovers() {
+        let mut sub = subscription(M);
+        assert_eq!(sub.extend_sequence(65_534), 65_534);
+        assert_eq!(sub.extend_sequence(65_535), 65_535);
+        assert_eq!(sub.extend_sequence(0), 65_536);
+        assert_eq!(
+            sub.extend_sequence(65_535),
+            65_535,
+            "a late packet from before the rollover"
+        );
+        assert_eq!(sub.extend_sequence(2), 65_538);
     }
 
     #[test]

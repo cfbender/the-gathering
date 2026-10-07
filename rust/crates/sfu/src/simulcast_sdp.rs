@@ -4,7 +4,7 @@
 //! The browser's first offer declares its camera's layers (`a=rid:… send` and
 //! `a=simulcast:send …`), and the server reverses them in its answer. A browser that is later
 //! offered its camera's media section without them stops sending every layer but the first.
-//! ex_webrtc dropped the lines from its re-offers; str0m keeps them, so for this server
+//! `ex_webrtc` dropped the lines from its re-offers; str0m keeps them, so for this server
 //! [`restore`] only fills in lines that are actually missing and is otherwise a no-op. It is
 //! kept as a guard because losing the lines silently degrades every board to its lowest layer.
 
@@ -75,7 +75,7 @@ fn declares(section: &str, attr: &str) -> bool {
 }
 
 /// `a=rid:<id> send …` becomes `rid:<id> recv …`; `a=simulcast:send X recv Y` becomes
-/// `simulcast:send Y recv X` (as ex_webrtc's `SDPUtils.reverse_simulcast/1`).
+/// `simulcast:send Y recv X` (as `ex_webrtc`'s `SDPUtils.reverse_simulcast/1`).
 fn reverse_simulcast(section: &str) -> Vec<String> {
     section
         .lines()
@@ -205,8 +205,8 @@ mod tests {
             ["rid:l recv", "rid:m recv", "rid:h recv"]
         );
         for board in [board_a, board_b] {
-            assert!(section_attrs(board, "simulcast").is_empty());
-            assert!(section_attrs(board, "rid").is_empty());
+            assert_eq!(section_attrs(board, "simulcast"), Vec::<String>::new());
+            assert_eq!(section_attrs(board, "rid"), Vec::<String>::new());
         }
         assert!(
             restored
