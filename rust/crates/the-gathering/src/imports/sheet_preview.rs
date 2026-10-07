@@ -1,9 +1,9 @@
 //! Previewing a Google Sheet reconciliation.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use serde::Serialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::SqliteConnection;
 use time::{Duration, Time};
@@ -15,6 +15,22 @@ use super::ImportError;
 use super::csv::hex;
 use super::google_sheet::{self, SheetRow};
 use super::sheet_resolution::{self, Choice, Context, ResolvedRow};
+
+/// A pasted sheet and the admin's choices for its players, decks, and rows.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct SheetRequest {
+    /// The sheet as tab-separated text.
+    pub text: String,
+    /// Player choices by sheet name.
+    #[serde(default)]
+    pub players: BTreeMap<String, Choice>,
+    /// Deck choices by `<player>|<deck>` key.
+    #[serde(default)]
+    pub decks: BTreeMap<String, Choice>,
+    /// Row actions by row key.
+    #[serde(default)]
+    pub actions: BTreeMap<String, Choice>,
+}
 
 /// A player choice in the preview.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -107,12 +123,11 @@ pub struct SheetPreview {
 }
 
 /// `SheetPreview.run/1`; parse failures are `ImportError::Message`.
-pub async fn run(conn: &mut SqliteConnection, params: &Value) -> Result<SheetPreview, ImportError> {
-    let text = params
-        .get("text")
-        .and_then(Value::as_str)
-        .ok_or_else(|| ImportError::Message("File contents must be text.".to_owned()))?;
-    let rows = google_sheet::parse(text).map_err(ImportError::Message)?;
+pub async fn run(
+    conn: &mut SqliteConnection,
+    params: &SheetRequest,
+) -> Result<SheetPreview, ImportError> {
+    let rows = google_sheet::parse(&params.text).map_err(ImportError::Message)?;
     let players: Vec<PlayerRef> = player::list_players(conn, true)
         .await?
         .into_iter()
@@ -238,7 +253,7 @@ async fn candidates(
         .collect())
 }
 
-fn reject_duplicate_targets(rows: Vec<ResolvedRow>, params: &Value) -> Vec<ResolvedRow> {
+fn reject_duplicate_targets(rows: Vec<ResolvedRow>, params: &SheetRequest) -> Vec<ResolvedRow> {
     let mut counts: HashMap<i64, usize> = HashMap::new();
     for row in &rows {
         if let Choice::Id(id) = row.action {
@@ -256,10 +271,7 @@ fn reject_duplicate_targets(rows: Vec<ResolvedRow>, params: &Value) -> Vec<Resol
                     "Two sheet rows target the same game. Choose which one to use.".to_owned(),
                 );
                 row.status = "review";
-                let chosen = params
-                    .get("actions")
-                    .and_then(|actions| actions.get(&row.key))
-                    .is_some_and(|value| !value.is_null());
+                let chosen = params.actions.contains_key(&row.key);
                 if !chosen {
                     row.action = Choice::Text("skip".to_owned());
                 }
@@ -269,10 +281,9 @@ fn reject_duplicate_targets(rows: Vec<ResolvedRow>, params: &Value) -> Vec<Resol
         .collect()
 }
 
-/// SHA-256 of the input and the preview (JSON with sorted keys; Elixir hashed the
-/// Erlang terms).
+/// SHA-256 of the input and the preview (JSON with sorted keys).
 fn fingerprint(
-    params: &Value,
+    params: &SheetRequest,
     rows: &[ResolvedRow],
     players: &[PlayerRef],
     decks: &[DeckRef],

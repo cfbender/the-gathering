@@ -1,11 +1,11 @@
-//! The card catalog API: search and cards (`CardController`, `CardJSON`), printings
-//! (`CardPrintingController`, `CardPrintingJSON`), the sync status and admin triggers
-//! (`CatalogController`, `CatalogJSON`), and the image cache (`CardImageController`).
+//! The card catalog API: card search and details, printings, the sync status and admin
+//! triggers, and the image cache.
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -14,7 +14,7 @@ use crate::catalog::printings::{self, LookupError};
 use crate::catalog::{Card, Catalog, Printing, images};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
-use crate::web::params::Params;
+use crate::web::extract::{PathParam, QueryParams};
 
 use super::data;
 
@@ -96,26 +96,32 @@ pub fn printing_summary_json(printing: &Printing) -> Value {
     })
 }
 
-fn boolean_param(value: Option<&str>) -> Option<bool> {
-    match value {
-        Some("true") => Some(true),
-        Some("false") => Some(false),
-        _ => None,
-    }
+/// `GET /api/cards` parameters.
+#[derive(Debug, Default, Deserialize)]
+pub struct CardSearch {
+    /// Name search.
+    #[serde(default)]
+    q: String,
+    /// Most results (20 by default).
+    limit: Option<i64>,
+    /// Only cards that can (or cannot) be a commander.
+    commander: Option<bool>,
+    /// Only cards that can be a partner.
+    #[serde(default)]
+    partner: bool,
 }
 
 /// `GET /api/cards`: search the local catalog.
-pub async fn cards_index(State(state): State<AppState>, params: Params) -> ApiResult<Json<Value>> {
-    let limit = params
-        .str("limit")
-        .and_then(|limit| limit.parse::<i64>().ok())
-        .unwrap_or(20);
+pub async fn cards_index(
+    State(state): State<AppState>,
+    QueryParams(search): QueryParams<CardSearch>,
+) -> ApiResult<Json<Value>> {
     let cards = catalog(&state)
         .search(
-            params.str("q").unwrap_or_default(),
-            Some(limit),
-            boolean_param(params.str("commander")),
-            boolean_param(params.str("partner")) == Some(true),
+            &search.q,
+            Some(search.limit.unwrap_or(20)),
+            search.commander,
+            search.partner,
         )
         .await?;
     Ok(data(
@@ -126,7 +132,7 @@ pub async fn cards_index(State(state): State<AppState>, params: Params) -> ApiRe
 /// `GET /api/cards/:id`.
 pub async fn cards_show(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<String>,
 ) -> ApiResult<Json<Value>> {
     let card = catalog(&state)
         .get_card(&id)
@@ -135,25 +141,32 @@ pub async fn cards_show(
     Ok(data(card_detail_json(&card)))
 }
 
+/// `GET /api/card-printings` parameters.
+#[derive(Debug, Default, Deserialize)]
+pub struct PrintingsQuery {
+    /// The card's catalog id.
+    card_id: Option<String>,
+    /// Or its name.
+    name: Option<String>,
+    /// Page number, from 1.
+    page: Option<u32>,
+}
+
 /// `GET /api/card-printings`: a page of printings of the card named by `card_id` or `name`.
 pub async fn printings_index(
     State(state): State<AppState>,
-    params: Params,
+    QueryParams(query): QueryParams<PrintingsQuery>,
 ) -> ApiResult<Json<Value>> {
-    let page = match params.get("page") {
+    let page = match query.page {
         None => 1,
-        Some(Value::String(page)) => page
-            .parse::<u32>()
-            .ok()
-            .filter(|page| *page > 0)
-            .ok_or(ApiError::BadRequest)?,
-        Some(_) => return Err(ApiError::BadRequest),
+        Some(0) => return Err(ApiError::BadRequest),
+        Some(page) => page,
     };
     let (printings, has_more) = catalog(&state)
         .list_printings(
             &state.scryfall,
-            params.str("card_id"),
-            params.str("name"),
+            query.card_id.as_deref(),
+            query.name.as_deref(),
             page,
         )
         .await?;
@@ -166,7 +179,7 @@ pub async fn printings_index(
 /// `GET /api/card-printings/:id`: a cached printing.
 pub async fn printings_show(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<String>,
 ) -> ApiResult<Json<Value>> {
     let printing = catalog(&state)
         .get_printing(&id)
@@ -178,7 +191,7 @@ pub async fn printings_show(
 /// `GET /api/card-printings/:id/details`: everything the card preview shows.
 pub async fn printings_details(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<String>,
 ) -> ApiResult<Response> {
     let details = printings::details(&state.pool, &state.scryfall, &id).await?;
     let mut response = data(printings::render_details(&details)).into_response();
@@ -192,7 +205,7 @@ pub async fn printings_details(
 /// `GET /api/card-printings/:id/rulings`.
 pub async fn printings_rulings(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<String>,
 ) -> ApiResult<Json<Value>> {
     let rulings = printings::rulings(&state.pool, &state.scryfall, &id).await?;
     Ok(data(rulings))
@@ -220,16 +233,22 @@ pub async fn catalog_backfill(State(state): State<AppState>) -> ApiResult<Json<V
     Ok(data(json!(summary)))
 }
 
+/// The card image to serve.
+#[derive(Debug, Deserialize)]
+pub struct ImageQuery {
+    /// Its Scryfall source URL.
+    url: String,
+}
+
 /// `GET /api/card-images?url=<scryfall source>`: the cached JPEG, revalidated by `ETag`.
 pub async fn card_image(
     State(state): State<AppState>,
     headers: HeaderMap,
-    params: Params,
+    QueryParams(ImageQuery { url: source }): QueryParams<ImageQuery>,
 ) -> ApiResult<Response> {
-    let source = params.str("url").ok_or(ApiError::BadRequest)?;
     let (body, cache) = state
         .card_images
-        .fetch(source)
+        .fetch(&source)
         .await
         .map_err(|error| match error {
             ImageError::BadRequest => ApiError::BadRequest,

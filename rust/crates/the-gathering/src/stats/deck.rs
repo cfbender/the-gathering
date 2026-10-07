@@ -1,5 +1,6 @@
 //! One deck's statistics.
 
+use super::query::DateRange;
 use serde_json::{Value, json};
 use sqlx::SqliteConnection;
 
@@ -20,7 +21,7 @@ fn results(seat: Option<&Seat>) -> Vec<GameResult> {
 pub async fn get(
     conn: &mut SqliteConnection,
     deck_id: i64,
-    params: &Value,
+    params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
     let Some(deck) = get_deck(conn, deck_id).await? else {
         return Ok(None);

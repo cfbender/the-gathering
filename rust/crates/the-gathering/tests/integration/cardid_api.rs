@@ -434,7 +434,7 @@ async fn exports_require_admin_and_cursor_pages_do_not_expose_owner_ids() {
     app.get("/api/cardid/corrections?cursor=-1")
         .await
         .assert_json(400);
-    app.get("/api/cardid/corrections?cursor[]=1")
+    app.get("/api/cardid/corrections?cursor=abc")
         .await
         .assert_json(400);
     assert_eq!(

@@ -80,24 +80,32 @@ impl Fixture {
     }
 
     async fn overview(&self, params: Value) -> Value {
-        stats::overview(self.app.pool(), &params).await.unwrap()
+        stats::overview(self.app.pool(), &support::input(params.clone()))
+            .await
+            .unwrap()
     }
 
     async fn player(&self, name: &str, params: Value) -> Value {
-        stats::player(self.app.pool(), self.id(name), &params)
-            .await
-            .unwrap()
-            .unwrap()
+        stats::player(
+            self.app.pool(),
+            self.id(name),
+            &support::input(params.clone()),
+        )
+        .await
+        .unwrap()
+        .unwrap()
     }
 
     async fn commander(&self, id: &str, params: Value) -> Option<Value> {
-        stats::commander(self.app.pool(), id, &params)
+        stats::commander(self.app.pool(), id, &support::input(params.clone()))
             .await
             .unwrap()
     }
 
     async fn commanders(&self, params: Value) -> Vec<Value> {
-        stats::commanders(self.app.pool(), &params).await.unwrap()
+        stats::commanders(self.app.pool(), &support::input(params.clone()))
+            .await
+            .unwrap()
     }
 }
 
@@ -808,7 +816,7 @@ async fn players_below_the_game_floor_are_rated_but_unranked() {
     }
     assert_eq!(stats::MIN_GAMES, 3);
     assert_eq!(f.overview(json!({})).await["elo"][0]["name"], "Dana");
-    let dana_elo = stats::player(f.app.pool(), dana.id, &json!({}))
+    let dana_elo = stats::player(f.app.pool(), dana.id, &support::input(json!({})))
         .await
         .unwrap()
         .unwrap()["elo"]
@@ -828,10 +836,14 @@ async fn players_below_the_game_floor_are_rated_but_unranked() {
 #[tokio::test]
 async fn deck_stats_include_record_opponents_averages_and_recent_results() {
     let f = setup().await;
-    let stats = stats::deck(f.app.pool(), f.decks["Alice"].id, &json!({}))
-        .await
-        .unwrap()
-        .unwrap();
+    let stats = stats::deck(
+        f.app.pool(),
+        f.decks["Alice"].id,
+        &support::input(json!({})),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(
         stats["record"],
         json!({"games": 6, "wins": 3, "losses": 2, "draws": 1, "win_rate": 50.0})
@@ -903,10 +915,14 @@ async fn the_detailed_stats_cutoff_keeps_records_but_drops_earlier_seat_timing_a
     f.app
         .settings(json!({"detailed_stats_from": "2026-03-05"}))
         .await;
-    let deck = stats::deck(f.app.pool(), f.decks["Alice"].id, &json!({}))
-        .await
-        .unwrap()
-        .unwrap();
+    let deck = stats::deck(
+        f.app.pool(),
+        f.decks["Alice"].id,
+        &support::input(json!({})),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(deck["record"]["games"], 6);
     assert_eq!(deck["average_duration_minutes"], Value::Null);
     assert_eq!(deck["average_turns"], Value::Null);
@@ -917,10 +933,14 @@ async fn the_detailed_stats_cutoff_keeps_records_but_drops_earlier_seat_timing_a
         f.overview(json!({})).await["detailed_stats_from"],
         Value::Null
     );
-    let deck = stats::deck(f.app.pool(), f.decks["Alice"].id, &json!({}))
-        .await
-        .unwrap()
-        .unwrap();
+    let deck = stats::deck(
+        f.app.pool(),
+        f.decks["Alice"].id,
+        &support::input(json!({})),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(deck["average_turns"], 9.0);
 }
 

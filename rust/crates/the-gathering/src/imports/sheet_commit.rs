@@ -1,7 +1,6 @@
 //! Committing a reviewed Google Sheet reconciliation.
 
 use serde::Serialize;
-use serde_json::Value;
 use sqlx::SqliteConnection;
 
 use crate::db;
@@ -13,7 +12,7 @@ use crate::validation::ValidationError;
 
 use super::ImportError;
 use super::csv::noon;
-use super::sheet_preview;
+use super::sheet_preview::{self, SheetRequest};
 use super::sheet_resolution::{Choice, ResolvedRow, ResolvedSeat, SeatPlayer};
 
 const STALE: &str = "Preview is stale or invalid. Preview again before importing.";
@@ -35,7 +34,7 @@ pub struct SheetResult {
 /// it still has the reviewed revision and is valid.
 pub async fn run(
     state: &AppState,
-    params: &Value,
+    params: &SheetRequest,
     revision: Option<&str>,
     user_id: Option<i64>,
 ) -> Result<SheetResult, ImportError> {

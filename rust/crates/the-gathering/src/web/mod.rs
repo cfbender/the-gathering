@@ -1,13 +1,14 @@
-//! The HTTP layer: the router and its pipelines.
+//! The HTTP layer: the router and the middleware each route group runs through.
 //!
-//! Route groups mirror the Phoenix router's `pipe_through` lists. Every `/api` route is
-//! session-authenticated except `/api/v1`, which uses personal API keys.
+//! Routes are grouped by the guards they need (`route_layer`): public, credential-rate-
+//! limited, members, administrators, and sudo. Every `/api` route runs in the cookie
+//! session (with CSRF checks on state-changing methods) except `/api/v1`, which takes
+//! personal API keys.
 
 pub mod api;
 pub mod auth;
 pub mod channels;
 pub mod extract;
-pub mod params;
 pub mod request_id;
 pub mod session;
 pub mod shell;
@@ -35,12 +36,8 @@ pub enum Bucket {
     ApiKeys,
 }
 
-/// Largest request body read (`Plug.Parsers`' default 8 MB).
+/// Largest request body read: 8 MB, room for a portable export or a CSV of years of games.
 pub const BODY_LIMIT: usize = 8_000_000;
-
-async fn not_found() -> ApiError {
-    ApiError::NotFound
-}
 
 /// The JSON 404 for API paths that match no route.
 pub async fn api_not_found() -> ApiError {
@@ -49,7 +46,6 @@ pub async fn api_not_found() -> ApiError {
 
 /// Builds the whole application router.
 pub fn router(state: AppState) -> Router {
-    // pipe_through :api
     let public = Router::new()
         .route("/api/health", get(accounts::health))
         .route("/api/registration", get(accounts::registration_show))
@@ -67,7 +63,6 @@ pub fn router(state: AppState) -> Router {
             get(cardid::corrections_crop),
         );
 
-    // pipe_through [:api, :rate_limit_credentials]
     let credentials = Router::new()
         .route("/api/users", post(accounts::registration_create))
         .route("/api/session", post(accounts::session_create))
@@ -76,7 +71,6 @@ pub fn router(state: AppState) -> Router {
             api::rate_limit_credentials,
         ));
 
-    // pipe_through [:api, :require_authenticated_user]
     let members = Router::new()
         .route("/api/session/user", patch(accounts::update_profile))
         .route(
@@ -139,7 +133,6 @@ pub fn router(state: AppState) -> Router {
             "/api/players/{id}",
             get(games::players_show)
                 .patch(games::players_update)
-                .put(games::players_update)
                 .delete(games::players_delete),
         )
         .route(
@@ -150,7 +143,6 @@ pub fn router(state: AppState) -> Router {
             "/api/decks/{id}",
             get(games::decks_show)
                 .patch(games::decks_update)
-                .put(games::decks_update)
                 .delete(games::decks_delete),
         )
         .route("/api/decks/{id}/decklist", get(games::decklist_show))
@@ -163,19 +155,16 @@ pub fn router(state: AppState) -> Router {
             "/api/games/{id}",
             get(games::games_show)
                 .patch(games::games_update)
-                .put(games::games_update)
                 .delete(games::games_delete),
         )
         .route("/api/decklists/resolve", post(games::decklist_resolve))
         .route_layer(from_fn(require_authenticated_user));
 
-    // pipe_through [:api, :require_authenticated_user, :rate_limit_sudo]
     let sudo = Router::new()
         .route("/api/session/sudo", post(accounts::session_sudo))
         .route_layer(from_fn_with_state(state.clone(), api::rate_limit_sudo))
         .route_layer(from_fn(require_authenticated_user));
 
-    // pipe_through [:api, :require_authenticated_user, :require_admin]
     let admins = Router::new()
         .route("/api/imports/csv/sample", get(imports::csv_sample))
         .route("/api/imports/csv/preview", post(imports::csv_preview))
@@ -192,7 +181,6 @@ pub fn router(state: AppState) -> Router {
         .route_layer(from_fn(require_admin))
         .route_layer(from_fn(require_authenticated_user));
 
-    // pipe_through [:api, :require_authenticated_user, :require_admin, :require_sudo_mode]
     let sudo_admins = Router::new()
         .route("/api/imports/csv", post(imports::csv_create))
         .route(
@@ -205,9 +193,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/admin/users", get(accounts::admin_users_index))
         .route(
             "/api/admin/users/{id}",
-            patch(accounts::admin_users_update)
-                .put(accounts::admin_users_update)
-                .delete(accounts::admin_users_delete),
+            patch(accounts::admin_users_update).delete(accounts::admin_users_delete),
         )
         .route(
             "/api/admin/users/{id}/sessions",
@@ -245,13 +231,12 @@ pub fn router(state: AppState) -> Router {
         .route_layer(from_fn(require_admin))
         .route_layer(from_fn(require_authenticated_user));
 
-    // pipe_through [:api, :require_authenticated_user, :require_sudo_mode]
     let sudo_members = Router::new()
         .route("/api/session/password", patch(accounts::update_password))
         .route_layer(from_fn_with_state(state.clone(), require_sudo_mode))
         .route_layer(from_fn(require_authenticated_user));
 
-    // The SPA and browser-facing redirects (pipe_through :browser).
+    // The SPA and browser-facing redirects.
     let browser = Router::new()
         .route("/auth/discord", get(accounts::discord_request))
         .route("/auth/discord/callback", get(accounts::discord_callback))
@@ -284,24 +269,22 @@ pub fn router(state: AppState) -> Router {
         .route("/api", any(api_not_found))
         .route("/api/{*path}", any(api_not_found))
         .merge(browser)
-        .method_not_allowed_fallback(not_found)
         .layer(from_fn_with_state(state.clone(), auth::current_user_layer))
         .layer(from_fn(session::csrf_layer))
         .layer(from_fn_with_state(state.clone(), session::session_layer));
 
-    // Read-only, versioned API for personal API keys (pipe_through :api_key).
+    // Read-only, versioned API for personal API keys.
     let v1 = Router::new()
         .route("/api/v1/games", get(games::v1_games_index))
         .route_layer(from_fn_with_state(state.clone(), api::rate_limit_api_keys))
         .route_layer(from_fn_with_state(state.clone(), auth::api_key_layer));
 
-    // `Plug.RequestId` and request logging run after `Plug.Static` and the socket in the
-    // endpoint, so only routed requests get them.
+    // Static files and the socket are not logged; routed requests get an id and a log line.
     let routed = Router::new()
         .merge(v1)
         .merge(sessioned)
-        // `Plug.Parsers`' default `length`.
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(request_id::trace_layer())
         .layer(from_fn(request_id::layer));
 
     Router::new()

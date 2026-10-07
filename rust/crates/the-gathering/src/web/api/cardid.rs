@@ -6,7 +6,7 @@ use std::path::Path as FsPath;
 
 use axum::Json;
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Map, Value, json};
@@ -19,7 +19,7 @@ use crate::card_id::{self, corrections::CorrectionError};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 use crate::web::auth::{AuthUser, MaybeUser};
-use crate::web::params::Params;
+use crate::web::extract::{JsonBody, PathParam, QueryParams};
 
 use super::{check_user_limit, data};
 
@@ -92,7 +92,7 @@ pub async fn bundle_show(State(state): State<AppState>) -> ApiResult<Response> {
 /// `GET /api/cardid/bundles/:version/:name`: one file of a version, cacheable forever.
 pub async fn bundle_file(
     State(state): State<AppState>,
-    Path((version, name)): Path<(String, String)>,
+    PathParam((version, name)): PathParam<(String, String)>,
 ) -> ApiResult<Response> {
     let path = card_id::file_path(&state.config.data_dir, &version, &name)
         .await
@@ -119,7 +119,7 @@ impl From<CorrectionError> for ApiError {
 pub async fn corrections_create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(correction): JsonBody<Value>,
 ) -> ApiResult<Response> {
     check_user_limit(
         &state,
@@ -127,7 +127,7 @@ pub async fn corrections_create(
         user.id,
         state.config.rate_limits.corrections,
     )?;
-    let capture_id = state.corrections.save(&params.0, user.id).await?;
+    let capture_id = state.corrections.save(&correction, user.id).await?;
     Ok((
         StatusCode::CREATED,
         data(json!({ "capture_id": capture_id })),
@@ -176,20 +176,23 @@ async fn valid_export_token(state: &AppState, token: &str) -> ApiResult<bool> {
     Ok(admin.is_some_and(|admin| admin.is_admin() && admin.disabled_at.is_none()))
 }
 
+/// `GET /api/cardid/corrections` parameters.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct CursorQuery {
+    /// Where the previous page ended.
+    #[serde(default)]
+    cursor: usize,
+}
+
 /// `GET /api/cardid/corrections?cursor=N`: a page of labels for Oracle's importer.
 pub async fn corrections_index(
     State(state): State<AppState>,
     MaybeUser(user): MaybeUser,
     headers: HeaderMap,
-    params: Params,
+    QueryParams(query): QueryParams<CursorQuery>,
 ) -> ApiResult<Response> {
     export_authorized(&state, &headers, user.as_ref()).await?;
-    let cursor = match params.get("cursor") {
-        None => 0,
-        Some(Value::String(cursor)) => cursor.parse::<usize>().map_err(|_| ApiError::BadRequest)?,
-        Some(_) => return Err(ApiError::BadRequest),
-    };
-    let page = state.corrections.page(cursor).await?;
+    let page = state.corrections.page(query.cursor).await?;
     let mut response = Json(json!({ "data": page })).into_response();
     response
         .headers_mut()
@@ -202,7 +205,7 @@ pub async fn corrections_crop(
     State(state): State<AppState>,
     MaybeUser(user): MaybeUser,
     headers: HeaderMap,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<String>,
 ) -> ApiResult<Response> {
     export_authorized(&state, &headers, user.as_ref()).await?;
     let path = state

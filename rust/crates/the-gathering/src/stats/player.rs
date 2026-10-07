@@ -1,5 +1,6 @@
 //! One player's statistics.
 
+use super::query::DateRange;
 use std::collections::HashMap;
 
 use serde_json::{Value, json};
@@ -25,7 +26,7 @@ fn results(seat: Option<&Seat>) -> Vec<GameResult> {
 pub async fn get(
     conn: &mut SqliteConnection,
     player_id: i64,
-    params: &Value,
+    params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
     let Some(player) = get_player(conn, player_id).await? else {
         return Ok(None);
@@ -101,7 +102,7 @@ pub async fn get(
 async fn player_elo(
     conn: &mut SqliteConnection,
     player_id: i64,
-    params: &Value,
+    params: &DateRange,
 ) -> Result<Value, sqlx::Error> {
     let all = query::games(conn, &query::without_date_from(params), None, None).await?;
     let ratings = elo::ratings(&all, query::window_start(params));

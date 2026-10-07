@@ -1122,7 +1122,7 @@ async fn saves_independent_commander_and_partner_printings_and_resolves_them_on_
         "https://img.example/commander-default.jpg"
     );
 
-    let commanders = the_gathering::stats::commanders(app.pool(), &json!({}))
+    let commanders = the_gathering::stats::commanders(app.pool(), &support::input(json!({})))
         .await
         .unwrap();
     let commander: Vec<&Value> = commanders

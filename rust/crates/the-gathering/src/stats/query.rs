@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use sqlx::SqliteConnection;
 use time::Date;
@@ -10,35 +11,47 @@ use crate::db::UtcDateTime;
 use crate::games::{Game, load_games};
 use crate::local_time::{Zone, parse_date};
 
-fn param<'a>(params: &'a Value, key: &str) -> Option<&'a str> {
-    params.get(key).and_then(Value::as_str)
+/// The days a statistics view covers: inclusive `date_from`/`date_to` (`YYYY-MM-DD`) read
+/// in the `tz` zone (UTC by default). Unparseable dates are ignored.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct DateRange {
+    /// First day.
+    pub date_from: Option<String>,
+    /// Last day.
+    pub date_to: Option<String>,
+    /// IANA zone.
+    pub tz: Option<String>,
 }
 
-/// The inclusive `date_from`/`date_to` bounds of `params` in its `tz` zone (default UTC),
-/// as `[from, to)` instants. Unparseable dates are ignored.
-pub fn date_bounds(params: &Value) -> (Option<UtcDateTime>, Option<UtcDateTime>) {
-    let zone = Zone::parse(param(params, "tz"));
-    let from = param(params, "date_from")
+/// The range's bounds as `[from, to)` instants.
+pub fn date_bounds(params: &DateRange) -> (Option<UtcDateTime>, Option<UtcDateTime>) {
+    let zone = Zone::parse(params.tz.as_deref());
+    let from = params
+        .date_from
+        .as_deref()
         .and_then(parse_date)
         .and_then(|date| zone.start_of_day(date));
-    let to = param(params, "date_to")
+    let to = params
+        .date_to
+        .as_deref()
         .and_then(parse_date)
         .and_then(Date::next_day)
         .and_then(|date| zone.start_of_day(date));
     (from, to)
 }
 
-/// `without_date_from/1`, for views (Elo) that replay every earlier game.
-pub fn without_date_from(params: &Value) -> Value {
-    let mut map: Map<String, Value> = params.as_object().cloned().unwrap_or_default();
-    map.remove("date_from");
-    Value::Object(map)
+/// The range without its start, for views (Elo) that replay every earlier game.
+pub fn without_date_from(params: &DateRange) -> DateRange {
+    DateRange {
+        date_from: None,
+        ..params.clone()
+    }
 }
 
-/// `window_start/1`: the first local day and the instant it begins, when `date_from` is valid.
-pub fn window_start(params: &Value) -> Option<(Date, UtcDateTime)> {
-    let date = param(params, "date_from").and_then(parse_date)?;
-    let starts_at = Zone::parse(param(params, "tz")).start_of_day(date)?;
+/// The first local day and the instant it begins, when `date_from` is valid.
+pub fn window_start(params: &DateRange) -> Option<(Date, UtcDateTime)> {
+    let date = params.date_from.as_deref().and_then(parse_date)?;
+    let starts_at = Zone::parse(params.tz.as_deref()).start_of_day(date)?;
     Some((date, starts_at))
 }
 
@@ -46,7 +59,7 @@ pub fn window_start(params: &Value) -> Option<(Date, UtcDateTime)> {
 /// first, with seats, players, and decks.
 pub async fn games(
     conn: &mut SqliteConnection,
-    params: &Value,
+    params: &DateRange,
     player_id: Option<i64>,
     deck_id: Option<i64>,
 ) -> Result<Vec<Game>, sqlx::Error> {

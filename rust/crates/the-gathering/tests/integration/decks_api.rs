@@ -257,7 +257,7 @@ async fn patch_cannot_transfer_an_owned_or_guest_deck_and_historical_stats_remai
         deck(&ctx, ctx.deck.id).await.unwrap().player_id,
         ctx.owner_player.id
     );
-    let stats = the_gathering::stats::deck(ctx.app.pool(), ctx.deck.id, &json!({}))
+    let stats = the_gathering::stats::deck(ctx.app.pool(), ctx.deck.id, &support::input(json!({})))
         .await
         .unwrap()
         .unwrap();

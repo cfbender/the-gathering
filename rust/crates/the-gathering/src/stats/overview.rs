@@ -1,5 +1,6 @@
 //! The playgroup overview.
 
+use super::query::DateRange;
 use serde_json::{Value, json};
 use sqlx::SqliteConnection;
 
@@ -9,7 +10,7 @@ use super::records::{self, group_by, grouped_records, player_entity, seat_entity
 use super::{commanders, elo, outcomes, query, summaries};
 
 /// `Overview.get/1`.
-pub async fn get(conn: &mut SqliteConnection, params: &Value) -> Result<Value, sqlx::Error> {
+pub async fn get(conn: &mut SqliteConnection, params: &DateRange) -> Result<Value, sqlx::Error> {
     let games = query::games(conn, params, None, None).await?;
     let seats: Vec<&Seat> = games.iter().flat_map(|game| &game.seats).collect();
     let cutoff = query::detailed_stats_from(conn).await?;

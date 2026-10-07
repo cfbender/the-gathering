@@ -8,6 +8,7 @@
 //! [`get`] accepts the published id, a stored id, or a card name. Each commander shows the
 //! art of its most-played deck. Detail trends cover at most the newest 500 games.
 
+use super::query::DateRange;
 use std::collections::{BTreeMap, HashSet};
 
 use serde_json::{Value, json};
@@ -281,7 +282,10 @@ pub fn deck_seats(games: &[Game]) -> Vec<SeatInGame<'_>> {
 }
 
 /// `list/1`: every commander played in the date range.
-pub async fn list(conn: &mut SqliteConnection, params: &Value) -> Result<Vec<Value>, sqlx::Error> {
+pub async fn list(
+    conn: &mut SqliteConnection,
+    params: &DateRange,
+) -> Result<Vec<Value>, sqlx::Error> {
     let games = query::games(conn, params, None, None).await?;
     let seats = deck_seats(&games);
     Ok(summarize(conn, &seats)
@@ -327,7 +331,7 @@ async fn resolve(
 pub async fn get(
     conn: &mut SqliteConnection,
     id: &str,
-    params: &Value,
+    params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
     let Some((key, card)) = resolve(conn, id).await? else {
         return Ok(None);

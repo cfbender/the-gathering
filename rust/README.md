@@ -18,8 +18,8 @@ lives here.
   - `legacy.rs`: read-only decoders for the session cookie and encrypted credentials that
     releases up to 0.2 wrote, so upgrades keep sessions and stored keys.
   - `validation.rs`: `ValidationError` (field and row messages) and the `Validator` checks;
-    `error.rs`: `ApiError` and the JSON error bodies; `changeset.rs`: casting untyped params
-    (going away as handlers move to typed request bodies).
+    `error.rs`: `ApiError` and the JSON error bodies; `patch.rs`: `Patch<T>` for fields of
+    partial updates.
   - `accounts/`, `catalog/`, `decklists/`, `games/`, ...: domain modules. `catalog/` also
     holds the Scryfall sync (`the-gathering catalog-sync`, plus a scheduled run started at
     boot), the backfill (`the-gathering catalog-backfill`), and the card image disk cache;
@@ -29,8 +29,10 @@ lives here.
   - `self_update.rs`: admin-triggered updates (a systemd request file or Watchtower's
     HTTP API) and the newest-build check against GitHub.
   - `seed.rs`: development demo data (`the-gathering seed`, dev only).
-  - `web/`: router, the typed session in an encrypted cookie (`session.rs`), CSRF, auth guards, request ids and logging (with
-    sensitive parameters filtered), SPA shell, static files, and `web/api/*` controllers.
+  - `web/`: router, the typed session in an encrypted cookie (`session.rs`), CSRF, auth
+    guards, typed extractors with JSON rejections (`extract.rs`), request ids and tower-http
+    request logging (method, path, status, latency; never bodies or query strings), SPA
+    shell, static files, and `web/api/*` handlers.
   - `discord/`: the optional Discord bot (started by `serve` when `DISCORD_BOT_TOKEN` is
     set): `twilight-gateway` for events, a small `reqwest` REST client behind the
     `DiscordApi` trait (tests use a recording fake), SpellBot staging, `/log`, `/summary`,

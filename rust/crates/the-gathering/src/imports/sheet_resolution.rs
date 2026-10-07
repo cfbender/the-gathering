@@ -1,6 +1,8 @@
 //! Resolving one sheet row against players, decks, nearby games, and the admin's choices.
 
-use serde::Serialize;
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::SqliteConnection;
 
@@ -9,11 +11,11 @@ use crate::games::{deck, fold_name};
 
 use super::google_sheet::{KillCount, SheetRow, SheetSeat};
 use super::sheet_match;
-use super::sheet_preview::{Candidate, DeckRef, PlayerRef};
+use super::sheet_preview::{Candidate, DeckRef, PlayerRef, SheetRequest};
 
 /// An admin choice: a record id or a keyword (`new`, `create`, `skip`).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(untagged)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged, try_from = "RawChoice")]
 pub enum Choice {
     /// A record id.
     Id(i64),
@@ -21,16 +23,29 @@ pub enum Choice {
     Text(String),
 }
 
-impl Choice {
-    /// Reads a validated params value (integers and strings only).
-    pub fn of(value: &Value) -> Option<Self> {
-        match value {
-            Value::Number(number) => number.as_i64().map(Self::Id),
-            Value::String(text) => Some(Self::Text(text.clone())),
-            _ => None,
+/// A choice as submitted, before the keyword check.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawChoice {
+    Id(i64),
+    Text(String),
+}
+
+impl TryFrom<RawChoice> for Choice {
+    type Error = String;
+
+    fn try_from(raw: RawChoice) -> Result<Self, Self::Error> {
+        match raw {
+            RawChoice::Id(id) => Ok(Self::Id(id)),
+            RawChoice::Text(text) if ["new", "skip", "create"].contains(&text.as_str()) => {
+                Ok(Self::Text(text))
+            }
+            RawChoice::Text(text) => Err(format!("unknown choice {text:?}")),
         }
     }
+}
 
+impl Choice {
     fn is(&self, keyword: &str) -> bool {
         matches!(self, Self::Text(text) if text == keyword)
     }
@@ -121,17 +136,14 @@ pub struct ResolvedRow {
     pub target: Option<Candidate>,
 }
 
-fn choice(params: &Value, group: &str, key: &str) -> Option<Choice> {
-    params
-        .get(group)
-        .and_then(|map| map.get(key))
-        .and_then(Choice::of)
+fn choice(choices: &BTreeMap<String, Choice>, key: &str) -> Option<Choice> {
+    choices.get(key).cloned()
 }
 
 /// The inputs shared by every row.
 pub struct Context<'a> {
-    /// The request (`text`, `players`, `decks`, `actions`).
-    pub params: &'a Value,
+    /// The request and the admin's choices.
+    pub params: &'a SheetRequest,
     /// Every player.
     pub players: &'a [PlayerRef],
     /// Every deck.
@@ -139,7 +151,7 @@ pub struct Context<'a> {
 }
 
 fn player_id(name: &str, context: &Context<'_>) -> Option<SeatPlayer> {
-    match choice(context.params, "players", name) {
+    match choice(&context.params.players, name) {
         Some(Choice::Text(text)) if text == "new" => {
             Some(SeatPlayer::New(format!("new:{}", fold_name(name))))
         }
@@ -164,7 +176,7 @@ async fn resolve_seat(
 ) -> Result<ResolvedSeat, sqlx::Error> {
     let player = player_id(&seat.player, context);
     let key = json!([seat.player, seat.deck]).to_string();
-    let deck_choice = match (choice(context.params, "decks", &key), &player) {
+    let deck_choice = match (choice(&context.params.decks, &key), &player) {
         (Some(choice), Some(SeatPlayer::Id(player_id))) if choice.is("new") => {
             match deck::find_deck(conn, *player_id, &seat.deck, Some(&seat.deck), None).await? {
                 Some(found) => Some(Choice::Id(found.id)),
@@ -219,7 +231,7 @@ pub async fn resolve(
     candidates: Vec<Candidate>,
     imported_id: Option<i64>,
 ) -> Result<ResolvedRow, sqlx::Error> {
-    let chosen = choice(context.params, "actions", &row.key);
+    let chosen = choice(&context.params.actions, &row.key);
     let mut unresolved = Vec::with_capacity(row.seats.len());
     for seat in &row.seats {
         unresolved.push(resolve_seat(conn, seat, context, None).await?);

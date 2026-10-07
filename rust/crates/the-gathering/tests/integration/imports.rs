@@ -1880,7 +1880,9 @@ fn with_text(mut params: Value, text: String) -> Value {
 
 async fn preview_sheet(app: &TestApp, params: &Value) -> SheetPreview {
     let mut conn = app.pool().acquire().await.unwrap();
-    sheet_preview::run(&mut conn, params).await.unwrap()
+    sheet_preview::run(&mut conn, &support::input(params.clone()))
+        .await
+        .unwrap()
 }
 
 async fn import_sheet(
@@ -1888,7 +1890,13 @@ async fn import_sheet(
     params: &Value,
     revision: &str,
 ) -> Result<sheet_commit::SheetResult, ImportError> {
-    sheet_commit::run(&app.state, params, Some(revision), None).await
+    sheet_commit::run(
+        &app.state,
+        &support::input(params.clone()),
+        Some(revision),
+        None,
+    )
+    .await
 }
 
 async fn select_all(app: &TestApp, mut params: Value, action: Value) -> Value {

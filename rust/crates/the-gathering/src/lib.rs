@@ -4,7 +4,6 @@
 pub mod accounts;
 pub mod card_id;
 pub mod catalog;
-pub mod changeset;
 pub mod cloudflare_turn;
 pub mod config;
 pub mod crypto;

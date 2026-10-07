@@ -1,22 +1,23 @@
-//! Game history imports and the portable export (`CSVImportController`,
-//! `MythicTrackImportController`, `SheetImportController`, `PortableImportController`)
-//! with their JSON views.
+//! Game history imports (CSV, Mythic Track, Google Sheet, portable) and the portable
+//! export, with their JSON views.
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::error::{ApiError, ApiResult};
 use crate::imports::preview::{self, Source};
+use crate::imports::sheet_preview::SheetRequest;
 use crate::imports::{
     ImportError, ImportGame, ImportSeat, Preview, commit, csv_transfer, portable, sheet_commit,
     sheet_preview,
 };
 use crate::state::AppState;
 use crate::web::auth::AuthUser;
-use crate::web::params::Params;
+use crate::web::extract::JsonBody;
 
 use super::data;
 
@@ -143,11 +144,27 @@ fn commit_error(error: ImportError, source: Source) -> Response {
     }
 }
 
-fn string_param(params: &Params, key: &str) -> ApiResult<String> {
-    params
-        .str(key)
-        .map(str::to_owned)
-        .ok_or(ApiError::BadRequest)
+/// A CSV file, with the revision of the preview the admin reviewed.
+#[derive(Debug, Deserialize)]
+pub struct CsvUpload {
+    csv: String,
+    #[serde(default)]
+    revision: Option<String>,
+}
+
+/// An uploaded JSON document (Mythic Track games or a portable export) as text.
+#[derive(Debug, Deserialize)]
+pub struct JsonUpload {
+    json: String,
+}
+
+/// A sheet commit: the reviewed request and its preview's revision.
+#[derive(Debug, Deserialize)]
+pub struct SheetCommit {
+    #[serde(flatten)]
+    sheet: SheetRequest,
+    #[serde(default)]
+    revision: Option<String>,
 }
 
 // CSV
@@ -162,9 +179,11 @@ pub async fn csv_sample() -> Response {
 }
 
 /// `POST /api/imports/csv/preview`.
-pub async fn csv_preview(State(state): State<AppState>, params: Params) -> ApiResult<Json<Value>> {
-    let csv = string_param(&params, "csv")?;
-    let preview = csv_transfer::preview(&state, &csv).await?;
+pub async fn csv_preview(
+    State(state): State<AppState>,
+    JsonBody(upload): JsonBody<CsvUpload>,
+) -> ApiResult<Json<Value>> {
+    let preview = csv_transfer::preview(&state, &upload.csv).await?;
     Ok(Json(preview_json(&preview, Source::Csv)))
 }
 
@@ -172,12 +191,17 @@ pub async fn csv_preview(State(state): State<AppState>, params: Params) -> ApiRe
 pub async fn csv_create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(upload): JsonBody<CsvUpload>,
 ) -> ApiResult<Response> {
-    let csv = string_param(&params, "csv")?;
-    let revision = params.str("revision");
     Ok(
-        match csv_transfer::run(&state, &csv, Some(user.id), revision).await {
+        match csv_transfer::run(
+            &state,
+            &upload.csv,
+            Some(user.id),
+            upload.revision.as_deref(),
+        )
+        .await
+        {
             Ok(result) => data(json!(result)).into_response(),
             Err(error) => commit_error(error, Source::Csv),
         },
@@ -189,13 +213,12 @@ pub async fn csv_create(
 /// `POST /api/imports/mythic_track/preview`.
 pub async fn mythic_track_preview(
     State(state): State<AppState>,
-    params: Params,
+    JsonBody(upload): JsonBody<JsonUpload>,
 ) -> ApiResult<Json<Value>> {
-    let json = string_param(&params, "json")?;
     let preview = preview::run(
         &mut *state.pool.acquire().await?,
         Source::MythicTrack,
-        &json,
+        &upload.json,
     )
     .await?;
     Ok(Json(preview_json(&preview, Source::MythicTrack)))
@@ -205,11 +228,10 @@ pub async fn mythic_track_preview(
 pub async fn mythic_track_create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(upload): JsonBody<JsonUpload>,
 ) -> ApiResult<Response> {
-    let json = string_param(&params, "json")?;
     Ok(
-        match commit::run(&state, Source::MythicTrack, &json, Some(user.id)).await {
+        match commit::run(&state, Source::MythicTrack, &upload.json, Some(user.id)).await {
             Ok(result) => data(json!(result)).into_response(),
             Err(error) => commit_error(error, Source::MythicTrack),
         },
@@ -218,39 +240,12 @@ pub async fn mythic_track_create(
 
 // Google Sheet
 
-/// `SheetImportController.validate/1`: `text` is a string and every player, deck, and
-/// action choice is an id or `new`/`skip`/`create`.
-fn validate_sheet(params: &Value) -> ApiResult<()> {
-    if !params.get("text").is_some_and(Value::is_string) {
-        return Err(ApiError::BadRequest);
-    }
-    let valid = ["players", "decks", "actions"]
-        .iter()
-        .all(|key| match params.get(*key) {
-            None => true,
-            Some(Value::Object(choices)) => choices.values().all(|value| {
-                value.is_i64()
-                    || value.is_u64()
-                    || value
-                        .as_str()
-                        .is_some_and(|text| ["new", "skip", "create"].contains(&text))
-            }),
-            Some(_) => false,
-        });
-    if valid {
-        Ok(())
-    } else {
-        Err(ApiError::BadRequest)
-    }
-}
-
 /// `POST /api/imports/sheet/preview`.
 pub async fn sheet_preview(
     State(state): State<AppState>,
-    Params(params): Params,
+    JsonBody(sheet): JsonBody<SheetRequest>,
 ) -> ApiResult<Json<Value>> {
-    validate_sheet(&params)?;
-    let preview = sheet_preview::run(&mut *state.pool.acquire().await?, &params)
+    let preview = sheet_preview::run(&mut *state.pool.acquire().await?, &sheet)
         .await
         .map_err(ImportError::into_api)?;
     Ok(data(json!(preview)))
@@ -260,16 +255,12 @@ pub async fn sheet_preview(
 pub async fn sheet_create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Params(mut params): Params,
+    JsonBody(commit): JsonBody<SheetCommit>,
 ) -> ApiResult<Json<Value>> {
-    let revision = params
-        .as_object_mut()
-        .and_then(|params| params.remove("revision"));
-    validate_sheet(&params)?;
     let result = sheet_commit::run(
         &state,
-        &params,
-        revision.as_ref().and_then(Value::as_str),
+        &commit.sheet,
+        commit.revision.as_deref(),
         Some(user.id),
     )
     .await
@@ -299,10 +290,9 @@ pub async fn portable_export(State(state): State<AppState>) -> ApiResult<Respons
 /// `POST /api/imports/portable/preview`.
 pub async fn portable_preview(
     State(state): State<AppState>,
-    params: Params,
+    JsonBody(upload): JsonBody<JsonUpload>,
 ) -> ApiResult<Json<Value>> {
-    let json = string_param(&params, "json")?;
-    let summary = portable::preview(&state, &json)
+    let summary = portable::preview(&state, &upload.json)
         .await
         .map_err(ImportError::into_api)?;
     Ok(data(json!(summary)))
@@ -312,10 +302,9 @@ pub async fn portable_preview(
 pub async fn portable_create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(upload): JsonBody<JsonUpload>,
 ) -> ApiResult<Json<Value>> {
-    let json = string_param(&params, "json")?;
-    let summary = portable::run(&state, &json, Some(user.id))
+    let summary = portable::run(&state, &upload.json, Some(user.id))
         .await
         .map_err(ImportError::into_api)?;
     Ok(data(json!(summary)))

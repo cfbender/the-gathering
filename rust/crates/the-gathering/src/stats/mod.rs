@@ -12,6 +12,7 @@ pub mod outcomes;
 pub mod overview;
 pub mod player;
 pub mod query;
+pub use self::query::DateRange;
 pub mod records;
 pub mod summaries;
 
@@ -24,7 +25,7 @@ use crate::db::Pool;
 pub const MIN_GAMES: usize = 3;
 
 /// `Stats.overview/1`.
-pub async fn overview(pool: &Pool, params: &Value) -> Result<Value, sqlx::Error> {
+pub async fn overview(pool: &Pool, params: &DateRange) -> Result<Value, sqlx::Error> {
     overview::get(&mut *pool.acquire().await?, params).await
 }
 
@@ -32,18 +33,22 @@ pub async fn overview(pool: &Pool, params: &Value) -> Result<Value, sqlx::Error>
 pub async fn player(
     pool: &Pool,
     player_id: i64,
-    params: &Value,
+    params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
     player::get(&mut *pool.acquire().await?, player_id, params).await
 }
 
 /// `Stats.deck/2`; `None` for an unknown deck.
-pub async fn deck(pool: &Pool, deck_id: i64, params: &Value) -> Result<Option<Value>, sqlx::Error> {
+pub async fn deck(
+    pool: &Pool,
+    deck_id: i64,
+    params: &DateRange,
+) -> Result<Option<Value>, sqlx::Error> {
     deck::get(&mut *pool.acquire().await?, deck_id, params).await
 }
 
 /// `Stats.commanders/1`: every commander played, most played first.
-pub async fn commanders(pool: &Pool, params: &Value) -> Result<Vec<Value>, sqlx::Error> {
+pub async fn commanders(pool: &Pool, params: &DateRange) -> Result<Vec<Value>, sqlx::Error> {
     commanders::list(&mut *pool.acquire().await?, params).await
 }
 
@@ -51,7 +56,7 @@ pub async fn commanders(pool: &Pool, params: &Value) -> Result<Vec<Value>, sqlx:
 pub async fn commander(
     pool: &Pool,
     id: &str,
-    params: &Value,
+    params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
     commanders::get(&mut *pool.acquire().await?, id, params).await
 }

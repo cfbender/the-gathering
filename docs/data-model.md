@@ -65,7 +65,7 @@ catalog backfill operation.
   it matches only that identity and otherwise creates a player with an available suffixed name.
   Name matching is used only when the incoming identity has no Discord ID. Import preview uses
   the same resolver policy and reports the distinct name that commit will create. Discord OAuth
-  and bot ingestion also use this policy; resolver changeset and account-link conflicts are
+  and bot ingestion also use this policy; resolver validation and account-link conflicts are
   returned to callers rather than ignored.
 - `find_or_create_player_by_name(name, attrs \\ %{})` matches names case-insensitively.
 - `find_or_create_player_by_discord_id(discord_id, name)` is a compatibility wrapper around

@@ -15,9 +15,8 @@ use axum::response::IntoResponse;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use support::{TestApp, capture_logs};
-use the_gathering::changeset::Changeset;
 use the_gathering::error::ApiError;
-use the_gathering::web::params::filter_values;
+use the_gathering::validation::Validator;
 
 fn headers(pairs: &[(&'static str, &str)]) -> HeaderMap {
     let mut map = HeaderMap::new();
@@ -148,15 +147,28 @@ async fn unknown_api_routes_return_json_404_rather_than_the_shell() {
             "{path}"
         );
     }
-    // Known paths with another method fall through to the same JSON 404.
-    assert_eq!(
-        app.put("/api/health", json!({})).await.assert_json(404),
-        json!({"errors": {"detail": "Not Found"}})
-    );
-    assert_eq!(
-        app.delete("/api/registration").await.assert_json(404),
-        json!({"errors": {"detail": "Not Found"}})
-    );
+}
+
+#[tokio::test]
+async fn known_api_paths_answer_405_with_the_allowed_methods() {
+    let app = TestApp::new().await;
+    let response = app.put("/api/health", json!({})).await;
+    assert_eq!(response.status, StatusCode::METHOD_NOT_ALLOWED);
+    assert!(response.header("allow").unwrap().contains("GET"));
+    let response = app.delete("/api/registration").await;
+    assert_eq!(response.status, StatusCode::METHOD_NOT_ALLOWED);
+    // PATCH is the only update verb.
+    let member = app.unique_member().await;
+    app.log_in(&member).await;
+    let player = app.player("Drew").await;
+    let response = app
+        .put(
+            &format!("/api/players/{}", player.id),
+            json!({"name": "Drew"}),
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::METHOD_NOT_ALLOWED);
+    assert!(response.header("allow").unwrap().contains("PATCH"));
 }
 
 #[tokio::test]
@@ -240,13 +252,10 @@ async fn every_routed_response_carries_a_request_id() {
 // -- fallback controller ---------------------------------------------------------
 
 #[tokio::test]
-async fn renders_changeset_errors_per_field_with_interpolated_placeholders() {
-    let params = json!({"name": "", "seats": 1});
-    let mut cs = Changeset::new(&params);
-    let name = cs.string("name").or(None);
-    let seats = cs.integer("seats").or(None);
-    cs.required("name", name.as_ref());
-    cs.at_least("seats", seats, 2);
+async fn renders_validation_errors_per_field() {
+    let mut cs = Validator::new();
+    cs.required("name", Some(""));
+    cs.at_least("seats", Some(1), 2);
     let errors = cs.finish().unwrap_err();
 
     assert_eq!(
@@ -423,21 +432,7 @@ async fn renders_404_and_500() {
     assert_eq!(body, json!({"errors": {"detail": "Internal Server Error"}}));
 }
 
-// -- parameter filter ------------------------------------------------------------
-
-#[test]
-fn filter_values_redacts_manavault_and_oauth_parameters() {
-    let secrets = json!({
-        "manavault_api_key": "sentinel-manavault-key",
-        "code": "sentinel-oauth-code",
-        "state": "sentinel-oauth-state"
-    });
-    let logged = format!("params={}", filter_values(&secrets));
-    assert!(!logged.contains("sentinel-manavault-key"));
-    assert!(!logged.contains("sentinel-oauth-code"));
-    assert!(!logged.contains("sentinel-oauth-state"));
-    assert!(logged.contains("[FILTERED]"));
-}
+// -- request logging ------------------------------------------------------------
 
 #[tokio::test]
 async fn request_logging_never_shows_sensitive_parameters() {
@@ -474,9 +469,10 @@ async fn request_logging_never_shows_sensitive_parameters() {
     ] {
         assert!(!logs.contains(secret), "{secret} logged:\n{logs}");
     }
-    assert!(logs.contains("[FILTERED]"), "{logs}");
-    assert!(logs.contains("PATCH /api/session/user"), "{logs}");
-    assert!(logs.contains("Sent 200 in"), "{logs}");
+    assert!(logs.contains("method=PATCH"), "{logs}");
+    assert!(logs.contains(r#"path="/api/session/user""#), "{logs}");
+    assert!(logs.contains("status=200"), "{logs}");
+    assert!(logs.contains("request_id="), "{logs}");
 }
 
 // -- UserAuth -----------------------------------------------------------------------------

@@ -1,21 +1,21 @@
-//! `Plug.RequestId` and Phoenix's request logging (`Plug.Telemetry` + `Phoenix.Logger`).
+//! Request ids and request logging.
 //!
-//! Every routed request gets an `x-request-id` response header (the client's own when it is
-//! 20 to 200 bytes long, otherwise a fresh one) and runs inside a span carrying it. The log
-//! shows the method and path (never the query string) and the response status and time;
-//! parameters are logged at debug level by [`super::params::Params`], filtered.
-
-use std::time::Instant;
+//! Every routed request gets an `x-request-id`: the client's own when it is 20 to 200 bytes
+//! long, otherwise a fresh one. The response echoes it, and [`trace_layer`] logs each
+//! request in a span carrying the method, path (never the query string), and id, with the
+//! status and latency when the response is ready. Bodies and parameters are never logged.
 
 use axum::extract::Request;
 use axum::http::HeaderValue;
 use axum::middleware::Next;
 use axum::response::Response;
-use tracing::Instrument;
+use tower_http::classify::{ServerErrorsAsFailures, SharedClassifier};
+use tower_http::trace::{DefaultOnResponse, MakeSpan, TraceLayer};
+use tracing::Level;
 
 use crate::crypto;
 
-/// The header Plug reads and writes.
+/// The request id header.
 pub const HEADER: &str = "x-request-id";
 
 fn request_id(request: &Request) -> HeaderValue {
@@ -30,24 +30,38 @@ fn request_id(request: &Request) -> HeaderValue {
         .unwrap_or_else(|| HeaderValue::from_static("unknown-request-id--"))
 }
 
-/// Tags the request with an id and logs it.
-pub async fn layer(request: Request, next: Next) -> Response {
+/// Gives the request its id and echoes it on the response.
+pub async fn layer(mut request: Request, next: Next) -> Response {
     let id = request_id(&request);
-    let span = tracing::info_span!("request", request_id = id.to_str().unwrap_or_default());
-    let method = request.method().clone();
-    let path = request.uri().path().to_owned();
-    async move {
-        let started = Instant::now();
-        tracing::info!("{method} {path}");
-        let mut response = next.run(request).await;
-        tracing::info!(
-            "Sent {} in {}ms",
-            response.status().as_u16(),
-            started.elapsed().as_millis()
-        );
-        response.headers_mut().insert(HEADER, id);
-        response
+    request.headers_mut().insert(HEADER, id.clone());
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(HEADER, id);
+    response
+}
+
+/// The span each request is logged in.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RequestSpan;
+
+impl<B> MakeSpan<B> for RequestSpan {
+    fn make_span(&mut self, request: &axum::http::Request<B>) -> tracing::Span {
+        let id = request
+            .headers()
+            .get(HEADER)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        tracing::info_span!(
+            "request",
+            method = %request.method(),
+            path = request.uri().path(),
+            request_id = id,
+        )
     }
-    .instrument(span)
-    .await
+}
+
+/// Logs every request at info level with its status and latency.
+pub fn trace_layer() -> TraceLayer<SharedClassifier<ServerErrorsAsFailures>, RequestSpan> {
+    TraceLayer::new_for_http()
+        .make_span_with(RequestSpan)
+        .on_response(DefaultOnResponse::new().level(Level::INFO))
 }

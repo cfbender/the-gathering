@@ -30,11 +30,6 @@ pub fn data(value: impl Into<Value>) -> axum::Json<Value> {
     axum::Json(json!({ "data": value.into() }))
 }
 
-/// Parses a path id the way Ecto casts it: non-integers are a 400.
-pub fn parse_id(id: &str) -> Result<i64, ApiError> {
-    id.trim().parse().map_err(|_| ApiError::BadRequest)
-}
-
 /// `RateLimit.client_ip/1`: the peer address, or the proxy headers when trusted.
 pub fn client_ip(state: &AppState, headers: &HeaderMap, peer: Option<SocketAddr>) -> String {
     let peer_ip = peer.map_or_else(|| "127.0.0.1".to_owned(), |peer| peer.ip().to_string());
