@@ -81,6 +81,10 @@ jobs:
           workspaces: rust -> target
           shared-key: release
           cache-on-failure: true
+          # The key would otherwise hash every installed toolchain, and runner images differ in
+          # whether a stable Rust is preinstalled besides mise's pinned one, so the key churned
+          # between runs. Cargo already rebuilds anything compiled by a different rustc.
+          add-rust-environment-hash-key: false
 
       - name: Cache JavaScript dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
