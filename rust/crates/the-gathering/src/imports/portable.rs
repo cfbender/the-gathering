@@ -17,13 +17,13 @@ use sqlx::SqliteConnection;
 use crate::catalog;
 use crate::changeset::Changeset;
 use crate::db::{self, IsoDate, UtcDateTime};
-use crate::error::Errors;
 use crate::games::DeckLinks;
 use crate::games::model::select_decks;
 use crate::games::{Deck, Player, deck, fold_name, load_games, player, record_game};
 use crate::state::AppState;
+use crate::validation::ValidationError;
 
-use super::{ImportError, inspect};
+use super::ImportError;
 
 const COLLECTIONS: [&str; 6] = [
     "players",
@@ -536,8 +536,8 @@ async fn restore_printing(conn: &mut SqliteConnection, row: &Value) -> Result<()
 
 // Import
 
-fn invalid(label: &str, errors: &Errors) -> ImportError {
-    ImportError::Message(format!("{label}: {}", inspect::errors(errors)))
+fn invalid(label: &str, errors: &ValidationError) -> ImportError {
+    ImportError::Message(format!("{label}: {errors}"))
 }
 
 fn labeled(label: &str, error: crate::games::GamesError) -> ImportError {
@@ -618,7 +618,7 @@ async fn restore_deck(
     fields.insert("player_id".into(), json!(owner.id));
     let attrs = Value::Object(fields);
     let mut errors = match deck::validate_new_deck(conn, &attrs).await {
-        Ok(()) => Errors::new(),
+        Ok(()) => ValidationError::new(),
         Err(crate::games::GamesError::Invalid(errors)) => errors,
         Err(other) => return Err(other.into()),
     };
@@ -897,4 +897,20 @@ pub async fn run(
     let summary = restore(&mut tx, state.games.deck_links(), &data, user_id).await?;
     tx.commit().await?;
     Ok(summary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_records_name_the_record_and_its_failures() {
+        let ImportError::Message(message) = invalid(
+            "Player Drew",
+            &ValidationError::single("name", crate::validation::TAKEN),
+        ) else {
+            panic!("expected a message");
+        };
+        assert_eq!(message, "Player Drew: Name has already been taken");
+    }
 }

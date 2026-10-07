@@ -184,9 +184,16 @@ pub async fn insert_portable(
         Err(error) => {
             tx.rollback().await?;
             if db::is_unique_violation(&error, &["games.portable_id"]) {
-                Err(crate::error::Errors::single("portable_id", crate::changeset::TAKEN).into())
+                Err(crate::validation::ValidationError::single(
+                    "portable_id",
+                    crate::validation::TAKEN,
+                )
+                .into())
             } else if db::is_unique_violation(&error, &["games.source", "games.external_id"]) {
-                Err(crate::error::Errors::single("source", crate::changeset::TAKEN).into())
+                Err(
+                    crate::validation::ValidationError::single("source", crate::validation::TAKEN)
+                        .into(),
+                )
             } else {
                 Err(error.into())
             }

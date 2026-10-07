@@ -3,9 +3,10 @@
 use serde_json::Value;
 use sqlx::SqliteConnection;
 
-use crate::changeset::{Changeset, TAKEN, trim};
+use crate::changeset::{Changeset, trim};
 use crate::db::{self, UtcDateTime};
-use crate::error::Errors;
+use crate::validation::TAKEN;
+use crate::validation::ValidationError;
 
 use super::model::{Deck, GameFormat, GameResult, Player, select_decks, select_players};
 use super::{GamesError, Pagination, fold_name, user_exists};
@@ -230,11 +231,11 @@ pub async fn unlink_player_identity(
 
 fn unique_error(error: sqlx::Error) -> GamesError {
     if db::is_unique_violation(&error, &["players.user_id"]) {
-        GamesError::Invalid(Errors::single("user_id", TAKEN))
+        GamesError::Invalid(ValidationError::single("user_id", TAKEN))
     } else if db::is_unique_violation(&error, &["players.discord_id"]) {
-        GamesError::Invalid(Errors::single("discord_id", TAKEN))
+        GamesError::Invalid(ValidationError::single("discord_id", TAKEN))
     } else if db::is_unique_violation(&error, &[]) {
-        GamesError::Invalid(Errors::single("name", TAKEN))
+        GamesError::Invalid(ValidationError::single("name", TAKEN))
     } else {
         GamesError::Database(error)
     }
@@ -341,10 +342,16 @@ pub async fn delete_player(conn: &mut SqliteConnection, player: &Player) -> Resu
     .fetch_one(&mut *conn)
     .await?;
     if refs.seats {
-        return Err(Errors::single("game_players", "are still associated with this entry").into());
+        return Err(ValidationError::single(
+            "game_players",
+            "are still associated with this entry",
+        )
+        .into());
     }
     if refs.decks {
-        return Err(Errors::single("decks", "are still associated with this entry").into());
+        return Err(
+            ValidationError::single("decks", "are still associated with this entry").into(),
+        );
     }
     sqlx::query!("DELETE FROM players WHERE id = ?", player.id)
         .execute(&mut *conn)

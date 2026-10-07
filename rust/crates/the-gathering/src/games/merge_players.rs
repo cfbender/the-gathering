@@ -6,7 +6,7 @@ use sqlx::{Connection, SqliteConnection};
 
 use crate::accounts::User;
 use crate::db::UtcDateTime;
-use crate::error::Errors;
+use crate::validation::ValidationError;
 
 use super::model::{Player, get_player, select_decks, select_players};
 use super::{GamesError, fold_name};
@@ -14,7 +14,7 @@ use super::{GamesError, fold_name};
 const SEATED_MESSAGE: &str = "has a seat at an open webcam table; record that game and try again once the table closes (30 minutes after everyone leaves)";
 
 fn merge_error(message: impl Into<String>) -> GamesError {
-    GamesError::Invalid(Errors::single("merge", message))
+    GamesError::Invalid(ValidationError::single("merge", message))
 }
 
 fn conflicting<T: PartialEq>(a: Option<&T>, b: Option<&T>) -> bool {
@@ -196,7 +196,10 @@ pub async fn plan_link(
     .await
     .map_err(|error| {
         if crate::db::is_unique_violation(&error, &["players.discord_id"]) {
-            GamesError::Invalid(Errors::single("discord_id", crate::changeset::TAKEN))
+            GamesError::Invalid(ValidationError::single(
+                "discord_id",
+                crate::validation::TAKEN,
+            ))
         } else {
             GamesError::Database(error)
         }

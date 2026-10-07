@@ -6,7 +6,7 @@ use sqlx::SqliteConnection;
 
 use crate::changeset::{Changeset, cast_integer};
 use crate::db::UtcDateTime;
-use crate::error::Errors;
+use crate::validation::ValidationError;
 
 use super::GamesError;
 use super::model::{Game, GameFormat, GameResult, GameSource, Seat};
@@ -125,7 +125,7 @@ fn seat_rows(value: &Value) -> Option<Vec<&Value>> {
 }
 
 /// `GamePlayer.changeset/2` over `base`.
-fn cast_seat(base: &SeatFields, params: &Value) -> (SeatFields, Errors) {
+fn cast_seat(base: &SeatFields, params: &Value) -> (SeatFields, ValidationError) {
     let mut cs = Changeset::new(params);
     let mut seat = base.clone();
     seat.player_id = cs.integer("player_id").or(base.player_id);
@@ -156,11 +156,11 @@ fn cast_seat(base: &SeatFields, params: &Value) -> (SeatFields, Errors) {
     }
     cs.greater_than("eliminated_turn", seat.eliminated_turn, 0);
     cs.inclusion("result", seat.result.as_deref(), &["win", "loss", "draw"]);
-    (seat, cs.errors)
+    (seat, cs.finish().err().unwrap_or_default())
 }
 
 /// `Game.validate_seats/1`.
-fn validate_seats(errors: &mut Errors, seats: &[SeatFields], format: Option<&str>) {
+fn validate_seats(errors: &mut ValidationError, seats: &[SeatFields], format: Option<&str>) {
     let count = seats.len();
     let mut player_ids: Vec<Option<i64>> = Vec::new();
     let mut duplicate = false;
@@ -326,7 +326,7 @@ pub(crate) async fn changeset(
                     seats.push(seat);
                     row_errors.push(errors);
                 }
-                cs.errors.set_nested("seats", row_errors);
+                cs.errors.set_rows("seats", row_errors);
                 (seats, true)
             } else {
                 cs.add_error("seats", "is invalid");
@@ -378,7 +378,7 @@ pub(crate) async fn changeset(
     if cs.is_valid() {
         let mut rows = Vec::with_capacity(seats.len());
         for seat in &seats {
-            let mut errors = Errors::new();
+            let mut errors = ValidationError::new();
             if let Some(player_id) = seat.player_id
                 && !exists(conn, "players", player_id).await?
             {
@@ -391,7 +391,7 @@ pub(crate) async fn changeset(
             }
             rows.push(errors);
         }
-        cs.errors.set_nested("seats", rows);
+        cs.errors.set_rows("seats", rows);
     }
     cs.finish()?;
 
@@ -413,7 +413,7 @@ pub(crate) async fn changeset(
             })
         })
         .collect();
-    let invalid = || Errors::single("base", "is invalid");
+    let invalid = || ValidationError::single("base", "is invalid");
     Ok(ValidGame {
         played_at: played_at.ok_or_else(invalid)?,
         duration_minutes,
@@ -453,31 +453,31 @@ mod tests {
     }
 
     #[test]
-    fn seat_rules_match_game_ex() {
-        let mut errors = Errors::new();
+    fn seat_rules() {
+        let mut errors = ValidationError::new();
         validate_seats(&mut errors, &[], Some("commander"));
         assert_eq!(
             errors.messages("seats"),
             [
-                "must have exactly one winner or all draws",
+                "must contain between 2 and 10 players",
                 "must use consecutive seat numbers starting at 1",
-                "must contain between 2 and 10 players"
+                "must have exactly one winner or all draws"
             ]
         );
-        let mut errors = Errors::new();
+        let mut errors = ValidationError::new();
         validate_seats(
             &mut errors,
             &[seat(1, 1, "win"), seat(2, 2, "win")],
             Some("two_headed_giant"),
         );
         assert!(errors.is_empty());
-        let mut errors = Errors::new();
+        let mut errors = ValidationError::new();
         validate_seats(&mut errors, &[seat(1, 1, "win"), seat(1, 3, "loss")], None);
         assert_eq!(
             errors.messages("seats"),
             [
-                "must use consecutive seat numbers starting at 1",
-                "cannot contain the same player twice"
+                "cannot contain the same player twice",
+                "must use consecutive seat numbers starting at 1"
             ]
         );
         let (_, errors) = cast_seat(

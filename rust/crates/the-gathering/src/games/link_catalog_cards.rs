@@ -7,8 +7,8 @@ use serde_json::{Value, json};
 use sqlx::{Connection, SqliteConnection};
 
 use crate::catalog::{self, Card};
-use crate::error::Errors;
 use crate::regex::{Regex, compile};
+use crate::validation::ValidationError;
 
 use super::GamesError;
 use super::deck::update_deck;
@@ -74,7 +74,7 @@ pub struct Conflict {
     /// Its id.
     pub id: i64,
     /// Why.
-    pub errors: Errors,
+    pub errors: ValidationError,
 }
 
 /// One link pass.

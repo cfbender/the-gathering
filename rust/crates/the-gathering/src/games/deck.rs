@@ -5,9 +5,9 @@ use serde_json::Value;
 use sqlx::{Connection, SqliteConnection};
 
 use crate::catalog;
-use crate::changeset::{Change, Changeset, TAKEN};
+use crate::changeset::{Change, Changeset};
 use crate::db::{self, UtcDateTime};
-use crate::error::Errors;
+use crate::validation::{TAKEN, ValidationError};
 
 use super::color_identity;
 use super::model::{Deck, DeckLinks, DecklistSource, GameFormat, GameResult, Player, select_decks};
@@ -244,7 +244,7 @@ fn decklist_source(links: &DeckLinks, fields: &Fields) -> Option<DecklistSource>
 
 fn unique_error(error: sqlx::Error) -> GamesError {
     if db::is_unique_violation(&error, &[]) {
-        GamesError::Invalid(Errors::single("name", TAKEN))
+        GamesError::Invalid(ValidationError::single("name", TAKEN))
     } else {
         GamesError::Database(error)
     }

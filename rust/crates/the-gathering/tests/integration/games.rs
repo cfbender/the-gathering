@@ -13,14 +13,14 @@ use crate::support;
 
 use serde_json::{Value, json};
 use support::{TestApp, utc};
-use the_gathering::error::Errors;
 use the_gathering::games::deck_picker::{Candidate, selection_weights};
 use the_gathering::games::{
     ArtFetcher, Deck, Game, GameResult, GameSource, GamesError, Outcome, Player, Seat,
     color_identity, summary_card,
 };
+use the_gathering::validation::ValidationError;
 
-fn invalid<T: std::fmt::Debug>(result: Result<T, GamesError>) -> Errors {
+fn invalid<T: std::fmt::Debug>(result: Result<T, GamesError>) -> ValidationError {
     match result {
         Err(GamesError::Invalid(errors)) => errors,
         other => panic!("expected validation errors, got {other:?}"),
@@ -153,7 +153,7 @@ async fn enforces_the_two_to_ten_seat_bounds_at_both_edges() {
     assert_eq!(game.seats.len(), 10);
 
     let errors = invalid(app.state.games.create_game(&game_attrs(&refs), None).await);
-    let rows = errors.nested("seats");
+    let rows = errors.rows("seats");
     assert_eq!(rows.len(), 11);
     assert_eq!(
         rows[10].messages("seat"),
@@ -201,7 +201,7 @@ async fn keeps_unknown_kills_distinct_from_zero_and_validates_kill_counts() {
             json!({"seats": [seat, second.clone()]}),
         );
         let errors = invalid(app.state.games.create_game(&attrs, None).await);
-        assert_eq!(errors.nested("seats")[0].messages("kills").len(), 1);
+        assert_eq!(errors.rows("seats")[0].messages("kills").len(), 1);
     }
 }
 

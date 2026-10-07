@@ -19,7 +19,7 @@ use crate::db::UtcDateTime;
 use crate::games::{WinCondition, fold_name};
 
 use super::csv::{noon, parse_iso_date, parse_naive_datetime, parse_offset_datetime};
-use super::{ImportGame, ImportSeat, LineError, Warning, blank_to_nil, inspect};
+use super::{ImportGame, ImportSeat, LineError, Warning, blank_to_nil};
 
 const STATUS_COMPLETE: i64 = 3;
 
@@ -122,7 +122,7 @@ fn classify(game: &Value, line: i64) -> Classified {
     let name = match status.as_i64() {
         Some(1) if status.is_i64() => "not started".to_owned(),
         Some(2) if status.is_i64() => "in progress".to_owned(),
-        _ => format!("status {}", inspect::value(status)),
+        _ => format!("status {status}"),
     };
     Classified::Skip(Warning {
         line,

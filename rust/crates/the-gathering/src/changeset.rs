@@ -1,14 +1,16 @@
-//! A small stand-in for `Ecto.Changeset`: casts JSON params with Ecto's rules and collects
-//! validation errors with Ecto's exact messages, so forms show the same text as before.
-//!
-//! Casting follows `Ecto.Changeset.cast/4`: blank and whitespace-only strings become `nil`,
+//! Casts fields out of untyped JSON params: blank and whitespace-only strings become `None`,
 //! non-blank strings are kept untrimmed, integers accept numeric strings, booleans accept
-//! `"true"`/`"false"`/`"1"`/`"0"`, and anything else is `"is invalid"`.
+//! `"true"`/`"false"`/`"1"`/`"0"`, and anything else fails with `"is invalid"`.
+//!
+//! Transitional: handlers are moving to typed request bodies, after which this module goes
+//! away and only [`Validator`] remains.
 
 use serde_json::{Map, Value};
 
+use std::ops::{Deref, DerefMut};
+
 use crate::db::{IsoDate, UtcDateTime};
-use crate::error::Errors;
+use crate::validation::{ValidationError, Validator};
 
 /// A cast param: absent (keep the stored value) or present (possibly `nil`).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -43,7 +45,7 @@ impl<T> Change<T> {
     }
 }
 
-/// Ecto's empty check: `nil` or a string that trims to `""`.
+/// `null` or a string that trims to `""`.
 fn blank(value: &Value) -> bool {
     match value {
         Value::Null => true,
@@ -52,12 +54,25 @@ fn blank(value: &Value) -> bool {
     }
 }
 
-/// Collects cast and validation errors.
+/// Casts params and validates the results; cast failures land in the same [`Validator`].
 #[derive(Debug, Default)]
 pub struct Changeset<'a> {
     params: Option<&'a Map<String, Value>>,
-    /// Errors so far.
-    pub errors: Errors,
+    validator: Validator,
+}
+
+impl Deref for Changeset<'_> {
+    type Target = Validator;
+
+    fn deref(&self) -> &Validator {
+        &self.validator
+    }
+}
+
+impl DerefMut for Changeset<'_> {
+    fn deref_mut(&mut self) -> &mut Validator {
+        &mut self.validator
+    }
 }
 
 impl<'a> Changeset<'a> {
@@ -65,13 +80,8 @@ impl<'a> Changeset<'a> {
     pub fn new(params: &'a Value) -> Self {
         Self {
             params: params.as_object(),
-            errors: Errors::new(),
+            validator: Validator::new(),
         }
-    }
-
-    /// A changeset with no params, for validating programmatic values.
-    pub fn empty() -> Self {
-        Self::default()
     }
 
     /// The raw param.
@@ -127,114 +137,13 @@ impl<'a> Changeset<'a> {
         self.cast(field, |value| value.as_str().and_then(IsoDate::parse))
     }
 
-    /// Adds an error.
-    pub fn add_error(&mut self, field: &str, message: impl Into<String>) {
-        self.errors.add(field, message);
-    }
-
-    /// `validate_required`: `"can't be blank"` when missing or blank.
-    pub fn required<T>(&mut self, field: &str, value: Option<&T>) -> bool
-    where
-        T: AsRef<str> + ?Sized,
-    {
-        let present = value.is_some_and(|value| !value.as_ref().trim().is_empty());
-        if !present && !self.errors.has(field) {
-            self.errors.add(field, "can't be blank");
-        }
-        present
-    }
-
-    /// `validate_required` for non-string values.
-    pub fn required_value<T>(&mut self, field: &str, value: Option<&T>) -> bool {
-        if value.is_none() && !self.errors.has(field) {
-            self.errors.add(field, "can't be blank");
-        }
-        value.is_some()
-    }
-
-    /// `validate_length` counting graphemes (approximated by characters).
-    pub fn length(
-        &mut self,
-        field: &str,
-        value: Option<&str>,
-        min: Option<usize>,
-        max: Option<usize>,
-    ) {
-        let Some(value) = value else { return };
-        let count = value.chars().count();
-        if let Some(min) = min.filter(|min| count < *min) {
-            self.errors
-                .add(field, format!("should be at least {min} character(s)"));
-        } else if let Some(max) = max.filter(|max| count > *max) {
-            self.errors
-                .add(field, format!("should be at most {max} character(s)"));
-        }
-    }
-
-    /// `validate_length(..., count: :bytes)` maximum.
-    pub fn max_bytes(&mut self, field: &str, value: Option<&str>, max: usize) {
-        if value.is_some_and(|value| value.len() > max) {
-            self.errors
-                .add(field, format!("should be at most {max} byte(s)"));
-        }
-    }
-
-    /// `validate_format`.
-    pub fn format(
-        &mut self,
-        field: &str,
-        value: Option<&str>,
-        pattern: &regex::Regex,
-        message: &str,
-    ) {
-        if value.is_some_and(|value| !pattern.is_match(value)) {
-            self.errors.add(field, message);
-        }
-    }
-
-    /// `validate_inclusion`.
-    pub fn inclusion(&mut self, field: &str, value: Option<&str>, allowed: &[&str]) {
-        if value.is_some_and(|value| !allowed.contains(&value)) {
-            self.errors.add(field, "is invalid");
-        }
-    }
-
-    /// `validate_number(greater_than: n)`.
-    pub fn greater_than(&mut self, field: &str, value: Option<i64>, bound: i64) {
-        if value.is_some_and(|value| value <= bound) {
-            self.errors
-                .add(field, format!("must be greater than {bound}"));
-        }
-    }
-
-    /// `validate_number(greater_than_or_equal_to: n)`.
-    pub fn at_least(&mut self, field: &str, value: Option<i64>, bound: i64) {
-        if value.is_some_and(|value| value < bound) {
-            self.errors
-                .add(field, format!("must be greater than or equal to {bound}"));
-        }
-    }
-
-    /// `validate_number(less_than_or_equal_to: n)`.
-    pub fn at_most(&mut self, field: &str, value: Option<i64>, bound: i64) {
-        if value.is_some_and(|value| value > bound) {
-            self.errors
-                .add(field, format!("must be less than or equal to {bound}"));
-        }
-    }
-
-    /// Whether no errors were added.
-    pub fn is_valid(&self) -> bool {
-        self.errors.is_empty()
-    }
-
     /// `Ok(())` or the collected errors.
-    pub fn finish(self) -> Result<(), Errors> {
-        self.errors.into_result()
+    pub fn finish(self) -> Result<(), ValidationError> {
+        self.validator.finish()
     }
 }
 
-/// Ecto's integer cast: integers, or strings that parse completely.
+/// Integers, or strings that parse completely as one.
 pub fn cast_integer(value: &Value) -> Option<i64> {
     match value {
         Value::Number(number) => number.as_i64(),
@@ -243,12 +152,7 @@ pub fn cast_integer(value: &Value) -> Option<i64> {
     }
 }
 
-/// `"has already been taken"`.
-pub const TAKEN: &str = "has already been taken";
-/// `"does not exist"`.
-pub const DOES_NOT_EXIST: &str = "does not exist";
-
-/// `String.trim/1` on an optional string, keeping `None`.
+/// Trims an optional string, keeping `None`.
 pub fn trim(value: Option<String>) -> Option<String> {
     value.map(|value| value.trim().to_owned())
 }
@@ -259,7 +163,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn casts_like_ecto() {
+    fn casts_params() {
         let params = json!({"name": "  ", "count": "12", "flag": "0", "bad": "x", "when": "2026-01-02T03:04"});
         let mut cs = Changeset::new(&params);
         assert_eq!(cs.string("name"), Change::Set(None));

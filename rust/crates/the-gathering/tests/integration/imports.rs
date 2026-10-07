@@ -952,6 +952,35 @@ fn players_with(update: impl Fn(&mut Value)) -> Value {
     players
 }
 
+#[tokio::test]
+async fn mythic_track_skips_games_with_unknown_statuses_by_their_json_value() {
+    let app = TestApp::new().await;
+    let preview = mythic_preview(
+        &app,
+        &json!([
+            mythic_game(json!({})),
+            mythic_game(json!({"id": "8f3a0a44-0000-4000-8000-000000000004", "gameStatus": null})),
+            mythic_game(
+                json!({"id": "8f3a0a44-0000-4000-8000-000000000005", "gameStatus": "done"})
+            ),
+        ]),
+    )
+    .await;
+    let messages: Vec<&str> = preview
+        .warnings
+        .iter()
+        .map(|warning| warning.message.as_str())
+        .collect();
+    assert!(
+        messages[0].starts_with("skipped: game is status null ("),
+        "{messages:?}"
+    );
+    assert!(
+        messages[1].starts_with("skipped: game is status \"done\" ("),
+        "{messages:?}"
+    );
+}
+
 async fn mythic_preview(app: &TestApp, games: &Value) -> Preview {
     let mut conn = app.pool().acquire().await.unwrap();
     preview::run(&mut conn, Source::MythicTrack, &games.to_string())

@@ -22,6 +22,7 @@ pub mod seed;
 pub mod self_update;
 pub mod state;
 pub mod stats;
+pub mod validation;
 pub mod web;
 pub mod webcam;
 

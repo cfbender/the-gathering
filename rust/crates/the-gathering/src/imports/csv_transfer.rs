@@ -18,7 +18,7 @@ use super::commit::{self, SeatAttrs};
 use super::csv::hex;
 use super::csv_changes::{self, Change, GameView, SeatView};
 use super::preview::{self, Preview, Source};
-use super::{ImportError, ImportGame, ImportResult, ImportSeat, LineError, inspect};
+use super::{ImportError, ImportGame, ImportResult, ImportSeat, LineError};
 
 /// What the import does to one game.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -50,9 +50,7 @@ fn review(
 fn message(error: &ImportError) -> String {
     match error {
         ImportError::Message(message) => message.clone(),
-        // Elixir rendered changesets with `inspect/1`; seat-level changeset failures were
-        // wrapped in a tuple that `to_string/1` raised on, which this reports the same way.
-        ImportError::Invalid(errors) => inspect::errors(errors),
+        ImportError::Invalid(errors) => errors.to_string(),
         ImportError::Validation(_) => "invalid".to_owned(),
         ImportError::Database(error) => error.to_string(),
     }
@@ -522,4 +520,26 @@ async fn revision(conn: &mut SqliteConnection, csv: &str) -> Result<String, sqlx
         hasher.update(part.as_bytes());
     }
     Ok(hex(&hasher.finalize()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::validation::ValidationError;
+
+    #[test]
+    fn validation_failures_read_as_sentences() {
+        let mut errors = ValidationError::single("played_at", "can't be blank");
+        errors.set_rows(
+            "seats",
+            vec![
+                ValidationError::new(),
+                ValidationError::single("kills", "must be greater than or equal to 0"),
+            ],
+        );
+        assert_eq!(
+            message(&ImportError::Invalid(errors)),
+            "Played at can't be blank; Seat 2: Kills must be greater than or equal to 0"
+        );
+    }
 }

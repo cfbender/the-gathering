@@ -812,14 +812,18 @@ mod decklist_handlers {
     use crate::catalog::{Card, Catalog, images};
     use crate::decklists::remote_decks::RemoteDeckList;
     use crate::decklists::{DeckCard, DecklistError, SERVER_TOO_OLD};
-    use crate::error::{ApiError, ApiResult, Errors};
+    use crate::error::{ApiError, ApiResult};
     use crate::state::AppState;
+    use crate::validation::ValidationError;
     use crate::web::api::{data, parse_id};
     use crate::web::auth::AuthUser;
     use crate::web::params::Params;
 
     fn invalid_url() -> ApiError {
-        ApiError::Validation(Errors::single("url", "is not a supported deck-list URL"))
+        ApiError::Validation(ValidationError::single(
+            "url",
+            "is not a supported deck-list URL",
+        ))
     }
 
     fn card_json(entry: &DeckCard, card: Option<&Card>) -> Value {
@@ -921,7 +925,9 @@ mod decklist_handlers {
             Err(DecklistError::UpstreamError) => Err(ApiError::BadGateway),
             // The link is fine and the server answered; it needs an upgrade. The deck form
             // shows `url` field errors verbatim, so this reaches the member as written.
-            Err(DecklistError::ServerTooOld) => Err(Errors::single("url", SERVER_TOO_OLD).into()),
+            Err(DecklistError::ServerTooOld) => {
+                Err(ValidationError::single("url", SERVER_TOO_OLD).into())
+            }
         }
     }
 

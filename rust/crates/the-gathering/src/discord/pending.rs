@@ -6,7 +6,7 @@ use serde_json::{Map, Value};
 use sqlx::SqliteConnection;
 
 use crate::db::{self, Pool, UtcDateTime};
-use crate::error::Errors;
+use crate::validation::ValidationError;
 
 use super::report::{GameReport, ReportPlayer};
 use super::sink::{Sink, SinkError};
@@ -216,7 +216,7 @@ pub async fn recorded(conn: &mut SqliteConnection, external_id: &str) -> Result<
 pub enum StageError {
     /// A required field is blank (`validate_required`).
     #[error("invalid pending game")]
-    Invalid(Errors),
+    Invalid(ValidationError),
     /// Database error.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
@@ -228,7 +228,7 @@ pub async fn stage(
     conn: &mut SqliteConnection,
     report: &GameReport,
 ) -> Result<PendingGame, StageError> {
-    let mut errors = Errors::new();
+    let mut errors = ValidationError::new();
     for (field, value) in [
         ("external_id", &report.external_id),
         ("guild_id", &report.guild_id),

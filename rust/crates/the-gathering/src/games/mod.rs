@@ -32,7 +32,8 @@ use sqlx::SqliteConnection;
 
 use crate::accounts::User;
 use crate::db::{self, Pool, UtcDateTime};
-use crate::error::{ApiError, Errors};
+use crate::error::ApiError;
+use crate::validation::ValidationError;
 
 pub use self::deck_picker::{Candidate, DeckPick, Outcome};
 pub use self::merge_players::LinkPlan;
@@ -59,7 +60,7 @@ pub fn fold_name(name: &str) -> String {
 pub enum GamesError {
     /// Validation errors (422).
     #[error("invalid")]
-    Invalid(Errors),
+    Invalid(ValidationError),
     /// A bad request (400).
     #[error("bad request")]
     BadRequest,
@@ -71,8 +72,8 @@ pub enum GamesError {
     Database(#[from] sqlx::Error),
 }
 
-impl From<Errors> for GamesError {
-    fn from(errors: Errors) -> Self {
+impl From<ValidationError> for GamesError {
+    fn from(errors: ValidationError) -> Self {
         Self::Invalid(errors)
     }
 }

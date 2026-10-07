@@ -17,7 +17,9 @@ lives here.
     values for socket tokens and stored credentials.
   - `legacy.rs`: read-only decoders for the session cookie and encrypted credentials that
     releases up to 0.2 wrote, so upgrades keep sessions and stored keys.
-  - `changeset.rs`, `error.rs`: param casting, validation messages, and API error bodies.
+  - `validation.rs`: `ValidationError` (field and row messages) and the `Validator` checks;
+    `error.rs`: `ApiError` and the JSON error bodies; `changeset.rs`: casting untyped params
+    (going away as handlers move to typed request bodies).
   - `accounts/`, `catalog/`, `decklists/`, `games/`, ...: domain modules. `catalog/` also
     holds the Scryfall sync (`the-gathering catalog-sync`, plus a scheduled run started at
     boot), the backfill (`the-gathering catalog-backfill`), and the card image disk cache;

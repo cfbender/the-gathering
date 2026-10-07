@@ -64,7 +64,7 @@ Production/container commands are documented in `README.md`.
 ### JSON API conventions
 
 - Handlers live in `rust/crates/the-gathering/src/web/api/` and are routed in `web/mod.rs`, grouped by the guards they need (`require_authenticated_user`, `require_admin`, `require_sudo_mode`) applied with `route_layer`. Admin-sensitive changes use both `require_admin` and `require_sudo_mode`.
-- Handlers return `Result<_, ApiError>` (`src/error.rs`) instead of building error responses by hand. Validation errors render as `{"errors": {"field": ["message"]}}`; other errors as `{"errors": {"detail": "..."}}`.
+- Handlers return `Result<_, ApiError>` (`src/error.rs`) instead of building error responses by hand. Validation failures are a `ValidationError` (`src/validation.rs`, built with `Validator`) and render as `{"errors": {"field": ["message"]}}` in check order, with list rows as `{"seats": [{}, {"field": ["message"]}]}`; other errors as `{"errors": {"detail": "..."}}`.
 - Successful responses wrap the payload in `{"data": ...}` (single object or list) via `web::api::data`.
 - Use plural resource paths and standard REST actions (`GET /api/games`, `POST /api/games`, `GET /api/games/:id`, `PATCH`, `DELETE`). Paginate lists with `page`/`per_page` query params when they can grow unbounded.
 - Every `/api` request that changes state needs the CSRF token; the frontend `api()` helper in `assets/react/src/lib/api.ts` sends it and rejects with `ApiError` (carrying `errors`) on non-2xx responses. Use it for all requests.

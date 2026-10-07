@@ -1,8 +1,8 @@
-/** Errors for one nested row of a `cast_assoc` list: `{ seat: ["message"] }`, or `{}` when valid. */
+/** Errors for one row of a list field (a game's seats): `{ seat: ["message"] }`, or `{}` when valid. */
 export type RowErrors = Record<string, string[] | undefined>
 
-/** Field errors as rendered by `TheGatheringWeb.ChangesetJSON`: `{ field: ["message"] }`,
- * with nested rows as `{ seats: [{}, { seat: ["message"] }] }`. */
+/** Field errors from a 422 response: `{ field: ["message"] }` in the order the server
+ * checked them, with per-row errors of a list field as `{ seats: [{}, { seat: ["message"] }] }`. */
 export type FieldErrors = Record<
   string,
   string | Array<string | RowErrors> | Record<string, unknown> | undefined
@@ -29,7 +29,7 @@ export class ApiError extends Error {
   /**
    * Messages for a single field, empty when the field is valid or unknown.
    *
-   * `cast_assoc` errors arrive as one object per row (`seats: [{}, {seat: ["…"]}]`);
+   * Row errors arrive as one object per input row (`seats: [{}, {seat: ["…"]}]`);
    * those flatten to "Seat 2: seat has already been taken" so forms never render objects.
    */
   fieldErrors(field: string): string[] {

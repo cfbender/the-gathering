@@ -1,10 +1,10 @@
 //! Signing in with Discord.
 
-use crate::changeset::{Changeset, TAKEN};
 use crate::db::{self, UtcDateTime};
-use crate::error::Errors;
 use crate::games::resolve_player::{self, ResolveError};
 use crate::regex::compile;
+use crate::validation::ValidationError;
+use crate::validation::{TAKEN, Validator};
 
 use super::user::{normalize_username, validate_account_fields};
 use super::{Accounts, User, UserRow, select_users};
@@ -58,7 +58,7 @@ pub enum SignInError {
     /// The player for this account is linked to someone else.
     DiscordIdentityConflict,
     /// The new account was invalid.
-    InvalidUser(Errors),
+    InvalidUser(ValidationError),
     /// Database error.
     Database(sqlx::Error),
 }
@@ -199,7 +199,7 @@ impl Accounts {
             .filter(|name| !name.is_empty())
             .or_else(|| username.clone())
             .map(|name| name.trim().to_owned());
-        let mut cs = Changeset::empty();
+        let mut cs = Validator::new();
         validate_account_fields(
             &mut cs,
             username.as_deref(),

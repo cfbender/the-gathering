@@ -15,7 +15,6 @@ pub mod csv_changes;
 pub mod csv_transfer;
 pub mod etf;
 pub mod google_sheet;
-pub mod inspect;
 pub mod mythic_track;
 pub mod portable;
 pub mod preview;
@@ -28,8 +27,9 @@ pub mod table;
 use serde::Serialize;
 
 use crate::db::UtcDateTime;
-use crate::error::{ApiError, Errors};
+use crate::error::ApiError;
 use crate::games::GamesError;
+use crate::validation::ValidationError;
 
 pub use self::preview::Preview;
 
@@ -155,7 +155,7 @@ pub enum ImportError {
     Message(String),
     /// A record failed validation (422 with the changeset errors).
     #[error("invalid record")]
-    Invalid(Errors),
+    Invalid(ValidationError),
     /// Database error.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
@@ -167,7 +167,7 @@ impl From<GamesError> for ImportError {
             GamesError::Invalid(errors) => Self::Invalid(errors),
             GamesError::Database(error) => Self::Database(error),
             GamesError::NotFound => Self::Database(sqlx::Error::RowNotFound),
-            GamesError::BadRequest => Self::Invalid(Errors::single("base", "is invalid")),
+            GamesError::BadRequest => Self::Invalid(ValidationError::single("base", "is invalid")),
         }
     }
 }
@@ -177,9 +177,9 @@ impl From<crate::games::ResolveError> for ImportError {
         match error {
             crate::games::ResolveError::Invalid(errors) => Self::Invalid(errors),
             crate::games::ResolveError::Database(error) => Self::Database(error),
-            crate::games::ResolveError::DiscordIdentityConflict => {
-                Self::Invalid(Errors::single("discord_id", "belongs to another account"))
-            }
+            crate::games::ResolveError::DiscordIdentityConflict => Self::Invalid(
+                ValidationError::single("discord_id", "belongs to another account"),
+            ),
         }
     }
 }
@@ -189,7 +189,9 @@ impl ImportError {
     /// otherwise. `Validation` is rendered by the controllers themselves.
     pub fn into_api(self) -> ApiError {
         match self {
-            Self::Message(message) => ApiError::Validation(Errors::single("import", message)),
+            Self::Message(message) => {
+                ApiError::Validation(ValidationError::single("import", message))
+            }
             Self::Invalid(errors) => ApiError::Validation(errors),
             Self::Database(error) => error.into(),
             Self::Validation(_) => ApiError::BadRequest,

@@ -11,8 +11,6 @@
 //! a row's number is the physical line it starts on, which `NimbleCSV`-based numbering
 //! only matched when no quoted cell spanned lines.
 
-use std::fmt::Write as _;
-
 /// One parsed row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Row {
@@ -22,35 +20,8 @@ pub struct Row {
     pub fields: Vec<String>,
 }
 
-/// `inspect/1` of a string, as `NimbleCSV` quotes lines in its errors.
-pub fn inspect_string(text: &str) -> String {
-    let mut out = String::with_capacity(text.len() + 2);
-    out.push('"');
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{1b}' => out.push_str("\\e"),
-            '\u{7}' => out.push_str("\\a"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{b}' => out.push_str("\\v"),
-            '\u{c}' => out.push_str("\\f"),
-            '\0' => out.push_str("\\0"),
-            ch if ch.is_control() => {
-                let _ = write!(out, "\\x{:02X}", u32::from(ch));
-            }
-            ch => out.push(ch),
-        }
-    }
-    out.push('"');
-    out
-}
-
 fn unexpected(line: &str) -> String {
-    format!("unexpected escape character \" in {}", inspect_string(line))
+    format!("unexpected escape character \" in {line:?}")
 }
 
 /// Lines including their terminator, split after every `\n`.

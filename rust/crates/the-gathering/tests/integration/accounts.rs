@@ -17,7 +17,8 @@ use the_gathering::accounts::discord::{DiscordClaims, SignInError};
 use the_gathering::accounts::user::PALETTES;
 use the_gathering::accounts::{RegisterError, User};
 use the_gathering::db::{self, UtcDateTime};
-use the_gathering::error::{ApiError, Errors};
+use the_gathering::error::ApiError;
+use the_gathering::validation::ValidationError;
 
 fn valid() -> Value {
     json!({
@@ -46,7 +47,7 @@ async fn user_with_display_name(app: &TestApp, display_name: &str) -> User {
         .unwrap()
 }
 
-fn validation_errors(error: ApiError) -> Errors {
+fn validation_errors(error: ApiError) -> ValidationError {
     match error {
         ApiError::Validation(errors) => errors,
         other => panic!("expected validation errors, got {other:?}"),

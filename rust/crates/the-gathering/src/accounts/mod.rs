@@ -6,10 +6,11 @@ pub mod user;
 use serde_json::{Value, json};
 use time::Duration;
 
-use crate::changeset::{Change, Changeset, TAKEN};
+use crate::changeset::{Change, Changeset};
 use crate::crypto;
 use crate::db::{self, IsoDate, Pool, UtcDateTime};
-use crate::error::{ApiError, Errors};
+use crate::error::ApiError;
+use crate::validation::{TAKEN, ValidationError};
 
 pub use self::user::User;
 use self::user::{
@@ -128,7 +129,7 @@ pub enum RegisterError {
     /// Registration is closed.
     Closed,
     /// Validation failed.
-    Invalid(Errors),
+    Invalid(ValidationError),
     /// Database error.
     Database(sqlx::Error),
 }
@@ -344,14 +345,14 @@ impl Accounts {
         let (Some(username), Some(display_name), Some(password), Some(role)) =
             (username, display_name, password, role)
         else {
-            return Err(RegisterError::Invalid(Errors::single(
+            return Err(RegisterError::Invalid(ValidationError::single(
                 "username",
                 "can't be blank",
             )));
         };
-        let hashed = self
-            .hash_password(&password)
-            .map_err(|_| RegisterError::Invalid(Errors::single("password", "is invalid")))?;
+        let hashed = self.hash_password(&password).map_err(|_| {
+            RegisterError::Invalid(ValidationError::single("password", "is invalid"))
+        })?;
         let now = UtcDateTime::now();
         let id = sqlx::query_scalar!(
             r#"INSERT INTO users (username, display_name, hashed_password, role, inserted_at, updated_at)
@@ -789,7 +790,11 @@ impl Accounts {
             .fetch_one(&mut *tx)
             .await?;
             if !other_admin {
-                return Err(Errors::single("role", "must leave at least one enabled admin").into());
+                return Err(ValidationError::single(
+                    "role",
+                    "must leave at least one enabled admin",
+                )
+                .into());
             }
         }
         let now = UtcDateTime::now();
@@ -858,9 +863,11 @@ impl Accounts {
         .fetch_one(&mut *tx)
         .await?;
         if referenced {
-            return Err(
-                Errors::single("player", "must have zero games before deleting this user").into(),
-            );
+            return Err(ValidationError::single(
+                "player",
+                "must have zero games before deleting this user",
+            )
+            .into());
         }
         sqlx::query!(
             "DELETE FROM decks WHERE player_id IN (SELECT id FROM players WHERE user_id = ?)",
@@ -987,7 +994,7 @@ async fn rename_linked_player(
     {
         Ok(_) => Ok(()),
         Err(error) if db::is_unique_violation(&error, &[]) => {
-            Err(Errors::single("display_name", "is already used by another player").into())
+            Err(ValidationError::single("display_name", "is already used by another player").into())
         }
         Err(error) => Err(error.into()),
     }

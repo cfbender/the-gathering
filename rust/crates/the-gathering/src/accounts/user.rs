@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use crate::changeset::{Change, Changeset};
 use crate::db::UtcDateTime;
+use crate::validation::Validator;
 
 /// The purpose stored credentials (such as ManaVault API keys) are sealed for.
 const STORED_SECRET_PURPOSE: &str = "the-gathering.stored-secret";
@@ -210,7 +211,7 @@ pub fn default_display_name(
 
 /// `validate_account_fields/1`.
 pub fn validate_account_fields(
-    cs: &mut Changeset<'_>,
+    cs: &mut Validator,
     username: Option<&str>,
     display_name: Option<&str>,
     role: Option<&str>,
@@ -230,7 +231,7 @@ pub fn validate_account_fields(
 }
 
 /// `validate_password/1` without hashing: required, 12 to 72 characters, at most 72 bytes.
-pub fn validate_password(cs: &mut Changeset<'_>, password: Option<&str>) {
+pub fn validate_password(cs: &mut Validator, password: Option<&str>) {
     cs.required("password", password);
     cs.length("password", password, Some(12), Some(72));
     if cs.is_valid() {
@@ -269,7 +270,7 @@ pub fn profile_changes(
     user: &User,
     params: &Value,
     allow_insecure: impl Fn(&str) -> bool,
-) -> Result<ProfileChanges, crate::error::Errors> {
+) -> Result<ProfileChanges, crate::validation::ValidationError> {
     let mut cs = Changeset::new(params);
     // A blank key means "leave the stored key alone"; only an explicit nil clears it.
     let manavault_api_key = match cs.raw("manavault_api_key") {
