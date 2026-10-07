@@ -152,11 +152,3 @@ pub fn check_user_limit(
         Decision::Deny(ms) => Err(ApiError::TooManyRequests(retry_after_seconds(ms))),
     }
 }
-
-/// A placeholder for handlers not ported yet.
-pub fn not_implemented() -> ApiError {
-    ApiError::Custom(
-        axum::http::StatusCode::NOT_IMPLEMENTED,
-        json!({ "errors": { "detail": "Not Implemented" } }),
-    )
-}

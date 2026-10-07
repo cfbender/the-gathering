@@ -30,6 +30,8 @@ async fn main() -> anyhow::Result<()> {
             EnvFilter::try_from_env("RUST_LOG")
                 .unwrap_or_else(|_| EnvFilter::new(format!("{level},sqlx=warn"))),
         )
+        // Container and journald logs are not terminals; keep escape codes out of them.
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
         .init();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
