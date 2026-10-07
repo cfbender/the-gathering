@@ -8,9 +8,9 @@ use crate::changeset::{Changeset, cast_integer};
 use crate::db::UtcDateTime;
 use crate::error::Errors;
 
+use super::GamesError;
 use super::model::{Game, GameFormat, GameResult, GameSource, Seat};
 use super::win_condition::WinCondition;
-use super::GamesError;
 
 /// A seat after casting (`GamePlayer` changes applied to its data).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,7 +129,9 @@ fn cast_seat(base: &SeatFields, params: &Value) -> (SeatFields, Errors) {
     seat.result = cs.string("result").or(base.result.clone());
     seat.kills = cs.integer("kills").or(base.kills);
     seat.eliminated_turn = cs.integer("eliminated_turn").or(base.eliminated_turn);
-    seat.eliminated_by_player_id = cs.integer("eliminated_by_player_id").or(base.eliminated_by_player_id);
+    seat.eliminated_by_player_id = cs
+        .integer("eliminated_by_player_id")
+        .or(base.eliminated_by_player_id);
     seat.mvp_card_id = cs.string("mvp_card_id").or(base.mvp_card_id.clone());
     seat.mvp_card_name = cs.string("mvp_card_name").or(base.mvp_card_name.clone());
     seat.notes = cs.string("notes").or(base.notes.clone());
@@ -166,16 +168,27 @@ fn validate_seats(errors: &mut Errors, seats: &[SeatFields], format: Option<&str
     let mut numbers: Vec<Option<i64>> = seats.iter().map(|seat| seat.seat).collect();
     numbers.sort_by_key(|number| (number.is_none(), *number));
     let consecutive = count > 0
-        && numbers.iter().zip(1_i64..).all(|(number, expected)| *number == Some(expected));
-    let winners = seats.iter().filter(|seat| seat.result.as_deref() == Some("win")).count();
+        && numbers
+            .iter()
+            .zip(1_i64..)
+            .all(|(number, expected)| *number == Some(expected));
+    let winners = seats
+        .iter()
+        .filter(|seat| seat.result.as_deref() == Some("win"))
+        .count();
     let (required_winners, message) = if format == Some("two_headed_giant") {
         (2, "must have exactly two winners or all draws")
     } else {
         (1, "must have exactly one winner or all draws")
     };
     let winner_and_losses = winners == required_winners
-        && seats.iter().all(|seat| matches!(seat.result.as_deref(), Some("win" | "loss")));
-    let all_draw = !seats.is_empty() && seats.iter().all(|seat| seat.result.as_deref() == Some("draw"));
+        && seats
+            .iter()
+            .all(|seat| matches!(seat.result.as_deref(), Some("win" | "loss")));
+    let all_draw = !seats.is_empty()
+        && seats
+            .iter()
+            .all(|seat| seat.result.as_deref() == Some("draw"));
     if !(2..=10).contains(&count) {
         errors.add("seats", "must contain between 2 and 10 players");
     }
@@ -193,14 +206,20 @@ fn validate_seats(errors: &mut Errors, seats: &[SeatFields], format: Option<&str
 async fn exists(conn: &mut SqliteConnection, table: &str, id: i64) -> Result<bool, sqlx::Error> {
     match table {
         "users" => {
-            sqlx::query_scalar!(r#"SELECT EXISTS(SELECT 1 FROM users WHERE id = ?) AS "e!: bool""#, id)
-                .fetch_one(&mut *conn)
-                .await
+            sqlx::query_scalar!(
+                r#"SELECT EXISTS(SELECT 1 FROM users WHERE id = ?) AS "e!: bool""#,
+                id
+            )
+            .fetch_one(&mut *conn)
+            .await
         }
         _ => {
-            sqlx::query_scalar!(r#"SELECT EXISTS(SELECT 1 FROM players WHERE id = ?) AS "e!: bool""#, id)
-                .fetch_one(&mut *conn)
-                .await
+            sqlx::query_scalar!(
+                r#"SELECT EXISTS(SELECT 1 FROM players WHERE id = ?) AS "e!: bool""#,
+                id
+            )
+            .fetch_one(&mut *conn)
+            .await
         }
     }
 }
@@ -220,18 +239,30 @@ pub(crate) async fn changeset(
     extra: Extra<'_>,
 ) -> Result<ValidGame, GamesError> {
     let mut cs = Changeset::new(attrs);
-    let played_at = cs.datetime("played_at").or(current.map(|game| game.played_at));
-    let duration_minutes = cs.integer("duration_minutes").or(current.and_then(|game| game.duration_minutes));
+    let played_at = cs
+        .datetime("played_at")
+        .or(current.map(|game| game.played_at));
+    let duration_minutes = cs
+        .integer("duration_minutes")
+        .or(current.and_then(|game| game.duration_minutes));
     let turns = cs.integer("turns").or(current.and_then(|game| game.turns));
-    let win_condition = cs
-        .string("win_condition")
-        .or(current.and_then(|game| game.win_condition).map(|condition| condition.as_str().to_owned()));
-    let format = cs
-        .string("format")
-        .or(Some(current.map_or(GameFormat::Commander, |game| game.format).as_str().to_owned()));
-    let notes = cs.string("notes").or(current.and_then(|game| game.notes.clone()));
+    let win_condition = cs.string("win_condition").or(current
+        .and_then(|game| game.win_condition)
+        .map(|condition| condition.as_str().to_owned()));
+    let format = cs.string("format").or(Some(
+        current
+            .map_or(GameFormat::Commander, |game| game.format)
+            .as_str()
+            .to_owned(),
+    ));
+    let notes = cs
+        .string("notes")
+        .or(current.and_then(|game| game.notes.clone()));
     let (mut source, mut external_id) = match current {
-        Some(game) => (Some(game.source.as_str().to_owned()), game.external_id.clone()),
+        Some(game) => (
+            Some(game.source.as_str().to_owned()),
+            game.external_id.clone(),
+        ),
         None => (Some(GameSource::Manual.as_str().to_owned()), None),
     };
     if current.is_none()
@@ -244,15 +275,25 @@ pub(crate) async fn changeset(
     cs.required_value("played_at", played_at.as_ref());
     cs.required("source", source.as_ref());
     cs.required("format", format.as_ref());
-    cs.inclusion("format", format.as_deref(), &["commander", "two_headed_giant", "five_star"]);
-    cs.inclusion("source", source.as_deref(), &["manual", "csv", "mythic_track", "discord"]);
+    cs.inclusion(
+        "format",
+        format.as_deref(),
+        &["commander", "two_headed_giant", "five_star"],
+    );
+    cs.inclusion(
+        "source",
+        source.as_deref(),
+        &["manual", "csv", "mythic_track", "discord"],
+    );
     let keys: Vec<&str> = WinCondition::all().map(WinCondition::as_str).collect();
     cs.inclusion("win_condition", win_condition.as_deref(), &keys);
     cs.greater_than("duration_minutes", duration_minutes, 0);
     cs.greater_than("turns", turns, 0);
 
     // cast_assoc(:seats, required: true)
-    let existing: Vec<SeatFields> = current.map(|game| game.seats.iter().map(SeatFields::of).collect()).unwrap_or_default();
+    let existing: Vec<SeatFields> = current
+        .map(|game| game.seats.iter().map(SeatFields::of).collect())
+        .unwrap_or_default();
     let (seats, seats_given) = match cs.raw("seats") {
         None => (existing.clone(), false),
         Some(Value::Null) => (Vec::new(), true),
@@ -288,7 +329,11 @@ pub(crate) async fn changeset(
     validate_seats(&mut cs.errors, &seats, format.as_deref());
 
     // RecordGame: validate_user_exists(:created_by_user_id) and validate_deck_ownership/1.
-    let created_by_user_id = if current.is_none() { extra.created_by_user_id } else { current.and_then(|game| game.created_by_user_id) };
+    let created_by_user_id = if current.is_none() {
+        extra.created_by_user_id
+    } else {
+        current.and_then(|game| game.created_by_user_id)
+    };
     if current.is_none()
         && let Some(user_id) = created_by_user_id
         && !exists(conn, "users", user_id).await?
@@ -312,7 +357,10 @@ pub(crate) async fn changeset(
         }
     }
     if mismatched {
-        cs.add_error("seats", "contains a deck that does not belong to its player");
+        cs.add_error(
+            "seats",
+            "contains a deck that does not belong to its player",
+        );
     }
 
     // Constraint errors only surface once everything else is valid, as with Repo.insert.
@@ -361,8 +409,14 @@ pub(crate) async fn changeset(
         turns,
         win_condition: win_condition.as_deref().and_then(WinCondition::parse),
         notes,
-        source: source.as_deref().and_then(GameSource::parse).ok_or_else(invalid)?,
-        format: format.as_deref().and_then(GameFormat::parse).ok_or_else(invalid)?,
+        source: source
+            .as_deref()
+            .and_then(GameSource::parse)
+            .ok_or_else(invalid)?,
+        format: format
+            .as_deref()
+            .and_then(GameFormat::parse)
+            .ok_or_else(invalid)?,
         external_id,
         created_by_user_id,
         seats: valid_seats,
@@ -375,7 +429,12 @@ mod tests {
     use super::*;
 
     fn seat(player: i64, number: i64, result: &str) -> SeatFields {
-        SeatFields { player_id: Some(player), seat: Some(number), result: Some(result.into()), ..SeatFields::new() }
+        SeatFields {
+            player_id: Some(player),
+            seat: Some(number),
+            result: Some(result.into()),
+            ..SeatFields::new()
+        }
     }
 
     #[test]
@@ -391,16 +450,29 @@ mod tests {
             ]
         );
         let mut errors = Errors::new();
-        validate_seats(&mut errors, &[seat(1, 1, "win"), seat(2, 2, "win")], Some("two_headed_giant"));
+        validate_seats(
+            &mut errors,
+            &[seat(1, 1, "win"), seat(2, 2, "win")],
+            Some("two_headed_giant"),
+        );
         assert!(errors.is_empty());
         let mut errors = Errors::new();
         validate_seats(&mut errors, &[seat(1, 1, "win"), seat(1, 3, "loss")], None);
         assert_eq!(
             errors.messages("seats"),
-            ["must use consecutive seat numbers starting at 1", "cannot contain the same player twice"]
+            [
+                "must use consecutive seat numbers starting at 1",
+                "cannot contain the same player twice"
+            ]
         );
-        let (_, errors) = cast_seat(&SeatFields::new(), &serde_json::json!({"player_id": "1", "seat": 0, "result": "x", "kills": 1.5}));
-        assert_eq!(errors.messages("seat"), ["must be greater than or equal to 1"]);
+        let (_, errors) = cast_seat(
+            &SeatFields::new(),
+            &serde_json::json!({"player_id": "1", "seat": 0, "result": "x", "kills": 1.5}),
+        );
+        assert_eq!(
+            errors.messages("seat"),
+            ["must be greater than or equal to 1"]
+        );
         assert_eq!(errors.messages("result"), ["is invalid"]);
         assert_eq!(errors.messages("kills"), ["is invalid"]);
     }

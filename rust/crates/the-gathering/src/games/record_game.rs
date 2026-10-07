@@ -36,16 +36,25 @@ async fn reload(conn: &mut SqliteConnection, id: i64) -> Result<Game, GamesError
 
 /// `RecordGame.create/2`: with a non-empty `external_id`, an existing game from the same
 /// `source` (default `manual`) is returned unchanged instead of recording a duplicate.
-pub async fn create(conn: &mut SqliteConnection, attrs: &Value, created_by_user_id: Option<i64>) -> Result<Game, GamesError> {
+pub async fn create(
+    conn: &mut SqliteConnection,
+    attrs: &Value,
+    created_by_user_id: Option<i64>,
+) -> Result<Game, GamesError> {
     let source = match attrs.get("source") {
         None => Some("manual"),
         Some(value) => value.as_str(),
     };
-    match (source, attr_str(attrs, "external_id").filter(|id| !id.is_empty())) {
-        (Some(source), Some(external_id)) => match game_by_external_id(conn, source, external_id).await? {
-            Some(id) => reload(conn, id).await,
-            None => insert(conn, attrs, created_by_user_id, Some((source, external_id))).await,
-        },
+    match (
+        source,
+        attr_str(attrs, "external_id").filter(|id| !id.is_empty()),
+    ) {
+        (Some(source), Some(external_id)) => {
+            match game_by_external_id(conn, source, external_id).await? {
+                Some(id) => reload(conn, id).await,
+                None => insert(conn, attrs, created_by_user_id, Some((source, external_id))).await,
+            }
+        }
         _ => insert(conn, attrs, created_by_user_id, None).await,
     }
 }
@@ -95,7 +104,16 @@ async fn insert(
     created_by_user_id: Option<i64>,
     identity: Option<(&str, &str)>,
 ) -> Result<Game, GamesError> {
-    let game = changeset(conn, None, attrs, Extra { created_by_user_id, identity }).await?;
+    let game = changeset(
+        conn,
+        None,
+        attrs,
+        Extra {
+            created_by_user_id,
+            identity,
+        },
+    )
+    .await?;
     let mut tx = conn.begin().await?;
     match insert_rows(&mut tx, &game).await {
         Ok(id) => {
@@ -105,7 +123,9 @@ async fn insert(
         Err(error) if db::is_unique_violation(&error, &["games.source", "games.external_id"]) => {
             tx.rollback().await?;
             let (source, external_id) = identity.ok_or(GamesError::Database(error))?;
-            let id = game_by_external_id(conn, source, external_id).await?.ok_or(GamesError::NotFound)?;
+            let id = game_by_external_id(conn, source, external_id)
+                .await?
+                .ok_or(GamesError::NotFound)?;
             reload(conn, id).await
         }
         Err(error) => Err(error.into()),
@@ -140,7 +160,12 @@ async fn insert_rows(conn: &mut SqliteConnection, game: &ValidGame) -> Result<i6
     Ok(id)
 }
 
-async fn insert_seat(conn: &mut SqliteConnection, game_id: i64, seat: &ValidSeat, now: UtcDateTime) -> Result<(), sqlx::Error> {
+async fn insert_seat(
+    conn: &mut SqliteConnection,
+    game_id: i64,
+    seat: &ValidSeat,
+    now: UtcDateTime,
+) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "INSERT INTO game_players (game_id, player_id, deck_id, seat, result, kills, eliminated_turn,
                                    eliminated_by_player_id, mvp_card_id, mvp_card_name, notes, inserted_at, updated_at)
@@ -168,14 +193,21 @@ async fn insert_seat(conn: &mut SqliteConnection, game_id: i64, seat: &ValidSeat
 /// Ecto updated rows one at a time, so swapping numbers needs the rows parked first.
 fn seats_collide(current: &Game, requested: &[ValidSeat]) -> bool {
     requested.iter().any(|seat| {
-        current.seats.iter().any(|held| held.seat == seat.seat && Some(held.id) != seat.existing_id)
+        current
+            .seats
+            .iter()
+            .any(|held| held.seat == seat.seat && Some(held.id) != seat.existing_id)
     })
 }
 
 /// `RecordGame.update/2`: `played_at`, `duration_minutes`, `turns`, `win_condition`,
 /// `format`, `notes`, and `seats` (matched to existing rows by `id`; rows left out are
 /// deleted). Provenance (`source`, `external_id`, creator) never changes. All or nothing.
-pub async fn update(conn: &mut SqliteConnection, game: &Game, attrs: &Value) -> Result<Game, GamesError> {
+pub async fn update(
+    conn: &mut SqliteConnection,
+    game: &Game,
+    attrs: &Value,
+) -> Result<Game, GamesError> {
     let valid = changeset(conn, Some(game), attrs, Extra::default()).await?;
     let mut tx = conn.begin().await?;
     let now = UtcDateTime::now();
@@ -203,12 +235,23 @@ pub async fn update(conn: &mut SqliteConnection, game: &Game, attrs: &Value) -> 
         .await?;
     }
     if valid.seats_given {
-        let kept: Vec<i64> = valid.seats.iter().filter_map(|seat| seat.existing_id).collect();
+        let kept: Vec<i64> = valid
+            .seats
+            .iter()
+            .filter_map(|seat| seat.existing_id)
+            .collect();
         for removed in game.seats.iter().filter(|seat| !kept.contains(&seat.id)) {
-            sqlx::query!("DELETE FROM game_players WHERE id = ?", removed.id).execute(&mut *tx).await?;
+            sqlx::query!("DELETE FROM game_players WHERE id = ?", removed.id)
+                .execute(&mut *tx)
+                .await?;
         }
         if seats_collide(game, &valid.seats) {
-            sqlx::query!("UPDATE game_players SET seat = -seat WHERE game_id = ?", game.id).execute(&mut *tx).await?;
+            sqlx::query!(
+                "UPDATE game_players SET seat = -seat WHERE game_id = ?",
+                game.id
+            )
+            .execute(&mut *tx)
+            .await?;
         }
         for seat in &valid.seats {
             match seat.existing_id {
@@ -244,6 +287,8 @@ pub async fn update(conn: &mut SqliteConnection, game: &Game, attrs: &Value) -> 
 
 /// `Games.delete_game/1` (seats cascade).
 pub async fn delete(conn: &mut SqliteConnection, game_id: i64) -> Result<(), sqlx::Error> {
-    sqlx::query!("DELETE FROM games WHERE id = ?", game_id).execute(&mut *conn).await?;
+    sqlx::query!("DELETE FROM games WHERE id = ?", game_id)
+        .execute(&mut *conn)
+        .await?;
     Ok(())
 }

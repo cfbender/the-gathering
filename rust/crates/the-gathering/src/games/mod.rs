@@ -36,8 +36,8 @@ use crate::error::{ApiError, Errors};
 pub use self::deck_picker::{Candidate, DeckPick, Outcome};
 pub use self::merge_players::LinkPlan;
 pub use self::model::{
-    Deck, DecklistSource, Game, GameFormat, GameResult, GameSource, Player, Seat, get_deck, get_player, load_game,
-    load_games,
+    Deck, DecklistSource, Game, GameFormat, GameResult, GameSource, Player, Seat, get_deck,
+    get_player, load_game, load_games,
 };
 pub use self::player::{PlayerDetail, PlayerIdentityRow, SeatGame};
 pub use self::resolve_player::{PlayerIdentity, Resolution, ResolveError};
@@ -103,15 +103,30 @@ pub struct Pagination {
 impl Pagination {
     /// Computes `total_pages` (`max(ceil(total / per_page), 1)`).
     pub fn new(page: i64, per_page: i64, total: i64) -> Self {
-        let total_pages = if per_page > 0 { total.saturating_add(per_page - 1) / per_page } else { 1 };
-        Self { page, per_page, total, total_pages: total_pages.max(1) }
+        let total_pages = if per_page > 0 {
+            total.saturating_add(per_page - 1) / per_page
+        } else {
+            1
+        };
+        Self {
+            page,
+            per_page,
+            total,
+            total_pages: total_pages.max(1),
+        }
     }
 }
 
-pub(crate) async fn user_exists(conn: &mut SqliteConnection, user_id: i64) -> Result<bool, sqlx::Error> {
-    sqlx::query_scalar!(r#"SELECT EXISTS(SELECT 1 FROM users WHERE id = ?) AS "e!: bool""#, user_id)
-        .fetch_one(&mut *conn)
-        .await
+pub(crate) async fn user_exists(
+    conn: &mut SqliteConnection,
+    user_id: i64,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM users WHERE id = ?) AS "e!: bool""#,
+        user_id
+    )
+    .fetch_one(&mut *conn)
+    .await
 }
 
 /// `Games.can_manage_player?/2`: administrators manage everyone; members manage their own
@@ -154,7 +169,10 @@ macro_rules! write_tx {
 impl Games {
     /// The API over `pool`.
     pub fn new(pool: Pool) -> Self {
-        Self { pool, seated: Arc::new(OnceLock::new()) }
+        Self {
+            pool,
+            seated: Arc::new(OnceLock::new()),
+        }
     }
 
     /// Installs the webcam-table seat check merges consult (set once at startup).
@@ -192,7 +210,10 @@ impl Games {
     }
 
     /// `Games.list_player_identities/1` (`page`, `per_page`, `search`).
-    pub async fn list_player_identities(&self, params: &Value) -> Result<(Vec<PlayerIdentityRow>, Pagination), sqlx::Error> {
+    pub async fn list_player_identities(
+        &self,
+        params: &Value,
+    ) -> Result<(Vec<PlayerIdentityRow>, Pagination), sqlx::Error> {
         player::list_player_identities(&mut *self.pool.acquire().await?, params).await
     }
 
@@ -202,13 +223,23 @@ impl Games {
     }
 
     /// `Games.create_player/2`.
-    pub async fn create_player(&self, attrs: &Value, user_id: Option<i64>) -> Result<Player, GamesError> {
-        write_tx!(self, |conn| player::create_player(conn, attrs, user_id).await)
+    pub async fn create_player(
+        &self,
+        attrs: &Value,
+        user_id: Option<i64>,
+    ) -> Result<Player, GamesError> {
+        write_tx!(self, |conn| player::create_player(conn, attrs, user_id)
+            .await)
     }
 
     /// `Games.update_player/2`.
-    pub async fn update_player(&self, player: &Player, attrs: &Value) -> Result<Player, GamesError> {
-        write_tx!(self, |conn| player::update_player(conn, player, attrs).await)
+    pub async fn update_player(
+        &self,
+        player: &Player,
+        attrs: &Value,
+    ) -> Result<Player, GamesError> {
+        write_tx!(self, |conn| player::update_player(conn, player, attrs)
+            .await)
     }
 
     /// `Games.delete_player/1`.
@@ -240,25 +271,44 @@ impl Games {
     }
 
     /// `Games.find_or_create_player_by_name/2`.
-    pub async fn find_or_create_player_by_name(&self, name: &str, attrs: &Value) -> Result<Player, GamesError> {
-        write_tx!(self, |conn| player::find_or_create_player_by_name(conn, name, attrs).await)
+    pub async fn find_or_create_player_by_name(
+        &self,
+        name: &str,
+        attrs: &Value,
+    ) -> Result<Player, GamesError> {
+        write_tx!(self, |conn| player::find_or_create_player_by_name(
+            conn, name, attrs
+        )
+        .await)
     }
 
     /// `Games.merge_players/2`: refuses a source seated at an open webcam table.
-    pub async fn merge_players(&self, source: &Player, target: &Player) -> Result<Player, GamesError> {
+    pub async fn merge_players(
+        &self,
+        source: &Player,
+        target: &Player,
+    ) -> Result<Player, GamesError> {
         if source.id == target.id {
             return Err(GamesError::BadRequest);
         }
         if self.seated(source.id).await {
             return Err(merge_players::seated_error(source));
         }
-        write_tx!(self, |conn| merge_players::merge_unseated(conn, source, target).await)
+        write_tx!(self, |conn| merge_players::merge_unseated(
+            conn, source, target
+        )
+        .await)
     }
 
     /// `Games.link_player_to_user/2`: makes `player` the account's player, merging the
     /// account's current player into it.
-    pub async fn link_player_to_user(&self, player: &Player, user: &User) -> Result<Player, GamesError> {
-        let plan = write_tx!(self, |conn| merge_players::plan_link(conn, player, user).await)?;
+    pub async fn link_player_to_user(
+        &self,
+        player: &Player,
+        user: &User,
+    ) -> Result<Player, GamesError> {
+        let plan = write_tx!(self, |conn| merge_players::plan_link(conn, player, user)
+            .await)?;
         match plan {
             LinkPlan::Done(player) => Ok(player),
             LinkPlan::Merge { current, player } => self.merge_players(&current, &player).await,
@@ -268,8 +318,17 @@ impl Games {
     // Decks
 
     /// `Games.list_decks/1` with each deck's player.
-    pub async fn list_decks(&self, include_archived: bool, player_id: Option<i64>) -> Result<Vec<(Deck, Player)>, sqlx::Error> {
-        deck::list_decks(&mut *self.pool.acquire().await?, include_archived, player_id).await
+    pub async fn list_decks(
+        &self,
+        include_archived: bool,
+        player_id: Option<i64>,
+    ) -> Result<Vec<(Deck, Player)>, sqlx::Error> {
+        deck::list_decks(
+            &mut *self.pool.acquire().await?,
+            include_archived,
+            player_id,
+        )
+        .await
     }
 
     /// `Games.get_deck/1`.
@@ -288,8 +347,13 @@ impl Games {
     }
 
     /// `Games.delete_deck/2`.
-    pub async fn delete_deck(&self, deck: &Deck, replacement: Option<&Deck>) -> Result<Deck, GamesError> {
-        write_tx!(self, |conn| deck::delete_deck(conn, deck, replacement).await)
+    pub async fn delete_deck(
+        &self,
+        deck: &Deck,
+        replacement: Option<&Deck>,
+    ) -> Result<Deck, GamesError> {
+        write_tx!(self, |conn| deck::delete_deck(conn, deck, replacement)
+            .await)
     }
 
     /// `Games.find_deck/4`.
@@ -300,12 +364,27 @@ impl Games {
         commander_name: Option<&str>,
         partner_name: Option<&str>,
     ) -> Result<Option<Deck>, sqlx::Error> {
-        deck::find_deck(&mut *self.pool.acquire().await?, player_id, name, commander_name, partner_name).await
+        deck::find_deck(
+            &mut *self.pool.acquire().await?,
+            player_id,
+            name,
+            commander_name,
+            partner_name,
+        )
+        .await
     }
 
     /// `Games.find_or_create_deck/3`.
-    pub async fn find_or_create_deck(&self, player_id: i64, name: &str, attrs: &Value) -> Result<Deck, GamesError> {
-        write_tx!(self, |conn| deck::find_or_create_deck(conn, player_id, name, attrs).await)
+    pub async fn find_or_create_deck(
+        &self,
+        player_id: i64,
+        name: &str,
+        attrs: &Value,
+    ) -> Result<Deck, GamesError> {
+        write_tx!(self, |conn| deck::find_or_create_deck(
+            conn, player_id, name, attrs
+        )
+        .await)
     }
 
     /// `Games.can_manage_deck?/2`: administrators, or the member linked to the deck's player.
@@ -323,14 +402,33 @@ impl Games {
     }
 
     /// `Games.pick_deck/2`.
-    pub async fn pick_deck(&self, user: &User, exclude_id: Option<&Value>, random: f64) -> Result<DeckPick, sqlx::Error> {
-        deck_picker::random_deck(&mut *self.pool.acquire().await?, user.id, exclude_id, UtcDateTime::now(), random)
-            .await
+    pub async fn pick_deck(
+        &self,
+        user: &User,
+        exclude_id: Option<&Value>,
+        random: f64,
+    ) -> Result<DeckPick, sqlx::Error> {
+        deck_picker::random_deck(
+            &mut *self.pool.acquire().await?,
+            user.id,
+            exclude_id,
+            UtcDateTime::now(),
+            random,
+        )
+        .await
     }
 
     /// `Games.record_deck_outcome/3`.
-    pub async fn record_deck_outcome(&self, user: &User, deck_id: i64, outcome: Outcome) -> Result<Deck, GamesError> {
-        write_tx!(self, |conn| deck_picker::record_outcome(conn, user.id, deck_id, outcome).await)
+    pub async fn record_deck_outcome(
+        &self,
+        user: &User,
+        deck_id: i64,
+        outcome: Outcome,
+    ) -> Result<Deck, GamesError> {
+        write_tx!(self, |conn| deck_picker::record_outcome(
+            conn, user.id, deck_id, outcome
+        )
+        .await)
     }
 
     // Games
@@ -367,8 +465,17 @@ impl Games {
     }
 
     /// `Games.create_game/2`.
-    pub async fn create_game(&self, attrs: &Value, created_by_user_id: Option<i64>) -> Result<Game, GamesError> {
-        write_tx!(self, |conn| record_game::create(conn, attrs, created_by_user_id).await)
+    pub async fn create_game(
+        &self,
+        attrs: &Value,
+        created_by_user_id: Option<i64>,
+    ) -> Result<Game, GamesError> {
+        write_tx!(self, |conn| record_game::create(
+            conn,
+            attrs,
+            created_by_user_id
+        )
+        .await)
     }
 
     /// `Games.find_or_create_game_by_external_id/3`.
@@ -378,12 +485,29 @@ impl Games {
         external_id: &str,
         attrs: &Value,
     ) -> Result<Game, GamesError> {
-        write_tx!(self, |conn| record_game::find_or_create_by_external_id(conn, source, external_id, attrs).await)
+        write_tx!(self, |conn| record_game::find_or_create_by_external_id(
+            conn,
+            source,
+            external_id,
+            attrs
+        )
+        .await)
     }
 
     /// `Games.upsert_game_by_external_id/3`.
-    pub async fn upsert_game_by_external_id(&self, source: &str, external_id: &str, attrs: &Value) -> Result<Game, GamesError> {
-        write_tx!(self, |conn| record_game::upsert_by_external_id(conn, source, external_id, attrs).await)
+    pub async fn upsert_game_by_external_id(
+        &self,
+        source: &str,
+        external_id: &str,
+        attrs: &Value,
+    ) -> Result<Game, GamesError> {
+        write_tx!(self, |conn| record_game::upsert_by_external_id(
+            conn,
+            source,
+            external_id,
+            attrs
+        )
+        .await)
     }
 
     /// `Games.update_game/2`.
@@ -397,8 +521,12 @@ impl Games {
     }
 
     /// `LinkCatalogCards.link_game/1`.
-    pub async fn link_catalog_cards(&self, game_id: i64) -> Result<link_catalog_cards::LinkResult, GamesError> {
-        write_tx!(self, |conn| link_catalog_cards::link_game(conn, game_id).await)
+    pub async fn link_catalog_cards(
+        &self,
+        game_id: i64,
+    ) -> Result<link_catalog_cards::LinkResult, GamesError> {
+        write_tx!(self, |conn| link_catalog_cards::link_game(conn, game_id)
+            .await)
     }
 
     /// `LinkCatalogCards.repair_batch/2`.
@@ -407,17 +535,28 @@ impl Games {
         cursor: link_catalog_cards::Cursor,
         limit: Option<i64>,
     ) -> Result<link_catalog_cards::BatchResult, GamesError> {
-        write_tx!(self, |conn| link_catalog_cards::repair_batch(conn, cursor, limit).await)
+        write_tx!(self, |conn| link_catalog_cards::repair_batch(
+            conn, cursor, limit
+        )
+        .await)
     }
 }
 
 /// The `summary_images` budget: 30 renders a minute across the server.
-pub const SUMMARY_IMAGES_LIMIT: crate::config::WindowLimit =
-    crate::config::WindowLimit { limit: 30, scale: crate::rate_limit::MINUTE };
+pub const SUMMARY_IMAGES_LIMIT: crate::config::WindowLimit = crate::config::WindowLimit {
+    limit: 30,
+    scale: crate::rate_limit::MINUTE,
+};
 
 /// `Games.render_summary/1`: the summary card PNG, within the `summary_images` budget.
-pub async fn render_summary(state: &crate::state::AppState, game: &Game) -> Result<Vec<u8>, RenderError> {
-    match state.rate_limiter.hit("summary_images", SUMMARY_IMAGES_LIMIT) {
+pub async fn render_summary(
+    state: &crate::state::AppState,
+    game: &Game,
+) -> Result<Vec<u8>, RenderError> {
+    match state
+        .rate_limiter
+        .hit("summary_images", SUMMARY_IMAGES_LIMIT)
+    {
         crate::rate_limit::Decision::Deny(_) => Err(RenderError::RateLimited),
         crate::rate_limit::Decision::Allow(_) => {
             summary_image::render(&state.pool, &ArtFetcher::new(state.http.clone()), game).await

@@ -30,7 +30,11 @@ pub fn seated_error(source: &Player) -> GamesError {
 /// `MergePlayers.run/2` once the webcam-table check passed: every seat and deck moves to
 /// `target`, the account/Discord identity carries over, and `source` is deleted. Decks with
 /// the same (case-folded) name collapse into `target`'s deck.
-pub async fn merge_unseated(conn: &mut SqliteConnection, source: &Player, target: &Player) -> Result<Player, GamesError> {
+pub async fn merge_unseated(
+    conn: &mut SqliteConnection,
+    source: &Player,
+    target: &Player,
+) -> Result<Player, GamesError> {
     if source.id == target.id {
         return Err(GamesError::BadRequest);
     }
@@ -54,11 +58,18 @@ pub async fn merge_unseated(conn: &mut SqliteConnection, source: &Player, target
     }
     let now = UtcDateTime::now();
     // carry_identity/2
-    sqlx::query!("UPDATE players SET user_id = NULL, discord_id = NULL, updated_at = ? WHERE id = ?", now, source.id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query!(
+        "UPDATE players SET user_id = NULL, discord_id = NULL, updated_at = ? WHERE id = ?",
+        now,
+        source.id
+    )
+    .execute(&mut *tx)
+    .await?;
     let user_id = target.user_id.or(source.user_id);
-    let discord_id = target.discord_id.clone().or_else(|| source.discord_id.clone());
+    let discord_id = target
+        .discord_id
+        .clone()
+        .or_else(|| source.discord_id.clone());
     sqlx::query!(
         "UPDATE players SET user_id = ?, discord_id = ?, updated_at = ? WHERE id = ?",
         user_id,
@@ -75,26 +86,43 @@ pub async fn merge_unseated(conn: &mut SqliteConnection, source: &Player, target
         .into_iter()
         .map(|deck| (fold_name(&deck.name), deck.id))
         .collect();
-    let source_decks = select_decks!("WHERE player_id = ?", source.id).fetch_all(&mut *tx).await?;
+    let source_decks = select_decks!("WHERE player_id = ?", source.id)
+        .fetch_all(&mut *tx)
+        .await?;
     for deck in source_decks {
         match target_decks.get(&fold_name(&deck.name)) {
             Some(existing) => {
-                sqlx::query!("UPDATE game_players SET deck_id = ? WHERE deck_id = ?", existing, deck.id)
+                sqlx::query!(
+                    "UPDATE game_players SET deck_id = ? WHERE deck_id = ?",
+                    existing,
+                    deck.id
+                )
+                .execute(&mut *tx)
+                .await?;
+                sqlx::query!("DELETE FROM decks WHERE id = ?", deck.id)
                     .execute(&mut *tx)
                     .await?;
-                sqlx::query!("DELETE FROM decks WHERE id = ?", deck.id).execute(&mut *tx).await?;
             }
             None => {
-                sqlx::query!("UPDATE decks SET player_id = ?, updated_at = ? WHERE id = ?", target.id, now, deck.id)
-                    .execute(&mut *tx)
-                    .await?;
+                sqlx::query!(
+                    "UPDATE decks SET player_id = ?, updated_at = ? WHERE id = ?",
+                    target.id,
+                    now,
+                    deck.id
+                )
+                .execute(&mut *tx)
+                .await?;
             }
         }
     }
     // migrate_player_references/2
-    sqlx::query!("UPDATE game_players SET player_id = ? WHERE player_id = ?", target.id, source.id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query!(
+        "UPDATE game_players SET player_id = ? WHERE player_id = ?",
+        target.id,
+        source.id
+    )
+    .execute(&mut *tx)
+    .await?;
     sqlx::query!(
         "UPDATE game_players SET eliminated_by_player_id = ? WHERE eliminated_by_player_id = ?",
         target.id,
@@ -102,8 +130,12 @@ pub async fn merge_unseated(conn: &mut SqliteConnection, source: &Player, target
     )
     .execute(&mut *tx)
     .await?;
-    sqlx::query!("DELETE FROM players WHERE id = ?", source.id).execute(&mut *tx).await?;
-    let merged = get_player(&mut tx, target.id).await?.ok_or(GamesError::NotFound)?;
+    sqlx::query!("DELETE FROM players WHERE id = ?", source.id)
+        .execute(&mut *tx)
+        .await?;
+    let merged = get_player(&mut tx, target.id)
+        .await?
+        .ok_or(GamesError::NotFound)?;
     tx.commit().await?;
     Ok(merged)
 }
@@ -123,10 +155,21 @@ pub enum LinkPlan {
 
 /// `MergePlayers.link_to_user/2` up to the merge: links directly when the account has no
 /// player, or says which merge links it.
-pub async fn plan_link(conn: &mut SqliteConnection, player: &Player, user: &User) -> Result<LinkPlan, GamesError> {
-    let player = get_player(conn, player.id).await?.ok_or(GamesError::NotFound)?;
-    let current = select_players!("WHERE user_id = ?", user.id).fetch_optional(&mut *conn).await?;
-    if current.as_ref().is_some_and(|current| current.id == player.id) {
+pub async fn plan_link(
+    conn: &mut SqliteConnection,
+    player: &Player,
+    user: &User,
+) -> Result<LinkPlan, GamesError> {
+    let player = get_player(conn, player.id)
+        .await?
+        .ok_or(GamesError::NotFound)?;
+    let current = select_players!("WHERE user_id = ?", user.id)
+        .fetch_optional(&mut *conn)
+        .await?;
+    if current
+        .as_ref()
+        .is_some_and(|current| current.id == player.id)
+    {
         return Ok(LinkPlan::Done(player));
     }
     if conflicting(player.user_id.as_ref(), Some(&user.id)) {
@@ -138,7 +181,10 @@ pub async fn plan_link(conn: &mut SqliteConnection, player: &Player, user: &User
     if let Some(current) = current {
         return Ok(LinkPlan::Merge { current, player });
     }
-    let discord_id = player.discord_id.clone().or_else(|| user.discord_id.clone());
+    let discord_id = player
+        .discord_id
+        .clone()
+        .or_else(|| user.discord_id.clone());
     let now = UtcDateTime::now();
     sqlx::query!(
         "UPDATE players SET user_id = ?, discord_id = ?, updated_at = ? WHERE id = ?",
@@ -156,5 +202,10 @@ pub async fn plan_link(conn: &mut SqliteConnection, player: &Player, user: &User
             GamesError::Database(error)
         }
     })?;
-    Ok(LinkPlan::Done(Player { user_id: Some(user.id), discord_id, updated_at: now, ..player }))
+    Ok(LinkPlan::Done(Player {
+        user_id: Some(user.id),
+        discord_id,
+        updated_at: now,
+        ..player
+    }))
 }

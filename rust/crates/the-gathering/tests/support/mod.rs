@@ -1,6 +1,6 @@
 //! Test harness: a fresh migrated SQLite database per test, the real router, a cookie jar,
-//! and automatic CSRF tokens (Phoenix's ConnTest skipped CSRF; this sends valid tokens).
-#![allow(dead_code)]
+//! and automatic CSRF tokens (Phoenix's `ConnTest` skipped CSRF; this sends valid tokens).
+#![allow(dead_code, clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
 use std::path::PathBuf;
 use std::sync::Mutex;

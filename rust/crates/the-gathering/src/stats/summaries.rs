@@ -38,7 +38,11 @@ pub fn recent_game(game: &Game, tracked: &[GameResult]) -> Object {
     object.insert("duration_minutes".into(), json!(game.duration_minutes));
     object.insert("turns".into(), json!(game.turns));
     object.insert("result".into(), json!(tracked_result(tracked)));
-    object.insert("winner".into(), game.winner().map_or(Value::Null, |winner| Value::Object(player(&winner.player))));
+    object.insert(
+        "winner".into(),
+        game.winner()
+            .map_or(Value::Null, |winner| Value::Object(player(&winner.player))),
+    );
     object.insert("players".into(), json!(game.seats.len()));
     object
 }
@@ -49,12 +53,19 @@ fn commander_refs(deck: Option<&Deck>) -> Vec<Slot> {
     match deck {
         None => vec![(None, None, None)],
         Some(deck) => {
-            let commander =
-                (deck.commander_card_id.clone(), Some(deck.commander_name.clone()), deck.commander_printing_id.clone());
+            let commander = (
+                deck.commander_card_id.clone(),
+                Some(deck.commander_name.clone()),
+                deck.commander_printing_id.clone(),
+            );
             match &deck.partner_name {
                 Some(partner) => vec![
                     commander,
-                    (deck.partner_card_id.clone(), Some(partner.clone()), deck.partner_printing_id.clone()),
+                    (
+                        deck.partner_card_id.clone(),
+                        Some(partner.clone()),
+                        deck.partner_printing_id.clone(),
+                    ),
                 ],
                 None => vec![commander],
             }
@@ -64,7 +75,10 @@ fn commander_refs(deck: Option<&Deck>) -> Vec<Slot> {
 
 /// `recent_games/1`: recent games with one winner-first portrait per seat; partner pairings
 /// carry both crops.
-pub async fn recent_games(conn: &mut SqliteConnection, games: &[&Game]) -> Result<Vec<Value>, sqlx::Error> {
+pub async fn recent_games(
+    conn: &mut SqliteConnection,
+    games: &[&Game],
+) -> Result<Vec<Value>, sqlx::Error> {
     let refs: Vec<CardRef> = games
         .iter()
         .flat_map(|game| &game.seats)
@@ -85,33 +99,34 @@ pub async fn recent_games(conn: &mut SqliteConnection, games: &[&Game]) -> Resul
                     let mut object = Object::new();
                     object.insert("player_name".into(), json!(seat.player.name));
                     object.insert("name".into(), json!(name));
-                    object.insert("game_changer".into(), json!(art.game_changer(id.as_deref(), name.as_deref())));
+                    object.insert(
+                        "game_changer".into(),
+                        json!(art.game_changer(id.as_deref(), name.as_deref())),
+                    );
                     object.insert(
                         "art_crop_url".into(),
-                        json!(art.art_crop_url(id.as_deref(), name.as_deref(), printing.as_deref())),
+                        json!(art.art_crop_url(
+                            id.as_deref(),
+                            name.as_deref(),
+                            printing.as_deref()
+                        )),
                     );
                     object.insert("winner".into(), json!(seat.result == GameResult::Win));
-                    match slots.next() {
-                        Some((partner_id, partner_name, partner_printing)) => {
-                            object.insert("partner_name".into(), json!(partner_name));
-                            object.insert(
-                                "partner_art_crop_url".into(),
-                                json!(art.art_crop_url(
-                                    partner_id.as_deref(),
-                                    partner_name.as_deref(),
-                                    partner_printing.as_deref()
-                                )),
-                            );
-                            object.insert(
-                                "partner_game_changer".into(),
-                                json!(art.game_changer(partner_id.as_deref(), partner_name.as_deref())),
-                            );
-                        }
-                        None => {
-                            object.insert("partner_name".into(), Value::Null);
-                            object.insert("partner_art_crop_url".into(), Value::Null);
-                            object.insert("partner_game_changer".into(), json!(false));
-                        }
+                    if let Some((partner_id, partner_name, partner_printing)) = slots.next() {
+                        let crop = art.art_crop_url(
+                            partner_id.as_deref(),
+                            partner_name.as_deref(),
+                            partner_printing.as_deref(),
+                        );
+                        let game_changer =
+                            art.game_changer(partner_id.as_deref(), partner_name.as_deref());
+                        object.insert("partner_name".into(), json!(partner_name));
+                        object.insert("partner_art_crop_url".into(), json!(crop));
+                        object.insert("partner_game_changer".into(), json!(game_changer));
+                    } else {
+                        object.insert("partner_name".into(), Value::Null);
+                        object.insert("partner_art_crop_url".into(), Value::Null);
+                        object.insert("partner_game_changer".into(), json!(false));
                     }
                     Value::Object(object)
                 })
@@ -127,12 +142,17 @@ pub async fn recent_games(conn: &mut SqliteConnection, games: &[&Game]) -> Resul
 /// win and longest game. `tracked` picks a game's tracked results; `None` means any winner
 /// counts as a win.
 pub fn game_lengths(games: &[&Game], tracked: &dyn Fn(&Game) -> Option<Vec<GameResult>>) -> Value {
-    let timed: Vec<&Game> = games.iter().copied().filter(|game| game.duration_minutes.is_some()).collect();
+    let timed: Vec<&Game> = games
+        .iter()
+        .copied()
+        .filter(|game| game.duration_minutes.is_some())
+        .collect();
     let won = |game: &&Game| match tracked(game) {
         None => game.winner().is_some(),
         Some(results) => tracked_result(&results) == Some(GameResult::Win),
     };
-    let summary = |game: &Game| Value::Object(recent_game(game, &tracked(game).unwrap_or_default()));
+    let summary =
+        |game: &Game| Value::Object(recent_game(game, &tracked(game).unwrap_or_default()));
     // Enum.min_by/max_by keep the first of equal elements.
     let mut fastest: Option<&Game> = None;
     for game in timed.iter().copied().filter(won) {
@@ -156,7 +176,10 @@ pub fn game_lengths(games: &[&Game], tracked: &dyn Fn(&Game) -> Option<Vec<GameR
 
 /// `deck/2`: a deck row for commander detail, with commander and partner crops.
 pub fn deck(deck: &Deck, summaries: &CardSummaries) -> Object {
-    let art = summaries.get(deck.commander_card_id.as_deref(), Some(&deck.commander_name));
+    let art = summaries.get(
+        deck.commander_card_id.as_deref(),
+        Some(&deck.commander_name),
+    );
     let partner_art = deck
         .partner_name
         .as_deref()
@@ -166,9 +189,18 @@ pub fn deck(deck: &Deck, summaries: &CardSummaries) -> Object {
     object.insert("name".into(), json!(deck.name));
     object.insert("commander_name".into(), json!(deck.commander_name));
     object.insert("color_identity".into(), json!(deck.color_identity));
-    object.insert("game_changer".into(), json!(art.is_some_and(|art| art.game_changer)));
-    object.insert("art_crop_url".into(), json!(art.and_then(|art| art.art_crop_url.clone())));
-    object.insert("partner_art_crop_url".into(), json!(partner_art.and_then(|art| art.art_crop_url.clone())));
+    object.insert(
+        "game_changer".into(),
+        json!(art.is_some_and(|art| art.game_changer)),
+    );
+    object.insert(
+        "art_crop_url".into(),
+        json!(art.and_then(|art| art.art_crop_url.clone())),
+    );
+    object.insert(
+        "partner_art_crop_url".into(),
+        json!(partner_art.and_then(|art| art.art_crop_url.clone())),
+    );
     object
 }
 

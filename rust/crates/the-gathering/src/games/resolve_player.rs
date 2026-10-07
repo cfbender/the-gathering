@@ -51,34 +51,38 @@ fn normalize_name(name: &str) -> String {
     name.trim().chars().take(100).collect()
 }
 
-async fn find_player(conn: &mut SqliteConnection, name: &str, discord_id: Option<&str>) -> Result<Option<PlayerIdentity>, sqlx::Error> {
-    match discord_id {
-        Some(discord_id) => {
-            sqlx::query_as!(
-                PlayerIdentity,
-                r#"SELECT id AS "id!", name, user_id, discord_id FROM players WHERE discord_id = ?"#,
-                discord_id
-            )
-            .fetch_optional(&mut *conn)
-            .await
-        }
-        None => {
-            let folded = fold_name(name);
-            sqlx::query_as!(
-                PlayerIdentity,
-                r#"SELECT id AS "id!", name, user_id, discord_id FROM players WHERE lower(name) = ?"#,
-                folded
-            )
-            .fetch_optional(&mut *conn)
-            .await
-        }
+async fn find_player(
+    conn: &mut SqliteConnection,
+    name: &str,
+    discord_id: Option<&str>,
+) -> Result<Option<PlayerIdentity>, sqlx::Error> {
+    if let Some(discord_id) = discord_id {
+        sqlx::query_as!(
+            PlayerIdentity,
+            r#"SELECT id AS "id!", name, user_id, discord_id FROM players WHERE discord_id = ?"#,
+            discord_id
+        )
+        .fetch_optional(&mut *conn)
+        .await
+    } else {
+        let folded = fold_name(name);
+        sqlx::query_as!(
+            PlayerIdentity,
+            r#"SELECT id AS "id!", name, user_id, discord_id FROM players WHERE lower(name) = ?"#,
+            folded
+        )
+        .fetch_optional(&mut *conn)
+        .await
     }
 }
 
 async fn name_taken(conn: &mut SqliteConnection, folded: &str) -> Result<bool, sqlx::Error> {
-    sqlx::query_scalar!(r#"SELECT EXISTS(SELECT 1 FROM players WHERE lower(name) = ?) AS "taken!: bool""#, folded)
-        .fetch_one(&mut *conn)
-        .await
+    sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM players WHERE lower(name) = ?) AS "taken!: bool""#,
+        folded
+    )
+    .fetch_one(&mut *conn)
+    .await
 }
 
 fn with_suffix(base: &str, suffix: &str) -> String {
@@ -111,9 +115,12 @@ async fn available_name(
 }
 
 async fn user_exists(conn: &mut SqliteConnection, user_id: i64) -> Result<bool, sqlx::Error> {
-    sqlx::query_scalar!(r#"SELECT EXISTS(SELECT 1 FROM users WHERE id = ?) AS "exists!: bool""#, user_id)
-        .fetch_one(&mut *conn)
-        .await
+    sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM users WHERE id = ?) AS "exists!: bool""#,
+        user_id
+    )
+    .fetch_one(&mut *conn)
+    .await
 }
 
 /// `Games.resolve_player/3` inside a transaction.
@@ -130,14 +137,25 @@ pub async fn run(
             (Some(current), Some(wanted)) if current == wanted => Ok(player),
             (None, Some(wanted)) => {
                 if !user_exists(conn, wanted).await? {
-                    return Err(ResolveError::Invalid(Errors::single("user_id", "does not exist")));
+                    return Err(ResolveError::Invalid(Errors::single(
+                        "user_id",
+                        "does not exist",
+                    )));
                 }
                 let now = UtcDateTime::now();
-                sqlx::query!("UPDATE players SET user_id = ?, updated_at = ? WHERE id = ?", wanted, now, player.id)
-                    .execute(&mut *conn)
-                    .await
-                    .map_err(|error| unique_error(error, "user_id"))?;
-                Ok(PlayerIdentity { user_id: Some(wanted), ..player })
+                sqlx::query!(
+                    "UPDATE players SET user_id = ?, updated_at = ? WHERE id = ?",
+                    wanted,
+                    now,
+                    player.id
+                )
+                .execute(&mut *conn)
+                .await
+                .map_err(|error| unique_error(error, "user_id"))?;
+                Ok(PlayerIdentity {
+                    user_id: Some(wanted),
+                    ..player
+                })
             }
             (Some(_), Some(_)) => Err(ResolveError::DiscordIdentityConflict),
         };
@@ -192,7 +210,12 @@ pub async fn insert_player(
             unique_error(error, "name")
         }
     })?;
-    Ok(PlayerIdentity { id, name, user_id, discord_id: discord_id.map(str::to_owned) })
+    Ok(PlayerIdentity {
+        id,
+        name,
+        user_id,
+        discord_id: discord_id.map(str::to_owned),
+    })
 }
 
 /// How an identity would resolve, without writing (`ResolvePlayer.preview/1`).
@@ -205,18 +228,20 @@ pub enum Resolution {
 }
 
 /// `Games.preview_player_resolutions/1`: later identities see names earlier ones reserved.
-pub async fn preview(conn: &mut SqliteConnection, identities: &[(String, Option<String>)]) -> Result<Vec<Resolution>, sqlx::Error> {
+pub async fn preview(
+    conn: &mut SqliteConnection,
+    identities: &[(String, Option<String>)],
+) -> Result<Vec<Resolution>, sqlx::Error> {
     let mut reserved = HashSet::new();
     let mut resolutions = Vec::with_capacity(identities.len());
     for (name, discord_id) in identities {
         let discord_id = normalize_discord_id(discord_id.as_deref());
-        match find_player(conn, name, discord_id).await? {
-            Some(player) => resolutions.push(Resolution::Matched(player)),
-            None => {
-                let available = available_name(conn, name, discord_id, &reserved).await?;
-                reserved.insert(fold_name(&available));
-                resolutions.push(Resolution::Create(available));
-            }
+        if let Some(player) = find_player(conn, name, discord_id).await? {
+            resolutions.push(Resolution::Matched(player));
+        } else {
+            let available = available_name(conn, name, discord_id, &reserved).await?;
+            reserved.insert(fold_name(&available));
+            resolutions.push(Resolution::Create(available));
         }
     }
     Ok(resolutions)

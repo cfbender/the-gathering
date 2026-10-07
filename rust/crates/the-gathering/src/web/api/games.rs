@@ -14,7 +14,8 @@ use crate::catalog::{ArtUrls, CardRef};
 use crate::changeset::cast_integer;
 use crate::error::{ApiError, ApiResult};
 use crate::games::{
-    self, Deck, DeckPick, Game, Outcome, Player, PlayerDetail, RenderError, Seat, SeatGame, can_manage_player,
+    self, Deck, DeckPick, Game, Outcome, Player, PlayerDetail, RenderError, Seat, SeatGame,
+    can_manage_player,
 };
 use crate::local_time::{Zone, parse_date};
 use crate::state::AppState;
@@ -39,7 +40,10 @@ pub fn player_summary(player: &Player) -> Value {
 /// `DeckJSON.card_refs/1` for one deck.
 pub fn deck_card_refs(deck: &Deck) -> Vec<CardRef> {
     vec![
-        CardRef::Card(deck.commander_card_id.clone(), Some(deck.commander_name.clone())),
+        CardRef::Card(
+            deck.commander_card_id.clone(),
+            Some(deck.commander_name.clone()),
+        ),
         CardRef::Card(deck.partner_card_id.clone(), deck.partner_name.clone()),
         CardRef::Printing(deck.commander_printing_id.clone()),
         CardRef::Printing(deck.partner_printing_id.clone()),
@@ -48,8 +52,14 @@ pub fn deck_card_refs(deck: &Deck) -> Vec<CardRef> {
 
 /// `DeckJSON.summary/2`; `player` is the preloaded owner, when loaded.
 pub fn deck_summary(deck: &Deck, player: Option<&Player>, art: &ArtUrls) -> Value {
-    let commander = (deck.commander_card_id.as_deref(), Some(deck.commander_name.as_str()));
-    let partner = (deck.partner_card_id.as_deref(), deck.partner_name.as_deref());
+    let commander = (
+        deck.commander_card_id.as_deref(),
+        Some(deck.commander_name.as_str()),
+    );
+    let partner = (
+        deck.partner_card_id.as_deref(),
+        deck.partner_name.as_deref(),
+    );
     json!({
         "id": deck.id,
         "player_id": deck.player_id,
@@ -93,7 +103,10 @@ pub fn game_card_refs<'a>(games: impl IntoIterator<Item = &'a Game>) -> Vec<Card
         .into_iter()
         .flat_map(|game| &game.seats)
         .flat_map(|seat| {
-            let mut refs = vec![CardRef::Card(seat.mvp_card_id.clone(), seat.mvp_card_name.clone())];
+            let mut refs = vec![CardRef::Card(
+                seat.mvp_card_id.clone(),
+                seat.mvp_card_name.clone(),
+            )];
             if let Some(deck) = &seat.deck {
                 refs.extend(deck_card_refs(deck));
             }
@@ -154,27 +167,54 @@ fn player_card_refs(detail: &PlayerDetail) -> Vec<CardRef> {
         .decks
         .iter()
         .flat_map(deck_card_refs)
-        .chain(detail.seats.iter().filter_map(|seat| seat.deck.as_ref()).flat_map(deck_card_refs))
+        .chain(
+            detail
+                .seats
+                .iter()
+                .filter_map(|seat| seat.deck.as_ref())
+                .flat_map(deck_card_refs),
+        )
         .collect()
 }
 
 /// `PlayerJSON.show/1` for a player id.
 async fn render_player(state: &AppState, id: i64) -> ApiResult<Value> {
-    let detail = state.games.get_player_detail(id).await?.ok_or(ApiError::NotFound)?;
+    let detail = state
+        .games
+        .get_player_detail(id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let art = art_urls(state, &player_card_refs(&detail)).await?;
     let mut body = player_summary(&detail.player);
     if let Value::Object(object) = &mut body {
         object.insert("discord_id".into(), json!(detail.player.discord_id));
         object.insert("games_played".into(), json!(detail.seats.len()));
-        let wins = detail.seats.iter().filter(|seat| seat.result == games::GameResult::Win).count();
+        let wins = detail
+            .seats
+            .iter()
+            .filter(|seat| seat.result == games::GameResult::Win)
+            .count();
         object.insert("wins".into(), json!(wins));
         object.insert(
             "decks".into(),
-            Value::Array(detail.decks.iter().map(|deck| deck_summary(deck, None, &art)).collect()),
+            Value::Array(
+                detail
+                    .decks
+                    .iter()
+                    .map(|deck| deck_summary(deck, None, &art))
+                    .collect(),
+            ),
         );
         object.insert(
             "recent_games".into(),
-            Value::Array(detail.seats.iter().take(10).map(|seat| seat_game(seat, &art)).collect()),
+            Value::Array(
+                detail
+                    .seats
+                    .iter()
+                    .take(10)
+                    .map(|seat| seat_game(seat, &art))
+                    .collect(),
+            ),
         );
     }
     Ok(json!({ "data": body }))
@@ -191,11 +231,20 @@ async fn render_deck(state: &AppState, id: i64) -> ApiResult<Value> {
     let mut body = deck_summary(&deck, player.as_ref(), &art);
     if let Value::Object(object) = &mut body {
         object.insert("games_played".into(), json!(seats.len()));
-        let wins = seats.iter().filter(|seat| seat.result == games::GameResult::Win).count();
+        let wins = seats
+            .iter()
+            .filter(|seat| seat.result == games::GameResult::Win)
+            .count();
         object.insert("wins".into(), json!(wins));
         object.insert(
             "recent_games".into(),
-            Value::Array(seats.iter().take(10).map(|seat| seat_game(seat, &art)).collect()),
+            Value::Array(
+                seats
+                    .iter()
+                    .take(10)
+                    .map(|seat| seat_game(seat, &art))
+                    .collect(),
+            ),
         );
     }
     Ok(json!({ "data": body }))
@@ -220,7 +269,11 @@ fn take(attrs: &Value, keys: &[&str]) -> Value {
     let object = attrs.as_object();
     Value::Object(
         keys.iter()
-            .filter_map(|key| object.and_then(|object| object.get(*key)).map(|value| ((*key).to_owned(), value.clone())))
+            .filter_map(|key| {
+                object
+                    .and_then(|object| object.get(*key))
+                    .map(|value| ((*key).to_owned(), value.clone()))
+            })
             .collect::<Map<String, Value>>(),
     )
 }
@@ -241,7 +294,10 @@ fn include_archived(params: &Params) -> bool {
 const PLAYER_MEMBER_ATTRS: &[&str] = &["name", "archived_at"];
 
 /// `GET /api/players`.
-pub async fn players_index(State(state): State<AppState>, params: Params) -> ApiResult<Json<Value>> {
+pub async fn players_index(
+    State(state): State<AppState>,
+    params: Params,
+) -> ApiResult<Json<Value>> {
     let players = state.games.list_players(include_archived(&params)).await?;
     Ok(data(players.iter().map(player_summary).collect::<Vec<_>>()))
 }
@@ -249,18 +305,36 @@ pub async fn players_index(State(state): State<AppState>, params: Params) -> Api
 /// `POST /api/players`.
 pub async fn players_create(State(state): State<AppState>, params: Params) -> ApiResult<Response> {
     let attrs = params.object("player").ok_or(ApiError::BadRequest)?;
-    let player = state.games.create_player(&take(attrs, PLAYER_MEMBER_ATTRS), None).await?;
-    Ok((StatusCode::CREATED, Json(render_player(&state, player.id).await?)).into_response())
+    let player = state
+        .games
+        .create_player(&take(attrs, PLAYER_MEMBER_ATTRS), None)
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(render_player(&state, player.id).await?),
+    )
+        .into_response())
 }
 
 /// `GET /api/players/:id`.
-pub async fn players_show(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+pub async fn players_show(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
     Ok(Json(render_player(&state, parse_id(&id)?).await?))
 }
 
 async fn manageable_player(state: &AppState, user: &User, id: &str) -> ApiResult<Player> {
-    let player = state.games.get_player(parse_id(id)?).await?.ok_or(ApiError::NotFound)?;
-    if can_manage_player(user, &player) { Ok(player) } else { Err(ApiError::Forbidden) }
+    let player = state
+        .games
+        .get_player(parse_id(id)?)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if can_manage_player(user, &player) {
+        Ok(player)
+    } else {
+        Err(ApiError::Forbidden)
+    }
 }
 
 /// `PATCH /api/players/:id`.
@@ -272,15 +346,30 @@ pub async fn players_update(
 ) -> ApiResult<Json<Value>> {
     let attrs = params.object("player").ok_or(ApiError::BadRequest)?;
     let player = manageable_player(&state, &user, &id).await?;
-    let player = state.games.update_player(&player, &take(attrs, PLAYER_MEMBER_ATTRS)).await?;
+    let player = state
+        .games
+        .update_player(&player, &take(attrs, PLAYER_MEMBER_ATTRS))
+        .await?;
     Ok(Json(render_player(&state, player.id).await?))
 }
 
 /// `POST /api/players/:id/merge`: folds the player into `target_id`.
-pub async fn players_merge(State(state): State<AppState>, Path(id): Path<String>, params: Params) -> ApiResult<Json<Value>> {
+pub async fn players_merge(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    params: Params,
+) -> ApiResult<Json<Value>> {
     let target_id = params.get("target_id").ok_or(ApiError::BadRequest)?;
-    let source = state.games.get_player(parse_id(&id)?).await?.ok_or(ApiError::NotFound)?;
-    let target = state.games.get_player(cast_id(target_id)?).await?.ok_or(ApiError::NotFound)?;
+    let source = state
+        .games
+        .get_player(parse_id(&id)?)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let target = state
+        .games
+        .get_player(cast_id(target_id)?)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let merged = state.games.merge_players(&source, &target).await?;
     Ok(Json(render_player(&state, merged.id).await?))
 }
@@ -304,16 +393,31 @@ pub async fn decks_index(State(state): State<AppState>, params: Params) -> ApiRe
         None | Some(Value::Null) => None,
         Some(value) => Some(cast_id(value)?),
     };
-    let decks = state.games.list_decks(include_archived(&params), player_id).await?;
-    let refs: Vec<CardRef> = decks.iter().flat_map(|(deck, _)| deck_card_refs(deck)).collect();
+    let decks = state
+        .games
+        .list_decks(include_archived(&params), player_id)
+        .await?;
+    let refs: Vec<CardRef> = decks
+        .iter()
+        .flat_map(|(deck, _)| deck_card_refs(deck))
+        .collect();
     let art = art_urls(&state, &refs).await?;
-    Ok(data(decks.iter().map(|(deck, player)| deck_summary(deck, Some(player), &art)).collect::<Vec<_>>()))
+    Ok(data(
+        decks
+            .iter()
+            .map(|(deck, player)| deck_summary(deck, Some(player), &art))
+            .collect::<Vec<_>>(),
+    ))
 }
 
 /// Creating a deck for another member's player is refused; an unknown player id falls
 /// through to the changeset's error.
 async fn authorize_owner(state: &AppState, user: &User, attrs: &Value) -> ApiResult<()> {
-    let Some(player_id) = attrs.get("player_id").filter(|value| !value.is_null()).and_then(cast_integer) else {
+    let Some(player_id) = attrs
+        .get("player_id")
+        .filter(|value| !value.is_null())
+        .and_then(cast_integer)
+    else {
         return Ok(());
     };
     match state.games.get_player(player_id).await? {
@@ -323,21 +427,40 @@ async fn authorize_owner(state: &AppState, user: &User, attrs: &Value) -> ApiRes
 }
 
 /// `POST /api/decks`.
-pub async fn decks_create(State(state): State<AppState>, AuthUser(user): AuthUser, params: Params) -> ApiResult<Response> {
+pub async fn decks_create(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    params: Params,
+) -> ApiResult<Response> {
     let attrs = params.object("deck").ok_or(ApiError::BadRequest)?;
     authorize_owner(&state, &user, attrs).await?;
     let deck = state.games.create_deck(attrs).await?;
-    Ok((StatusCode::CREATED, Json(render_deck(&state, deck.id).await?)).into_response())
+    Ok((
+        StatusCode::CREATED,
+        Json(render_deck(&state, deck.id).await?),
+    )
+        .into_response())
 }
 
 /// `GET /api/decks/:id`.
-pub async fn decks_show(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+pub async fn decks_show(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
     Ok(Json(render_deck(&state, parse_id(&id)?).await?))
 }
 
 async fn manageable_deck(state: &AppState, user: &User, id: &str) -> ApiResult<Deck> {
-    let deck = state.games.get_deck(parse_id(id)?).await?.ok_or(ApiError::NotFound)?;
-    if state.games.can_manage_deck(user, &deck).await? { Ok(deck) } else { Err(ApiError::Forbidden) }
+    let deck = state
+        .games
+        .get_deck(parse_id(id)?)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if state.games.can_manage_deck(user, &deck).await? {
+        Ok(deck)
+    } else {
+        Err(ApiError::Forbidden)
+    }
 }
 
 /// `PATCH /api/decks/:id`.
@@ -365,7 +488,13 @@ pub async fn decks_delete(
     let replacement = match params.get("replacement_deck_id") {
         None | Some(Value::Null) => None,
         Some(Value::String(text)) if text.is_empty() => None,
-        Some(value) => Some(state.games.get_deck(cast_id(value)?).await?.ok_or(ApiError::BadRequest)?),
+        Some(value) => Some(
+            state
+                .games
+                .get_deck(cast_id(value)?)
+                .await?
+                .ok_or(ApiError::BadRequest)?,
+        ),
     };
     state.games.delete_deck(&deck, replacement.as_ref()).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -373,8 +502,15 @@ pub async fn decks_delete(
 
 // GameController
 
-const GAME_MEMBER_ATTRS: &[&str] =
-    &["played_at", "duration_minutes", "turns", "win_condition", "notes", "seats", "format"];
+const GAME_MEMBER_ATTRS: &[&str] = &[
+    "played_at",
+    "duration_minutes",
+    "turns",
+    "win_condition",
+    "notes",
+    "seats",
+    "format",
+];
 
 /// `GET /api/games`: filtered and paginated (`ListGames`).
 pub async fn games_index(State(state): State<AppState>, params: Params) -> ApiResult<Json<Value>> {
@@ -382,20 +518,37 @@ pub async fn games_index(State(state): State<AppState>, params: Params) -> ApiRe
 }
 
 /// `POST /api/games`: the creator comes from the session; provenance cannot be set.
-pub async fn games_create(State(state): State<AppState>, AuthUser(user): AuthUser, params: Params) -> ApiResult<Response> {
+pub async fn games_create(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    params: Params,
+) -> ApiResult<Response> {
     let attrs = params.object("game").ok_or(ApiError::BadRequest)?;
-    let game = state.games.create_game(&take(attrs, GAME_MEMBER_ATTRS), Some(user.id)).await?;
+    let game = state
+        .games
+        .create_game(&take(attrs, GAME_MEMBER_ATTRS), Some(user.id))
+        .await?;
     Ok((StatusCode::CREATED, Json(render_game(&state, &game).await?)).into_response())
 }
 
 /// `GET /api/games/:id`.
-pub async fn games_show(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
-    let game = state.games.get_game(parse_id(&id)?).await?.ok_or(ApiError::NotFound)?;
+pub async fn games_show(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
+    let game = state
+        .games
+        .get_game(parse_id(&id)?)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     Ok(Json(render_game(&state, &game).await?))
 }
 
 /// `GET /api/games/:id/summary`: the summary card PNG (by id, `SB…` SpellBot id).
-pub async fn games_summary(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Response> {
+pub async fn games_summary(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
     let game = state.games.find_summary_game(&id).await?;
     let png = match games::render_summary(&state, &game).await {
         Ok(png) => png,
@@ -406,14 +559,27 @@ pub async fn games_summary(State(state): State<AppState>, Path(id): Path<String>
         }
     };
     let mut response = (StatusCode::OK, png).into_response();
-    response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
-    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
     Ok(response)
 }
 
 async fn manageable_game(state: &AppState, user: &User, id: &str) -> ApiResult<Game> {
-    let game = state.games.get_game(parse_id(id)?).await?.ok_or(ApiError::NotFound)?;
-    if state.games.can_manage_game(user, &game).await? { Ok(game) } else { Err(ApiError::Forbidden) }
+    let game = state
+        .games
+        .get_game(parse_id(id)?)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if state.games.can_manage_game(user, &game).await? {
+        Ok(game)
+    } else {
+        Err(ApiError::Forbidden)
+    }
 }
 
 /// `PATCH /api/games/:id`.
@@ -425,7 +591,10 @@ pub async fn games_update(
 ) -> ApiResult<Json<Value>> {
     let attrs = params.object("game").ok_or(ApiError::BadRequest)?;
     let game = manageable_game(&state, &user, &id).await?;
-    let game = state.games.update_game(&game, &take(attrs, GAME_MEMBER_ATTRS)).await?;
+    let game = state
+        .games
+        .update_game(&game, &take(attrs, GAME_MEMBER_ATTRS))
+        .await?;
     Ok(Json(render_game(&state, &game).await?))
 }
 
@@ -449,7 +618,10 @@ pub async fn deck_chooser_show(
     params: Params,
 ) -> ApiResult<Json<Value>> {
     let random: f64 = rand::random();
-    let pick = state.games.pick_deck(&user, params.get("exclude_id"), random).await?;
+    let pick = state
+        .games
+        .pick_deck(&user, params.get("exclude_id"), random)
+        .await?;
     Ok(match pick {
         DeckPick::PlayerNotLinked => data(json!({ "deck": null, "reason": "player_not_linked" })),
         DeckPick::NoEligibleDecks => data(json!({ "deck": null, "reason": "no_eligible_decks" })),
@@ -473,15 +645,26 @@ pub async fn deck_chooser_outcome(
     Path(id): Path<String>,
     params: Params,
 ) -> ApiResult<Json<Value>> {
-    let outcome = params.str("outcome").and_then(Outcome::parse).ok_or(ApiError::BadRequest)?;
-    let deck = state.games.record_deck_outcome(&user, parse_id(&id)?, outcome).await?;
-    Ok(data(json!({ "deck_id": deck.id, "outcome": outcome.as_str(), "skip_count": deck.skip_count })))
+    let outcome = params
+        .str("outcome")
+        .and_then(Outcome::parse)
+        .ok_or(ApiError::BadRequest)?;
+    let deck = state
+        .games
+        .record_deck_outcome(&user, parse_id(&id)?, outcome)
+        .await?;
+    Ok(data(
+        json!({ "deck_id": deck.id, "outcome": outcome.as_str(), "skip_count": deck.skip_count }),
+    ))
 }
 
 // AdminPlayerController
 
 /// `GET /api/admin/players` (`page`, `per_page`, `search`).
-pub async fn admin_players_index(State(state): State<AppState>, params: Params) -> ApiResult<Json<Value>> {
+pub async fn admin_players_index(
+    State(state): State<AppState>,
+    params: Params,
+) -> ApiResult<Json<Value>> {
     let (players, meta) = state.games.list_player_identities(&params.0).await?;
     let rows: Vec<Value> = players
         .iter()
@@ -499,25 +682,51 @@ pub async fn admin_players_index(State(state): State<AppState>, params: Params) 
 }
 
 /// `DELETE /api/admin/players/:id/identity`: detaches the account and Discord identity.
-pub async fn admin_players_unlink(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<StatusCode> {
-    let player = state.games.get_player(parse_id(&id)?).await?.ok_or(ApiError::NotFound)?;
+pub async fn admin_players_unlink(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    let player = state
+        .games
+        .get_player(parse_id(&id)?)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     state.games.unlink_player_identity(&player).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// `PUT /api/admin/users/:id/player` (`AdminUserController.link_player`): makes `player_id`
 /// the account's player.
-pub async fn admin_link_player(State(state): State<AppState>, Path(id): Path<String>, params: Params) -> ApiResult<Json<Value>> {
+pub async fn admin_link_player(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    params: Params,
+) -> ApiResult<Json<Value>> {
     let player_id = params.get("player_id").ok_or(ApiError::BadRequest)?;
-    let user = state.accounts.get_user(parse_id(&id)?).await?.ok_or(ApiError::NotFound)?;
-    let player = state.games.get_player(cast_id(player_id)?).await?.ok_or(ApiError::NotFound)?;
+    let user = state
+        .accounts
+        .get_user(parse_id(&id)?)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let player = state
+        .games
+        .get_player(cast_id(player_id)?)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let linked = state.games.link_player_to_user(&player, &user).await?;
     Ok(Json(render_player(&state, linked.id).await?))
 }
 
 // V1.GameController
 
-const V1_FILTERS: &[&str] = &["player_id", "date_from", "date_to", "tz", "page", "per_page"];
+const V1_FILTERS: &[&str] = &[
+    "player_id",
+    "date_from",
+    "date_to",
+    "tz",
+    "page",
+    "per_page",
+];
 
 fn valid_positive(params: &Value, key: &str) -> ApiResult<()> {
     match params.get(key) {
@@ -539,10 +748,18 @@ fn valid_date(params: &Value, key: &str) -> ApiResult<()> {
 /// `player_id` (an id, or `me` for the key owner's player), inclusive `date_from`/`date_to`
 /// read in `tz`, and `page`/`per_page`. Invalid filters are rejected rather than ignored so
 /// a typo never silently widens the result.
-pub async fn v1_games_index(State(state): State<AppState>, AuthUser(user): AuthUser, params: Params) -> ApiResult<Json<Value>> {
+pub async fn v1_games_index(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    params: Params,
+) -> ApiResult<Json<Value>> {
     let mut filters = take(&params.0, V1_FILTERS);
     if filters.get("player_id").and_then(Value::as_str) == Some("me") {
-        let player = state.games.get_player_for_user(user.id).await?.ok_or(ApiError::NotFound)?;
+        let player = state
+            .games
+            .get_player_for_user(user.id)
+            .await?
+            .ok_or(ApiError::NotFound)?;
         if let Value::Object(object) = &mut filters {
             object.insert("player_id".into(), Value::String(player.id.to_string()));
         }
@@ -554,7 +771,9 @@ pub async fn v1_games_index(State(state): State<AppState>, AuthUser(user): AuthU
     valid_date(&filters, "date_to")?;
     // `LocalTime.zone/1` falls back to UTC, which would quietly shift the date window.
     if let Some(zone) = filters.get("tz") {
-        let valid = zone.as_str().is_some_and(|zone| Zone::parse(Some(zone)).name() == zone);
+        let valid = zone
+            .as_str()
+            .is_some_and(|zone| Zone::parse(Some(zone)).name() == zone);
         if !valid {
             return Err(ApiError::BadRequest);
         }

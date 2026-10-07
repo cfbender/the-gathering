@@ -1,6 +1,16 @@
 //! Ported from `test/the_gathering/games_test.exs` and `test/the_gathering/games/*_test.exs`
 //! (color identity, deck picker, summary card).
 
+// Test crates: helpers outside `#[test]` functions may unwrap and index freely, like the
+// tests themselves (clippy.toml only exempts `#[test]` bodies).
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::assert_is_empty
+)]
+
 mod support;
 
 use serde_json::{Value, json};
@@ -8,7 +18,8 @@ use support::{TestApp, utc};
 use the_gathering::error::Errors;
 use the_gathering::games::deck_picker::{Candidate, selection_weights};
 use the_gathering::games::{
-    ArtFetcher, Deck, Game, GameResult, GameSource, GamesError, Outcome, Player, Seat, color_identity, summary_card,
+    ArtFetcher, Deck, Game, GameResult, GameSource, GamesError, Outcome, Player, Seat,
+    color_identity, summary_card,
 };
 
 fn invalid<T: std::fmt::Debug>(result: Result<T, GamesError>) -> Errors {
@@ -57,26 +68,64 @@ async fn formats_retain_their_winner_cardinality_and_imports_default_to_commande
     let mut two_winners = attrs.clone();
     two_winners["seats"][1]["result"] = json!("win");
 
-    let errors = invalid(games.create_game(&with(attrs.clone(), json!({"format": "two_headed_giant"})), None).await);
-    assert!(errors.messages("seats").contains(&"must have exactly two winners or all draws".to_owned()));
-    let game = games.create_game(&with(two_winners.clone(), json!({"format": "two_headed_giant"})), None).await.unwrap();
+    let errors = invalid(
+        games
+            .create_game(
+                &with(attrs.clone(), json!({"format": "two_headed_giant"})),
+                None,
+            )
+            .await,
+    );
+    assert!(
+        errors
+            .messages("seats")
+            .contains(&"must have exactly two winners or all draws".to_owned())
+    );
+    let game = games
+        .create_game(
+            &with(two_winners.clone(), json!({"format": "two_headed_giant"})),
+            None,
+        )
+        .await
+        .unwrap();
     assert_eq!(game.format.as_str(), "two_headed_giant");
-    assert_eq!(game.seats.iter().filter(|seat| seat.result == GameResult::Win).count(), 2);
+    assert_eq!(
+        game.seats
+            .iter()
+            .filter(|seat| seat.result == GameResult::Win)
+            .count(),
+        2
+    );
 
     for format in ["commander", "five_star"] {
-        let errors = invalid(games.create_game(&with(two_winners.clone(), json!({"format": format})), None).await);
-        assert!(errors.messages("seats").contains(&"must have exactly one winner or all draws".to_owned()));
+        let errors = invalid(
+            games
+                .create_game(&with(two_winners.clone(), json!({"format": format})), None)
+                .await,
+        );
+        assert!(
+            errors
+                .messages("seats")
+                .contains(&"must have exactly one winner or all draws".to_owned())
+        );
     }
 
     let game = games.create_game(&attrs, None).await.unwrap();
     assert_eq!(game.format.as_str(), "commander");
-    let errors = invalid(games.create_game(&with(attrs.clone(), json!({"format": "invalid"})), None).await);
+    let errors = invalid(
+        games
+            .create_game(&with(attrs.clone(), json!({"format": "invalid"})), None)
+            .await,
+    );
     assert_eq!(errors.messages("format"), ["is invalid"]);
     let mut draws = attrs.clone();
     for seat in draws["seats"].as_array_mut().unwrap() {
         seat["result"] = json!("draw");
     }
-    games.create_game(&with(draws, json!({"format": "two_headed_giant"})), None).await.unwrap();
+    games
+        .create_game(&with(draws, json!({"format": "two_headed_giant"})), None)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -85,18 +134,38 @@ async fn enforces_the_two_to_ten_seat_bounds_at_both_edges() {
     let players = players(&app, 11).await;
     let refs: Vec<&Player> = players.iter().collect();
 
-    let errors = invalid(app.state.games.create_game(&game_attrs(&refs[..1]), None).await);
-    assert!(errors.messages("seats").contains(&"must contain between 2 and 10 players".to_owned()));
+    let errors = invalid(
+        app.state
+            .games
+            .create_game(&game_attrs(&refs[..1]), None)
+            .await,
+    );
+    assert!(
+        errors
+            .messages("seats")
+            .contains(&"must contain between 2 and 10 players".to_owned())
+    );
 
-    let game = app.state.games.create_game(&game_attrs(&refs[..10]), None).await.unwrap();
+    let game = app
+        .state
+        .games
+        .create_game(&game_attrs(&refs[..10]), None)
+        .await
+        .unwrap();
     assert_eq!(game.seats.len(), 10);
 
     let errors = invalid(app.state.games.create_game(&game_attrs(&refs), None).await);
     let rows = errors.nested("seats");
     assert_eq!(rows.len(), 11);
-    assert_eq!(rows[10].messages("seat"), ["must be less than or equal to 10"]);
+    assert_eq!(
+        rows[10].messages("seat"),
+        ["must be less than or equal to 10"]
+    );
     // Like Ecto's traverse_errors, the JSON lists the rows only.
-    assert_eq!(errors.to_json()["seats"][10], json!({"seat": ["must be less than or equal to 10"]}));
+    assert_eq!(
+        errors.to_json()["seats"][10],
+        json!({"seat": ["must be less than or equal to 10"]})
+    );
     assert_eq!(errors.to_json()["seats"][0], json!({}));
 }
 
@@ -109,13 +178,30 @@ async fn keeps_unknown_kills_distinct_from_zero_and_validates_kill_counts() {
 
     let mut zero = first.clone();
     zero["kills"] = json!(0);
-    let game = app.state.games.create_game(&with(game_attrs(&[&alice, &bob]), json!({"seats": [zero, second.clone()]})), None).await.unwrap();
-    assert_eq!(game.seats.iter().map(|seat| seat.kills).collect::<Vec<_>>(), [Some(0), None]);
+    let game = app
+        .state
+        .games
+        .create_game(
+            &with(
+                game_attrs(&[&alice, &bob]),
+                json!({"seats": [zero, second.clone()]}),
+            ),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        game.seats.iter().map(|seat| seat.kills).collect::<Vec<_>>(),
+        [Some(0), None]
+    );
 
     for kills in [json!(-1), json!(1.5), json!(10)] {
         let mut seat = first.clone();
         seat["kills"] = kills;
-        let attrs = with(game_attrs(&[&alice, &bob]), json!({"seats": [seat, second.clone()]}));
+        let attrs = with(
+            game_attrs(&[&alice, &bob]),
+            json!({"seats": [seat, second.clone()]}),
+        );
         let errors = invalid(app.state.games.create_game(&attrs, None).await);
         assert_eq!(errors.nested("seats")[0].messages("kills").len(), 1);
     }
@@ -129,7 +215,11 @@ async fn rejects_a_duplicate_player_even_when_seat_numbers_differ() {
     let mut attrs = game_attrs(&[&alice, &bob]);
     attrs["seats"][1]["player_id"] = json!(alice.id);
     let errors = invalid(app.state.games.create_game(&attrs, None).await);
-    assert!(errors.messages("seats").contains(&"cannot contain the same player twice".to_owned()));
+    assert!(
+        errors
+            .messages("seats")
+            .contains(&"cannot contain the same player twice".to_owned())
+    );
 }
 
 #[tokio::test]
@@ -141,24 +231,40 @@ async fn rejects_a_deck_belonging_to_another_player() {
     let mut attrs = game_attrs(&[&alice, &bob]);
     attrs["seats"][1]["deck_id"] = json!(deck.id);
     let errors = invalid(app.state.games.create_game(&attrs, None).await);
-    assert!(errors.messages("seats").contains(&"contains a deck that does not belong to its player".to_owned()));
+    assert!(
+        errors
+            .messages("seats")
+            .contains(&"contains a deck that does not belong to its player".to_owned())
+    );
 }
 
 #[tokio::test]
 async fn rejects_two_winners_and_accepts_an_all_draw_game() {
     let app = TestApp::new().await;
-    let players = [app.player("Alice").await, app.player("Bob").await, app.player("Cara").await];
+    let players = [
+        app.player("Alice").await,
+        app.player("Bob").await,
+        app.player("Cara").await,
+    ];
     let refs: Vec<&Player> = players.iter().collect();
     let mut attrs = game_attrs(&refs);
     attrs["seats"][1]["result"] = json!("win");
     let errors = invalid(app.state.games.create_game(&attrs, None).await);
-    assert!(errors.messages("seats").contains(&"must have exactly one winner or all draws".to_owned()));
+    assert!(
+        errors
+            .messages("seats")
+            .contains(&"must have exactly one winner or all draws".to_owned())
+    );
 
     for seat in attrs["seats"].as_array_mut().unwrap() {
         seat["result"] = json!("draw");
     }
     let game = app.state.games.create_game(&attrs, None).await.unwrap();
-    assert!(game.seats.iter().all(|seat| seat.result == GameResult::Draw));
+    assert!(
+        game.seats
+            .iter()
+            .all(|seat| seat.result == GameResult::Draw)
+    );
 }
 
 #[tokio::test]
@@ -166,12 +272,28 @@ async fn external_ids_are_idempotent_within_a_source_but_independent_across_sour
     let app = TestApp::new().await;
     let alice = app.player("Alice").await;
     let bob = app.player("Bob").await;
-    let attrs = with(game_attrs(&[&alice, &bob]), json!({"source": "csv", "external_id": "row-42"}));
+    let attrs = with(
+        game_attrs(&[&alice, &bob]),
+        json!({"source": "csv", "external_id": "row-42"}),
+    );
     let first = app.state.games.create_game(&attrs, None).await.unwrap();
-    let repeated = app.state.games.create_game(&with(attrs.clone(), json!({"notes": "ignored on replay"})), None).await.unwrap();
+    let repeated = app
+        .state
+        .games
+        .create_game(
+            &with(attrs.clone(), json!({"notes": "ignored on replay"})),
+            None,
+        )
+        .await
+        .unwrap();
     assert_eq!(first.id, repeated.id);
     assert_eq!(repeated.notes, None);
-    let discord = app.state.games.create_game(&with(attrs, json!({"source": "discord"})), None).await.unwrap();
+    let discord = app
+        .state
+        .games
+        .create_game(&with(attrs, json!({"source": "discord"})), None)
+        .await
+        .unwrap();
     assert_ne!(discord.id, first.id);
     assert_eq!(discord.source, GameSource::Discord);
 }
@@ -182,14 +304,24 @@ async fn upserting_by_external_id_updates_the_existing_game() {
     let alice = app.player("Alice").await;
     let bob = app.player("Bob").await;
     let games = &app.state.games;
-    let created = games.upsert_game_by_external_id("discord", "spellbot:SB1", &game_attrs(&[&alice, &bob])).await.unwrap();
+    let created = games
+        .upsert_game_by_external_id("discord", "spellbot:SB1", &game_attrs(&[&alice, &bob]))
+        .await
+        .unwrap();
     let updated = games
-        .upsert_game_by_external_id("discord", "spellbot:SB1", &with(game_attrs(&[&alice, &bob]), json!({"notes": "edited"})))
+        .upsert_game_by_external_id(
+            "discord",
+            "spellbot:SB1",
+            &with(game_attrs(&[&alice, &bob]), json!({"notes": "edited"})),
+        )
         .await
         .unwrap();
     assert_eq!(created.id, updated.id);
     assert_eq!(updated.notes.as_deref(), Some("edited"));
-    let found = games.find_or_create_game_by_external_id("discord", "spellbot:SB1", &json!({})).await.unwrap();
+    let found = games
+        .find_or_create_game_by_external_id("discord", "spellbot:SB1", &json!({}))
+        .await
+        .unwrap();
     assert_eq!(found.id, created.id);
 }
 
@@ -197,51 +329,108 @@ async fn upserting_by_external_id_updates_the_existing_game() {
 async fn player_names_are_unique_case_insensitively_and_finder_returns_the_existing_player() {
     let app = TestApp::new().await;
     let games = &app.state.games;
-    let alice = games.create_player(&json!({"name": "Alice"}), None).await.unwrap();
-    let errors = invalid(games.create_player(&json!({"name": "  ALICE  "}), None).await);
-    assert!(errors.messages("name").contains(&"has already been taken".to_owned()));
-    let found = games.find_or_create_player_by_name("alice", &json!({})).await.unwrap();
+    let alice = games
+        .create_player(&json!({"name": "Alice"}), None)
+        .await
+        .unwrap();
+    let errors = invalid(
+        games
+            .create_player(&json!({"name": "  ALICE  "}), None)
+            .await,
+    );
+    assert!(
+        errors
+            .messages("name")
+            .contains(&"has already been taken".to_owned())
+    );
+    let found = games
+        .find_or_create_player_by_name("alice", &json!({}))
+        .await
+        .unwrap();
     assert_eq!(found.id, alice.id);
 }
 
 #[tokio::test]
 async fn player_resolver_surfaces_failures_while_linking_an_existing_discord_identity() {
     let app = TestApp::new().await;
-    let player = app.player_with(json!({"name": "Discord Player", "discord_id": "discord-42"}), None).await;
-    match app.state.games.resolve_player("Renamed Player", Some("discord-42"), Some(-1)).await {
-        Err(the_gathering::games::ResolveError::Invalid(errors)) => assert_eq!(errors.messages("user_id"), ["does not exist"]),
+    let player = app
+        .player_with(
+            json!({"name": "Discord Player", "discord_id": "discord-42"}),
+            None,
+        )
+        .await;
+    match app
+        .state
+        .games
+        .resolve_player("Renamed Player", Some("discord-42"), Some(-1))
+        .await
+    {
+        Err(the_gathering::games::ResolveError::Invalid(errors)) => {
+            assert_eq!(errors.messages("user_id"), ["does not exist"]);
+        }
         other => panic!("unexpected {other:?}"),
     }
-    assert_eq!(app.state.games.get_player(player.id).await.unwrap().unwrap().user_id, None);
+    assert_eq!(
+        app.state
+            .games
+            .get_player(player.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .user_id,
+        None
+    );
 }
 
 #[tokio::test]
 async fn name_finders_fold_case_like_sqlite_so_non_ascii_names_are_found_instead_of_reinserted() {
     let app = TestApp::new().await;
     let games = &app.state.games;
-    let eowyn = games.create_player(&json!({"name": "Éowyn"}), None).await.unwrap();
-    let found = games.find_or_create_player_by_name("Éowyn", &json!({})).await.unwrap();
+    let eowyn = games
+        .create_player(&json!({"name": "Éowyn"}), None)
+        .await
+        .unwrap();
+    let found = games
+        .find_or_create_player_by_name("Éowyn", &json!({}))
+        .await
+        .unwrap();
     assert_eq!(found.id, eowyn.id);
 
     let attrs = json!({"commander_name": "Éowyn, Shieldmaiden"});
-    let deck = games.find_or_create_deck(eowyn.id, "Éowyn, Shieldmaiden", &attrs).await.unwrap();
-    let same = games.find_or_create_deck(eowyn.id, "Éowyn, Shieldmaiden", &attrs).await.unwrap();
+    let deck = games
+        .find_or_create_deck(eowyn.id, "Éowyn, Shieldmaiden", &attrs)
+        .await
+        .unwrap();
+    let same = games
+        .find_or_create_deck(eowyn.id, "Éowyn, Shieldmaiden", &attrs)
+        .await
+        .unwrap();
     assert_eq!(same.id, deck.id);
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM decks").fetch_one(app.pool()).await.unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM decks")
+        .fetch_one(app.pool())
+        .await
+        .unwrap();
     assert_eq!(count, 1);
 
     let errors = invalid(
         games.create_deck(&json!({"player_id": eowyn.id, "name": "Éowyn, Shieldmaiden", "commander_name": "x"})).await,
     );
-    assert!(errors.messages("name").contains(&"has already been taken".to_owned()));
+    assert!(
+        errors
+            .messages("name")
+            .contains(&"has already been taken".to_owned())
+    );
 }
 
 #[tokio::test]
 async fn deck_identities_always_include_both_commanders_colors_and_keep_chosen_extras() {
     let app = TestApp::new().await;
-    app.card("doctor", "The Tenth Doctor", &["R", "U"], json!({}), true).await;
-    app.card("clara", "Clara Oswald", &[], json!({}), true).await;
-    app.card("tymna", "Tymna the Weaver", &["W", "B"], json!({}), true).await;
+    app.card("doctor", "The Tenth Doctor", &["R", "U"], json!({}), true)
+        .await;
+    app.card("clara", "Clara Oswald", &[], json!({}), true)
+        .await;
+    app.card("tymna", "Tymna the Weaver", &["W", "B"], json!({}), true)
+        .await;
     let doctor = app.player("Doctor Who").await;
     let games = &app.state.games;
 
@@ -264,16 +453,27 @@ async fn deck_identities_always_include_both_commanders_colors_and_keep_chosen_e
         .unwrap();
     assert_eq!(deck.color_identity, "URG");
 
-    let errors = invalid(games.update_deck(&deck, &json!({"color_identity": "UURG"})).await);
-    assert!(errors.messages("color_identity").contains(&"must contain each of W, U, B, R, and G at most once".to_owned()));
+    let errors = invalid(
+        games
+            .update_deck(&deck, &json!({"color_identity": "UURG"}))
+            .await,
+    );
+    assert!(
+        errors
+            .messages("color_identity")
+            .contains(&"must contain each of W, U, B, R, and G at most once".to_owned())
+    );
 }
 
 #[tokio::test]
 async fn deck_printings_must_belong_to_the_selected_card() {
     let app = TestApp::new().await;
-    app.card("kangee", "Kangee, Sky Warden", &["W", "U"], json!({}), true).await;
-    app.card("krenko", "Krenko, Mob Boss", &["R"], json!({}), true).await;
-    app.printing("kangee-alt", "kangee", "Kangee, Sky Warden", json!({})).await;
+    app.card("kangee", "Kangee, Sky Warden", &["W", "U"], json!({}), true)
+        .await;
+    app.card("krenko", "Krenko, Mob Boss", &["R"], json!({}), true)
+        .await;
+    app.printing("kangee-alt", "kangee", "Kangee, Sky Warden", json!({}))
+        .await;
     let alice = app.player("Alice").await;
     let games = &app.state.games;
     let deck = games
@@ -290,11 +490,17 @@ async fn deck_printings_must_belong_to_the_selected_card() {
             .update_deck(&deck, &json!({"commander_card_id": "krenko", "commander_name": "Krenko, Mob Boss", "commander_printing_id": "kangee-alt"}))
             .await,
     );
-    assert_eq!(errors.messages("commander_printing_id"), ["must be a printing of the selected card"]);
+    assert_eq!(
+        errors.messages("commander_printing_id"),
+        ["must be a printing of the selected card"]
+    );
 
     // Changing the commander without naming a printing clears the old one.
     let deck = games
-        .update_deck(&deck, &json!({"commander_card_id": "krenko", "commander_name": "Krenko, Mob Boss"}))
+        .update_deck(
+            &deck,
+            &json!({"commander_card_id": "krenko", "commander_name": "Krenko, Mob Boss"}),
+        )
         .await
         .unwrap();
     assert_eq!(deck.commander_printing_id, None);
@@ -311,18 +517,38 @@ async fn players_carry_the_linked_users_avatar_and_nil_when_unlinked_or_the_user
         .await
         .unwrap();
     let bare_user = app.unique_member().await;
-    let linked = app.player_with(json!({"name": "Linked"}), Some(linked_user.id)).await;
-    let bare = app.player_with(json!({"name": "Bare"}), Some(bare_user.id)).await;
+    let linked = app
+        .player_with(json!({"name": "Linked"}), Some(linked_user.id))
+        .await;
+    let bare = app
+        .player_with(json!({"name": "Bare"}), Some(bare_user.id))
+        .await;
     let unlinked = app.player("Unlinked").await;
 
-    let avatars: std::collections::HashMap<i64, Option<String>> =
-        app.state.games.list_players(false).await.unwrap().into_iter().map(|player| (player.id, player.avatar_url)).collect();
+    let avatars: std::collections::HashMap<i64, Option<String>> = app
+        .state
+        .games
+        .list_players(false)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|player| (player.id, player.avatar_url))
+        .collect();
     assert_eq!(avatars.len(), 3);
     assert_eq!(avatars[&linked.id].as_deref(), Some("https://cdn/av.png"));
     assert_eq!(avatars[&bare.id], None);
     assert_eq!(avatars[&unlinked.id], None);
-    let detail = app.state.games.get_player_detail(linked.id).await.unwrap().unwrap();
-    assert_eq!(detail.player.avatar_url.as_deref(), Some("https://cdn/av.png"));
+    let detail = app
+        .state
+        .games
+        .get_player_detail(linked.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        detail.player.avatar_url.as_deref(),
+        Some("https://cdn/av.png")
+    );
 }
 
 #[tokio::test]
@@ -330,9 +556,19 @@ async fn invalid_user_references_return_changeset_errors() {
     let app = TestApp::new().await;
     let alice = app.player("Alice").await;
     let bob = app.player("Bob").await;
-    let errors = invalid(app.state.games.create_player(&json!({"name": "Orphan"}), Some(999_999)).await);
+    let errors = invalid(
+        app.state
+            .games
+            .create_player(&json!({"name": "Orphan"}), Some(999_999))
+            .await,
+    );
     assert_eq!(errors.messages("user_id"), ["does not exist"]);
-    let errors = invalid(app.state.games.create_game(&game_attrs(&[&alice, &bob]), Some(999_999)).await);
+    let errors = invalid(
+        app.state
+            .games
+            .create_game(&game_attrs(&[&alice, &bob]), Some(999_999))
+            .await,
+    );
     assert_eq!(errors.messages("created_by_user_id"), ["does not exist"]);
 }
 
@@ -341,29 +577,91 @@ async fn find_deck_falls_back_from_name_to_an_order_insensitive_commander_pairin
     let app = TestApp::new().await;
     let alice = app.player("Alice").await;
     let bob = app.player("Bob").await;
-    let party = app.deck(alice.id, "Party time", "Gandalf, Party Guest").await;
+    let party = app
+        .deck(alice.id, "Party time", "Gandalf, Party Guest")
+        .await;
     let partners = app
         .deck_with(json!({
             "player_id": alice.id, "name": "Tyvar + Ellivere",
             "commander_name": "Tyvar, the Bellicose", "partner_name": "Ellivere of the Wild Court",
         }))
         .await;
-    app.deck(alice.id, "Solo Tyvar", "Tyvar, the Bellicose").await;
+    app.deck(alice.id, "Solo Tyvar", "Tyvar, the Bellicose")
+        .await;
     let games = &app.state.games;
-    let find = |player: i64, name: &'static str, commander: Option<&'static str>, partner: Option<&'static str>| async move {
-        games.find_deck(player, name, commander, partner).await.unwrap().map(|deck: Deck| deck.id)
+    let find = |player: i64,
+                name: &'static str,
+                commander: Option<&'static str>,
+                partner: Option<&'static str>| async move {
+        games
+            .find_deck(player, name, commander, partner)
+            .await
+            .unwrap()
+            .map(|deck: Deck| deck.id)
     };
 
-    assert_eq!(find(alice.id, "party TIME", Some("Something else"), None).await, Some(party.id));
-    assert_eq!(find(alice.id, "Gandalf, Party Guest", Some("gandalf, party guest"), None).await, Some(party.id));
-    let reused = games.find_or_create_deck(alice.id, "Gandalf", &json!({"commander_name": "Gandalf, Party Guest"})).await.unwrap();
+    assert_eq!(
+        find(alice.id, "party TIME", Some("Something else"), None).await,
+        Some(party.id)
+    );
+    assert_eq!(
+        find(
+            alice.id,
+            "Gandalf, Party Guest",
+            Some("gandalf, party guest"),
+            None
+        )
+        .await,
+        Some(party.id)
+    );
+    let reused = games
+        .find_or_create_deck(
+            alice.id,
+            "Gandalf",
+            &json!({"commander_name": "Gandalf, Party Guest"}),
+        )
+        .await
+        .unwrap();
     assert_eq!(reused.id, party.id);
-    assert_eq!(find(alice.id, "x", Some("Ellivere of the Wild Court"), Some("Tyvar, the Bellicose")).await, Some(partners.id));
-    assert_eq!(find(alice.id, "x", Some("Tyvar, the Bellicose"), Some("Ellivere of the Wild Court")).await, Some(partners.id));
-    assert_eq!(find(alice.id, "x", Some("Tyvar, the Bellicose"), Some("Someone Else")).await, None);
-    assert_eq!(find(bob.id, "x", Some("Gandalf, Party Guest"), None).await, None);
+    assert_eq!(
+        find(
+            alice.id,
+            "x",
+            Some("Ellivere of the Wild Court"),
+            Some("Tyvar, the Bellicose")
+        )
+        .await,
+        Some(partners.id)
+    );
+    assert_eq!(
+        find(
+            alice.id,
+            "x",
+            Some("Tyvar, the Bellicose"),
+            Some("Ellivere of the Wild Court")
+        )
+        .await,
+        Some(partners.id)
+    );
+    assert_eq!(
+        find(
+            alice.id,
+            "x",
+            Some("Tyvar, the Bellicose"),
+            Some("Someone Else")
+        )
+        .await,
+        None
+    );
+    assert_eq!(
+        find(bob.id, "x", Some("Gandalf, Party Guest"), None).await,
+        None
+    );
     assert_eq!(find(alice.id, "x", None, None).await, None);
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM decks").fetch_one(app.pool()).await.unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM decks")
+        .fetch_one(app.pool())
+        .await
+        .unwrap();
     assert_eq!(count, 3);
 }
 
@@ -382,9 +680,22 @@ async fn deleting_a_deck_moves_its_seats_to_a_replacement_of_the_same_player_or_
     let games = &app.state.games;
     let alice = app.player("Alice").await;
     let bob = app.player("Bob").await;
-    let dupe = games.find_or_create_deck(alice.id, "Dupe", &json!({"commander_name": "Krenko"})).await.unwrap();
-    let keeper = games.find_or_create_deck(alice.id, "Keeper", &json!({"commander_name": "Krenko, Mob Boss"})).await.unwrap();
-    let bobs = games.find_or_create_deck(bob.id, "Bob's", &json!({"commander_name": "Krenko"})).await.unwrap();
+    let dupe = games
+        .find_or_create_deck(alice.id, "Dupe", &json!({"commander_name": "Krenko"}))
+        .await
+        .unwrap();
+    let keeper = games
+        .find_or_create_deck(
+            alice.id,
+            "Keeper",
+            &json!({"commander_name": "Krenko, Mob Boss"}),
+        )
+        .await
+        .unwrap();
+    let bobs = games
+        .find_or_create_deck(bob.id, "Bob's", &json!({"commander_name": "Krenko"}))
+        .await
+        .unwrap();
     let game = app
         .game(
             json!({"played_at": "2026-09-19T18:00:00Z", "seats": [
@@ -395,8 +706,14 @@ async fn deleting_a_deck_moves_its_seats_to_a_replacement_of_the_same_player_or_
         )
         .await;
 
-    assert!(matches!(games.delete_deck(&dupe, Some(&bobs)).await, Err(GamesError::BadRequest)));
-    assert!(matches!(games.delete_deck(&dupe, Some(&dupe)).await, Err(GamesError::BadRequest)));
+    assert!(matches!(
+        games.delete_deck(&dupe, Some(&bobs)).await,
+        Err(GamesError::BadRequest)
+    ));
+    assert!(matches!(
+        games.delete_deck(&dupe, Some(&dupe)).await,
+        Err(GamesError::BadRequest)
+    ));
     assert_eq!(seat_deck(&app, game.id, alice.id).await, Some(dupe.id));
 
     let deleted = games.delete_deck(&dupe, Some(&keeper)).await.unwrap();
@@ -415,10 +732,24 @@ async fn merging_players_moves_seats_and_decks_collapses_same_named_decks_and_ca
     let games = &app.state.games;
     let drew = app.player("Drew").await;
     let alice = app.player("Alice").await;
-    let wax = app.player_with(json!({"name": "waxpoetik", "discord_id": "123456789"}), None).await;
-    let drew_krenko = games.find_or_create_deck(drew.id, "Krenko", &json!({"commander_name": "Krenko"})).await.unwrap();
-    let wax_krenko = games.find_or_create_deck(wax.id, "krenko", &json!({"commander_name": "Krenko"})).await.unwrap();
-    let wax_tifa = games.find_or_create_deck(wax.id, "Tifa", &json!({"commander_name": "Tifa"})).await.unwrap();
+    let wax = app
+        .player_with(
+            json!({"name": "waxpoetik", "discord_id": "123456789"}),
+            None,
+        )
+        .await;
+    let drew_krenko = games
+        .find_or_create_deck(drew.id, "Krenko", &json!({"commander_name": "Krenko"}))
+        .await
+        .unwrap();
+    let wax_krenko = games
+        .find_or_create_deck(wax.id, "krenko", &json!({"commander_name": "Krenko"}))
+        .await
+        .unwrap();
+    let wax_tifa = games
+        .find_or_create_deck(wax.id, "Tifa", &json!({"commander_name": "Tifa"}))
+        .await
+        .unwrap();
     let game_a = app
         .game(
             json!({"played_at": "2026-09-19T18:00:00Z", "seats": [
@@ -446,19 +777,53 @@ async fn merging_players_moves_seats_and_decks_collapses_same_named_decks_and_ca
     let game_b = games.get_game(game_b.id).await.unwrap().unwrap();
     let seat_one: Vec<&Seat> = game_b.seats.iter().filter(|seat| seat.seat == 1).collect();
     assert_eq!(seat_one.len(), 1);
-    assert_eq!((seat_one[0].player_id, seat_one[0].deck_id), (drew.id, Some(drew_krenko.id)));
+    assert_eq!(
+        (seat_one[0].player_id, seat_one[0].deck_id),
+        (drew.id, Some(drew_krenko.id))
+    );
     assert!(games.get_deck(wax_krenko.id).await.unwrap().is_none());
-    assert_eq!(games.get_deck(wax_tifa.id).await.unwrap().unwrap().player_id, drew.id);
-    assert_eq!(games.get_player_detail(drew.id).await.unwrap().unwrap().seats.len(), 2);
-    let mut ids: Vec<i64> = games.get_game(game_a.id).await.unwrap().unwrap().seats.iter().map(|seat| seat.player_id).collect();
+    assert_eq!(
+        games
+            .get_deck(wax_tifa.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .player_id,
+        drew.id
+    );
+    assert_eq!(
+        games
+            .get_player_detail(drew.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .seats
+            .len(),
+        2
+    );
+    let mut ids: Vec<i64> = games
+        .get_game(game_a.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .seats
+        .iter()
+        .map(|seat| seat.player_id)
+        .collect();
     ids.sort_unstable();
     let mut expected = vec![drew.id, alice.id];
     expected.sort_unstable();
     assert_eq!(ids, expected);
 
     let errors = invalid(games.merge_players(&alice, &merged).await);
-    assert_eq!(errors.messages("merge"), ["both players are seated in the same game"]);
-    assert!(matches!(games.merge_players(&merged, &merged).await, Err(GamesError::BadRequest)));
+    assert_eq!(
+        errors.messages("merge"),
+        ["both players are seated in the same game"]
+    );
+    assert!(matches!(
+        games.merge_players(&merged, &merged).await,
+        Err(GamesError::BadRequest)
+    ));
 }
 
 #[tokio::test]
@@ -468,21 +833,35 @@ async fn merging_players_migrates_eliminated_by_references() {
     let target = app.player("Target").await;
     let defeated = app.player("Defeated").await;
     let winner = app.player("Winner").await;
-    let game = app.simple_game("2026-09-19T18:00:00Z", winner.id, defeated.id, None).await;
-    let seat = game.seats.iter().find(|seat| seat.player_id == defeated.id).unwrap();
-    sqlx::query("UPDATE game_players SET eliminated_by_player_id = ?, eliminated_turn = 8 WHERE id = ?")
-        .bind(source.id)
-        .bind(seat.id)
-        .execute(app.pool())
+    let game = app
+        .simple_game("2026-09-19T18:00:00Z", winner.id, defeated.id, None)
+        .await;
+    let seat = game
+        .seats
+        .iter()
+        .find(|seat| seat.player_id == defeated.id)
+        .unwrap();
+    sqlx::query(
+        "UPDATE game_players SET eliminated_by_player_id = ?, eliminated_turn = 8 WHERE id = ?",
+    )
+    .bind(source.id)
+    .bind(seat.id)
+    .execute(app.pool())
+    .await
+    .unwrap();
+    let merged = app
+        .state
+        .games
+        .merge_players(&source, &target)
         .await
         .unwrap();
-    let merged = app.state.games.merge_players(&source, &target).await.unwrap();
     assert_eq!(merged.id, target.id);
-    let by: Option<i64> = sqlx::query_scalar("SELECT eliminated_by_player_id FROM game_players WHERE id = ?")
-        .bind(seat.id)
-        .fetch_one(app.pool())
-        .await
-        .unwrap();
+    let by: Option<i64> =
+        sqlx::query_scalar("SELECT eliminated_by_player_id FROM game_players WHERE id = ?")
+            .bind(seat.id)
+            .fetch_one(app.pool())
+            .await
+            .unwrap();
     assert_eq!(by, Some(target.id));
 }
 
@@ -491,7 +870,9 @@ async fn merging_refuses_a_player_seated_at_an_open_webcam_table() {
     let app = TestApp::new().await;
     let source = app.player("Seated").await;
     let target = app.player("Target").await;
-    app.state.games.set_seated_check(std::sync::Arc::new(|_| Box::pin(async { true })));
+    app.state
+        .games
+        .set_seated_check(std::sync::Arc::new(|_| Box::pin(async { true })));
     let errors = invalid(app.state.games.merge_players(&source, &target).await);
     assert!(errors.messages("merge")[0].starts_with("Seated has a seat at an open webcam table"));
 }
@@ -502,26 +883,52 @@ async fn linking_a_player_to_an_account_merges_the_accounts_stub_player_into_it(
     let games = &app.state.games;
     let user = app.unique_member().await;
     let imported = app.player("Drew").await;
-    let stub = app.player_with(json!({"name": "Drew (2)", "discord_id": "42"}), Some(user.id)).await;
+    let stub = app
+        .player_with(
+            json!({"name": "Drew (2)", "discord_id": "42"}),
+            Some(user.id),
+        )
+        .await;
     let other = app.player("Other").await;
-    app.simple_game("2026-09-19T18:00:00Z", stub.id, other.id, None).await;
+    app.simple_game("2026-09-19T18:00:00Z", stub.id, other.id, None)
+        .await;
 
     let linked = games.link_player_to_user(&imported, &user).await.unwrap();
     assert_eq!(linked.id, imported.id);
     assert_eq!(linked.user_id, Some(user.id));
     assert_eq!(linked.discord_id.as_deref(), Some("42"));
     assert!(games.get_player(stub.id).await.unwrap().is_none());
-    assert_eq!(games.get_player_detail(imported.id).await.unwrap().unwrap().seats.len(), 1);
+    assert_eq!(
+        games
+            .get_player_detail(imported.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .seats
+            .len(),
+        1
+    );
 
     let again = games.link_player_to_user(&imported, &user).await.unwrap();
     assert_eq!(again.id, imported.id);
     let other_user = app.unique_member().await;
     let errors = invalid(games.link_player_to_user(&imported, &other_user).await);
-    assert_eq!(errors.messages("merge"), ["players belong to different accounts"]);
+    assert_eq!(
+        errors.messages("merge"),
+        ["players belong to different accounts"]
+    );
 }
 
 async fn ids(app: &TestApp, opts: Value) -> Vec<i64> {
-    app.state.games.list_games(&opts).await.unwrap().0.iter().map(|game| game.id).collect()
+    app.state
+        .games
+        .list_games(&opts)
+        .await
+        .unwrap()
+        .0
+        .iter()
+        .map(|game| game.id)
+        .collect()
 }
 
 #[tokio::test]
@@ -540,14 +947,36 @@ async fn list_games_combines_filters_paginates_and_orders_newest_first() {
             None,
         )
         .await;
-    let middle = app.simple_game("2026-09-10T12:00:00Z", alice.id, cara.id, None).await;
-    let newest = app.simple_game("2026-09-18T12:00:00Z", bob.id, cara.id, None).await;
+    let middle = app
+        .simple_game("2026-09-10T12:00:00Z", alice.id, cara.id, None)
+        .await;
+    let newest = app
+        .simple_game("2026-09-18T12:00:00Z", bob.id, cara.id, None)
+        .await;
 
-    let (page_one, pagination) = app.state.games.list_games(&json!({"page": 1, "per_page": 2})).await.unwrap();
-    assert_eq!(page_one.iter().map(|game| game.id).collect::<Vec<_>>(), [newest.id, middle.id]);
-    assert_eq!(serde_json::to_value(pagination).unwrap(), json!({"page": 1, "per_page": 2, "total": 3, "total_pages": 2}));
+    let (page_one, pagination) = app
+        .state
+        .games
+        .list_games(&json!({"page": 1, "per_page": 2}))
+        .await
+        .unwrap();
+    assert_eq!(
+        page_one.iter().map(|game| game.id).collect::<Vec<_>>(),
+        [newest.id, middle.id]
+    );
+    assert_eq!(
+        serde_json::to_value(pagination).unwrap(),
+        json!({"page": 1, "per_page": 2, "total": 3, "total_pages": 2})
+    );
     assert_eq!(ids(&app, json!({"page": 2, "per_page": 2})).await, [old.id]);
-    assert_eq!(ids(&app, json!({"player_id": alice.id, "date_from": "2026-09-05", "date_to": "2026-09-15"})).await, [middle.id]);
+    assert_eq!(
+        ids(
+            &app,
+            json!({"player_id": alice.id, "date_from": "2026-09-05", "date_to": "2026-09-15"})
+        )
+        .await,
+        [middle.id]
+    );
     assert_eq!(ids(&app, json!({"deck_id": birds.id})).await, [old.id]);
 }
 
@@ -581,19 +1010,46 @@ async fn list_games_filters_by_winner_commander_seat_count_turns_and_duration() 
         )
         .await;
 
-    assert_eq!(ids(&app, json!({"winner_id": bob.id.to_string()})).await, [bob_win.id]);
-    assert_eq!(ids(&app, json!({"winner_id": alice.id})).await, [alice_win.id]);
-    assert_eq!(ids(&app, json!({"commander": "kangee"})).await, [alice_win.id]);
-    assert_eq!(ids(&app, json!({"commander": "TYMNA"})).await, [alice_win.id]);
-    assert_eq!(ids(&app, json!({"commander": "   "})).await, [bob_win.id, alice_win.id]);
+    assert_eq!(
+        ids(&app, json!({"winner_id": bob.id.to_string()})).await,
+        [bob_win.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"winner_id": alice.id})).await,
+        [alice_win.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"commander": "kangee"})).await,
+        [alice_win.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"commander": "TYMNA"})).await,
+        [alice_win.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"commander": "   "})).await,
+        [bob_win.id, alice_win.id]
+    );
     assert!(ids(&app, json!({"commander": "Atraxa"})).await.is_empty());
     assert_eq!(ids(&app, json!({"player_count": 3})).await, [bob_win.id]);
-    assert_eq!(ids(&app, json!({"player_count": "2"})).await, [alice_win.id]);
+    assert_eq!(
+        ids(&app, json!({"player_count": "2"})).await,
+        [alice_win.id]
+    );
     assert_eq!(ids(&app, json!({"min_turns": 7})).await, [alice_win.id]);
-    assert_eq!(ids(&app, json!({"max_turns": 12})).await, [bob_win.id, alice_win.id]);
+    assert_eq!(
+        ids(&app, json!({"max_turns": 12})).await,
+        [bob_win.id, alice_win.id]
+    );
     assert_eq!(ids(&app, json!({"max_turns": 11})).await, [bob_win.id]);
-    assert_eq!(ids(&app, json!({"min_duration": 40, "max_duration": 60})).await, [bob_win.id]);
-    assert_eq!(ids(&app, json!({"min_duration": "junk"})).await, [bob_win.id, alice_win.id]);
+    assert_eq!(
+        ids(&app, json!({"min_duration": 40, "max_duration": 60})).await,
+        [bob_win.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"min_duration": "junk"})).await,
+        [bob_win.id, alice_win.id]
+    );
 }
 
 #[tokio::test]
@@ -628,24 +1084,86 @@ async fn list_games_filters_by_colors_win_condition_seat_opponent_and_player_res
     let both = vec![azorius_win.id, golgari_win.id];
 
     assert_eq!(ids(&app, json!({"colors": "BG"})).await, both);
-    assert_eq!(ids(&app, json!({"winner_colors": "BG"})).await, [golgari_win.id]);
-    assert_eq!(ids(&app, json!({"winner_colors": "UW"})).await, [azorius_win.id]);
+    assert_eq!(
+        ids(&app, json!({"winner_colors": "BG"})).await,
+        [golgari_win.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"winner_colors": "UW"})).await,
+        [azorius_win.id]
+    );
     assert!(ids(&app, json!({"colors": "B"})).await.is_empty());
     assert_eq!(ids(&app, json!({"colors": "C"})).await, [azorius_win.id]);
     assert_eq!(ids(&app, json!({"colors": "junk"})).await, both);
     assert_eq!(ids(&app, json!({"color": "g"})).await, both);
-    assert_eq!(ids(&app, json!({"winner_color": "W"})).await, [azorius_win.id]);
-    assert_eq!(ids(&app, json!({"win_condition": "infinite_combo"})).await, [golgari_win.id]);
-    assert_eq!(ids(&app, json!({"winner_seat": "2"})).await, [azorius_win.id]);
-    assert_eq!(ids(&app, json!({"player_id": alice.id, "opponent_id": cara.id})).await, [azorius_win.id]);
-    assert_eq!(ids(&app, json!({"player_id": alice.id, "player_result": "loss"})).await, [azorius_win.id]);
-    assert_eq!(ids(&app, json!({"player_id": alice.id, "player_result": "junk"})).await, both);
-    assert!(ids(&app, json!({"player_id": bob.id, "colors": "BG"})).await.is_empty());
-    assert_eq!(ids(&app, json!({"player_id": alice.id, "colors": "BG", "player_result": "win"})).await, [golgari_win.id]);
-    assert!(ids(&app, json!({"player_id": bob.id, "commander": "meren"})).await.is_empty());
-    assert!(ids(&app, json!({"winner_id": alice.id, "winner_colors": "WU"})).await.is_empty());
-    assert_eq!(ids(&app, json!({"winner_id": bob.id, "winner_seat": 2, "winner_color": "U"})).await, [azorius_win.id]);
-    assert!(ids(&app, json!({"winner_seat": 1, "winner_colors": "WU"})).await.is_empty());
+    assert_eq!(
+        ids(&app, json!({"winner_color": "W"})).await,
+        [azorius_win.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"win_condition": "infinite_combo"})).await,
+        [golgari_win.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"winner_seat": "2"})).await,
+        [azorius_win.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"player_id": alice.id, "opponent_id": cara.id})).await,
+        [azorius_win.id]
+    );
+    assert_eq!(
+        ids(
+            &app,
+            json!({"player_id": alice.id, "player_result": "loss"})
+        )
+        .await,
+        [azorius_win.id]
+    );
+    assert_eq!(
+        ids(
+            &app,
+            json!({"player_id": alice.id, "player_result": "junk"})
+        )
+        .await,
+        both
+    );
+    assert!(
+        ids(&app, json!({"player_id": bob.id, "colors": "BG"}))
+            .await
+            .is_empty()
+    );
+    assert_eq!(
+        ids(
+            &app,
+            json!({"player_id": alice.id, "colors": "BG", "player_result": "win"})
+        )
+        .await,
+        [golgari_win.id]
+    );
+    assert!(
+        ids(&app, json!({"player_id": bob.id, "commander": "meren"}))
+            .await
+            .is_empty()
+    );
+    assert!(
+        ids(&app, json!({"winner_id": alice.id, "winner_colors": "WU"}))
+            .await
+            .is_empty()
+    );
+    assert_eq!(
+        ids(
+            &app,
+            json!({"winner_id": bob.id, "winner_seat": 2, "winner_color": "U"})
+        )
+        .await,
+        [azorius_win.id]
+    );
+    assert!(
+        ids(&app, json!({"winner_seat": 1, "winner_colors": "WU"}))
+            .await
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -653,20 +1171,61 @@ async fn list_games_reads_dates_weekdays_and_hours_in_the_requested_time_zone() 
     let app = TestApp::new().await;
     let alice = app.player("Alice").await;
     let bob = app.player("Bob").await;
-    let evening = app.simple_game("2026-09-25T01:30:00Z", alice.id, bob.id, None).await;
-    let afternoon = app.simple_game("2026-09-25T18:00:00Z", alice.id, bob.id, None).await;
+    let evening = app
+        .simple_game("2026-09-25T01:30:00Z", alice.id, bob.id, None)
+        .await;
+    let afternoon = app
+        .simple_game("2026-09-25T18:00:00Z", alice.id, bob.id, None)
+        .await;
     let ny = "America/New_York";
 
-    assert_eq!(ids(&app, json!({"date_from": "2026-09-24", "date_to": "2026-09-24", "tz": ny})).await, [evening.id]);
-    assert!(ids(&app, json!({"date_from": "2026-09-24", "date_to": "2026-09-24"})).await.is_empty());
-    assert_eq!(ids(&app, json!({"date_from": "2026-09-25", "tz": ny})).await, [afternoon.id]);
-    assert_eq!(ids(&app, json!({"date_from": "not-a-date"})).await, [afternoon.id, evening.id]);
-    assert_eq!(ids(&app, json!({"weekday": "4", "tz": ny})).await, [evening.id]);
-    assert_eq!(ids(&app, json!({"weekday": 5})).await, [afternoon.id, evening.id]);
+    assert_eq!(
+        ids(
+            &app,
+            json!({"date_from": "2026-09-24", "date_to": "2026-09-24", "tz": ny})
+        )
+        .await,
+        [evening.id]
+    );
+    assert!(
+        ids(
+            &app,
+            json!({"date_from": "2026-09-24", "date_to": "2026-09-24"})
+        )
+        .await
+        .is_empty()
+    );
+    assert_eq!(
+        ids(&app, json!({"date_from": "2026-09-25", "tz": ny})).await,
+        [afternoon.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"date_from": "not-a-date"})).await,
+        [afternoon.id, evening.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"weekday": "4", "tz": ny})).await,
+        [evening.id]
+    );
+    assert_eq!(
+        ids(&app, json!({"weekday": 5})).await,
+        [afternoon.id, evening.id]
+    );
     assert_eq!(ids(&app, json!({"hour": 21, "tz": ny})).await, [evening.id]);
-    assert!(ids(&app, json!({"hour": "0", "weekday": 0, "tz": ny})).await.is_empty());
-    assert!(ids(&app, json!({"hour": 14, "tz": "Not/AZone"})).await.is_empty());
-    assert_eq!(ids(&app, json!({"hour": 18, "tz": "Not/AZone"})).await, [afternoon.id]);
+    assert!(
+        ids(&app, json!({"hour": "0", "weekday": 0, "tz": ny}))
+            .await
+            .is_empty()
+    );
+    assert!(
+        ids(&app, json!({"hour": 14, "tz": "Not/AZone"}))
+            .await
+            .is_empty()
+    );
+    assert_eq!(
+        ids(&app, json!({"hour": 18, "tz": "Not/AZone"})).await,
+        [afternoon.id]
+    );
 }
 
 #[tokio::test]
@@ -675,7 +1234,13 @@ async fn editing_a_game_swaps_seat_numbers_and_rolls_back_invalid_edits() {
     let players = players(&app, 4).await;
     let refs: Vec<&Player> = players.iter().collect();
     let game = app.game(game_attrs(&refs), None).await;
-    let seat_id = |player: &Player| game.seats.iter().find(|seat| seat.player_id == player.id).unwrap().id;
+    let seat_id = |player: &Player| {
+        game.seats
+            .iter()
+            .find(|seat| seat.player_id == player.id)
+            .unwrap()
+            .id
+    };
     let swapped = json!({"format": "two_headed_giant", "seats": [
         {"id": seat_id(&players[0]), "player_id": players[0].id, "seat": 1, "result": "win"},
         {"id": seat_id(&players[2]), "player_id": players[2].id, "seat": 2, "result": "win"},
@@ -683,11 +1248,20 @@ async fn editing_a_game_swaps_seat_numbers_and_rolls_back_invalid_edits() {
         {"id": seat_id(&players[3]).to_string(), "player_id": players[3].id, "seat": 4, "result": "loss"},
     ]});
     let updated = app.state.games.update_game(&game, &swapped).await.unwrap();
-    let mut by_seat: Vec<(i64, i64)> = updated.seats.iter().map(|seat| (seat.seat, seat.id)).collect();
+    let mut by_seat: Vec<(i64, i64)> = updated
+        .seats
+        .iter()
+        .map(|seat| (seat.seat, seat.id))
+        .collect();
     by_seat.sort_unstable();
     assert_eq!(
         by_seat,
-        [(1, seat_id(&players[0])), (2, seat_id(&players[2])), (3, seat_id(&players[1])), (4, seat_id(&players[3]))]
+        [
+            (1, seat_id(&players[0])),
+            (2, seat_id(&players[2])),
+            (3, seat_id(&players[1])),
+            (4, seat_id(&players[3]))
+        ]
     );
 
     // Dropping a seat deletes it; a seat without an id is inserted.
@@ -696,10 +1270,25 @@ async fn editing_a_game_swaps_seat_numbers_and_rolls_back_invalid_edits() {
         {"id": seat_id(&players[0]), "seat": 1},
         {"player_id": fifth.id, "seat": 2, "result": "loss"},
     ], "format": "commander"});
-    let reshaped = app.state.games.update_game(&updated, &reshaped).await.unwrap();
+    let reshaped = app
+        .state
+        .games
+        .update_game(&updated, &reshaped)
+        .await
+        .unwrap();
     assert_eq!(reshaped.seats.len(), 2);
-    assert!(reshaped.seats.iter().any(|seat| seat.player_id == fifth.id && seat.seat == 2));
-    assert!(reshaped.seats.iter().any(|seat| seat.id == seat_id(&players[0]) && seat.result == GameResult::Win));
+    assert!(
+        reshaped
+            .seats
+            .iter()
+            .any(|seat| seat.player_id == fifth.id && seat.seat == 2)
+    );
+    assert!(
+        reshaped
+            .seats
+            .iter()
+            .any(|seat| seat.id == seat_id(&players[0]) && seat.result == GameResult::Win)
+    );
 }
 
 // ColorIdentityTest
@@ -732,9 +1321,18 @@ fn names_guilds_shards_wedges_four_color_and_five_color_identities() {
 
 // DeckPickerTest
 
-fn candidate(name: &str, skip_count: i64, play_count: i64, last_played_at: Option<&str>) -> Candidate {
+fn candidate(
+    name: &str,
+    skip_count: i64,
+    play_count: i64,
+    last_played_at: Option<&str>,
+) -> Candidate {
     Candidate {
-        deck: Deck { name: name.into(), skip_count, ..Deck::default() },
+        deck: Deck {
+            name: name.into(),
+            skip_count,
+            ..Deck::default()
+        },
         play_count,
         last_played_at: last_played_at.map(utc),
         weight: 0.0,
@@ -750,10 +1348,11 @@ fn weights_favor_never_played_older_skipped_and_less_played_decks() {
         candidate("Frequent", 0, 10, Some("2026-09-20T11:00:00Z")),
         candidate("Never", 0, 0, None),
     ];
-    let weights: std::collections::HashMap<String, f64> = selection_weights(candidates, utc("2026-09-20T12:00:00Z"))
-        .into_iter()
-        .map(|candidate| (candidate.deck.name, candidate.weight))
-        .collect();
+    let weights: std::collections::HashMap<String, f64> =
+        selection_weights(candidates, utc("2026-09-20T12:00:00Z"))
+            .into_iter()
+            .map(|candidate| (candidate.deck.name, candidate.weight))
+            .collect();
     assert!(weights["Never"] > weights["Old"]);
     assert!(weights["Old"] > weights["Recent"]);
     assert!(weights["Skipped"] > weights["Recent"]);
@@ -762,7 +1361,9 @@ fn weights_favor_never_played_older_skipped_and_less_played_decks() {
 
 async fn chooser(app: &TestApp) -> (the_gathering::accounts::User, Player) {
     let user = app.unique_member().await;
-    let player = app.player_with(json!({"name": "Chooser"}), Some(user.id)).await;
+    let player = app
+        .player_with(json!({"name": "Chooser"}), Some(user.id))
+        .await;
     (user, player)
 }
 
@@ -775,7 +1376,11 @@ async fn excluded_and_archived_decks_never_appear() {
         .deck_with(json!({"player_id": player.id, "name": "Archived", "commander_name": "Archived", "archived_at": "2026-09-20T12:00:00Z"}))
         .await;
     let eligible = app.deck(player.id, "Eligible", "Eligible").await;
-    sqlx::query("UPDATE decks SET included_for_play = 0 WHERE id = ?").bind(excluded.id).execute(app.pool()).await.unwrap();
+    sqlx::query("UPDATE decks SET included_for_play = 0 WHERE id = ?")
+        .bind(excluded.id)
+        .execute(app.pool())
+        .await
+        .unwrap();
     match app.state.games.pick_deck(&user, None, 0.0).await.unwrap() {
         the_gathering::games::DeckPick::Picked(pick) => {
             assert_eq!(pick.deck.id, eligible.id);
@@ -791,9 +1396,30 @@ async fn skip_increments_and_choose_clears_the_skip_count() {
     let (user, player) = chooser(&app).await;
     let deck = app.deck(player.id, "Krenko", "Krenko").await;
     let games = &app.state.games;
-    assert_eq!(games.record_deck_outcome(&user, deck.id, Outcome::Skipped).await.unwrap().skip_count, 1);
-    assert_eq!(games.record_deck_outcome(&user, deck.id, Outcome::Skipped).await.unwrap().skip_count, 2);
-    assert_eq!(games.record_deck_outcome(&user, deck.id, Outcome::Played).await.unwrap().skip_count, 0);
+    assert_eq!(
+        games
+            .record_deck_outcome(&user, deck.id, Outcome::Skipped)
+            .await
+            .unwrap()
+            .skip_count,
+        1
+    );
+    assert_eq!(
+        games
+            .record_deck_outcome(&user, deck.id, Outcome::Skipped)
+            .await
+            .unwrap()
+            .skip_count,
+        2
+    );
+    assert_eq!(
+        games
+            .record_deck_outcome(&user, deck.id, Outcome::Played)
+            .await
+            .unwrap()
+            .skip_count,
+        0
+    );
 }
 
 #[tokio::test]
@@ -828,8 +1454,15 @@ fn draw_six_seats_partners_missing_data_and_hostile_text_stay_bounded_and_escape
             seat: n,
             result: GameResult::Draw,
             kills: (n == 1).then_some(0),
-            player: Player { name: "<Alice & Bob>".into(), ..Player::default() },
-            deck: (n == 1).then(|| Deck { commander_name: "Frodo".into(), partner_name: Some("Sam".into()), ..Deck::default() }),
+            player: Player {
+                name: "<Alice & Bob>".into(),
+                ..Player::default()
+            },
+            deck: (n == 1).then(|| Deck {
+                commander_name: "Frodo".into(),
+                partner_name: Some("Sam".into()),
+                ..Deck::default()
+            }),
             ..Seat::default()
         })
         .collect();
@@ -881,7 +1514,12 @@ async fn renderer_downloads_the_scryfall_source_behind_a_catalog_image_cache_url
     // Browser-facing cache URLs are relative; only the unwrapped source passes the allowlist.
     assert_eq!(fetcher.fetch_art(Some(&cache_url)).await, None);
     let expected = format!("data:image/jpeg;base64,{}", base64_encode(&JPEG));
-    assert_eq!(fetcher.fetch_art(images::source(&cache_url).as_deref()).await, Some(expected));
+    assert_eq!(
+        fetcher
+            .fetch_art(images::source(&cache_url).as_deref())
+            .await,
+        Some(expected)
+    );
 }
 
 fn base64_encode(bytes: &[u8]) -> String {
@@ -891,7 +1529,10 @@ fn base64_encode(bytes: &[u8]) -> String {
 
 #[tokio::test]
 async fn art_fetch_only_allows_https_scryfall_raster_formats_no_redirects_capped_response_sizes() {
-    let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build().unwrap();
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
     let plain = ArtFetcher::new(client.clone());
     for url in [
         None,
@@ -924,9 +1565,14 @@ async fn art_fetch_only_allows_https_scryfall_raster_formats_no_redirects_capped
             .mount(&server)
             .await;
         let fetcher = ArtFetcher::new(client.clone()).with_origin(server.uri());
-        let result = fetcher.fetch_art(Some("https://cards.scryfall.io/art_crop/test.jpg")).await;
+        let result = fetcher
+            .fetch_art(Some("https://cards.scryfall.io/art_crop/test.jpg"))
+            .await;
         if accepted {
-            assert_eq!(result, Some(format!("data:image/jpeg;base64,{}", base64_encode(&body))));
+            assert_eq!(
+                result,
+                Some(format!("data:image/jpeg;base64,{}", base64_encode(&body)))
+            );
         } else {
             assert_eq!(result, None, "status {status}");
         }

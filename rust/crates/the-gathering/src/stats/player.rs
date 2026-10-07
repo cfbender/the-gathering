@@ -6,8 +6,8 @@ use serde_json::{Value, json};
 use sqlx::SqliteConnection;
 
 use crate::catalog::{self, ArtUrls, CardRef};
-use crate::games::{Game, GameResult, Seat, get_player};
 use crate::games::player::list_players;
+use crate::games::{Game, GameResult, Seat, get_player};
 
 use super::commanders::{self, SeatInGame};
 use super::records::{self, Object, Record, group_by, grouped_records, seat_entity};
@@ -22,26 +22,46 @@ fn results(seat: Option<&Seat>) -> Vec<GameResult> {
 }
 
 /// `Player.get/2`.
-pub async fn get(conn: &mut SqliteConnection, player_id: i64, params: &Value) -> Result<Option<Value>, sqlx::Error> {
-    let Some(player) = get_player(conn, player_id).await? else { return Ok(None) };
+pub async fn get(
+    conn: &mut SqliteConnection,
+    player_id: i64,
+    params: &Value,
+) -> Result<Option<Value>, sqlx::Error> {
+    let Some(player) = get_player(conn, player_id).await? else {
+        return Ok(None);
+    };
     let games = query::games(conn, params, Some(player.id), None).await?;
-    let seats: Vec<&Seat> = games.iter().filter_map(|game| mine(game, player.id)).collect();
+    let seats: Vec<&Seat> = games
+        .iter()
+        .filter_map(|game| mine(game, player.id))
+        .collect();
     let oldest_first: Vec<GameResult> = seats.iter().rev().map(|seat| seat.result).collect();
     let cutoff = query::detailed_stats_from(conn).await?;
     let detailed = query::detailed(&games, cutoff);
-    let detailed_seats: Vec<&Seat> = detailed.iter().filter_map(|game| mine(game, player.id)).collect();
+    let detailed_seats: Vec<&Seat> = detailed
+        .iter()
+        .filter_map(|game| mine(game, player.id))
+        .collect();
     let card_art = card_art(conn, &seats).await?;
     let with_result = |result: GameResult| {
-        games.iter().filter(move |game| mine(game, player.id).is_some_and(|seat| seat.result == result))
+        games
+            .iter()
+            .filter(move |game| mine(game, player.id).is_some_and(|seat| seat.result == result))
     };
     let decks = grouped_records(
         seats.iter().copied().filter(|seat| seat.deck.is_some()),
         |seat| {
-            let mut entity = seat.deck.as_ref().map(summaries::deck_entity).unwrap_or_default();
-            let game_changer = seat
+            let mut entity = seat
                 .deck
                 .as_ref()
-                .is_some_and(|deck| card_art.game_changer(deck.commander_card_id.as_deref(), Some(&deck.commander_name)));
+                .map(summaries::deck_entity)
+                .unwrap_or_default();
+            let game_changer = seat.deck.as_ref().is_some_and(|deck| {
+                card_art.game_changer(
+                    deck.commander_card_id.as_deref(),
+                    Some(&deck.commander_name),
+                )
+            });
             entity.insert("game_changer".into(), json!(game_changer));
             entity
         },
@@ -78,12 +98,24 @@ pub async fn get(conn: &mut SqliteConnection, player_id: i64, params: &Value) ->
 
 /// Ratings depend on every game at the table, so the whole playgroup is replayed, including
 /// games before the window. Only players with at least [`MIN_GAMES`] hold a rank.
-async fn player_elo(conn: &mut SqliteConnection, player_id: i64, params: &Value) -> Result<Value, sqlx::Error> {
+async fn player_elo(
+    conn: &mut SqliteConnection,
+    player_id: i64,
+    params: &Value,
+) -> Result<Value, sqlx::Error> {
     let all = query::games(conn, &query::without_date_from(params), None, None).await?;
     let ratings = elo::ratings(&all, query::window_start(params));
-    let ranked: Vec<&elo::Rating> = ratings.iter().filter(|rating| rating.games >= MIN_GAMES).collect();
-    let Some(rating) = ratings.iter().find(|rating| rating.id == player_id) else { return Ok(Value::Null) };
-    let rank = ranked.iter().position(|rating| rating.id == player_id).map(|index| index + 1);
+    let ranked: Vec<&elo::Rating> = ratings
+        .iter()
+        .filter(|rating| rating.games >= MIN_GAMES)
+        .collect();
+    let Some(rating) = ratings.iter().find(|rating| rating.id == player_id) else {
+        return Ok(Value::Null);
+    };
+    let rank = ranked
+        .iter()
+        .position(|rating| rating.id == player_id)
+        .map(|index| index + 1);
     Ok(json!({
         "rating": rating.rating,
         "start": rating.start,
@@ -97,12 +129,20 @@ async fn player_elo(conn: &mut SqliteConnection, player_id: i64, params: &Value)
 
 /// Opponents' commanders: how often each was faced, beat this player, or was beaten by
 /// them. Mirror matches among the opponents count every seat.
-async fn rival_commanders(conn: &mut SqliteConnection, games: &[Game], player_id: i64) -> Result<Vec<Value>, sqlx::Error> {
+async fn rival_commanders(
+    conn: &mut SqliteConnection,
+    games: &[Game],
+    player_id: i64,
+) -> Result<Vec<Value>, sqlx::Error> {
     let opponents = |won_only: bool| -> Vec<SeatInGame<'_>> {
         games
             .iter()
             .filter(|game| {
-                !won_only || game.seats.iter().any(|seat| seat.player_id == player_id && seat.result == GameResult::Win)
+                !won_only
+                    || game
+                        .seats
+                        .iter()
+                        .any(|seat| seat.player_id == player_id && seat.result == GameResult::Win)
             })
             .flat_map(|game| {
                 game.seats
@@ -116,24 +156,52 @@ async fn rival_commanders(conn: &mut SqliteConnection, games: &[Game], player_id
     let beaten: HashMap<String, Value> = commanders::summarize(conn, &opponents(true))
         .await?
         .into_iter()
-        .map(|row| (row.get("id").map(Value::to_string).unwrap_or_default(), row.get("games").cloned().unwrap_or(json!(0))))
+        .map(|row| {
+            (
+                row.get("id").map(Value::to_string).unwrap_or_default(),
+                row.get("games").cloned().unwrap_or(json!(0)),
+            )
+        })
         .collect();
     let mut rows: Vec<Object> = faced
         .into_iter()
         .map(|row| {
             let mut object = Object::new();
-            for key in ["id", "name", "image_url", "art_crop_url", "color_identity", "game_changer"] {
+            for key in [
+                "id",
+                "name",
+                "image_url",
+                "art_crop_url",
+                "color_identity",
+                "game_changer",
+            ] {
                 object.insert(key.into(), row.get(key).cloned().unwrap_or(Value::Null));
             }
-            object.insert("faced".into(), row.get("games").cloned().unwrap_or(json!(0)));
-            object.insert("beat_me".into(), row.get("wins").cloned().unwrap_or(json!(0)));
+            object.insert(
+                "faced".into(),
+                row.get("games").cloned().unwrap_or(json!(0)),
+            );
+            object.insert(
+                "beat_me".into(),
+                row.get("wins").cloned().unwrap_or(json!(0)),
+            );
             let id = row.get("id").map(Value::to_string).unwrap_or_default();
-            object.insert("beaten".into(), beaten.get(&id).cloned().unwrap_or(json!(0)));
+            object.insert(
+                "beaten".into(),
+                beaten.get(&id).cloned().unwrap_or(json!(0)),
+            );
             object
         })
         .collect();
-    let number = |object: &Object, key: &str| object.get(key).and_then(Value::as_u64).unwrap_or_default();
-    let name = |object: &Object| object.get("name").and_then(Value::as_str).unwrap_or_default().to_lowercase();
+    let number =
+        |object: &Object, key: &str| object.get(key).and_then(Value::as_u64).unwrap_or_default();
+    let name = |object: &Object| {
+        object
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_lowercase()
+    };
     rows.sort_by(|a, b| {
         number(b, "faced")
             .cmp(&number(a, "faced"))
@@ -154,70 +222,111 @@ fn streaks(oldest_first: &[GameResult]) -> Value {
             run = 0;
         }
     }
-    let current = oldest_first.iter().rev().take_while(|result| **result == GameResult::Win).count();
+    let current = oldest_first
+        .iter()
+        .rev()
+        .take_while(|result| **result == GameResult::Win)
+        .count();
     json!({"current_wins": current, "longest_wins": longest})
 }
 
-async fn head_to_head(conn: &mut SqliteConnection, games: &[Game], player_id: i64) -> Result<Vec<Value>, sqlx::Error> {
-    let avatars: HashMap<i64, Option<String>> =
-        list_players(conn, true).await?.into_iter().map(|player| (player.id, player.avatar_url)).collect();
+async fn head_to_head(
+    conn: &mut SqliteConnection,
+    games: &[Game],
+    player_id: i64,
+) -> Result<Vec<Value>, sqlx::Error> {
+    let avatars: HashMap<i64, Option<String>> = list_players(conn, true)
+        .await?
+        .into_iter()
+        .map(|player| (player.id, player.avatar_url))
+        .collect();
     let rows = games.iter().flat_map(|game| {
         let my_result = mine(game, player_id).map(|seat| seat.result);
-        game.seats.iter().filter(|seat| seat.player_id != player_id).map(move |opponent| (opponent, my_result))
+        game.seats
+            .iter()
+            .filter(|seat| seat.player_id != player_id)
+            .map(move |opponent| (opponent, my_result))
     });
-    let mut entries: Vec<(usize, String, Value)> = group_by(rows, |(opponent, _)| opponent.player_id)
-        .into_values()
-        .filter_map(|rows| {
-            let opponent = &rows.first()?.0.player;
-            let wins = rows.iter().filter(|(_, mine)| *mine == Some(GameResult::Win)).count();
-            let losses = rows.iter().filter(|(theirs, _)| theirs.result == GameResult::Win).count();
-            let draws = rows.iter().filter(|(_, mine)| *mine == Some(GameResult::Draw)).count();
-            let value = json!({
-                "id": opponent.id,
-                "name": opponent.name,
-                "avatar_url": avatars.get(&opponent.id).cloned().flatten(),
-                "games": rows.len(),
-                "wins": wins,
-                "losses": losses,
-                "draws": draws,
-            });
-            Some((rows.len(), opponent.name.clone(), value))
-        })
-        .collect();
+    let mut entries: Vec<(usize, String, Value)> =
+        group_by(rows, |(opponent, _)| opponent.player_id)
+            .into_values()
+            .filter_map(|rows| {
+                let opponent = &rows.first()?.0.player;
+                let wins = rows
+                    .iter()
+                    .filter(|(_, mine)| *mine == Some(GameResult::Win))
+                    .count();
+                let losses = rows
+                    .iter()
+                    .filter(|(theirs, _)| theirs.result == GameResult::Win)
+                    .count();
+                let draws = rows
+                    .iter()
+                    .filter(|(_, mine)| *mine == Some(GameResult::Draw))
+                    .count();
+                let value = json!({
+                    "id": opponent.id,
+                    "name": opponent.name,
+                    "avatar_url": avatars.get(&opponent.id).cloned().flatten(),
+                    "games": rows.len(),
+                    "wins": wins,
+                    "losses": losses,
+                    "draws": draws,
+                });
+                Some((rows.len(), opponent.name.clone(), value))
+            })
+            .collect();
     entries.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     Ok(entries.into_iter().map(|(_, _, value)| value).collect())
 }
 
 fn mvp_cards(seats: &[&Seat], card_art: &ArtUrls) -> Vec<Value> {
-    let named = seats.iter().filter(|seat| seat.mvp_card_name.as_deref().is_some_and(|name| !name.is_empty()));
-    let mut rows: Vec<(usize, String, Value)> =
-        group_by(named, |seat| (seat.mvp_card_id.clone(), seat.mvp_card_name.clone()))
-            .into_iter()
-            .map(|((id, name), rows)| {
-                let name = name.unwrap_or_default();
-                let value = json!({
-                    "id": id,
-                    "name": name,
-                    "mentions": rows.len(),
-                    "game_changer": card_art.game_changer(id.as_deref(), Some(&name)),
-                    "image_url": card_art.card_image_url(id.as_deref(), Some(&name), None),
-                    "art_crop_url": card_art.art_crop_url(id.as_deref(), Some(&name), None),
-                });
-                (rows.len(), name, value)
-            })
-            .collect();
+    let named = seats.iter().filter(|seat| {
+        seat.mvp_card_name
+            .as_deref()
+            .is_some_and(|name| !name.is_empty())
+    });
+    let mut rows: Vec<(usize, String, Value)> = group_by(named, |seat| {
+        (seat.mvp_card_id.clone(), seat.mvp_card_name.clone())
+    })
+    .into_iter()
+    .map(|((id, name), rows)| {
+        let name = name.unwrap_or_default();
+        let value = json!({
+            "id": id,
+            "name": name,
+            "mentions": rows.len(),
+            "game_changer": card_art.game_changer(id.as_deref(), Some(&name)),
+            "image_url": card_art.card_image_url(id.as_deref(), Some(&name), None),
+            "art_crop_url": card_art.art_crop_url(id.as_deref(), Some(&name), None),
+        });
+        (rows.len(), name, value)
+    })
+    .collect();
     rows.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-    rows.into_iter().take(8).map(|(_, _, value)| value).collect()
+    rows.into_iter()
+        .take(8)
+        .map(|(_, _, value)| value)
+        .collect()
 }
 
 async fn card_art(conn: &mut SqliteConnection, seats: &[&Seat]) -> Result<ArtUrls, sqlx::Error> {
     let refs: Vec<CardRef> = seats
         .iter()
         .flat_map(|seat| {
-            let mut refs = vec![CardRef::Card(seat.mvp_card_id.clone(), seat.mvp_card_name.clone())];
+            let mut refs = vec![CardRef::Card(
+                seat.mvp_card_id.clone(),
+                seat.mvp_card_name.clone(),
+            )];
             if let Some(deck) = &seat.deck {
-                refs.push(CardRef::Card(deck.commander_card_id.clone(), Some(deck.commander_name.clone())));
-                refs.push(CardRef::Card(deck.partner_card_id.clone(), deck.partner_name.clone()));
+                refs.push(CardRef::Card(
+                    deck.commander_card_id.clone(),
+                    Some(deck.commander_name.clone()),
+                ));
+                refs.push(CardRef::Card(
+                    deck.partner_card_id.clone(),
+                    deck.partner_name.clone(),
+                ));
             }
             refs
         })
@@ -238,7 +347,10 @@ fn favorite_seat(seats: &[&Seat]) -> Option<i64> {
 fn best_seat(seats: &[&Seat]) -> Option<i64> {
     let mut best: Option<((f64, usize), i64)> = None;
     for (seat, rows) in group_by(seats.iter(), |seat| seat.seat) {
-        let score = (Record::of_seats(rows.iter().map(|seat| **seat)).win_rate, rows.len());
+        let score = (
+            Record::of_seats(rows.iter().map(|seat| **seat)).win_rate,
+            rows.len(),
+        );
         let better = best.is_none_or(|((rate, count), _)| {
             score.0.total_cmp(&rate).then(score.1.cmp(&count)) == std::cmp::Ordering::Greater
         });

@@ -18,7 +18,9 @@ fn param<'a>(params: &'a Value, key: &str) -> Option<&'a str> {
 /// as `[from, to)` instants. Unparseable dates are ignored.
 pub fn date_bounds(params: &Value) -> (Option<UtcDateTime>, Option<UtcDateTime>) {
     let zone = Zone::parse(param(params, "tz"));
-    let from = param(params, "date_from").and_then(parse_date).and_then(|date| zone.start_of_day(date));
+    let from = param(params, "date_from")
+        .and_then(parse_date)
+        .and_then(|date| zone.start_of_day(date));
     let to = param(params, "date_to")
         .and_then(parse_date)
         .and_then(Date::next_day)
@@ -66,7 +68,11 @@ pub async fn games(
 }
 
 /// `recent_games/2`: the newest `limit` of `game_ids`.
-pub async fn recent_games(conn: &mut SqliteConnection, game_ids: &[i64], limit: i64) -> Result<Vec<Game>, sqlx::Error> {
+pub async fn recent_games(
+    conn: &mut SqliteConnection,
+    game_ids: &[i64],
+    limit: i64,
+) -> Result<Vec<Game>, sqlx::Error> {
     let ids_json = serde_json::to_string(game_ids).unwrap_or_else(|_| "[]".into());
     let ids = sqlx::query_scalar!(
         r#"SELECT id AS "id!: i64" FROM games WHERE id IN (SELECT value FROM json_each(?))
@@ -83,36 +89,51 @@ pub async fn recent_games(conn: &mut SqliteConnection, game_ids: &[i64], limit: 
 pub type Reference = (Option<String>, Option<String>);
 
 async fn all_rows(conn: &mut SqliteConnection) -> Result<Vec<[Reference; 2]>, sqlx::Error> {
-    Ok(sqlx::query!("SELECT commander_card_id, commander_name, partner_card_id, partner_name FROM decks")
-        .fetch_all(&mut *conn)
-        .await?
-        .into_iter()
-        .map(|row| [(row.commander_card_id, Some(row.commander_name)), (row.partner_card_id, row.partner_name)])
-        .collect())
+    Ok(sqlx::query!(
+        "SELECT commander_card_id, commander_name, partner_card_id, partner_name FROM decks"
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .map(|row| {
+        [
+            (row.commander_card_id, Some(row.commander_name)),
+            (row.partner_card_id, row.partner_name),
+        ]
+    })
+    .collect())
 }
 
 fn unique(references: impl IntoIterator<Item = Reference>) -> Vec<Reference> {
     let mut seen = HashSet::new();
-    references.into_iter().filter(|reference| seen.insert(reference.clone())).collect()
+    references
+        .into_iter()
+        .filter(|reference| seen.insert(reference.clone()))
+        .collect()
 }
 
 /// Every stored commander reference except empty slots.
-async fn all_commander_references(conn: &mut SqliteConnection) -> Result<Vec<Reference>, sqlx::Error> {
-    Ok(unique(
-        all_rows(conn)
-            .await?
-            .into_iter()
-            .flatten()
-            .filter(|(id, name)| id.is_some() || name.as_deref().is_some_and(|name| !name.is_empty())),
-    ))
+async fn all_commander_references(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<Reference>, sqlx::Error> {
+    Ok(unique(all_rows(conn).await?.into_iter().flatten().filter(
+        |(id, name)| id.is_some() || name.as_deref().is_some_and(|name| !name.is_empty()),
+    )))
 }
 
 fn reference_matches(reference: &Reference, id: &str, normalized: &str) -> bool {
-    reference.0.as_deref() == Some(id) || reference.1.as_deref().is_some_and(|name| lotus::normalize_name(name) == normalized)
+    reference.0.as_deref() == Some(id)
+        || reference
+            .1
+            .as_deref()
+            .is_some_and(|name| lotus::normalize_name(name) == normalized)
 }
 
 /// `commander_references/1`: stored references that match `id` as an id or normalized name.
-pub async fn commander_references(conn: &mut SqliteConnection, id: &str) -> Result<Vec<Reference>, sqlx::Error> {
+pub async fn commander_references(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<Vec<Reference>, sqlx::Error> {
     let normalized = lotus::normalize_name(id);
     let downcased = id.to_lowercase();
     let rows = sqlx::query!(
@@ -125,7 +146,12 @@ pub async fn commander_references(conn: &mut SqliteConnection, id: &str) -> Resu
     .await?;
     let direct = unique(
         rows.into_iter()
-            .flat_map(|row| [(row.commander_card_id, Some(row.commander_name)), (row.partner_card_id, row.partner_name)])
+            .flat_map(|row| {
+                [
+                    (row.commander_card_id, Some(row.commander_name)),
+                    (row.partner_card_id, row.partner_name),
+                ]
+            })
             .filter(|reference| reference_matches(reference, id, &normalized)),
     );
     if !direct.is_empty() {
@@ -145,13 +171,18 @@ pub async fn commander_aliases(
     ids: &[String],
     names: &[String],
 ) -> Result<(Vec<String>, Vec<String>), sqlx::Error> {
-    let normalized: HashSet<String> = names.iter().map(|name| lotus::normalize_name(name)).collect();
+    let normalized: HashSet<String> = names
+        .iter()
+        .map(|name| lotus::normalize_name(name))
+        .collect();
     let references: Vec<Reference> = all_commander_references(conn)
         .await?
         .into_iter()
         .filter(|(id, name)| {
             id.as_ref().is_some_and(|id| ids.contains(id))
-                || name.as_deref().is_some_and(|name| normalized.contains(&lotus::normalize_name(name)))
+                || name
+                    .as_deref()
+                    .is_some_and(|name| normalized.contains(&lotus::normalize_name(name)))
         })
         .collect();
     let mut stored_ids: Vec<String> = Vec::new();
@@ -218,7 +249,9 @@ pub async fn opponent_counts(
 }
 
 /// The administrator's `detailed_stats_from` cutoff.
-pub async fn detailed_stats_from(conn: &mut SqliteConnection) -> Result<Option<crate::db::IsoDate>, sqlx::Error> {
+pub async fn detailed_stats_from(
+    conn: &mut SqliteConnection,
+) -> Result<Option<crate::db::IsoDate>, sqlx::Error> {
     Ok(sqlx::query_scalar!(
         r#"SELECT detailed_stats_from AS "detailed_stats_from: crate::db::IsoDate" FROM server_settings WHERE id = 1"#
     )
@@ -228,6 +261,9 @@ pub async fn detailed_stats_from(conn: &mut SqliteConnection) -> Result<Option<c
 }
 
 /// Games on or after the cutoff's UTC day (all games without a cutoff).
-pub fn detailed<'a>(games: &'a [Game], cutoff: Option<crate::db::IsoDate>) -> Vec<&'a Game> {
-    games.iter().filter(|game| cutoff.is_none_or(|cutoff| game.played_at.date() >= cutoff.0)).collect()
+pub fn detailed(games: &[Game], cutoff: Option<crate::db::IsoDate>) -> Vec<&Game> {
+    games
+        .iter()
+        .filter(|game| cutoff.is_none_or(|cutoff| game.played_at.date() >= cutoff.0))
+        .collect()
 }

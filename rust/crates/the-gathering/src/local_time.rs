@@ -22,7 +22,10 @@ pub struct Zone {
 impl Zone {
     /// UTC.
     pub fn utc() -> Self {
-        Self { name: UTC.to_owned(), tz: TimeZone::UTC }
+        Self {
+            name: UTC.to_owned(),
+            tz: TimeZone::UTC,
+        }
     }
 
     /// `LocalTime.zone/1`: `name` when it names a known IANA zone, otherwise UTC.
@@ -30,9 +33,14 @@ impl Zone {
     /// Elixir's `Tz` database is case-sensitive while jiff's lookup is not, so a name only
     /// counts as known when it is spelled exactly as the database spells it.
     pub fn parse(name: Option<&str>) -> Self {
-        let Some(name) = name.filter(|name| !name.is_empty()) else { return Self::utc() };
+        let Some(name) = name.filter(|name| !name.is_empty()) else {
+            return Self::utc();
+        };
         match TimeZone::get(name) {
-            Ok(tz) if tz.iana_name() == Some(name) => Self { name: name.to_owned(), tz },
+            Ok(tz) if tz.iana_name() == Some(name) => Self {
+                name: name.to_owned(),
+                tz,
+            },
             _ => Self::utc(),
         }
     }
@@ -58,8 +66,13 @@ impl Zone {
     /// The local wall clock of a UTC instant: Sunday-first weekday (0 = Sunday … 6 = Saturday,
     /// like JavaScript's `Date#getDay`) and hour.
     pub fn weekday_and_hour(&self, at: UtcDateTime) -> Option<(i64, i64)> {
-        let zoned = Timestamp::from_second(at.unix()).ok()?.to_zoned(self.tz.clone());
-        Some((i64::from(zoned.weekday().to_sunday_zero_offset()), i64::from(zoned.hour())))
+        let zoned = Timestamp::from_second(at.unix())
+            .ok()?
+            .to_zoned(self.tz.clone());
+        Some((
+            i64::from(zoned.weekday().to_sunday_zero_offset()),
+            i64::from(zoned.hour()),
+        ))
     }
 }
 
@@ -77,18 +90,26 @@ mod tests {
 
     #[test]
     fn resolves_zones_and_local_days() {
-        assert_eq!(Zone::parse(Some("America/New_York")).name(), "America/New_York");
+        assert_eq!(
+            Zone::parse(Some("America/New_York")).name(),
+            "America/New_York"
+        );
         assert_eq!(Zone::parse(Some("america/new_york")).name(), UTC);
         assert_eq!(Zone::parse(Some("Not/AZone")).name(), UTC);
         assert_eq!(Zone::parse(None).name(), UTC);
         let ny = Zone::parse(Some("America/New_York"));
         let date = parse_date("2026-09-24").unwrap();
-        assert_eq!(ny.start_of_day(date).unwrap().to_string(), "2026-09-24T04:00:00Z");
+        assert_eq!(
+            ny.start_of_day(date).unwrap().to_string(),
+            "2026-09-24T04:00:00Z"
+        );
         let evening = UtcDateTime::parse("2026-09-25T01:30:00Z").unwrap();
         assert_eq!(ny.weekday_and_hour(evening), Some((4, 21)));
         // Midnight skipped by DST (Santiago, 2026-09-06) starts at 01:00 local.
         let santiago = Zone::parse(Some("America/Santiago"));
-        let gap = santiago.start_of_day(parse_date("2026-09-06").unwrap()).unwrap();
+        let gap = santiago
+            .start_of_day(parse_date("2026-09-06").unwrap())
+            .unwrap();
         assert_eq!(gap.to_string(), "2026-09-06T04:00:00Z");
         assert!(parse_date("2026-13-01").is_none());
         assert!(parse_date(" 2026-01-01").is_none());

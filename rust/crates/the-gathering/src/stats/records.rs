@@ -21,7 +21,16 @@ pub fn float(value: usize) -> f64 {
 
 /// `i64` as `f64` without a lossy cast (values here are small).
 pub fn float_i64(value: i64) -> f64 {
-    i32::try_from(value).map_or_else(|_| if value < 0 { f64::from(i32::MIN) } else { f64::from(i32::MAX) }, f64::from)
+    i32::try_from(value).map_or_else(
+        |_| {
+            if value < 0 {
+                f64::from(i32::MIN)
+            } else {
+                f64::from(i32::MAX)
+            }
+        },
+        f64::from,
+    )
 }
 
 /// `Float.round/2`: half away from zero at `digits` decimals.
@@ -37,7 +46,11 @@ pub fn round_i64(value: f64) -> i64 {
 
 /// `percentage/2`: one decimal, `0.0` for no games.
 pub fn percentage(part: usize, total: usize) -> f64 {
-    if total == 0 { 0.0 } else { round(float(part) * 100.0 / float(total), 1) }
+    if total == 0 {
+        0.0
+    } else {
+        round(float(part) * 100.0 / float(total), 1)
+    }
 }
 
 /// `average/2`: one decimal over the present values, `None` without any.
@@ -77,7 +90,13 @@ impl Record {
                 GameResult::Draw => draws += 1,
             }
         }
-        Self { games, wins, losses, draws, win_rate: percentage(wins, games) }
+        Self {
+            games,
+            wins,
+            losses,
+            draws,
+            win_rate: percentage(wins, games),
+        }
     }
 
     /// Of seats.
@@ -112,7 +131,11 @@ fn number(object: &Object, key: &str) -> f64 {
 }
 
 fn name_key(object: &Object) -> String {
-    object.get("name").and_then(Value::as_str).unwrap_or_default().to_lowercase()
+    object
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_lowercase()
 }
 
 /// Sorts rows most played first, then by win rate, then by case-folded name.
@@ -126,7 +149,10 @@ pub fn sort_records(rows: &mut [Object]) {
 }
 
 /// Groups `rows` by key, preserving first-occurrence order inside each group.
-pub fn group_by<T, K: Ord>(rows: impl IntoIterator<Item = T>, key: impl Fn(&T) -> K) -> BTreeMap<K, Vec<T>> {
+pub fn group_by<T, K: Ord>(
+    rows: impl IntoIterator<Item = T>,
+    key: impl Fn(&T) -> K,
+) -> BTreeMap<K, Vec<T>> {
     let mut groups: BTreeMap<K, Vec<T>> = BTreeMap::new();
     for row in rows {
         groups.entry(key(&row)).or_default().push(row);
@@ -174,40 +200,63 @@ pub fn color_records<'a>(seats: impl IntoIterator<Item = &'a Seat>) -> Vec<Value
     grouped_records(
         seats.into_iter().filter(|seat| seat.deck.is_some()),
         |seat| {
-            let identity = seat.deck.as_ref().map(|deck| deck.color_identity.as_str()).unwrap_or_default();
+            let identity = seat
+                .deck
+                .as_ref()
+                .map(|deck| deck.color_identity.as_str())
+                .unwrap_or_default();
             let mut object = Object::new();
             object.insert("id".into(), json!(color_identity::canonical(identity)));
             object.insert("name".into(), json!(color_identity::name(identity)));
             object
         },
-        |seat| color_identity::canonical(seat.deck.as_ref().map(|deck| deck.color_identity.as_str()).unwrap_or_default()),
+        |seat| {
+            color_identity::canonical(
+                seat.deck
+                    .as_ref()
+                    .map(|deck| deck.color_identity.as_str())
+                    .unwrap_or_default(),
+            )
+        },
     )
 }
 
 /// `color_exposure/1`: per WUBRG color, the seats whose deck ran it, with `share` of the
 /// deck-bearing seats.
 pub fn color_exposure<'a>(seats: impl IntoIterator<Item = &'a Seat>) -> Vec<Value> {
-    let with_decks: Vec<&Seat> = seats.into_iter().filter(|seat| seat.deck.is_some()).collect();
-    [("W", "White"), ("U", "Blue"), ("B", "Black"), ("R", "Red"), ("G", "Green")]
+    let with_decks: Vec<&Seat> = seats
         .into_iter()
-        .map(|(color, name)| {
-            let rows: Vec<&Seat> = with_decks
-                .iter()
-                .copied()
-                .filter(|seat| {
-                    seat.deck
-                        .as_ref()
-                        .is_some_and(|deck| color_identity::canonical(&deck.color_identity).contains(color))
+        .filter(|seat| seat.deck.is_some())
+        .collect();
+    [
+        ("W", "White"),
+        ("U", "Blue"),
+        ("B", "Black"),
+        ("R", "Red"),
+        ("G", "Green"),
+    ]
+    .into_iter()
+    .map(|(color, name)| {
+        let rows: Vec<&Seat> = with_decks
+            .iter()
+            .copied()
+            .filter(|seat| {
+                seat.deck.as_ref().is_some_and(|deck| {
+                    color_identity::canonical(&deck.color_identity).contains(color)
                 })
-                .collect();
-            let mut object = Object::new();
-            object.insert("id".into(), json!(color));
-            object.insert("name".into(), json!(name));
-            object.insert("share".into(), json!(percentage(rows.len(), with_decks.len())));
-            Record::of_seats(rows.iter().copied()).merge_into(&mut object);
-            Value::Object(object)
-        })
-        .collect()
+            })
+            .collect();
+        let mut object = Object::new();
+        object.insert("id".into(), json!(color));
+        object.insert("name".into(), json!(name));
+        object.insert(
+            "share".into(),
+            json!(percentage(rows.len(), with_decks.len())),
+        );
+        Record::of_seats(rows.iter().copied()).merge_into(&mut object);
+        Value::Object(object)
+    })
+    .collect()
 }
 
 /// Seats with distinct players, first seat per player.
@@ -241,32 +290,38 @@ pub fn matchups<'a>(games: impl IntoIterator<Item = &'a Game>) -> Vec<Value> {
         }
         pairs
     });
-    let mut rows: Vec<(Object, i64)> = group_by(pairs, |(seat, opponent)| (seat.player_id, opponent.player_id))
-        .into_values()
-        .filter_map(|pairs| {
-            let (seat, opponent) = pairs.first()?;
-            let mut object = Object::new();
-            object.insert("id".into(), json!(seat.player_id));
-            object.insert("name".into(), json!(seat.player.name));
-            object.insert("opponent_id".into(), json!(opponent.player_id));
-            Record::of_seats(pairs.iter().map(|(seat, _)| *seat)).merge_into(&mut object);
-            Some((object, opponent.player_id))
-        })
-        .collect();
+    let mut rows: Vec<(Object, i64)> = group_by(pairs, |(seat, opponent)| {
+        (seat.player_id, opponent.player_id)
+    })
+    .into_values()
+    .filter_map(|pairs| {
+        let (seat, opponent) = pairs.first()?;
+        let mut object = Object::new();
+        object.insert("id".into(), json!(seat.player_id));
+        object.insert("name".into(), json!(seat.player.name));
+        object.insert("opponent_id".into(), json!(opponent.player_id));
+        Record::of_seats(pairs.iter().map(|(seat, _)| *seat)).merge_into(&mut object);
+        Some((object, opponent.player_id))
+    })
+    .collect();
     rows.sort_by(|(a, a_opponent), (b, b_opponent)| {
         number(b, "games")
             .total_cmp(&number(a, "games"))
             .then_with(|| name_key(a).cmp(&name_key(b)))
             .then_with(|| a_opponent.cmp(b_opponent))
     });
-    rows.into_iter().map(|(object, _)| Value::Object(object)).collect()
+    rows.into_iter()
+        .map(|(object, _)| Value::Object(object))
+        .collect()
 }
 
 /// `histogram/2`: consecutive `bin_size`-wide bins from the lowest value's bin to the
 /// highest's (`to` exclusive), skipping missing values.
 pub fn histogram(values: impl IntoIterator<Item = Option<i64>>, bin_size: i64) -> Vec<Value> {
     let values: Vec<i64> = values.into_iter().flatten().collect();
-    let (Some(min), Some(max)) = (values.iter().min(), values.iter().max()) else { return Vec::new() };
+    let (Some(min), Some(max)) = (values.iter().min(), values.iter().max()) else {
+        return Vec::new();
+    };
     if bin_size <= 0 {
         return Vec::new();
     }
@@ -284,14 +339,19 @@ pub fn histogram(values: impl IntoIterator<Item = Option<i64>>, bin_size: i64) -
 
 /// `cumulative_win_rate/2`: games (newest first) as `(played_at, tracked results)`; the
 /// running win rate after each game with any tracked seat, oldest first.
-pub fn cumulative_win_rate(games: impl DoubleEndedIterator<Item = (UtcDateTime, Vec<GameResult>)>) -> Vec<Value> {
+pub fn cumulative_win_rate(
+    games: impl DoubleEndedIterator<Item = (UtcDateTime, Vec<GameResult>)>,
+) -> Vec<Value> {
     let (mut wins, mut total) = (0, 0);
     let mut points = Vec::new();
     for (played_at, results) in games.rev() {
         if results.is_empty() {
             continue;
         }
-        wins += results.iter().filter(|result| **result == GameResult::Win).count();
+        wins += results
+            .iter()
+            .filter(|result| **result == GameResult::Win)
+            .count();
         total += results.len();
         points.push(json!({
             "date": crate::db::IsoDate(played_at.date()).to_string(),

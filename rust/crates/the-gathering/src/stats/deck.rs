@@ -17,15 +17,30 @@ fn results(seat: Option<&Seat>) -> Vec<GameResult> {
 }
 
 /// `Deck.get/2`.
-pub async fn get(conn: &mut SqliteConnection, deck_id: i64, params: &Value) -> Result<Option<Value>, sqlx::Error> {
-    let Some(deck) = get_deck(conn, deck_id).await? else { return Ok(None) };
+pub async fn get(
+    conn: &mut SqliteConnection,
+    deck_id: i64,
+    params: &Value,
+) -> Result<Option<Value>, sqlx::Error> {
+    let Some(deck) = get_deck(conn, deck_id).await? else {
+        return Ok(None);
+    };
     let player = get_player(conn, deck.player_id).await?;
     let games = query::games(conn, params, None, Some(deck.id)).await?;
-    let seats: Vec<&Seat> = games.iter().filter_map(|game| deck_seat(game, deck.id)).collect();
+    let seats: Vec<&Seat> = games
+        .iter()
+        .filter_map(|game| deck_seat(game, deck.id))
+        .collect();
     let cutoff = query::detailed_stats_from(conn).await?;
     let detailed = query::detailed(&games, cutoff);
-    let opponents: Vec<&Seat> =
-        games.iter().flat_map(|game| game.seats.iter().filter(|seat| seat.deck_id != Some(deck.id))).collect();
+    let opponents: Vec<&Seat> = games
+        .iter()
+        .flat_map(|game| {
+            game.seats
+                .iter()
+                .filter(|seat| seat.deck_id != Some(deck.id))
+        })
+        .collect();
     Ok(Some(json!({
         "detailed_stats_from": cutoff,
         "deck": summaries::deck_entity(&deck),

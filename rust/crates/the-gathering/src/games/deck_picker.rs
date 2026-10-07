@@ -67,7 +67,9 @@ impl Outcome {
 }
 
 fn recency_hours(now: UtcDateTime, played_at: UtcDateTime) -> i64 {
-    (now.unix().saturating_sub(played_at.unix()) / 3600).saturating_add(1).max(1)
+    (now.unix().saturating_sub(played_at.unix()) / 3600)
+        .saturating_add(1)
+        .max(1)
 }
 
 fn float(value: i64) -> f64 {
@@ -79,17 +81,28 @@ fn float(value: i64) -> f64 {
 pub fn selection_weights(candidates: Vec<Candidate>, now: UtcDateTime) -> Vec<Candidate> {
     let oldest = candidates
         .iter()
-        .filter_map(|candidate| candidate.last_played_at.map(|played_at| recency_hours(now, played_at)))
+        .filter_map(|candidate| {
+            candidate
+                .last_played_at
+                .map(|played_at| recency_hours(now, played_at))
+        })
         .max()
         .unwrap_or(0);
-    let unplayed = oldest.saturating_add(UNPLAYED_BOOST_HOURS).max(UNPLAYED_BOOST_HOURS);
+    let unplayed = oldest
+        .saturating_add(UNPLAYED_BOOST_HOURS)
+        .max(UNPLAYED_BOOST_HOURS);
     candidates
         .into_iter()
         .map(|candidate| {
-            let recency = candidate.last_played_at.map_or(unplayed, |played_at| recency_hours(now, played_at));
+            let recency = candidate
+                .last_played_at
+                .map_or(unplayed, |played_at| recency_hours(now, played_at));
             let weight = float(recency) * float(candidate.deck.skip_count.saturating_add(1))
                 / float(candidate.play_count.saturating_add(1));
-            Candidate { weight, ..candidate }
+            Candidate {
+                weight,
+                ..candidate
+            }
         })
         .collect()
 }
@@ -109,7 +122,10 @@ fn weighted_pick(weighted: Vec<Candidate>, random: f64) -> Option<Candidate> {
     last
 }
 
-async fn playable_decks(conn: &mut SqliteConnection, player_id: i64) -> Result<Vec<Candidate>, sqlx::Error> {
+async fn playable_decks(
+    conn: &mut SqliteConnection,
+    player_id: i64,
+) -> Result<Vec<Candidate>, sqlx::Error> {
     let rows = sqlx::query!(
         r#"SELECT d.id AS "id!", count(s.id) AS "play_count!: i64", max(g.played_at) AS "last_played_at?: UtcDateTime"
            FROM decks d
@@ -122,12 +138,19 @@ async fn playable_decks(conn: &mut SqliteConnection, player_id: i64) -> Result<V
     )
     .fetch_all(&mut *conn)
     .await?;
-    let decks = select_decks!("WHERE player_id = ?", player_id).fetch_all(&mut *conn).await?;
+    let decks = select_decks!("WHERE player_id = ?", player_id)
+        .fetch_all(&mut *conn)
+        .await?;
     Ok(rows
         .into_iter()
         .filter_map(|row| {
             let deck = decks.iter().find(|deck| deck.id == row.id)?.clone();
-            Some(Candidate { deck, play_count: row.play_count, last_played_at: row.last_played_at, weight: 0.0 })
+            Some(Candidate {
+                deck,
+                play_count: row.play_count,
+                last_played_at: row.last_played_at,
+                weight: 0.0,
+            })
         })
         .collect())
 }
@@ -141,17 +164,21 @@ pub async fn random_deck(
     now: UtcDateTime,
     random: f64,
 ) -> Result<DeckPick, sqlx::Error> {
-    let Some(player) = get_player_for_user(conn, user_id).await? else { return Ok(DeckPick::PlayerNotLinked) };
+    let Some(player) = get_player_for_user(conn, user_id).await? else {
+        return Ok(DeckPick::PlayerNotLinked);
+    };
     let mut candidates = playable_decks(conn, player.id).await?;
     if candidates.len() > 1
         && let Some(id) = exclude_id.and_then(cast_integer)
     {
         candidates.retain(|candidate| candidate.deck.id != id);
     }
-    Ok(match weighted_pick(selection_weights(candidates, now), random) {
-        Some(candidate) => DeckPick::Picked(Box::new(candidate)),
-        None => DeckPick::NoEligibleDecks,
-    })
+    Ok(
+        match weighted_pick(selection_weights(candidates, now), random) {
+            Some(candidate) => DeckPick::Picked(Box::new(candidate)),
+            None => DeckPick::NoEligibleDecks,
+        },
+    )
 }
 
 /// `DeckPicker.record_outcome/3`: only the member's own, unretired decks.
@@ -161,7 +188,9 @@ pub async fn record_outcome(
     deck_id: i64,
     outcome: Outcome,
 ) -> Result<Deck, GamesError> {
-    let player = get_player_for_user(conn, user_id).await?.ok_or(GamesError::NotFound)?;
+    let player = get_player_for_user(conn, user_id)
+        .await?
+        .ok_or(GamesError::NotFound)?;
     let deck = get_deck(conn, deck_id)
         .await?
         .filter(|deck| deck.player_id == player.id)
@@ -170,9 +199,18 @@ pub async fn record_outcome(
         return Err(GamesError::BadRequest);
     }
     match outcome {
-        Outcome::Played => sqlx::query!("UPDATE decks SET skip_count = 0 WHERE id = ?", deck.id).execute(&mut *conn).await?,
+        Outcome::Played => {
+            sqlx::query!("UPDATE decks SET skip_count = 0 WHERE id = ?", deck.id)
+                .execute(&mut *conn)
+                .await?
+        }
         Outcome::Skipped => {
-            sqlx::query!("UPDATE decks SET skip_count = skip_count + 1 WHERE id = ?", deck.id).execute(&mut *conn).await?
+            sqlx::query!(
+                "UPDATE decks SET skip_count = skip_count + 1 WHERE id = ?",
+                deck.id
+            )
+            .execute(&mut *conn)
+            .await?
         }
     };
     get_deck(conn, deck.id).await?.ok_or(GamesError::NotFound)

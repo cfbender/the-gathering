@@ -29,7 +29,11 @@ pub async fn overview(pool: &Pool, params: &Value) -> Result<Value, sqlx::Error>
 }
 
 /// `Stats.player/2`; `None` for an unknown player.
-pub async fn player(pool: &Pool, player_id: i64, params: &Value) -> Result<Option<Value>, sqlx::Error> {
+pub async fn player(
+    pool: &Pool,
+    player_id: i64,
+    params: &Value,
+) -> Result<Option<Value>, sqlx::Error> {
     player::get(&mut *pool.acquire().await?, player_id, params).await
 }
 
@@ -44,6 +48,10 @@ pub async fn commanders(pool: &Pool, params: &Value) -> Result<Vec<Value>, sqlx:
 }
 
 /// `Stats.commander/2`: one commander by Scryfall id or card name; `None` when never played.
-pub async fn commander(pool: &Pool, id: &str, params: &Value) -> Result<Option<Value>, sqlx::Error> {
+pub async fn commander(
+    pool: &Pool,
+    id: &str,
+    params: &Value,
+) -> Result<Option<Value>, sqlx::Error> {
     commanders::get(&mut *pool.acquire().await?, id, params).await
 }

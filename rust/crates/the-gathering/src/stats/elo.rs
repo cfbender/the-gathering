@@ -54,7 +54,12 @@ impl Rating {
 
     /// The history points.
     pub fn history_json(&self) -> Value {
-        Value::Array(self.history.iter().map(|(date, rating)| json!({"date": date, "rating": rating})).collect())
+        Value::Array(
+            self.history
+                .iter()
+                .map(|(date, rating)| json!({"date": date, "rating": rating}))
+                .collect(),
+        )
     }
 }
 
@@ -86,7 +91,14 @@ fn rate_game(game: &Game, states: &mut BTreeMap<i64, State>) {
     let opponents = float(seats.len().saturating_sub(1)).max(1.0);
     let ratings: BTreeMap<i64, f64> = seats
         .iter()
-        .map(|seat| (seat.player_id, states.get(&seat.player_id).map_or(START, |state| state.rating)))
+        .map(|seat| {
+            (
+                seat.player_id,
+                states
+                    .get(&seat.player_id)
+                    .map_or(START, |state| state.rating),
+            )
+        })
         .collect();
     let date = IsoDate(game.played_at.date()).to_string();
     for seat in &seats {
@@ -96,7 +108,8 @@ fn rate_game(game: &Game, states: &mut BTreeMap<i64, State>) {
             .filter(|opponent| opponent.player_id != seat.player_id)
             .map(|opponent| {
                 let theirs = ratings.get(&opponent.player_id).copied().unwrap_or(START);
-                score(seat.result, opponent.result).map_or(0.0, |score| score - expected(mine, theirs))
+                score(seat.result, opponent.result)
+                    .map_or(0.0, |score| score - expected(mine, theirs))
             })
             .sum();
         let rating = mine + K * change / opponents;
@@ -136,7 +149,10 @@ pub fn ratings(games: &[Game], window: Option<(Date, UtcDateTime)>) -> Vec<Ratin
         None => (Vec::new(), oldest_first.collect()),
         Some((_, starts_at)) => {
             let all: Vec<&Game> = oldest_first.collect();
-            let split = all.iter().position(|game| game.played_at >= starts_at).unwrap_or(all.len());
+            let split = all
+                .iter()
+                .position(|game| game.played_at >= starts_at)
+                .unwrap_or(all.len());
             let (before, within) = all.split_at(split);
             (before.to_vec(), within.to_vec())
         }
@@ -170,7 +186,10 @@ pub fn ratings(games: &[Game], window: Option<(Date, UtcDateTime)>) -> Vec<Ratin
         })
         .collect();
     ratings.sort_by(|a, b| {
-        b.rating.cmp(&a.rating).then(b.games.cmp(&a.games)).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        b.rating
+            .cmp(&a.rating)
+            .then(b.games.cmp(&a.games))
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     ratings
 }

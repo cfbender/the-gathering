@@ -47,7 +47,10 @@ pub struct PlayerIdentityRow {
 }
 
 /// `Games.list_players/1`, ordered by case-folded name, with avatars.
-pub async fn list_players(conn: &mut SqliteConnection, include_archived: bool) -> Result<Vec<Player>, sqlx::Error> {
+pub async fn list_players(
+    conn: &mut SqliteConnection,
+    include_archived: bool,
+) -> Result<Vec<Player>, sqlx::Error> {
     sqlx::query_as!(
         Player,
         r#"SELECT p.id AS "id!", p.name, p.user_id, p.discord_id, p.archived_at AS "archived_at: UtcDateTime",
@@ -63,7 +66,10 @@ pub async fn list_players(conn: &mut SqliteConnection, include_archived: bool) -
 }
 
 /// A player with the linked user's avatar.
-pub async fn get_player_with_avatar(conn: &mut SqliteConnection, id: i64) -> Result<Option<Player>, sqlx::Error> {
+pub async fn get_player_with_avatar(
+    conn: &mut SqliteConnection,
+    id: i64,
+) -> Result<Option<Player>, sqlx::Error> {
     sqlx::query_as!(
         Player,
         r#"SELECT p.id AS "id!", p.name, p.user_id, p.discord_id, p.archived_at AS "archived_at: UtcDateTime",
@@ -78,9 +84,16 @@ pub async fn get_player_with_avatar(conn: &mut SqliteConnection, id: i64) -> Res
 }
 
 /// `Games.get_player!/1` (without the raise): decks and seats preloaded.
-pub async fn get_player_detail(conn: &mut SqliteConnection, id: i64) -> Result<Option<PlayerDetail>, sqlx::Error> {
-    let Some(player) = get_player_with_avatar(conn, id).await? else { return Ok(None) };
-    let decks = select_decks!("WHERE player_id = ? ORDER BY name", id).fetch_all(&mut *conn).await?;
+pub async fn get_player_detail(
+    conn: &mut SqliteConnection,
+    id: i64,
+) -> Result<Option<PlayerDetail>, sqlx::Error> {
+    let Some(player) = get_player_with_avatar(conn, id).await? else {
+        return Ok(None);
+    };
+    let decks = select_decks!("WHERE player_id = ? ORDER BY name", id)
+        .fetch_all(&mut *conn)
+        .await?;
     let rows = sqlx::query!(
         r#"SELECT s.game_id, s.deck_id, s.result AS "result: GameResult", g.played_at AS "played_at: UtcDateTime",
                   g.format AS "format: GameFormat"
@@ -108,18 +121,34 @@ pub async fn get_player_detail(conn: &mut SqliteConnection, id: i64) -> Result<O
             deck,
         });
     }
-    Ok(Some(PlayerDetail { player, decks, seats }))
+    Ok(Some(PlayerDetail {
+        player,
+        decks,
+        seats,
+    }))
 }
 
 /// `Games.get_player_for_user/1`.
-pub async fn get_player_for_user(conn: &mut SqliteConnection, user_id: i64) -> Result<Option<Player>, sqlx::Error> {
-    select_players!("WHERE user_id = ?", user_id).fetch_optional(&mut *conn).await
+pub async fn get_player_for_user(
+    conn: &mut SqliteConnection,
+    user_id: i64,
+) -> Result<Option<Player>, sqlx::Error> {
+    select_players!("WHERE user_id = ?", user_id)
+        .fetch_optional(&mut *conn)
+        .await
 }
 
 fn positive(value: Option<&Value>, default: i64) -> i64 {
     match value {
-        Some(Value::Number(number)) => number.as_i64().filter(|value| *value > 0).unwrap_or(default),
-        Some(Value::String(text)) => text.parse::<i64>().ok().filter(|value| *value > 0).unwrap_or(default),
+        Some(Value::Number(number)) => number
+            .as_i64()
+            .filter(|value| *value > 0)
+            .unwrap_or(default),
+        Some(Value::String(text)) => text
+            .parse::<i64>()
+            .ok()
+            .filter(|value| *value > 0)
+            .unwrap_or(default),
         _ => default,
     }
 }
@@ -131,7 +160,12 @@ pub async fn list_player_identities(
 ) -> Result<(Vec<PlayerIdentityRow>, Pagination), sqlx::Error> {
     let page = positive(params.get("page"), 1);
     let per_page = positive(params.get("per_page"), 50).min(100);
-    let search = params.get("search").and_then(Value::as_str).unwrap_or_default().trim().to_ascii_lowercase();
+    let search = params
+        .get("search")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
     let total = sqlx::query_scalar!(
         r#"SELECT count(*) AS "count!: i64" FROM players p LEFT JOIN users u ON u.id = p.user_id
            WHERE instr(lower(p.name), ?1) > 0 OR instr(p.discord_id, ?1) > 0 OR instr(lower(u.username), ?1) > 0"#,
@@ -174,12 +208,24 @@ pub async fn list_player_identities(
 }
 
 /// `Games.unlink_player_identity/1`: detaches the account and Discord identity.
-pub async fn unlink_player_identity(conn: &mut SqliteConnection, player: &Player) -> Result<Player, sqlx::Error> {
+pub async fn unlink_player_identity(
+    conn: &mut SqliteConnection,
+    player: &Player,
+) -> Result<Player, sqlx::Error> {
     let now = UtcDateTime::now();
-    sqlx::query!("UPDATE players SET discord_id = NULL, user_id = NULL, updated_at = ? WHERE id = ?", now, player.id)
-        .execute(&mut *conn)
-        .await?;
-    Ok(Player { discord_id: None, user_id: None, updated_at: now, ..player.clone() })
+    sqlx::query!(
+        "UPDATE players SET discord_id = NULL, user_id = NULL, updated_at = ? WHERE id = ?",
+        now,
+        player.id
+    )
+    .execute(&mut *conn)
+    .await?;
+    Ok(Player {
+        discord_id: None,
+        user_id: None,
+        updated_at: now,
+        ..player.clone()
+    })
 }
 
 fn unique_error(error: sqlx::Error) -> GamesError {
@@ -206,7 +252,10 @@ pub async fn create_player(
     let archived_at = cs.datetime("archived_at").or(None);
     cs.required("name", name.as_ref());
     cs.length("name", name.as_deref(), Some(1), Some(100));
-    let discord_id = attrs.get("discord_id").and_then(Value::as_str).map(str::to_owned);
+    let discord_id = attrs
+        .get("discord_id")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     if let Some(user_id) = user_id
         && !user_exists(conn, user_id).await?
     {
@@ -228,13 +277,29 @@ pub async fn create_player(
     .fetch_one(&mut *conn)
     .await
     .map_err(unique_error)?;
-    Ok(Player { id, name, user_id, discord_id, archived_at, avatar_url: None, inserted_at: now, updated_at: now })
+    Ok(Player {
+        id,
+        name,
+        user_id,
+        discord_id,
+        archived_at,
+        avatar_url: None,
+        inserted_at: now,
+        updated_at: now,
+    })
 }
 
 /// `Games.update_player/2`: renames or (un)archives.
-pub async fn update_player(conn: &mut SqliteConnection, player: &Player, attrs: &Value) -> Result<Player, GamesError> {
+pub async fn update_player(
+    conn: &mut SqliteConnection,
+    player: &Player,
+    attrs: &Value,
+) -> Result<Player, GamesError> {
     let mut cs = Changeset::new(attrs);
-    let name = cs.string("name").map(|name| name.trim().to_owned()).or(Some(player.name.clone()));
+    let name = cs
+        .string("name")
+        .map(|name| name.trim().to_owned())
+        .or(Some(player.name.clone()));
     let archived_at = cs.datetime("archived_at").or(player.archived_at);
     cs.required("name", name.as_ref());
     cs.length("name", name.as_deref(), Some(1), Some(100));
@@ -254,7 +319,12 @@ pub async fn update_player(conn: &mut SqliteConnection, player: &Player, attrs: 
     .execute(&mut *conn)
     .await
     .map_err(unique_error)?;
-    Ok(Player { name, archived_at, updated_at: now, ..player.clone() })
+    Ok(Player {
+        name,
+        archived_at,
+        updated_at: now,
+        ..player.clone()
+    })
 }
 
 /// `Games.delete_player/1`.
@@ -276,14 +346,21 @@ pub async fn delete_player(conn: &mut SqliteConnection, player: &Player) -> Resu
     if refs.decks {
         return Err(Errors::single("decks", "are still associated with this entry").into());
     }
-    sqlx::query!("DELETE FROM players WHERE id = ?", player.id).execute(&mut *conn).await?;
+    sqlx::query!("DELETE FROM players WHERE id = ?", player.id)
+        .execute(&mut *conn)
+        .await?;
     Ok(())
 }
 
 /// The player whose name folds to `name`'s.
-pub async fn find_player_by_name(conn: &mut SqliteConnection, name: &str) -> Result<Option<Player>, sqlx::Error> {
+pub async fn find_player_by_name(
+    conn: &mut SqliteConnection,
+    name: &str,
+) -> Result<Option<Player>, sqlx::Error> {
     let folded = fold_name(name);
-    select_players!("WHERE lower(name) = ?", folded).fetch_optional(&mut *conn).await
+    select_players!("WHERE lower(name) = ?", folded)
+        .fetch_optional(&mut *conn)
+        .await
 }
 
 /// `Games.find_or_create_player_by_name/2`: `attrs` may carry `discord_id` or

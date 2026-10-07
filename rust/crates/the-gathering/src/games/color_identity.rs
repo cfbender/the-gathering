@@ -5,7 +5,10 @@ const ORDER: [char; 5] = ['W', 'U', 'B', 'R', 'G'];
 
 /// Reorders identity letters into WUBRG order, dropping duplicates and unknown letters.
 pub fn canonical(identity: &str) -> String {
-    ORDER.iter().filter(|color| identity.contains(**color)).collect()
+    ORDER
+        .iter()
+        .filter(|color| identity.contains(**color))
+        .collect()
 }
 
 /// The common name for a color combination, falling back to the canonical letters.

@@ -39,7 +39,12 @@ impl LinkSummary {
     /// `merge_summaries/2`.
     #[must_use]
     pub fn merge(&self, other: &Self) -> Self {
-        let mut unmatched: Vec<String> = self.unmatched.iter().chain(&other.unmatched).cloned().collect();
+        let mut unmatched: Vec<String> = self
+            .unmatched
+            .iter()
+            .chain(&other.unmatched)
+            .cloned()
+            .collect();
         unmatched.sort();
         unmatched.dedup();
         Self {
@@ -107,15 +112,27 @@ pub fn split_partners(name: &str) -> (String, Option<String>) {
     match name.split_once("||") {
         Some((commander, partner)) => (
             commander.trim().to_owned(),
-            Some(TRAILING_PARENTHETICAL.replace(partner, "").trim().to_owned()),
+            Some(
+                TRAILING_PARENTHETICAL
+                    .replace(partner, "")
+                    .trim()
+                    .to_owned(),
+            ),
         ),
         None => (name.trim().to_owned(), None),
     }
 }
 
 fn identity(cards: &[Option<&Card>]) -> String {
-    let colors: Vec<&String> = cards.iter().flatten().flat_map(|card| &card.color_identity).collect();
-    ["W", "U", "B", "R", "G"].into_iter().filter(|color| colors.iter().any(|c| c.as_str() == *color)).collect()
+    let colors: Vec<&String> = cards
+        .iter()
+        .flatten()
+        .flat_map(|card| &card.color_identity)
+        .collect();
+    ["W", "U", "B", "R", "G"]
+        .into_iter()
+        .filter(|color| colors.iter().any(|c| c.as_str() == *color))
+        .collect()
 }
 
 struct ItemResult {
@@ -127,7 +144,16 @@ struct ItemResult {
 }
 
 fn unmatched(pairs: &[(Option<&str>, Option<&Card>)]) -> Vec<String> {
-    pairs.iter().filter_map(|(name, card)| if card.is_none() { name.map(str::to_owned) } else { None }).collect()
+    pairs
+        .iter()
+        .filter_map(|(name, card)| {
+            if card.is_none() {
+                name.map(str::to_owned)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 async fn link_deck(conn: &mut SqliteConnection, deck: &Deck) -> Result<ItemResult, GamesError> {
@@ -140,7 +166,11 @@ async fn link_deck(conn: &mut SqliteConnection, deck: &Deck) -> Result<ItemResul
         None => None,
     };
     let blank = deck.color_identity.is_empty();
-    let color_identity = if blank { identity(&[commander.as_ref(), partner.as_ref()]) } else { deck.color_identity.clone() };
+    let color_identity = if blank {
+        identity(&[commander.as_ref(), partner.as_ref()])
+    } else {
+        deck.color_identity.clone()
+    };
     let mut attrs = json!({
         "commander_name": commander_name,
         "partner_name": partner_name,
@@ -154,7 +184,10 @@ async fn link_deck(conn: &mut SqliteConnection, deck: &Deck) -> Result<ItemResul
     {
         map.insert(
             "name".into(),
-            Value::String(format!("{commander_name} / {}", partner_name.clone().unwrap_or_default())),
+            Value::String(format!(
+                "{commander_name} / {}",
+                partner_name.clone().unwrap_or_default()
+            )),
         );
     }
     let names = unmatched(&[
@@ -174,22 +207,47 @@ async fn link_deck(conn: &mut SqliteConnection, deck: &Deck) -> Result<ItemResul
             linked: false,
             colored: false,
             unmatched: names,
-            conflicts: vec![Conflict { resource: ConflictResource::Deck, id: deck.id, errors }],
+            conflicts: vec![Conflict {
+                resource: ConflictResource::Deck,
+                id: deck.id,
+                errors,
+            }],
         }),
         Err(other) => Err(other),
     }
 }
 
-async fn link_mvp(conn: &mut SqliteConnection, seat_id: i64, name: &str) -> Result<ItemResult, GamesError> {
-    let empty = ItemResult { split: false, linked: false, colored: false, unmatched: Vec::new(), conflicts: Vec::new() };
+async fn link_mvp(
+    conn: &mut SqliteConnection,
+    seat_id: i64,
+    name: &str,
+) -> Result<ItemResult, GamesError> {
+    let empty = ItemResult {
+        split: false,
+        linked: false,
+        colored: false,
+        unmatched: Vec::new(),
+        conflicts: Vec::new(),
+    };
     match catalog::find_card_by_name_in(conn, name).await? {
-        None => Ok(ItemResult { unmatched: vec![name.to_owned()], ..empty }),
+        None => Ok(ItemResult {
+            unmatched: vec![name.to_owned()],
+            ..empty
+        }),
         Some(card) => {
             let now = crate::db::UtcDateTime::now();
-            sqlx::query!("UPDATE game_players SET mvp_card_id = ?, updated_at = ? WHERE id = ?", card.id, now, seat_id)
-                .execute(&mut *conn)
-                .await?;
-            Ok(ItemResult { linked: true, ..empty })
+            sqlx::query!(
+                "UPDATE game_players SET mvp_card_id = ?, updated_at = ? WHERE id = ?",
+                card.id,
+                now,
+                seat_id
+            )
+            .execute(&mut *conn)
+            .await?;
+            Ok(ItemResult {
+                linked: true,
+                ..empty
+            })
         }
     }
 }
@@ -207,11 +265,20 @@ async fn link_rows(
     for (id, mvp_card_id, mvp_card_name) in seats {
         mvp_results.push(match (mvp_card_id, mvp_card_name) {
             (None, Some(name)) => link_mvp(conn, *id, name).await?,
-            _ => ItemResult { split: false, linked: false, colored: false, unmatched: Vec::new(), conflicts: Vec::new() },
+            _ => ItemResult {
+                split: false,
+                linked: false,
+                colored: false,
+                unmatched: Vec::new(),
+                conflicts: Vec::new(),
+            },
         });
     }
-    let mut unmatched: Vec<String> =
-        deck_results.iter().chain(&mvp_results).flat_map(|result| result.unmatched.clone()).collect();
+    let mut unmatched: Vec<String> = deck_results
+        .iter()
+        .chain(&mvp_results)
+        .flat_map(|result| result.unmatched.clone())
+        .collect();
     unmatched.sort();
     unmatched.dedup();
     Ok(LinkResult {
@@ -222,12 +289,19 @@ async fn link_rows(
             mvps_linked: mvp_results.iter().filter(|result| result.linked).count(),
             unmatched,
         },
-        conflicts: deck_results.into_iter().chain(mvp_results).flat_map(|result| result.conflicts).collect(),
+        conflicts: deck_results
+            .into_iter()
+            .chain(mvp_results)
+            .flat_map(|result| result.conflicts)
+            .collect(),
     })
 }
 
 /// `link_game/1`: the game's unlinked decks and its seats' MVP cards.
-pub async fn link_game(conn: &mut SqliteConnection, game_id: i64) -> Result<LinkResult, GamesError> {
+pub async fn link_game(
+    conn: &mut SqliteConnection,
+    game_id: i64,
+) -> Result<LinkResult, GamesError> {
     let mut tx = conn.begin().await?;
     let decks = select_decks!(
         "WHERE commander_card_id IS NULL AND id IN (SELECT deck_id FROM game_players WHERE game_id = ?) ORDER BY id",
@@ -258,10 +332,13 @@ pub async fn repair_batch(
 ) -> Result<BatchResult, GamesError> {
     let limit = limit.unwrap_or(DEFAULT_BATCH_SIZE).clamp(1, MAX_BATCH_SIZE);
     let mut tx = conn.begin().await?;
-    let decks =
-        select_decks!("WHERE id > ? AND commander_card_id IS NULL ORDER BY id LIMIT ?", cursor.deck_id, limit)
-            .fetch_all(&mut *tx)
-            .await?;
+    let decks = select_decks!(
+        "WHERE id > ? AND commander_card_id IS NULL ORDER BY id LIMIT ?",
+        cursor.deck_id,
+        limit
+    )
+    .fetch_all(&mut *tx)
+    .await?;
     let seats: Vec<(i64, Option<String>, Option<String>)> = sqlx::query!(
         r#"SELECT id AS "id!", mvp_card_id, mvp_card_name FROM game_players
            WHERE id > ? AND mvp_card_id IS NULL AND mvp_card_name IS NOT NULL ORDER BY id LIMIT ?"#,
@@ -292,7 +369,10 @@ mod tests {
 
     #[test]
     fn splits_partner_names() {
-        assert_eq!(split_partners("Thrasios || Tymna (partner)"), ("Thrasios".into(), Some("Tymna".into())));
+        assert_eq!(
+            split_partners("Thrasios || Tymna (partner)"),
+            ("Thrasios".into(), Some("Tymna".into()))
+        );
         assert_eq!(split_partners(" Krenko "), ("Krenko".into(), None));
     }
 }

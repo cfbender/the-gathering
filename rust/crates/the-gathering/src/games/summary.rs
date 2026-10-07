@@ -17,11 +17,16 @@ static LOCAL_ID: LazyLock<Regex> = LazyLock::new(|| compile(r"\A[0-9]{1,18}\z"))
 pub async fn find(conn: &mut SqliteConnection, reference: &str) -> Result<Game, GamesError> {
     let reference = reference.trim();
     let id = if reference.is_empty() {
-        sqlx::query_scalar!(r#"SELECT id AS "id!: i64" FROM games ORDER BY played_at DESC, id DESC LIMIT 1"#)
-            .fetch_optional(&mut *conn)
-            .await?
+        sqlx::query_scalar!(
+            r#"SELECT id AS "id!: i64" FROM games ORDER BY played_at DESC, id DESC LIMIT 1"#
+        )
+        .fetch_optional(&mut *conn)
+        .await?
     } else if SPELLBOT.is_match(reference) {
-        let external_id = format!("spellbot:{}", reference.trim_start_matches('#').to_uppercase());
+        let external_id = format!(
+            "spellbot:{}",
+            reference.trim_start_matches('#').to_uppercase()
+        );
         sqlx::query_scalar!(
             r#"SELECT id AS "id!: i64" FROM games WHERE source = 'discord' AND external_id = ?"#,
             external_id

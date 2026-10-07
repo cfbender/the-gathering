@@ -88,30 +88,51 @@ async fn printing_matches(
     printing_id: &str,
 ) -> Result<bool, sqlx::Error> {
     let Some(name) = name else { return Ok(false) };
-    let Some(card) = catalog::resolve_card_in(conn, id, Some(name)).await? else { return Ok(false) };
+    let Some(card) = catalog::resolve_card_in(conn, id, Some(name)).await? else {
+        return Ok(false);
+    };
     let by_name = catalog::find_card_by_name_in(conn, name).await?;
     if by_name.is_none_or(|by_name| by_name.oracle_id != card.oracle_id) {
         return Ok(false);
     }
-    Ok(catalog::get_printing_in(conn, printing_id).await?.is_some_and(|printing| printing.oracle_id == card.oracle_id))
+    Ok(catalog::get_printing_in(conn, printing_id)
+        .await?
+        .is_some_and(|printing| printing.oracle_id == card.oracle_id))
 }
 
 /// Casts and validates `attrs` onto `current` (or a new deck when `None`).
-async fn changeset(conn: &mut SqliteConnection, current: Option<&Deck>, attrs: &Value) -> Result<Fields, GamesError> {
+async fn changeset(
+    conn: &mut SqliteConnection,
+    current: Option<&Deck>,
+    attrs: &Value,
+) -> Result<Fields, GamesError> {
     let base = current.map_or_else(Fields::new, Fields::of);
     let mut cs = Changeset::new(attrs);
     let mut fields = base.clone();
     if current.is_none() {
         fields.player_id = cs.integer("player_id").or(base.player_id);
     }
-    fields.name = cs.string("name").map(|name| name.trim().to_owned()).or(base.name.clone());
-    fields.commander_card_id = cs.string("commander_card_id").or(base.commander_card_id.clone());
-    fields.commander_name =
-        cs.string("commander_name").map(|name| name.trim().to_owned()).or(base.commander_name.clone());
-    fields.commander_printing_id = cs.string("commander_printing_id").or(base.commander_printing_id.clone());
-    fields.partner_card_id = cs.string("partner_card_id").or(base.partner_card_id.clone());
+    fields.name = cs
+        .string("name")
+        .map(|name| name.trim().to_owned())
+        .or(base.name.clone());
+    fields.commander_card_id = cs
+        .string("commander_card_id")
+        .or(base.commander_card_id.clone());
+    fields.commander_name = cs
+        .string("commander_name")
+        .map(|name| name.trim().to_owned())
+        .or(base.commander_name.clone());
+    fields.commander_printing_id = cs
+        .string("commander_printing_id")
+        .or(base.commander_printing_id.clone());
+    fields.partner_card_id = cs
+        .string("partner_card_id")
+        .or(base.partner_card_id.clone());
     fields.partner_name = cs.string("partner_name").or(base.partner_name.clone());
-    fields.partner_printing_id = cs.string("partner_printing_id").or(base.partner_printing_id.clone());
+    fields.partner_printing_id = cs
+        .string("partner_printing_id")
+        .or(base.partner_printing_id.clone());
     fields.color_identity = cs.string("color_identity").or(base.color_identity.clone());
     fields.decklist_url = cs.string("decklist_url").or(base.decklist_url.clone());
     fields.archived_at = cs.datetime("archived_at").or(base.archived_at);
@@ -123,7 +144,11 @@ async fn changeset(conn: &mut SqliteConnection, current: Option<&Deck>, attrs: &
 
     // DeckPrintings.validate/1
     for commander in [true, false] {
-        let printing_field = if commander { "commander_printing_id" } else { "partner_printing_id" };
+        let printing_field = if commander {
+            "commander_printing_id"
+        } else {
+            "partner_printing_id"
+        };
         let (id, name, printing, base_id, base_name, base_printing) = if commander {
             (
                 fields.commander_card_id.clone(),
@@ -174,7 +199,10 @@ async fn changeset(conn: &mut SqliteConnection, current: Option<&Deck>, attrs: &
             || fields.partner_name != base.partner_name;
         if identity_changed {
             let refs: Vec<(Option<String>, Option<String>)> = [
-                (fields.commander_card_id.clone(), fields.commander_name.clone()),
+                (
+                    fields.commander_card_id.clone(),
+                    fields.commander_name.clone(),
+                ),
                 (fields.partner_card_id.clone(), fields.partner_name.clone()),
             ]
             .into_iter()
@@ -186,7 +214,9 @@ async fn changeset(conn: &mut SqliteConnection, current: Option<&Deck>, attrs: &
                 .filter_map(|(id, name)| summaries.get(id.as_deref(), name.as_deref()))
                 .map(|summary| summary.color_identity.as_str())
                 .collect();
-            fields.color_identity = Some(color_identity::canonical(&format!("{identity}{commander_colors}")));
+            fields.color_identity = Some(color_identity::canonical(&format!(
+                "{identity}{commander_colors}"
+            )));
         }
     } else {
         cs.add_error("color_identity", COLOR_MESSAGE);
@@ -205,7 +235,11 @@ async fn changeset(conn: &mut SqliteConnection, current: Option<&Deck>, attrs: &
 }
 
 fn decklist_source(fields: &Fields) -> Option<DecklistSource> {
-    fields.decklist_url.as_deref().filter(|url| !url.is_empty()).map(DecklistSource::of_url)
+    fields
+        .decklist_url
+        .as_deref()
+        .filter(|url| !url.is_empty())
+        .map(DecklistSource::of_url)
 }
 
 fn unique_error(error: sqlx::Error) -> GamesError {
@@ -246,11 +280,17 @@ pub async fn create_deck(conn: &mut SqliteConnection, attrs: &Value) -> Result<D
     .fetch_one(&mut *conn)
     .await
     .map_err(unique_error)?;
-    super::model::get_deck(conn, id).await?.ok_or(GamesError::NotFound)
+    super::model::get_deck(conn, id)
+        .await?
+        .ok_or(GamesError::NotFound)
 }
 
 /// `Games.update_deck/2`: the same fields as [`create_deck`] except the owner.
-pub async fn update_deck(conn: &mut SqliteConnection, deck: &Deck, attrs: &Value) -> Result<Deck, GamesError> {
+pub async fn update_deck(
+    conn: &mut SqliteConnection,
+    deck: &Deck,
+    attrs: &Value,
+) -> Result<Deck, GamesError> {
     let fields = changeset(conn, Some(deck), attrs).await?;
     let source = decklist_source(&fields);
     if fields == Fields::of(deck) && source == deck.decklist_source {
@@ -280,7 +320,9 @@ pub async fn update_deck(conn: &mut SqliteConnection, deck: &Deck, attrs: &Value
     .execute(&mut *conn)
     .await
     .map_err(unique_error)?;
-    super::model::get_deck(conn, deck.id).await?.ok_or(GamesError::NotFound)
+    super::model::get_deck(conn, deck.id)
+        .await?
+        .ok_or(GamesError::NotFound)
 }
 
 /// `Games.list_decks/1`: by case-folded name, with each deck's player.
@@ -301,15 +343,27 @@ pub async fn list_decks(
     Ok(decks
         .into_iter()
         .filter_map(|deck| {
-            let player = players.iter().find(|player| player.id == deck.player_id)?.clone();
-            Some((deck, Player { avatar_url: None, ..player }))
+            let player = players
+                .iter()
+                .find(|player| player.id == deck.player_id)?
+                .clone();
+            Some((
+                deck,
+                Player {
+                    avatar_url: None,
+                    ..player
+                },
+            ))
         })
         .collect())
 }
 
 /// The deck's seats with their games, newest first (`Games.get_deck!/1` preloads only the
 /// game, so each seat's `deck` stays `None`).
-pub async fn deck_seat_games(conn: &mut SqliteConnection, deck_id: i64) -> Result<Vec<SeatGame>, sqlx::Error> {
+pub async fn deck_seat_games(
+    conn: &mut SqliteConnection,
+    deck_id: i64,
+) -> Result<Vec<SeatGame>, sqlx::Error> {
     Ok(sqlx::query!(
         r#"SELECT s.game_id, s.result AS "result: GameResult", g.played_at AS "played_at: UtcDateTime",
                   g.format AS "format: GameFormat"
@@ -341,20 +395,32 @@ pub async fn find_deck(
     if key.is_empty() {
         return Ok(None);
     }
-    let decks = select_decks!("WHERE player_id = ? ORDER BY id", player_id).fetch_all(&mut *conn).await?;
-    Ok(decks
-        .into_iter()
-        .find(|deck| commander_key(Some(&deck.commander_name), deck.partner_name.as_deref()) == key))
+    let decks = select_decks!("WHERE player_id = ? ORDER BY id", player_id)
+        .fetch_all(&mut *conn)
+        .await?;
+    Ok(decks.into_iter().find(|deck| {
+        commander_key(Some(&deck.commander_name), deck.partner_name.as_deref()) == key
+    }))
 }
 
-async fn deck_by_name(conn: &mut SqliteConnection, player_id: i64, name: &str) -> Result<Option<Deck>, sqlx::Error> {
+async fn deck_by_name(
+    conn: &mut SqliteConnection,
+    player_id: i64,
+    name: &str,
+) -> Result<Option<Deck>, sqlx::Error> {
     let folded = fold_name(name);
-    select_decks!("WHERE player_id = ? AND lower(name) = ?", player_id, folded).fetch_optional(&mut *conn).await
+    select_decks!("WHERE player_id = ? AND lower(name) = ?", player_id, folded)
+        .fetch_optional(&mut *conn)
+        .await
 }
 
 fn commander_key(commander_name: Option<&str>, partner_name: Option<&str>) -> Vec<String> {
-    let mut key: Vec<String> =
-        [commander_name, partner_name].into_iter().flatten().filter(|name| !name.is_empty()).map(fold_name).collect();
+    let mut key: Vec<String> = [commander_name, partner_name]
+        .into_iter()
+        .flatten()
+        .filter(|name| !name.is_empty())
+        .map(fold_name)
+        .collect();
     key.sort();
     key
 }
@@ -400,10 +466,16 @@ pub async fn delete_deck(
     }
     let replacement_id = replacement.map(|replacement| replacement.id);
     let mut tx = conn.begin().await?;
-    sqlx::query!("UPDATE game_players SET deck_id = ? WHERE deck_id = ?", replacement_id, deck.id)
+    sqlx::query!(
+        "UPDATE game_players SET deck_id = ? WHERE deck_id = ?",
+        replacement_id,
+        deck.id
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query!("DELETE FROM decks WHERE id = ?", deck.id)
         .execute(&mut *tx)
         .await?;
-    sqlx::query!("DELETE FROM decks WHERE id = ?", deck.id).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(deck.clone())
 }
@@ -418,10 +490,25 @@ mod tests {
         assert!(valid_identity("GB"));
         assert!(!valid_identity("UURG"));
         assert!(!valid_identity("X"));
-        assert_eq!(DecklistSource::of_url("https://www.moxfield.com/decks/x"), DecklistSource::Moxfield);
-        assert_eq!(DecklistSource::of_url("https://archidekt.com/decks/1"), DecklistSource::Archidekt);
-        assert_eq!(DecklistSource::of_url("https://me.manavault.app/share/d/x"), DecklistSource::Manavault);
-        assert_eq!(DecklistSource::of_url("https://evilmoxfield.com/"), DecklistSource::Other);
-        assert_eq!(commander_key(Some("Tymna"), Some(" Thrasios ")), vec!["thrasios".to_owned(), "tymna".to_owned()]);
+        assert_eq!(
+            DecklistSource::of_url("https://www.moxfield.com/decks/x"),
+            DecklistSource::Moxfield
+        );
+        assert_eq!(
+            DecklistSource::of_url("https://archidekt.com/decks/1"),
+            DecklistSource::Archidekt
+        );
+        assert_eq!(
+            DecklistSource::of_url("https://me.manavault.app/share/d/x"),
+            DecklistSource::Manavault
+        );
+        assert_eq!(
+            DecklistSource::of_url("https://evilmoxfield.com/"),
+            DecklistSource::Other
+        );
+        assert_eq!(
+            commander_key(Some("Tymna"), Some(" Thrasios ")),
+            vec!["thrasios".to_owned(), "tymna".to_owned()]
+        );
     }
 }

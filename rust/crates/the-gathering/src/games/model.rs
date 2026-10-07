@@ -105,7 +105,10 @@ impl DecklistSource {
     /// `lotus::decklist::DeckLink` only recognizes the bare and `www.` hosts and has no
     /// "other" source, so this keeps the Elixir rule.
     pub fn of_url(url: &str) -> Self {
-        let host = url::Url::parse(url).ok().and_then(|url| url.host_str().map(str::to_owned)).unwrap_or_default();
+        let host = url::Url::parse(url)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_owned))
+            .unwrap_or_default();
         let matches = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
         if matches("moxfield.com") {
             Self::Moxfield
@@ -321,7 +324,9 @@ impl Default for Game {
 impl Game {
     /// The first winning seat.
     pub fn winner(&self) -> Option<&Seat> {
-        self.seats.iter().find(|seat| seat.result == GameResult::Win)
+        self.seats
+            .iter()
+            .find(|seat| seat.result == GameResult::Win)
     }
 }
 
@@ -358,17 +363,27 @@ macro_rules! select_players {
 pub(crate) use select_players;
 
 /// A player by id (no avatar).
-pub async fn get_player(conn: &mut SqliteConnection, id: i64) -> Result<Option<Player>, sqlx::Error> {
-    select_players!("WHERE id = ?", id).fetch_optional(&mut *conn).await
+pub async fn get_player(
+    conn: &mut SqliteConnection,
+    id: i64,
+) -> Result<Option<Player>, sqlx::Error> {
+    select_players!("WHERE id = ?", id)
+        .fetch_optional(&mut *conn)
+        .await
 }
 
 /// A deck by id.
 pub async fn get_deck(conn: &mut SqliteConnection, id: i64) -> Result<Option<Deck>, sqlx::Error> {
-    select_decks!("WHERE id = ?", id).fetch_optional(&mut *conn).await
+    select_decks!("WHERE id = ?", id)
+        .fetch_optional(&mut *conn)
+        .await
 }
 
 /// Games by id with seats, players, and decks, in the order of `ids`.
-pub async fn load_games(conn: &mut SqliteConnection, ids: &[i64]) -> Result<Vec<Game>, sqlx::Error> {
+pub async fn load_games(
+    conn: &mut SqliteConnection,
+    ids: &[i64],
+) -> Result<Vec<Game>, sqlx::Error> {
     if ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -414,7 +429,10 @@ pub async fn load_game(conn: &mut SqliteConnection, id: i64) -> Result<Option<Ga
     Ok(load_games(conn, &[id]).await?.into_iter().next())
 }
 
-async fn load_seats(conn: &mut SqliteConnection, game_ids_json: &str) -> Result<HashMap<i64, Vec<Seat>>, sqlx::Error> {
+async fn load_seats(
+    conn: &mut SqliteConnection,
+    game_ids_json: &str,
+) -> Result<HashMap<i64, Vec<Seat>>, sqlx::Error> {
     let rows = sqlx::query!(
         r#"SELECT s.id AS "id!", s.game_id, s.player_id, s.deck_id, s.seat, s.result AS "result: GameResult",
                   s.kills, s.eliminated_turn, s.eliminated_by_player_id, s.mvp_card_id, s.mvp_card_name, s.notes,

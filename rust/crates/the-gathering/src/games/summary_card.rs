@@ -77,7 +77,11 @@ fn lines(text: &str, width: usize, count: usize) -> Vec<String> {
 
 /// Elixir's `to_string/1` for floats: always a decimal point.
 fn float(value: f64) -> String {
-    if value.fract() == 0.0 && value.abs() < 1e15 { format!("{value:.1}") } else { format!("{value}") }
+    if value.fract() == 0.0 && value.abs() < 1e15 {
+        format!("{value:.1}")
+    } else {
+        format!("{value}")
+    }
 }
 
 fn commanders(deck: Option<&Deck>) -> String {
@@ -96,9 +100,17 @@ fn commanders(deck: Option<&Deck>) -> String {
 fn art<'a>(deck: Option<&Deck>, images: &'a Images, partner: bool) -> Option<&'a String> {
     let deck = deck?;
     let key = if partner {
-        (deck.partner_card_id.clone(), deck.partner_name.clone()?, deck.partner_printing_id.clone())
+        (
+            deck.partner_card_id.clone(),
+            deck.partner_name.clone()?,
+            deck.partner_printing_id.clone(),
+        )
     } else {
-        (deck.commander_card_id.clone(), deck.commander_name.clone(), deck.commander_printing_id.clone())
+        (
+            deck.commander_card_id.clone(),
+            deck.commander_name.clone(),
+            deck.commander_printing_id.clone(),
+        )
     };
     images.get(&key)
 }
@@ -113,7 +125,10 @@ fn int(value: usize) -> i64 {
 
 /// `SummaryCard.description/1`: alt text for the image (at most 1024 characters).
 pub fn description(game: &Game) -> String {
-    let result = game.winner().map_or_else(|| "Draw".to_owned(), |winner| format!("Winner: {}", winner.player.name));
+    let result = game.winner().map_or_else(
+        || "Draw".to_owned(),
+        |winner| format!("Winner: {}", winner.player.name),
+    );
     let text = format!(
         "Game #{}. {result}. {}. {} players.",
         game.id,
@@ -127,18 +142,32 @@ pub fn description(game: &Game) -> String {
 pub fn svg(game: &Game, images: &Images) -> String {
     let mut seats: Vec<&Seat> = game.seats.iter().collect();
     seats.sort_by_key(|seat| seat.seat);
-    let winner = seats.iter().copied().find(|seat| seat.result == GameResult::Win);
+    let winner = seats
+        .iter()
+        .copied()
+        .find(|seat| seat.result == GameResult::Win);
     let seat_count = seats.len().max(1);
     let body_height = int(seats.len()).saturating_mul(88).max(380);
-    let notes = lines(game.notes.as_deref().unwrap_or("No notes recorded."), 100, 3);
-    let names = lines(winner.map_or("A shared finish", |winner| winner.player.name.as_str()), 23, 2);
-    let commander_text =
-        winner.map_or_else(|| "No winner at this table".to_owned(), |winner| commanders(winner.deck.as_ref()));
+    let notes = lines(
+        game.notes.as_deref().unwrap_or("No notes recorded."),
+        100,
+        3,
+    );
+    let names = lines(
+        winner.map_or("A shared finish", |winner| winner.player.name.as_str()),
+        23,
+        2,
+    );
+    let commander_text = winner.map_or_else(
+        || "No winner at this table".to_owned(),
+        |winner| commanders(winner.deck.as_ref()),
+    );
     let commander_lines = lines(&commander_text, 43, 2);
     let commander_y = body_height + 72 - int(commander_lines.len().saturating_sub(1)) * 23;
     let name_y = commander_y - 32 - int(names.len().saturating_sub(1)) * 40;
     let height = body_height + 228 + int(notes.len()) * 24;
-    let row_height = f64::from(i32::try_from(body_height).unwrap_or(i32::MAX)) / usize_f(seat_count);
+    let row_height =
+        f64::from(i32::try_from(body_height).unwrap_or(i32::MAX)) / usize_f(seat_count);
 
     let mut out = String::new();
     let _ = writeln!(
@@ -159,7 +188,9 @@ pub fn svg(game: &Game, images: &Images) -> String {
         r#"    <clipPath id="hero"><rect x="32" y="100" width="520" height="{body_height}" rx="18"/></clipPath>"#
     );
     let seat_y = |seat: &Seat| {
-        100.0 + f64::from(i32::try_from(seat.seat - 1).unwrap_or_default()) * row_height + (row_height - 88.0) / 2.0
+        100.0
+            + f64::from(i32::try_from(seat.seat - 1).unwrap_or_default()) * row_height
+            + (row_height - 88.0) / 2.0
     };
     for seat in &seats {
         let y = seat_y(seat);
@@ -177,7 +208,10 @@ pub fn svg(game: &Game, images: &Images) -> String {
         );
     }
     out.push_str("  </defs>\n");
-    let _ = writeln!(out, r##"  <rect width="1200" height="{height}" fill="#131620"/>"##);
+    let _ = writeln!(
+        out,
+        r##"  <rect width="1200" height="{height}" fill="#131620"/>"##
+    );
     out.push_str(
         r##"  <g font-family="DejaVu Sans, sans-serif" fill="#f0edf8">
     <text x="32" y="46" font-size="22" font-weight="bold" letter-spacing="3">THE GATHERING</text>
@@ -186,7 +220,10 @@ pub fn svg(game: &Game, images: &Images) -> String {
     );
     let spellbot = if game.source == GameSource::Discord {
         let external = game.external_id.as_deref().unwrap_or_default();
-        format!(" · {}", escape(external.strip_prefix("spellbot:").unwrap_or(external)))
+        format!(
+            " · {}",
+            escape(external.strip_prefix("spellbot:").unwrap_or(external))
+        )
     } else {
         String::new()
     };
@@ -207,14 +244,20 @@ pub fn svg(game: &Game, images: &Images) -> String {
         played.minute()
     );
     out.push('\n');
-    let _ = writeln!(out, r##"    <rect x="32" y="100" width="520" height="{body_height}" rx="18" fill="#29263c"/>"##);
+    let _ = writeln!(
+        out,
+        r##"    <rect x="32" y="100" width="520" height="{body_height}" rx="18" fill="#29263c"/>"##
+    );
     if let Some(hero) = winner.and_then(|winner| art(winner.deck.as_ref(), images, false)) {
         let _ = writeln!(
             out,
             r#"      <image x="32" y="100" width="520" height="{body_height}" preserveAspectRatio="xMidYMid slice" clip-path="url(#hero)" xlink:href="{hero}"/>"#
         );
     }
-    let _ = writeln!(out, r#"    <rect x="32" y="100" width="520" height="{body_height}" rx="18" fill="url(#shade)"/>"#);
+    let _ = writeln!(
+        out,
+        r#"    <rect x="32" y="100" width="520" height="{body_height}" rx="18" fill="url(#shade)"/>"#
+    );
     out.push_str(r##"    <rect x="52" y="120" width="480" height="40" rx="20" fill="#171923" fill-opacity="0.88"/>"##);
     out.push('\n');
     let _ = writeln!(
@@ -256,7 +299,11 @@ pub fn svg(game: &Game, images: &Images) -> String {
             float(row_height - 10.0),
             if won { "#302c28" } else { "#202330" }
         );
-        let _ = writeln!(out, r##"      <circle cx="614" cy="{}" r="28" fill="#49445e"/>"##, float(y + 37.0));
+        let _ = writeln!(
+            out,
+            r##"      <circle cx="614" cy="{}" r="28" fill="#49445e"/>"##,
+            float(y + 37.0)
+        );
         let initial: String = seat.player.name.chars().take(1).collect();
         let _ = writeln!(
             out,
@@ -287,7 +334,10 @@ pub fn svg(game: &Game, images: &Images) -> String {
             if won { "#e8c67e" } else { "#f0edf8" },
             escape(&truncate(&seat.player.name, 31))
         );
-        for (index, line) in lines(&commanders(seat.deck.as_ref()), 48, 2).iter().enumerate() {
+        for (index, line) in lines(&commanders(seat.deck.as_ref()), 48, 2)
+            .iter()
+            .enumerate()
+        {
             let _ = writeln!(
                 out,
                 r##"        <text x="662" y="{}" font-family="DejaVu Sans Mono" font-size="14" fill="#bcb6cb">{}</text>"##,
@@ -300,7 +350,9 @@ pub fn svg(game: &Game, images: &Images) -> String {
             r##"      <text x="1132" y="{}" text-anchor="middle" font-size="10" fill="#aaa6bc" letter-spacing="1">KILLS</text>"##,
             float(y + 26.0)
         );
-        let kills = seat.kills.map_or_else(|| "—".to_owned(), |kills| kills.to_string());
+        let kills = seat
+            .kills
+            .map_or_else(|| "—".to_owned(), |kills| kills.to_string());
         let _ = writeln!(
             out,
             r#"      <text x="1132" y="{}" text-anchor="middle" font-size="25" font-weight="bold">{kills}</text>"#,

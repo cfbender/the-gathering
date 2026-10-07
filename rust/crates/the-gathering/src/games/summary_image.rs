@@ -47,7 +47,10 @@ pub struct ArtFetcher {
 impl ArtFetcher {
     /// A fetcher using `client` (which must not follow redirects).
     pub fn new(client: reqwest::Client) -> Self {
-        Self { client, origin: None }
+        Self {
+            client,
+            origin: None,
+        }
     }
 
     /// Sends allowed requests to `origin` instead (tests).
@@ -81,7 +84,13 @@ impl ArtFetcher {
             }
             None => parsed.to_string(),
         };
-        let response = self.client.get(target).timeout(Duration::from_secs(3)).send().await.ok()?;
+        let response = self
+            .client
+            .get(target)
+            .timeout(Duration::from_secs(3))
+            .send()
+            .await
+            .ok()?;
         if response.status() != reqwest::StatusCode::OK {
             return None;
         }
@@ -100,7 +109,10 @@ impl ArtFetcher {
         } else {
             return None;
         };
-        Some(format!("data:image/{kind};base64,{}", base64::engine::general_purpose::STANDARD.encode(&body)))
+        Some(format!(
+            "data:image/{kind};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(&body)
+        ))
     }
 }
 
@@ -110,10 +122,18 @@ fn art_keys(game: &Game) -> Vec<ArtKey> {
     let mut seen = HashSet::new();
     for deck in game.seats.iter().filter_map(|seat| seat.deck.as_ref()) {
         let slots = [
-            Some((deck.commander_card_id.clone(), deck.commander_name.clone(), deck.commander_printing_id.clone())),
-            deck.partner_name
-                .clone()
-                .map(|name| (deck.partner_card_id.clone(), name, deck.partner_printing_id.clone())),
+            Some((
+                deck.commander_card_id.clone(),
+                deck.commander_name.clone(),
+                deck.commander_printing_id.clone(),
+            )),
+            deck.partner_name.clone().map(|name| {
+                (
+                    deck.partner_card_id.clone(),
+                    name,
+                    deck.partner_printing_id.clone(),
+                )
+            }),
         ];
         for key in slots.into_iter().flatten() {
             if seen.insert(key.clone()) {
@@ -125,12 +145,19 @@ fn art_keys(game: &Game) -> Vec<ArtKey> {
 }
 
 /// Downloads the art for every commander slot (six at a time, six seconds each).
-pub async fn artwork(pool: &crate::db::Pool, fetcher: &ArtFetcher, game: &Game) -> Result<Images, sqlx::Error> {
+pub async fn artwork(
+    pool: &crate::db::Pool,
+    fetcher: &ArtFetcher,
+    game: &Game,
+) -> Result<Images, sqlx::Error> {
     let keys = art_keys(game);
     let refs: Vec<CardRef> = keys
         .iter()
         .flat_map(|(id, name, printing)| {
-            [CardRef::Card(id.clone(), Some(name.clone())), CardRef::Printing(printing.clone())]
+            [
+                CardRef::Card(id.clone(), Some(name.clone())),
+                CardRef::Printing(printing.clone()),
+            ]
         })
         .collect();
     let urls = catalog::art_crop_urls_in(&mut *pool.acquire().await?, &refs).await?;
@@ -144,7 +171,10 @@ pub async fn artwork(pool: &crate::db::Pool, fetcher: &ArtFetcher, game: &Game) 
         .collect();
     Ok(stream::iter(sources)
         .map(|(key, source)| async move {
-            let image = tokio::time::timeout(TASK_TIMEOUT, fetcher.fetch_art(source.as_deref())).await.ok().flatten();
+            let image = tokio::time::timeout(TASK_TIMEOUT, fetcher.fetch_art(source.as_deref()))
+                .await
+                .ok()
+                .flatten();
             image.map(|image| (key, image))
         })
         .buffer_unordered(CONCURRENCY)
@@ -163,20 +193,52 @@ static FONTS: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
 
 /// Rasterizes an SVG to PNG.
 pub fn rasterize(svg: &str) -> Result<Vec<u8>, RenderError> {
-    let options = usvg::Options { fontdb: Arc::clone(&FONTS), ..usvg::Options::default() };
-    let tree = usvg::Tree::from_str(svg, &options).map_err(|error| RenderError::Failed(error.to_string()))?;
+    let options = usvg::Options {
+        fontdb: Arc::clone(&FONTS),
+        ..usvg::Options::default()
+    };
+    let tree = usvg::Tree::from_str(svg, &options)
+        .map_err(|error| RenderError::Failed(error.to_string()))?;
     let size = tree.size().to_int_size();
     let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height())
         .ok_or_else(|| RenderError::Failed("empty image".into()))?;
     resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
-    pixmap.encode_png().map_err(|error| RenderError::Failed(error.to_string()))
+    pixmap
+        .encode_png()
+        .map_err(|error| RenderError::Failed(error.to_string()))
 }
 
 /// `SummaryImage.render/1` without the rate limit: downloads art and renders the PNG.
-pub async fn render(pool: &crate::db::Pool, fetcher: &ArtFetcher, game: &Game) -> Result<Vec<u8>, RenderError> {
+pub async fn render(
+    pool: &crate::db::Pool,
+    fetcher: &ArtFetcher,
+    game: &Game,
+) -> Result<Vec<u8>, RenderError> {
     let images = artwork(pool, fetcher, game).await?;
     let svg = summary_card::svg(game, &images);
     tokio::task::spawn_blocking(move || rasterize(&svg))
         .await
         .map_err(|error| RenderError::Failed(error.to_string()))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embeds_data_uri_art() {
+        let mut red = tiny_skia::Pixmap::new(4, 4).unwrap();
+        red.fill(tiny_skia::Color::from_rgba8(255, 0, 0, 255));
+        let uri = format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(red.encode_png().unwrap())
+        );
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="8" height="8"><image width="8" height="8" xlink:href="{uri}"/></svg>"#
+        );
+        let png = rasterize(&svg).unwrap();
+        let decoded = tiny_skia::Pixmap::decode_png(&png).unwrap();
+        let pixel = decoded.pixel(4, 4).unwrap();
+        assert_eq!((pixel.red(), pixel.green(), pixel.blue()), (255, 0, 0));
+    }
 }

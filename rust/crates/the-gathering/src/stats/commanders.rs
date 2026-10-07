@@ -62,7 +62,11 @@ struct Entry<'a> {
     at: SeatInGame<'a>,
 }
 
-fn canonical(summary: Option<&CardSummary>, stored_id: Option<&str>, name: Option<&str>) -> (Key, CommanderCard) {
+fn canonical(
+    summary: Option<&CardSummary>,
+    stored_id: Option<&str>,
+    name: Option<&str>,
+) -> (Key, CommanderCard) {
     match (summary, stored_id) {
         (Some(summary), _) => (
             Key::Id(summary.id.clone()),
@@ -121,7 +125,10 @@ fn card_refs<'a>(seats: impl IntoIterator<Item = SeatInGame<'a>>) -> Vec<Referen
         .filter_map(|at| at.seat.deck.as_ref())
         .flat_map(|deck| {
             [
-                (deck.commander_card_id.clone(), Some(deck.commander_name.clone())),
+                (
+                    deck.commander_card_id.clone(),
+                    Some(deck.commander_name.clone()),
+                ),
                 (deck.partner_card_id.clone(), deck.partner_name.clone()),
             ]
         })
@@ -130,10 +137,20 @@ fn card_refs<'a>(seats: impl IntoIterator<Item = SeatInGame<'a>>) -> Vec<Referen
 
 /// One entry per commander card the seat's deck ran.
 fn commander_entries<'a>(at: SeatInGame<'a>, summaries: &CardSummaries) -> Vec<Entry<'a>> {
-    let Some(deck) = at.seat.deck.as_ref() else { return Vec::new() };
+    let Some(deck) = at.seat.deck.as_ref() else {
+        return Vec::new();
+    };
     [
-        (deck.commander_card_id.as_deref(), Some(deck.commander_name.as_str()), deck.commander_printing_id.as_deref()),
-        (deck.partner_card_id.as_deref(), deck.partner_name.as_deref(), deck.partner_printing_id.as_deref()),
+        (
+            deck.commander_card_id.as_deref(),
+            Some(deck.commander_name.as_str()),
+            deck.commander_printing_id.as_deref(),
+        ),
+        (
+            deck.partner_card_id.as_deref(),
+            deck.partner_name.as_deref(),
+            deck.partner_printing_id.as_deref(),
+        ),
     ]
     .into_iter()
     .filter(|(id, name, _)| id.is_some() || name.is_some_and(|name| !name.is_empty()))
@@ -147,34 +164,53 @@ fn commander_entries<'a>(at: SeatInGame<'a>, summaries: &CardSummaries) -> Vec<E
 
 /// Gives every entry of a commander the art of its most-played deck (ties go to the most
 /// recently played): that deck's printing, else the catalog default.
-async fn put_deck_art<'a>(conn: &mut SqliteConnection, entries: Vec<Entry<'a>>) -> Result<Vec<Entry<'a>>, sqlx::Error> {
-    let printings: BTreeMap<Key, Option<String>> = group_by(entries.iter(), |entry| entry.key.clone())
-        .into_iter()
-        .map(|(key, rows)| {
-            let decks = group_by(rows, |entry| entry.at.seat.deck_id);
-            let mut best: Option<((usize, i64), &Entry<'_>)> = None;
-            for deck_rows in decks.values() {
-                let last_played = deck_rows.iter().map(|entry| entry.at.game.played_at.unix()).max().unwrap_or_default();
-                let score = (deck_rows.len(), last_played);
-                if let Some(first) = deck_rows.first()
-                    && best.as_ref().is_none_or(|(best_score, _)| score > *best_score)
-                {
-                    best = Some((score, first));
+async fn put_deck_art<'a>(
+    conn: &mut SqliteConnection,
+    entries: Vec<Entry<'a>>,
+) -> Result<Vec<Entry<'a>>, sqlx::Error> {
+    let printings: BTreeMap<Key, Option<String>> =
+        group_by(entries.iter(), |entry| entry.key.clone())
+            .into_iter()
+            .map(|(key, rows)| {
+                let decks = group_by(rows, |entry| entry.at.seat.deck_id);
+                let mut best: Option<((usize, i64), &Entry<'_>)> = None;
+                for deck_rows in decks.values() {
+                    let last_played = deck_rows
+                        .iter()
+                        .map(|entry| entry.at.game.played_at.unix())
+                        .max()
+                        .unwrap_or_default();
+                    let score = (deck_rows.len(), last_played);
+                    if let Some(first) = deck_rows.first()
+                        && best
+                            .as_ref()
+                            .is_none_or(|(best_score, _)| score > *best_score)
+                    {
+                        best = Some((score, first));
+                    }
                 }
-            }
-            (key, best.and_then(|(_, entry)| entry.card.printing_id.clone()))
-        })
+                (
+                    key,
+                    best.and_then(|(_, entry)| entry.card.printing_id.clone()),
+                )
+            })
+            .collect();
+    let refs: Vec<CardRef> = printings
+        .values()
+        .flatten()
+        .map(|id| CardRef::Printing(Some(id.clone())))
         .collect();
-    let refs: Vec<CardRef> = printings.values().flatten().map(|id| CardRef::Printing(Some(id.clone()))).collect();
     let urls = catalog::art_crop_urls_in(conn, &refs).await?;
     Ok(entries
         .into_iter()
         .map(|mut entry| {
             if let Some(Some(printing)) = printings.get(&entry.key) {
-                entry.card.art_crop_url =
-                    urls.art_crop_url(None, None, Some(printing)).or_else(|| entry.card.art_crop_url.clone());
-                entry.card.image_url =
-                    urls.card_image_url(None, None, Some(printing)).or_else(|| entry.card.image_url.clone());
+                entry.card.art_crop_url = urls
+                    .art_crop_url(None, None, Some(printing))
+                    .or_else(|| entry.card.art_crop_url.clone());
+                entry.card.image_url = urls
+                    .card_image_url(None, None, Some(printing))
+                    .or_else(|| entry.card.image_url.clone());
             }
             entry
         })
@@ -194,9 +230,18 @@ fn commander_records(entries: &[Entry<'_>], extras: bool) -> Vec<Object> {
             let mut object = commander_json(&key, &first.card);
             Record::of(rows.iter().map(|entry| entry.at.seat.result)).merge_into(&mut object);
             if extras {
-                object.insert("pilots".into(), json!(unique_count(rows.iter().map(|entry| entry.at.seat.player_id))));
-                object.insert("decks".into(), json!(unique_count(rows.iter().map(|entry| entry.at.seat.deck_id))));
-                let last: Option<UtcDateTime> = rows.iter().map(|entry| entry.at.game.played_at).max();
+                object.insert(
+                    "pilots".into(),
+                    json!(unique_count(
+                        rows.iter().map(|entry| entry.at.seat.player_id)
+                    )),
+                );
+                object.insert(
+                    "decks".into(),
+                    json!(unique_count(rows.iter().map(|entry| entry.at.seat.deck_id))),
+                );
+                let last: Option<UtcDateTime> =
+                    rows.iter().map(|entry| entry.at.game.played_at).max();
                 object.insert("last_played_at".into(), json!(last));
             }
             Some(object)
@@ -207,9 +252,15 @@ fn commander_records(entries: &[Entry<'_>], extras: bool) -> Vec<Object> {
 }
 
 /// `summarize/1`: every commander among `seats`, most played first.
-pub async fn summarize(conn: &mut SqliteConnection, seats: &[SeatInGame<'_>]) -> Result<Vec<Object>, sqlx::Error> {
+pub async fn summarize(
+    conn: &mut SqliteConnection,
+    seats: &[SeatInGame<'_>],
+) -> Result<Vec<Object>, sqlx::Error> {
     let summaries = catalog::card_summaries_in(conn, &card_refs(seats.iter().copied())).await?;
-    let entries: Vec<Entry<'_>> = seats.iter().flat_map(|at| commander_entries(*at, &summaries)).collect();
+    let entries: Vec<Entry<'_>> = seats
+        .iter()
+        .flat_map(|at| commander_entries(*at, &summaries))
+        .collect();
     let entries = put_deck_art(conn, entries).await?;
     Ok(commander_records(&entries, true))
 }
@@ -219,7 +270,11 @@ pub fn deck_seats(games: &[Game]) -> Vec<SeatInGame<'_>> {
     games
         .iter()
         .flat_map(|game| {
-            let mut seats: Vec<&Seat> = game.seats.iter().filter(|seat| seat.deck.is_some()).collect();
+            let mut seats: Vec<&Seat> = game
+                .seats
+                .iter()
+                .filter(|seat| seat.deck.is_some())
+                .collect();
             seats.sort_by_key(|seat| seat.seat);
             seats.into_iter().map(move |seat| SeatInGame { seat, game })
         })
@@ -230,34 +285,59 @@ pub fn deck_seats(games: &[Game]) -> Vec<SeatInGame<'_>> {
 pub async fn list(conn: &mut SqliteConnection, params: &Value) -> Result<Vec<Value>, sqlx::Error> {
     let games = query::games(conn, params, None, None).await?;
     let seats = deck_seats(&games);
-    Ok(summarize(conn, &seats).await?.into_iter().map(Value::Object).collect())
+    Ok(summarize(conn, &seats)
+        .await?
+        .into_iter()
+        .map(Value::Object)
+        .collect())
 }
 
 fn normalized(value: Option<&str>) -> Option<String> {
     value.map(lotus::normalize_name)
 }
 
-async fn resolve(conn: &mut SqliteConnection, id: &str) -> Result<Option<(Key, CommanderCard)>, sqlx::Error> {
-    let direct = catalog::card_summaries_in(conn, &[(Some(id.to_owned()), Some(id.to_owned()))]).await?;
+async fn resolve(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<Option<(Key, CommanderCard)>, sqlx::Error> {
+    let direct =
+        catalog::card_summaries_in(conn, &[(Some(id.to_owned()), Some(id.to_owned()))]).await?;
     if let Some(summary) = direct.get(Some(id), Some(id)) {
-        return Ok(Some(canonical(Some(summary), Some(id), Some(&summary.name))));
+        return Ok(Some(canonical(
+            Some(summary),
+            Some(id),
+            Some(&summary.name),
+        )));
     }
     let references = query::commander_references(conn, id).await?;
     let summaries = catalog::card_summaries_in(conn, &references).await?;
     let wanted = normalized(Some(id));
     Ok(references.iter().find_map(|(stored_id, name)| {
         (stored_id.as_deref() == Some(id) || normalized(name.as_deref()) == wanted).then(|| {
-            canonical(summaries.get(stored_id.as_deref(), name.as_deref()), stored_id.as_deref(), name.as_deref())
+            canonical(
+                summaries.get(stored_id.as_deref(), name.as_deref()),
+                stored_id.as_deref(),
+                name.as_deref(),
+            )
         })
     }))
 }
 
 /// `get/2`: detail for one commander by published id, stored id, or card name; `None` when
 /// never played in the range.
-pub async fn get(conn: &mut SqliteConnection, id: &str, params: &Value) -> Result<Option<Value>, sqlx::Error> {
-    let Some((key, card)) = resolve(conn, id).await? else { return Ok(None) };
+pub async fn get(
+    conn: &mut SqliteConnection,
+    id: &str,
+    params: &Value,
+) -> Result<Option<Value>, sqlx::Error> {
+    let Some((key, card)) = resolve(conn, id).await? else {
+        return Ok(None);
+    };
     let mut ids: Vec<String> = Vec::new();
-    for candidate in [Some(id.to_owned()), card.id.clone(), card.stored_id.clone()].into_iter().flatten() {
+    for candidate in [Some(id.to_owned()), card.id.clone(), card.stored_id.clone()]
+        .into_iter()
+        .flatten()
+    {
         if !ids.contains(&candidate) {
             ids.push(candidate);
         }
@@ -280,14 +360,23 @@ pub async fn get(conn: &mut SqliteConnection, id: &str, params: &Value) -> Resul
         .into_iter()
         .filter(|at| {
             at.seat.deck.as_ref().is_some_and(|deck| {
-                deck.commander_card_id.as_ref().is_some_and(|id| ids.contains(id))
-                    || deck.partner_card_id.as_ref().is_some_and(|id| ids.contains(id))
+                deck.commander_card_id
+                    .as_ref()
+                    .is_some_and(|id| ids.contains(id))
+                    || deck
+                        .partner_card_id
+                        .as_ref()
+                        .is_some_and(|id| ids.contains(id))
                     || lowered.contains(&deck.commander_name.to_lowercase())
-                    || deck.partner_name.as_ref().is_some_and(|name| lowered.contains(&name.to_lowercase()))
+                    || deck
+                        .partner_name
+                        .as_ref()
+                        .is_some_and(|name| lowered.contains(&name.to_lowercase()))
             })
         })
         .collect();
-    let summaries = catalog::card_summaries_in(conn, &card_refs(candidates.iter().copied())).await?;
+    let summaries =
+        catalog::card_summaries_in(conn, &card_refs(candidates.iter().copied())).await?;
     let entries: Vec<Entry<'_>> = candidates
         .iter()
         .flat_map(|at| commander_entries(*at, &summaries))
@@ -302,7 +391,9 @@ async fn detail(
     entries: &[Entry<'_>],
     summaries: &CardSummaries,
 ) -> Result<Option<Value>, sqlx::Error> {
-    let Some(first) = entries.first() else { return Ok(None) };
+    let Some(first) = entries.first() else {
+        return Ok(None);
+    };
     let seats: Vec<SeatInGame<'_>> = entries.iter().map(|entry| entry.at).collect();
     let seat_ids: Vec<i64> = seats.iter().map(|at| at.seat.id).collect();
     let mut game_ids: Vec<i64> = Vec::new();
@@ -321,7 +412,10 @@ async fn detail(
         .filter(|entry| entry.key != first.key)
         .collect();
     let partner_entries = put_deck_art(conn, partner_entries).await?;
-    let partners: Vec<Value> = commander_records(&partner_entries, false).into_iter().map(Value::Object).collect();
+    let partners: Vec<Value> = commander_records(&partner_entries, false)
+        .into_iter()
+        .map(Value::Object)
+        .collect();
 
     let opponents = summaries::records(query::opponent_counts(conn, &game_ids, &seat_ids).await?);
 
@@ -340,7 +434,7 @@ async fn detail(
                 Some((game.played_at, game.id, results))
             })
             .collect();
-    trend.sort_by(|a, b| (b.0.unix(), b.1).cmp(&(a.0.unix(), a.1)));
+    trend.sort_by_key(|(played_at, id, _)| std::cmp::Reverse((played_at.unix(), *id)));
     trend.truncate(TREND_GAME_LIMIT);
 
     let seat_refs: Vec<&Seat> = seats.iter().map(|at| at.seat).collect();

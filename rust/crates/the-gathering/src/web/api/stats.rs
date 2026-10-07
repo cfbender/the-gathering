@@ -17,15 +17,27 @@ pub async fn overview(State(state): State<AppState>, params: Params) -> ApiResul
 }
 
 /// `GET /api/stats/players/:id`.
-pub async fn player(State(state): State<AppState>, Path(id): Path<String>, params: Params) -> ApiResult<Json<Value>> {
-    let stats = stats::player(&state.pool, parse_id(&id)?, &params.0).await?.ok_or(ApiError::NotFound)?;
-    Ok(data(stats))
+pub async fn player(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    params: Params,
+) -> ApiResult<Json<Value>> {
+    let payload = stats::player(&state.pool, parse_id(&id)?, &params.0)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(data(payload))
 }
 
 /// `GET /api/stats/decks/:id`.
-pub async fn deck(State(state): State<AppState>, Path(id): Path<String>, params: Params) -> ApiResult<Json<Value>> {
-    let stats = stats::deck(&state.pool, parse_id(&id)?, &params.0).await?.ok_or(ApiError::NotFound)?;
-    Ok(data(stats))
+pub async fn deck(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    params: Params,
+) -> ApiResult<Json<Value>> {
+    let payload = stats::deck(&state.pool, parse_id(&id)?, &params.0)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(data(payload))
 }
 
 /// `GET /api/stats/commanders`.
@@ -34,7 +46,13 @@ pub async fn commanders(State(state): State<AppState>, params: Params) -> ApiRes
 }
 
 /// `GET /api/stats/commanders/:id` (a published id, stored Scryfall id, or card name).
-pub async fn commander(State(state): State<AppState>, Path(id): Path<String>, params: Params) -> ApiResult<Json<Value>> {
-    let stats = stats::commander(&state.pool, &id, &params.0).await?.ok_or(ApiError::NotFound)?;
-    Ok(data(stats))
+pub async fn commander(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    params: Params,
+) -> ApiResult<Json<Value>> {
+    let payload = stats::commander(&state.pool, &id, &params.0)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(data(payload))
 }
