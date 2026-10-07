@@ -15,6 +15,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
   decklistCardsQuery,
+  decklistFailureReason,
   decklistSize,
   groupDecklist,
   hasDecklistCards,
@@ -63,6 +64,26 @@ export function DecklistButton({
       </Button>
       <DecklistDialog deck={deck} open={open} onOpenChange={setOpen} boardNames={boardNames} />
     </>
+  )
+}
+
+/** Why the list could not load. A missing or private list (404) and a reason the server
+ * explained (422, such as a ManaVault server too old to share decks) are final answers, so
+ * only other failures offer Retry. */
+function DecklistFailure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const missing = error instanceof ApiError && error.status === 404
+  const reason = decklistFailureReason(error)
+  return (
+    <div role="alert" className="alert alert-warning text-sm">
+      {missing
+        ? "This list is missing or private on the deck site."
+        : (reason ?? "The deck site did not answer. Try again in a moment.")}
+      {!missing && !reason && (
+        <Button type="button" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
+      )}
+    </div>
   )
 }
 
@@ -158,16 +179,7 @@ export function DecklistDialog({
             </p>
           )}
           {query.isError && (
-            <div role="alert" className="alert alert-warning text-sm">
-              {query.error instanceof ApiError && query.error.status === 404
-                ? "This list is missing or private on the deck site."
-                : "The deck site did not answer. Try again in a moment."}
-              {!(query.error instanceof ApiError && query.error.status === 404) && (
-                <Button type="button" size="sm" onClick={() => void query.refetch()}>
-                  Retry
-                </Button>
-              )}
-            </div>
+            <DecklistFailure error={query.error} onRetry={() => void query.refetch()} />
           )}
           {list && sections.length === 0 && (
             <p className="text-base-content/65 text-sm">No cards match “{filter}”.</p>

@@ -37,8 +37,19 @@ export function hasDecklistCards(deck: Pick<DeckSummary, "decklist_url" | "deckl
   return !!deck.decklist_url && LISTED_SOURCES.has(deck.decklist_source ?? "")
 }
 
+/**
+ * The server's explanation when it answered definitively that the list can't be loaded:
+ * a 422 whose `errors.detail` says why (for example a self-hosted ManaVault too old to share
+ * decks). Retrying will not help, so callers show this instead of offering a retry. Other
+ * failures (5xx "Bad Gateway" and the like) return `null` and keep a generic message.
+ */
+export function decklistFailureReason(error: unknown): string | null {
+  return error instanceof ApiError && error.status === 422 ? error.detail : null
+}
+
 /** A game lasts about an hour and lists rarely change mid-game, so keep one for 30 minutes.
- * A missing or private list (404) is an answer, not a failure worth retrying. */
+ * A missing or private list (404) or an explained refusal (422) is an answer, not a failure
+ * worth retrying. */
 export function decklistCardsQuery(deckId: number) {
   return queryOptions({
     queryKey: ["decks", deckId, "decklist"],
@@ -46,7 +57,8 @@ export function decklistCardsQuery(deckId: number) {
       api<{ data: DecklistCards }>(`/api/decks/${deckId}/decklist`).then((body) => body.data),
     staleTime: 30 * 60 * 1000,
     retry: (failures, error) =>
-      !(error instanceof ApiError && error.status === 404) && failures < 2,
+      !(error instanceof ApiError && (error.status === 404 || error.status === 422)) &&
+      failures < 2,
   })
 }
 
