@@ -17,6 +17,17 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
+pub mod browser_sdp;
+mod codec;
+pub mod ice_report;
+mod ids;
+mod layer;
+mod munger;
+pub mod simulcast_sdp;
+mod subscription;
+
+pub use layer::Layer;
+
 /// Simulcast layer names, lowest resolution first; the browser encodes them in this order.
 pub const LAYERS: [&str; 3] = ["l", "m", "h"];
 
@@ -37,7 +48,8 @@ pub struct IceServer {
 }
 
 /// Fetches short-lived relay credentials (Cloudflare TURN) when a connection starts.
-pub type RelayServers = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Vec<IceServer>> + Send>> + Send + Sync>;
+pub type RelayServers =
+    Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Vec<IceServer>> + Send>> + Send + Sync>;
 
 /// Transport settings (`config :the_gathering, :sfu`).
 #[derive(Clone)]
@@ -143,25 +155,47 @@ impl Sfu {
     }
 
     /// Adds an ICE candidate (its JSON map) from the browser.
-    pub async fn candidate(&self, room_id: &str, peer_id: &str, candidate: &Value) -> Result<(), SfuError> {
+    pub async fn candidate(
+        &self,
+        room_id: &str,
+        peer_id: &str,
+        candidate: &Value,
+    ) -> Result<(), SfuError> {
         let _ = (room_id, peer_id, candidate);
         Err(SfuError::NotJoined)
     }
 
     /// Asks for `layer` of `owner_id`'s video, from how large `peer_id` draws it.
-    pub async fn layer(&self, room_id: &str, peer_id: &str, owner_id: &str, layer: &str) -> Result<(), SfuError> {
+    pub async fn layer(
+        &self,
+        room_id: &str,
+        peer_id: &str,
+        owner_id: &str,
+        layer: &str,
+    ) -> Result<(), SfuError> {
         let _ = (room_id, peer_id, owner_id, layer);
         Err(SfuError::NotJoined)
     }
 
     /// Limits `peer_id`'s video to `target` (another peer id), or to everyone with `None`.
-    pub async fn reveal(&self, room_id: &str, peer_id: &str, target: Option<&str>) -> Result<(), SfuError> {
+    pub async fn reveal(
+        &self,
+        room_id: &str,
+        peer_id: &str,
+        target: Option<&str>,
+    ) -> Result<(), SfuError> {
         let _ = (room_id, peer_id, target);
         Err(SfuError::NotJoined)
     }
 
     /// Delivers `message` to `to`'s channel as [`SfuEvent::PeerMessage`].
-    pub async fn relay(&self, room_id: &str, from: &str, to: &str, message: Value) -> Result<(), SfuError> {
+    pub async fn relay(
+        &self,
+        room_id: &str,
+        from: &str,
+        to: &str,
+        message: Value,
+    ) -> Result<(), SfuError> {
         let _ = (room_id, from, to, message);
         Err(SfuError::NotJoined)
     }
