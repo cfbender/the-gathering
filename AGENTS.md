@@ -88,3 +88,30 @@ Production/container commands are documented in `README.md`.
 - Commit as the current thread's user using their configured Git identity.
 - Never add `Co-authored-by` trailers or credit Amp, an AI agent, or another co-author.
 - Never push unless the user asks. When they do, verify the commit has no co-authorship trailers, then push the current branch and confirm it matches its upstream.
+
+<!-- BACKLOG.MD GUIDELINES START -->
+<!-- backlog.md-instructions-version: 1.53.0 -->
+
+<CRITICAL_INSTRUCTION>
+
+## Backlog.md Workflow
+
+This project uses Backlog.md for task and project management.
+
+Use Backlog only for sizeable implementation work that is worth documenting because it benefits from durable planning, decisions, progress tracking, or handoff notes. Do not run `backlog instructions overview` or any other Backlog command automatically at the start of a request. Skip Backlog for questions, explanations, operational actions, commits and pushes, quick fixes, and small mechanical, configuration, or documentation changes.
+
+When work genuinely warrants Backlog, run `mise exec -- backlog instructions overview`, search for an existing task first, and then read only the relevant task instructions. The Backlog CLI is managed by mise and may not be directly available on `PATH`, especially during first-time orb setup.
+
+Before task lifecycle actions, read the matching detailed guide:
+
+- `mise exec -- backlog instructions task-creation` before creating or splitting tasks
+- `mise exec -- backlog instructions task-execution` before planning, changing status or assignee, adding a plan or implementation notes, or implementing task work
+- `mise exec -- backlog instructions task-finalization` before checking acceptance criteria, writing final summaries, or moving tasks to terminal statuses
+
+Use `mise exec -- backlog <command> --help` before running unfamiliar commands. Help shows options, fields, and examples.
+
+Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use `mise exec -- backlog` so metadata, relationships, and history stay consistent.
+
+</CRITICAL_INSTRUCTION>
+
+<!-- BACKLOG.MD GUIDELINES END -->

@@ -3,6 +3,7 @@ aube = "1.21.0"
 node = "26.9.0"
 rust = { version = "1.99.0", components = "clippy,rustfmt" }
 sqlite = "3.53.4"
+"npm:backlog.md" = "latest"
 
 [tasks.setup]
 description = "Install project tools and JavaScript dependencies, build the server, and prepare the dev database."
