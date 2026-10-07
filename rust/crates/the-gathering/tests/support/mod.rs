@@ -8,6 +8,8 @@
     clippy::indexing_slicing
 )]
 
+pub mod discord;
+
 use std::path::PathBuf;
 use std::sync::Mutex;
 
