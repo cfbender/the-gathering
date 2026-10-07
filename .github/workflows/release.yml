@@ -4,8 +4,11 @@ name: Release
 # deploy/proxmox/the-gathering.sh installs
 # (bare-metal / LXC, no Docker). Version tags publish a GitHub release; every push to
 # main republishes the rolling "nightly" prerelease (tag moved to the commit) that
-# `update nightly` / VERSION=nightly install. The container image is built separately
-# by container.yml.
+# `update nightly` / VERSION=nightly install. A manual run on any other branch republishes the
+# rolling "preview" prerelease the same way (`update preview`), so a branch can be tried in the
+# LXC before it is merged; it never touches nightly or the latest release. Manual runs on main
+# only upload the tarball as a workflow artifact. The container image is built separately by
+# container.yml.
 on:
   push:
     branches:
@@ -99,10 +102,20 @@ jobs:
         id: release
         run: |
           set -eu
-          if [ "${GITHUB_REF_TYPE}" = tag ]; then tag="${GITHUB_REF_NAME}"; else tag=nightly; fi
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            tag="${GITHUB_REF_NAME}"
+          elif [ "${GITHUB_EVENT_NAME}" = workflow_dispatch ] && [ "${GITHUB_REF_NAME}" != main ]; then
+            tag=preview
+          else
+            tag=nightly
+          fi
           # priv/VERSION ships inside the release: the admin UI shows it and compares it with
-          # GitHub (the nightly tag's commit, or the latest release). Same format as container.yml.
-          if [ "$tag" = nightly ]; then version="nightly-$(printf %s "$GITHUB_SHA" | cut -c1-7)"; else version="$tag"; fi
+          # GitHub (the nightly or preview tag's commit, or the latest release). Same format as
+          # container.yml.
+          case "$tag" in
+            nightly | preview) version="${tag}-$(printf %s "$GITHUB_SHA" | cut -c1-7)" ;;
+            *) version="$tag" ;;
+          esac
           rel=build/the_gathering
           rm -rf build && mkdir -p "$rel/bin" "$rel/priv"
           install -m 0755 rust/target/release/the-gathering "$rel/bin/the-gathering"
@@ -126,12 +139,17 @@ jobs:
 
       # Through the API rather than git: the checkout runs in the container before git is
       # installed, so actions/checkout downloads a tarball and there is no .git to push from.
-      - name: Move the nightly tag to this commit
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - name: Move the nightly or preview tag to this commit
+        if: >-
+          ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+              (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' &&
+               github.ref != 'refs/heads/main') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -eu
+          case "$TAG" in nightly | preview) ;; *) echo "refusing to move ${TAG}" >&2; exit 1 ;; esac
           api="https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs"
           call() {
             curl -sS -o /tmp/ref.json -w '%{http_code}' \
@@ -139,14 +157,14 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" "$@"
           }
-          status="$(call -X PATCH "${api}/tags/nightly" -d "{\"sha\":\"${GITHUB_SHA}\",\"force\":true}")"
+          status="$(call -X PATCH "${api}/tags/${TAG}" -d "{\"sha\":\"${GITHUB_SHA}\",\"force\":true}")"
           if [ "$status" = 422 ]; then
             # The tag does not exist yet.
-            status="$(call -X POST "$api" -d "{\"ref\":\"refs/tags/nightly\",\"sha\":\"${GITHUB_SHA}\"}")"
+            status="$(call -X POST "$api" -d "{\"ref\":\"refs/tags/${TAG}\",\"sha\":\"${GITHUB_SHA}\"}")"
           fi
           case "$status" in
-            200 | 201) echo "nightly -> ${GITHUB_SHA}" ;;
-            *) cat /tmp/ref.json; echo "updating refs/tags/nightly failed with HTTP ${status}" >&2; exit 1 ;;
+            200 | 201) echo "${TAG} -> ${GITHUB_SHA}" ;;
+            *) cat /tmp/ref.json; echo "updating refs/tags/${TAG} failed with HTTP ${status}" >&2; exit 1 ;;
           esac
 
       - name: Publish GitHub release
@@ -168,6 +186,26 @@ jobs:
             Rolling build of `main` at ${{ github.sha }}. Republished on every push, so the
             assets change under the same names. Install with `VERSION=nightly` or
             `update nightly`; `update vX.Y.Z` returns to tagged releases.
+          prerelease: true
+          make_latest: false
+          files: |
+            ${{ steps.release.outputs.archive }}
+            ${{ steps.release.outputs.archive }}.sha256
+
+      - name: Publish preview prerelease
+        if: >-
+          ${{ github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' &&
+              github.ref != 'refs/heads/main' }}
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: preview
+          name: Preview build
+          body: |
+            Rolling pre-release build of the `${{ github.ref_name }}` branch at ${{ github.sha }}.
+            Republished by every manual run of the Release workflow on a branch other than
+            main, so the assets change under the same names. Install with `update preview`
+            (using deploy/proxmox/the-gathering.sh from that branch); `update vX.Y.Z` or
+            `update nightly` leaves the preview channel. Never marked latest.
           prerelease: true
           make_latest: false
           files: |

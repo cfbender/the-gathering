@@ -130,6 +130,66 @@ async fn a_nightly_build_follows_the_nightly_tags_commit() {
     assert_eq!(status.latest.unwrap().version, "nightly-0123456");
 }
 
+/// A preview build (a branch pre-release installed with `update preview`) follows the preview
+/// tag's commit, not nightly or the latest release.
+#[tokio::test]
+async fn a_preview_build_follows_the_preview_tags_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let github = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/repos/cfbender/the-gathering/git/ref/tags/preview"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(
+                json!({"object": {"sha": "fedcba9876543210fedcba9876543210fedcba98"}}),
+            ),
+        )
+        .expect(1)
+        .mount(&github)
+        .await;
+    let first = app(
+        &dir,
+        Some("preview-0123456"),
+        &github,
+        watchtower("secret", None),
+    )
+    .await;
+
+    let status = first.state.self_update.status().await;
+    assert_eq!(status.channel, Some(Channel::Preview));
+    assert_eq!(status.check_error, None);
+    assert_eq!(status.update_available, Some(true));
+    let latest = status.latest.unwrap();
+    assert_eq!(latest.version, "preview-fedcba9");
+    assert_eq!(
+        latest.url,
+        "https://github.com/cfbender/the-gathering/releases/tag/preview"
+    );
+
+    // Once the preview tag points at the running commit, it is up to date.
+    let current = tempfile::tempdir().unwrap();
+    let github = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/repos/cfbender/the-gathering/git/ref/tags/preview"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(
+                json!({"object": {"sha": "0123456789abcdef0123456789abcdef01234567"}}),
+            ),
+        )
+        .mount(&github)
+        .await;
+    let second = app(
+        &current,
+        Some("preview-0123456"),
+        &github,
+        watchtower("secret", None),
+    )
+    .await;
+    assert_eq!(
+        second.state.self_update.status().await.update_available,
+        Some(false)
+    );
+}
+
 #[tokio::test]
 async fn caches_the_github_answer_and_reports_failures_without_raising() {
     let dir = tempfile::tempdir().unwrap();

@@ -176,6 +176,9 @@ jobs:
       - name: Format, lint, and test against the committed query metadata
         run: mise run rust:check
 
+      - name: Test the Proxmox LXC installer's channel handling
+        run: bash deploy/proxmox/test.sh
+
   precommit:
     name: Precommit quality gate
     needs: [elixir, rust, frontend]

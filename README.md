@@ -41,7 +41,8 @@ Health check: `GET /api/health` returns `{"status":"ok"}` when the database is r
 
 **Administration → Server settings → Software update** shows the running version and whether
 GitHub has a newer one (the latest release for `vX.Y.Z` builds, the newest `main` commit for
-`nightly-<commit>` builds; the check is cached for 15 minutes). The **Update now** button installs
+`nightly-<commit>` builds, the `preview` tag's commit for `preview-<commit>` builds; the check is
+cached for 15 minutes). The **Update now** button installs
 the newest build of the channel the server already follows; it does not switch channels. The app
 never replaces itself, it asks whatever runs it:
 
@@ -88,6 +89,20 @@ push to `main` republishes the rolling
 [`nightly`](https://github.com/cfbender/the-gathering/releases/tag/nightly) prerelease. `update
 nightly` (or `VERSION=nightly` at install time) switches a container to that channel: from then on
 untagged and automatic updates follow `main`, and `update vX.Y.Z` returns to tagged releases.
+
+To try a branch before it is merged, run the **Release** workflow manually on that branch
+(Actions → Release → Run workflow, or `gh workflow run release.yml --ref <branch>`). It republishes
+the rolling [`preview`](https://github.com/cfbender/the-gathering/releases/tag/preview) prerelease
+from that branch (version `preview-<commit>`) and never touches `nightly` or the latest release.
+Install it with the branch's copy of the script, since `main`'s may not know the channel yet:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/cfbender/the-gathering/<branch>/deploy/proxmox/the-gathering.sh)" \
+  the-gathering.sh update <CTID> preview
+```
+
+From then on untagged and automatic updates (and **Update now**) follow `preview`, using the
+script at the `preview` tag; `update vX.Y.Z` or `update nightly` leaves the channel.
 
 The container also updates itself on a cron schedule: `AUTO_UPDATE` (asked at install time;
 default `0 4 * * *`, daily at 04:00 in the container's time zone; `off` disables it) is written to

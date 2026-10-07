@@ -10,7 +10,8 @@
 //!   `WATCHTOWER_IMAGE`) point at a Watchtower container with its update endpoint enabled.
 //!
 //! The running version is `priv/VERSION`: `vX.Y.Z` for tagged releases, `nightly-<commit>`
-//! for builds of `main`. GitHub says what the newest one is; that answer is cached for 15
+//! for builds of `main`, and `preview-<commit>` for pre-release builds of a branch published by
+//! a manual run of the Release workflow. GitHub says what the newest one is; that answer is cached for 15
 //! minutes because the API allows 60 anonymous requests an hour.
 
 use std::path::PathBuf;
@@ -27,6 +28,7 @@ use tokio::sync::Mutex;
 use crate::config::{Config, SelfUpdateConfig};
 
 const NIGHTLY_URL: &str = "https://github.com/cfbender/the-gathering/releases/tag/nightly";
+const PREVIEW_URL: &str = "https://github.com/cfbender/the-gathering/releases/tag/preview";
 const DEFAULT_IMAGE: &str = "ghcr.io/cfbender/the-gathering";
 const DEFAULT_WATCHTOWER_URL: &str = "http://watchtower:8080";
 const CHECK_TTL: Duration = Duration::from_mins(15);
@@ -44,6 +46,19 @@ pub enum Channel {
     Release,
     /// `nightly-<commit>` builds of `main`.
     Nightly,
+    /// `preview-<commit>` pre-release builds of a branch (the rolling `preview` tag).
+    Preview,
+}
+
+impl Channel {
+    /// The rolling tag and release page of a commit-addressed channel; `None` for releases.
+    fn rolling(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Self::Release => None,
+            Self::Nightly => Some(("nightly", NIGHTLY_URL)),
+            Self::Preview => Some(("preview", PREVIEW_URL)),
+        }
+    }
 }
 
 /// How this server can be updated.
@@ -239,12 +254,13 @@ impl SelfUpdate {
                     _ => Err(unexpected_response(&body)),
                 }
             }
-            Channel::Nightly => {
-                let body = self.github_get("/git/ref/tags/nightly").await?;
+            Channel::Nightly | Channel::Preview => {
+                let (tag, url) = channel.rolling().unwrap_or(("nightly", NIGHTLY_URL));
+                let body = self.github_get(&format!("/git/ref/tags/{tag}")).await?;
                 match body.pointer("/object/sha").and_then(Value::as_str) {
                     Some(sha) => Ok(Latest {
-                        version: format!("nightly-{}", sha.chars().take(7).collect::<String>()),
-                        url: NIGHTLY_URL.to_owned(),
+                        version: format!("{tag}-{}", sha.chars().take(7).collect::<String>()),
+                        url: url.to_owned(),
                     }),
                     None => Err(unexpected_response(&body)),
                 }
@@ -367,12 +383,13 @@ pub fn channel(version: Option<&str>) -> Option<Channel> {
     match version {
         Some(version) if version.starts_with('v') => Some(Channel::Release),
         Some(version) if version.starts_with("nightly") => Some(Channel::Nightly),
+        Some(version) if version.starts_with("preview") => Some(Channel::Preview),
         _ => None,
     }
 }
 
 /// Whether `latest` is newer than `current` on `channel`: releases compare as semantic
-/// versions (numerically, not lexically), nightlies by commit prefix.
+/// versions (numerically, not lexically), nightly and preview builds by commit prefix.
 pub fn update_available(channel: Channel, current: &str, latest: &str) -> bool {
     match channel {
         Channel::Release => {
@@ -383,12 +400,17 @@ pub fn update_available(channel: Channel, current: &str, latest: &str) -> bool {
                 return latest > current;
             }
         }
-        Channel::Nightly => {
-            if let (Some(current), Some(latest)) = (
-                current.strip_prefix("nightly-").filter(|c| !c.is_empty()),
-                latest.strip_prefix("nightly-").filter(|l| !l.is_empty()),
-            ) {
-                return !(latest.starts_with(current) || current.starts_with(latest));
+        Channel::Nightly | Channel::Preview => {
+            let prefix = channel.rolling().map(|(tag, _)| format!("{tag}-"));
+            let commit = |version: &str| {
+                prefix
+                    .as_deref()
+                    .and_then(|prefix| version.strip_prefix(prefix))
+                    .filter(|commit| !commit.is_empty())
+                    .map(str::to_owned)
+            };
+            if let (Some(current), Some(latest)) = (commit(current), commit(latest)) {
+                return !(latest.starts_with(&current) || current.starts_with(&latest));
             }
         }
     }
@@ -431,9 +453,25 @@ mod tests {
     }
 
     #[test]
+    fn preview_builds_compare_by_commit_like_nightlies() {
+        // The LXC installer records the checksum, the app the commit; both prefix-compare.
+        assert!(!update_available(
+            Channel::Preview,
+            "preview-0123456",
+            "preview-0123456789ab"
+        ));
+        assert!(update_available(
+            Channel::Preview,
+            "preview-0123456",
+            "preview-fedcba9"
+        ));
+    }
+
+    #[test]
     fn channels_follow_the_version_prefix() {
         assert_eq!(channel(Some("v1.0.0")), Some(Channel::Release));
         assert_eq!(channel(Some("nightly-abc")), Some(Channel::Nightly));
+        assert_eq!(channel(Some("preview-abc")), Some(Channel::Preview));
         assert_eq!(channel(Some("dev")), None);
         assert_eq!(channel(None), None);
     }

@@ -24,8 +24,8 @@
 #   SSH_KEYS          public keys to authorize for root (the PVE host's /root/.ssh/authorized_keys)
 #   PASSWORD          root password; leave empty for automatic root login on the Proxmox web
 #                     console (plus SSH keys and `pct enter`)
-#   VERSION           release tag to install, e.g. v0.1.0, or nightly for the newest build of main
-#                     (latest GitHub release)
+#   VERSION           release tag to install, e.g. v0.1.0, nightly for the newest build of main,
+#                     or preview for the newest pre-release build of a branch (latest GitHub release)
 #
 # When run from a terminal the script asks for these; set them to skip the questions:
 #
@@ -43,6 +43,8 @@
 #   /usr/local/bin/update               `update [tag]` installs the latest (or given) release, like
 #                                       the community-scripts helpers: it runs the current copy of
 #                                       this script from GitHub, so updater fixes reach old containers
+#                                       (from main, or from the preview tag while a preview build is
+#                                       installed, so the script that knows the channel updates it)
 #   /etc/cron.d/the-gathering-update    runs `update` on the AUTO_UPDATE schedule (absent when off)
 #   the-gathering-update.path           runs `update` when the app creates
 #                                       /var/lib/the-gathering/update-request, which is what the
@@ -58,13 +60,17 @@
 #                                                         if that is what the container runs) and restart
 #   bash the-gathering.sh update <CTID> v0.2.0            install a specific release
 #   bash the-gathering.sh update <CTID> nightly           follow the newest build of main from now on
+#   bash the-gathering.sh update <CTID> preview           follow the preview pre-release (a branch build
+#                                                         published by release.yml's manual run) from now
+#                                                         on; vX.Y.Z or nightly leaves it again
 #   bash the-gathering.sh auto-update <CTID> '0 3 * * 0'  change the automatic update schedule
 #   bash the-gathering.sh auto-update <CTID> off          disable automatic updates
 set -euo pipefail
 
 APP="The Gathering"
 REPO="cfbender/the-gathering"
-SCRIPT_URL="https://raw.githubusercontent.com/${REPO}/main/deploy/proxmox/the-gathering.sh"
+# Release tags this script installs: vX.Y.Z, or the rolling nightly (main) and preview (a branch).
+TAG_PATTERN='^(nightly$|preview$|v[0-9]+\.[0-9]+\.[0-9]+)'
 APP_DIR="/opt/the-gathering"
 DATA_DIR="/var/lib/the-gathering"
 ENV_FILE="/etc/the-gathering.env"
@@ -152,7 +158,8 @@ latest_debian_template() {
     grep "^debian-13-standard_.*_${arch}\.tar" | sort -V | tail -n1
 }
 
-# Resolves VERSION to a release tag (vX.Y.Z or nightly), defaulting to the newest GitHub release.
+# Resolves VERSION to a release tag (vX.Y.Z, nightly, or preview), defaulting to the newest GitHub
+# release.
 resolve_version() {
   if [[ -n "$VERSION" ]]; then
     printf '%s\n' "$VERSION"
@@ -275,14 +282,19 @@ push_helpers() {
   put_file "$ctid" /usr/local/bin/update 0755 <<EOF
 #!/usr/bin/env bash
 # Updates ${APP} in this container (usage: update [tag]). Runs the current
-# deploy/proxmox/the-gathering.sh from GitHub so the updater itself stays current.
+# deploy/proxmox/the-gathering.sh from GitHub so the updater itself stays current: main's copy,
+# or the copy at the preview tag while a preview build is installed (main's may predate the
+# preview channel and would fall back to the latest release).
 set -euo pipefail
-script="\$(curl -fsSL ${SCRIPT_URL})"
+ref=main
+if grep -qs '^preview' ${APP_DIR}/VERSION; then ref=preview; fi
+script="\$(curl -fsSL "https://raw.githubusercontent.com/${REPO}/\${ref}/deploy/proxmox/the-gathering.sh")"
 exec bash -c "\$script" the-gathering.sh update "\$@"
 EOF
   put_file "$ctid" /usr/local/bin/the-gathering-install 0755 <<EOF
 #!/usr/bin/env bash
-# Usage: the-gathering-install <tag>   (a vX.Y.Z release tag, or nightly for the latest main build)
+# Usage: the-gathering-install <tag>   (a vX.Y.Z release tag, nightly for the latest main build, or
+# preview for the latest branch pre-release)
 set -euo pipefail
 tag="\${1:?usage: the-gathering-install <tag>}"
 archive="the_gathering-\${tag}-linux-amd64.tar.gz"
@@ -291,12 +303,12 @@ base="https://github.com/${REPO}/releases/download/\${tag}"
 tmp="\$(mktemp -d)"
 trap 'rm -rf "\$tmp"' EXIT
 curl -fsSL "\${base}/\${archive}.sha256" -o "\${tmp}/\${archive}.sha256"
-# The nightly tag is republished for every push to main, so its builds are told apart by
-# checksum; VERSION then reads nightly-<checksum prefix>, which is how \`update\` knows to
-# keep following nightly.
-if [ "\$tag" = nightly ]; then
+# The nightly and preview tags are republished for every build, so their builds are told apart by
+# checksum; VERSION then reads nightly-<checksum prefix> or preview-<checksum prefix>, which is
+# how \`update\` knows to keep following that channel.
+if [ "\$tag" = nightly ] || [ "\$tag" = preview ]; then
   sum="\$(awk '{print \$1}' "\${tmp}/\${archive}.sha256")"
-  version="nightly-\${sum:0:12}"
+  version="\${tag}-\${sum:0:12}"
 else
   version="\$tag"
 fi
@@ -596,19 +608,25 @@ target_container() {
   fi
 }
 
-# Prints "nightly" when the container runs a nightly build, so an untagged `update` follows the
-# installed channel instead of dropping back to the newest tagged release.
+# Prints "nightly" or "preview" when the container runs a build of that rolling channel, so an
+# untagged `update` (the cron job and the admin UI's button) follows the installed channel
+# instead of dropping back to the newest tagged release.
 installed_channel() {
-  if in_ct "$1" "grep -qs '^nightly' ${APP_DIR}/VERSION"; then echo nightly; fi
+  local version
+  version="$(in_ct "$1" "cat ${APP_DIR}/VERSION 2>/dev/null" || true)"
+  case "$version" in
+  nightly*) echo nightly ;;
+  preview*) echo preview ;;
+  esac
 }
 
 update() {
   target_container "update <CTID> [tag]" "$@"
   VERSION="${ARGS[0]:-$VERSION}"
-  if [[ -n "$VERSION" && ! "$VERSION" =~ ^(nightly|v[0-9]+\.[0-9]+\.[0-9]+) ]]; then
+  if [[ -n "$VERSION" && ! "$VERSION" =~ $TAG_PATTERN ]]; then
     local hint=""
     [[ -n "$TARGET" ]] || hint="; inside the container run \`update [tag]\` without a CTID"
-    die "'$VERSION' is not a release tag (vX.Y.Z or nightly)$hint"
+    die "'$VERSION' is not a release tag (vX.Y.Z, nightly, or preview)$hint"
   fi
   [[ -n "$VERSION" ]] || VERSION="$(installed_channel "$TARGET")"
   local tag
@@ -661,7 +679,8 @@ usage: the-gathering.sh [create | update <CTID> [tag] | auto-update <CTID> <cron
   create                  create a Debian LXC running ${APP} (default; settings via env vars,
                           see the comment at the top of this script)
   update <CTID> [tag]     install the latest (or given) release in an existing container; the tag
-                          nightly switches it to the newest build of main, vX.Y.Z back to releases
+                          nightly switches it to the newest build of main, preview to the preview
+                          pre-release of a branch, vX.Y.Z back to releases
   auto-update <CTID> <cron expression | off>
                           schedule automatic updates (${AUTO_UPDATE_DEFAULT} by default) or turn them off
   bootstrap-admin <CTID>  create the first administrator from ADMIN_USERNAME/ADMIN_PASSWORD
@@ -669,6 +688,9 @@ usage: the-gathering.sh [create | update <CTID> [tag] | auto-update <CTID> <cron
 Inside the container, \`update [tag]\` is on PATH and update/auto-update take no <CTID>.
 EOF
 }
+
+# deploy/proxmox/test.sh sources this file for its functions without running a command.
+[[ -n "${THE_GATHERING_SH_LIBRARY:-}" ]] && return 0
 
 case "${1:-create}" in
 create) create ;;
