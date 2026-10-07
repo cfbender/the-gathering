@@ -7,6 +7,11 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 
 use crate::accounts::Accounts;
+use crate::card_id::corrections::Corrections;
+use crate::catalog::image_cache::CardImages;
+use crate::catalog::scryfall::Scryfall;
+use crate::catalog::sync_server::SyncServer;
+use crate::decklists::Decklists;
 use crate::config::Config;
 use crate::db::Pool;
 use crate::games::Games;
@@ -34,6 +39,16 @@ pub struct Inner {
     pub sfu: the_gathering_sfu::Sfu,
     /// Session topics (`users_sessions:<token>`) whose sockets must disconnect.
     pub session_disconnects: broadcast::Sender<String>,
+    /// Scryfall API client with the shared request limit.
+    pub scryfall: Scryfall,
+    /// Disk cache of Scryfall card images.
+    pub card_images: CardImages,
+    /// The running/scheduled catalog sync.
+    pub catalog_sync: SyncServer,
+    /// Deck-list resolution and members' remote deck listings.
+    pub decklists: Decklists,
+    /// Card-recognition corrections.
+    pub corrections: Corrections,
 }
 
 impl Deref for AppState {
@@ -68,6 +83,10 @@ impl AppState {
             // Relay-only mode needs Cloudflare TURN credentials (wired with CloudflareTurn).
             relay: None,
         });
+        let scryfall = Scryfall::new(&config.scryfall_api_base, config.scryfall_rate_limit)?;
+        let card_images = CardImages::new(&config.data_dir, &config.card_image_base)?;
+        let decklists = Decklists::new(&config)?;
+        let corrections = Corrections::new(&config.data_dir);
         Ok(Self(Arc::new(Inner {
             config,
             pool,
@@ -77,6 +96,11 @@ impl AppState {
             http,
             sfu,
             session_disconnects,
+            scryfall,
+            card_images,
+            catalog_sync: SyncServer::new(),
+            decklists,
+            corrections,
         })))
     }
 }

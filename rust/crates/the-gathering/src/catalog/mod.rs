@@ -1,7 +1,17 @@
 //! The local card catalog synchronized from Scryfall (`TheGathering.Catalog`): lookups,
-//! search, and the batched summaries other areas use for names, art, and identities.
+//! search, and the batched summaries other areas use for names, art, and identities, plus
+//! the write side (sync, backfill) and the on-demand Scryfall lookups (printings, details,
+//! rulings, images).
 
+pub mod backfill;
+pub mod card_data;
+pub mod image_cache;
 pub mod images;
+pub mod printing_id;
+pub mod printings;
+pub mod scryfall;
+pub mod sync;
+pub mod sync_server;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -140,6 +150,7 @@ macro_rules! select_cards {
         )
     };
 }
+#[allow(unused_imports)] // for other areas' card queries
 pub(crate) use select_cards;
 
 /// A cached printing (`card_printings`).
@@ -386,6 +397,30 @@ impl Catalog {
     /// `card_summaries/1`: one lookup for many `(id, name)` references.
     pub async fn card_summaries(&self, refs: &[(Option<String>, Option<String>)]) -> Result<CardSummaries, sqlx::Error> {
         card_summaries_in(&mut *self.pool.acquire().await?, refs).await
+    }
+
+    /// `list_printings/3`: one page of printings of the card resolved from `id` or `name`.
+    pub async fn list_printings(
+        &self,
+        scryfall: &scryfall::Scryfall,
+        id: Option<&str>,
+        name: Option<&str>,
+        page: u32,
+    ) -> Result<(Vec<Printing>, bool), printings::LookupError> {
+        let card = self
+            .resolve_card(id, name)
+            .await
+            .map_err(|error| {
+                tracing::error!("resolving a card for printings: {error}");
+                printings::LookupError::Database
+            })?
+            .ok_or(printings::LookupError::NotFound)?;
+        printings::list(&self.pool, scryfall, &card, page, name).await
+    }
+
+    /// `sync_status/0`.
+    pub async fn sync_status(&self) -> Result<sync::SyncState, sqlx::Error> {
+        sync::status(&self.pool).await
     }
 
     /// `art_crop_urls/1`.

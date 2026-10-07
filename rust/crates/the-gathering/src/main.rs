@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use anyhow::Context;
 use the_gathering::config::Config;
 use the_gathering::state::AppState;
-use the_gathering::{db, web};
+use the_gathering::{catalog, db, decklists, web};
 use tracing_subscriber::EnvFilter;
 
 fn usage() -> anyhow::Error {
@@ -56,6 +56,26 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         ["bootstrap-admin"] => the_gathering::bootstrap_admin(&state).await,
+        ["catalog-sync"] => {
+            // `mix the_gathering.catalog.sync`; the scheduled sync never starts here.
+            let count = catalog::sync::run(&state.pool, &state.scryfall, catalog::sync::Source::Scryfall)
+                .await
+                .map_err(|error| anyhow::anyhow!("Catalog sync failed: {error}"))?;
+            println!("Catalog synchronized: {count} cards");
+            Ok(())
+        }
+        ["catalog-backfill"] => {
+            // `mix the_gathering.catalog.backfill`
+            let summary = catalog::backfill::run(&state.pool).await?;
+            println!(
+                "Split {} partner decks, linked {} commanders, filled {} color identities, linked {} MVP cards",
+                summary.decks_split, summary.decks_linked, summary.colors_filled, summary.mvps_linked
+            );
+            for name in &summary.unmatched {
+                println!("  unmatched: {name}");
+            }
+            Ok(())
+        }
         _ => Err(usage()),
     }
 }
@@ -70,6 +90,8 @@ async fn serve(state: AppState) -> anyhow::Result<()> {
     } else {
         tracing::info!("Discord OAuth sign-in disabled: DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET are not both set");
     }
+    catalog::sync_server::start(&state);
+    decklists::start_cache_sweeper(&state);
     let app = web::router(state.clone());
     let listener = tokio::net::TcpListener::bind(address).await.with_context(|| format!("binding {address}"))?;
     tracing::info!("listening on http://{address}");
