@@ -1,0 +1,2 @@
+-- Migration 20261007125350: recompute can be commander.
+-- No schema change: db/migrate.rs (`data_step`) computes this migration's data.

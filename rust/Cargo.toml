@@ -1,0 +1,47 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99"
+license = "MPL-2.0"
+publish = false
+
+# Guardrails for generated code: the compiler and clippy reject the usual escape
+# hatches, so a change either type-checks against the domain model or fails CI.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+as_conversions = "deny"
+dbg_macro = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unwrap_used = "deny"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+must_use_candidate = "allow"
+# `match` with a fallback arm often reads better than `if let ... else`.
+single_match_else = "allow"
+similar_names = "allow"
+# `assert!(x.is_empty())` reads better than `assert_eq!(x, [] as [T; 0])`.
+assert_is_empty = "allow"
+
+[profile.dev.package."*"]
+# Dependencies (bcrypt, resvg, WebRTC crypto) are unbearably slow unoptimized. No debug info
+# for them: backtraces still name their functions, and it keeps links and the target small.
+opt-level = 2
+debug = 0
+
+[profile.dev]
+# Line tables are enough for backtraces with file and line; full debug info made the target
+# directory tens of gigabytes. Incremental compilation stays on (the dev default); CI and the
+# release builds turn it off with CARGO_INCREMENTAL=0, since they start from scratch.
+debug = "line-tables-only"

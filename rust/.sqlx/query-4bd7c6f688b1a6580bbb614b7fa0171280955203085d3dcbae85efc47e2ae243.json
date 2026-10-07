@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", name, normalized_name, image_uris, color_identity, game_changer AS \"game_changer: bool\"\n           FROM cards\n           WHERE id IN (SELECT value FROM json_each(?)) OR normalized_name IN (SELECT value FROM json_each(?))",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "normalized_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "normalized_name"
+          }
+        }
+      },
+      {
+        "name": "image_uris",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "image_uris"
+          }
+        }
+      },
+      {
+        "name": "color_identity",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "color_identity"
+          }
+        }
+      },
+      {
+        "name": "game_changer: bool",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "game_changer"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4bd7c6f688b1a6580bbb614b7fa0171280955203085d3dcbae85efc47e2ae243"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT token FROM users_tokens WHERE user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "token",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "users_tokens",
+            "name": "token"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2b2afa9924bb7b422ff5b4acd5dd79a139321c3e9598b97fa76152c8329bedea"
+}

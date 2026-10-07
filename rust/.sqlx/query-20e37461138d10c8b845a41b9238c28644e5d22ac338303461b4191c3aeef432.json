@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO catalog_syncs (status, last_started_at, card_count, last_error, inserted_at, updated_at)\n           VALUES ('running', ?, ?, NULL, ?, ?) RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "catalog_syncs",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "20e37461138d10c8b845a41b9238c28644e5d22ac338303461b4191c3aeef432"
+}

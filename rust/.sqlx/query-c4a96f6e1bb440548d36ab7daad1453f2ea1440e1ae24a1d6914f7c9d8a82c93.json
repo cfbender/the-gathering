@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE users SET display_name = ?, moxfield_username = ?, archidekt_username = ?,\n             manavault_url = ?, manavault_api_key = ?, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "c4a96f6e1bb440548d36ab7daad1453f2ea1440e1ae24a1d6914f7c9d8a82c93"
+}

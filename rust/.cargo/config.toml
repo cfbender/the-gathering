@@ -1,0 +1,12 @@
+[env]
+# Query macros read the committed .sqlx metadata, so builds never need a database.
+# `mise run rust:sqlx-prepare` overrides this to regenerate the metadata.
+SQLX_OFFLINE = "true"
+
+# Linux GNU builds link through scripts/link-gcc: mold when installed (.agents/setup installs
+# it), else lld, else the system linker. Paths with a slash are relative to rust/.
+[target.x86_64-unknown-linux-gnu]
+linker = "scripts/link-gcc"
+
+[target.aarch64-unknown-linux-gnu]
+linker = "scripts/link-gcc"

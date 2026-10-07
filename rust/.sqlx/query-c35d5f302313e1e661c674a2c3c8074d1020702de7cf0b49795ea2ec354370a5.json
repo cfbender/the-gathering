@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM users_tokens WHERE token = ? AND context = 'session'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "c35d5f302313e1e661c674a2c3c8074d1020702de7cf0b49795ea2ec354370a5"
+}

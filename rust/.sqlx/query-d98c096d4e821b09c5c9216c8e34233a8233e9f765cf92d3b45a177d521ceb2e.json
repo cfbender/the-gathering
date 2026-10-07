@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT status, last_started_at AS \"last_started_at: UtcDateTime\",\n                  last_finished_at AS \"last_finished_at: UtcDateTime\", card_count,\n                  scryfall_updated_at AS \"scryfall_updated_at: UtcDateTime\", last_error\n           FROM catalog_syncs ORDER BY id DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "status",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog_syncs",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "last_started_at: UtcDateTime",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog_syncs",
+            "name": "last_started_at"
+          }
+        }
+      },
+      {
+        "name": "last_finished_at: UtcDateTime",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog_syncs",
+            "name": "last_finished_at"
+          }
+        }
+      },
+      {
+        "name": "card_count",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "catalog_syncs",
+            "name": "card_count"
+          }
+        }
+      },
+      {
+        "name": "scryfall_updated_at: UtcDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog_syncs",
+            "name": "scryfall_updated_at"
+          }
+        }
+      },
+      {
+        "name": "last_error",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog_syncs",
+            "name": "last_error"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "d98c096d4e821b09c5c9216c8e34233a8233e9f765cf92d3b45a177d521ceb2e"
+}

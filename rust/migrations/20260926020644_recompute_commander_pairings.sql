@@ -1,0 +1,2 @@
+-- Migration 20260926020644: recompute commander pairings.
+-- No schema change: db/migrate.rs (`data_step`) computes this migration's data.

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO webcam_table_sessions (id, snapshot, expires_at) VALUES (?, ?, ?)\n           ON CONFLICT (id) DO UPDATE SET snapshot = excluded.snapshot, expires_at = excluded.expires_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "f244bf3063d336362bac13f8a3bf122039251d85f5052eb14c18b5ee6b9f3c3a"
+}

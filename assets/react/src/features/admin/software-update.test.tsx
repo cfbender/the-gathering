@@ -135,3 +135,30 @@ it("surfaces a failed update check without hiding the button", async () => {
     ),
   )
 })
+
+it("labels a preview build and compares it with the preview tag", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        Response.json({
+          data: {
+            ...base,
+            version: "preview-0123456",
+            channel: "preview",
+            latest: {
+              version: "preview-0123456",
+              url: "https://github.com/cfbender/the-gathering/releases/tag/preview",
+            },
+            update_available: false,
+          },
+        }),
+      ),
+    ),
+  )
+  renderSection()
+
+  await screen.findByText(/on the preview channel/)
+  expect(screen.getByText("preview-0123456", { selector: "strong" })).toBeTruthy()
+  expect(screen.getByText(/Up to date: preview-0123456 is the newest build/)).toBeTruthy()
+})

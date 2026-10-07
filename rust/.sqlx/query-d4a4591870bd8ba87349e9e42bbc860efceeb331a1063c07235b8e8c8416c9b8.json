@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO card_details_cache (id, details, fetched_at) VALUES (?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET details = excluded.details, fetched_at = excluded.fetched_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d4a4591870bd8ba87349e9e42bbc860efceeb331a1063c07235b8e8c8416c9b8"
+}

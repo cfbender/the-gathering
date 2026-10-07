@@ -8,7 +8,7 @@ import { errorMessage, isSudoRequired } from "@/lib/auth"
 
 export interface SoftwareUpdateStatus {
   version: string | null
-  channel: "release" | "nightly" | null
+  channel: "release" | "nightly" | "preview" | null
   method: "systemd" | "watchtower" | null
   pending: boolean
   requested_at: string | null
@@ -119,6 +119,8 @@ function VersionLine({ status }: { status: SoftwareUpdateStatus }) {
       Running <strong>{status.version}</strong>
       {status.channel === "release" && " on the release channel."}
       {status.channel === "nightly" && " on the nightly channel, which follows every push to main."}
+      {status.channel === "preview" &&
+        " on the preview channel, a pre-release build of a branch that is not merged yet."}
       {status.channel === null && "."}
     </p>
   )

@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT 1 FROM users WHERE username = ?) AS \"taken!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "taken!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b77111df7e8c02b0e2fab0684227c7fa08dc128727aff078017b7793afe6819e"
+}

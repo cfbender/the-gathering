@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO sheet_import_receipts (key, game_id) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "5d5e9f9fc111ff3fa16aaa1f4cf33fd588de0c9b17b33cb03c68ea55cf68a94c"
+}

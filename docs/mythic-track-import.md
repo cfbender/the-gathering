@@ -37,7 +37,7 @@ Mythic Track writes a partner pair as one commander named `A || B (Partners)`. T
 Imported decks and MVP cards arrive with card names but not always Scryfall IDs, so they have no art or colour identity until they are linked to the local card catalog. The link runs automatically after every import and after each catalog sync, matching names exactly (accents ignored) and falling back to the front face of double-faced cards. It fills missing commander, partner, and MVP card IDs, and fills an empty colour identity from the linked cards; existing colour identities are left alone. Run it again by hand from **Admin → Users → Link imported cards to the catalog** (also `POST /api/admin/catalog/backfill`) or with:
 
 ```sh
-mise exec -- mix the_gathering.catalog.backfill
+the-gathering catalog-backfill   # in the container: /app/bin/the-gathering catalog-backfill
 ```
 
 Names it cannot match are listed in the result so you can fix the deck by hand.

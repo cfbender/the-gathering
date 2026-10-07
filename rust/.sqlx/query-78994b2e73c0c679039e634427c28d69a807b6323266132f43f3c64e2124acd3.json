@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT key AS \"key!\", game_id FROM sheet_import_receipts",
+  "describe": {
+    "columns": [
+      {
+        "name": "key!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sheet_import_receipts",
+            "name": "key"
+          }
+        }
+      },
+      {
+        "name": "game_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "sheet_import_receipts",
+            "name": "game_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "78994b2e73c0c679039e634427c28d69a807b6323266132f43f3c64e2124acd3"
+}

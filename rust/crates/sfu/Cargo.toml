@@ -1,0 +1,25 @@
+[package]
+name = "the-gathering-sfu"
+description = "The webcam table's selective forwarding unit: one WebRTC connection per seat, simulcast layer selection, and signaling events."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+fastrand = "2"
+futures-util = "0.3"
+hmac = "0.13"
+md-5 = "0.11"
+sha1 = "0.11"
+if-addrs = "0.15"
+str0m = { version = "0.24.1", default-features = false, features = ["rust-crypto"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+
+[lints]
+workspace = true

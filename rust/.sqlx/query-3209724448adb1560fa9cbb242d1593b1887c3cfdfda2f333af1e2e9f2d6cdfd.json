@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE discord_scheduled_games SET maybe_pinged_at = ?, message_dirty = 1, updated_at = ?\n                 WHERE id = ? AND status = 'open' AND maybe_pinged_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "3209724448adb1560fa9cbb242d1593b1887c3cfdfda2f333af1e2e9f2d6cdfd"
+}

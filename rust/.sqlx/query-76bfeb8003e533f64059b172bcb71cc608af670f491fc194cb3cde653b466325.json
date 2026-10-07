@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO card_printings (id, oracle_id, name, set_code, set_name, collector_number, lang, image_uris, game_changer)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET oracle_id = excluded.oracle_id, name = excluded.name,\n           set_code = excluded.set_code, set_name = excluded.set_name, collector_number = excluded.collector_number,\n           lang = excluded.lang, image_uris = excluded.image_uris, game_changer = excluded.game_changer",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "76bfeb8003e533f64059b172bcb71cc608af670f491fc194cb3cde653b466325"
+}

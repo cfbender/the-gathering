@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM webcam_table_sessions WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "59b100b0b1ffbc320a7dd2fb6b9d3c1559dd34bb64ab829012e83ac5011ef2a5"
+}

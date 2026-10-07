@@ -24,8 +24,8 @@
 #   SSH_KEYS          public keys to authorize for root (the PVE host's /root/.ssh/authorized_keys)
 #   PASSWORD          root password; leave empty for automatic root login on the Proxmox web
 #                     console (plus SSH keys and `pct enter`)
-#   VERSION           release tag to install, e.g. v0.1.0, or nightly for the newest build of main
-#                     (latest GitHub release)
+#   VERSION           release tag to install, e.g. v0.1.0, nightly for the newest build of main,
+#                     or preview for the newest pre-release build of a branch (latest GitHub release)
 #
 # When run from a terminal the script asks for these; set them to skip the questions:
 #
@@ -35,13 +35,16 @@
 #   AUTO_UPDATE       cron schedule for automatic updates, or "off" (0 4 * * *: daily at 04:00)
 #
 # Inside the container:
-#   /opt/the-gathering/releases/<tag>   Elixir releases from GitHub; `current` points at the live one
+#   /opt/the-gathering/releases/<tag>   releases from GitHub (the Rust server and the built web app);
+#                                       `current` points at the live one
 #   /etc/the-gathering.env              settings (copied from .env.example, SECRET_KEY_BASE generated)
 #   /var/lib/the-gathering              DATA_DIR: SQLite database, recognizer bundles, image cache
 #   the-gathering.service               systemd unit running bin/the_gathering as user the-gathering
 #   /usr/local/bin/update               `update [tag]` installs the latest (or given) release, like
 #                                       the community-scripts helpers: it runs the current copy of
 #                                       this script from GitHub, so updater fixes reach old containers
+#                                       (from main, or from the preview tag while a preview build is
+#                                       installed, so the script that knows the channel updates it)
 #   /etc/cron.d/the-gathering-update    runs `update` on the AUTO_UPDATE schedule (absent when off)
 #   the-gathering-update.path           runs `update` when the app creates
 #                                       /var/lib/the-gathering/update-request, which is what the
@@ -57,13 +60,17 @@
 #                                                         if that is what the container runs) and restart
 #   bash the-gathering.sh update <CTID> v0.2.0            install a specific release
 #   bash the-gathering.sh update <CTID> nightly           follow the newest build of main from now on
+#   bash the-gathering.sh update <CTID> preview           follow the preview pre-release (a branch build
+#                                                         published by release.yml's manual run) from now
+#                                                         on; vX.Y.Z or nightly leaves it again
 #   bash the-gathering.sh auto-update <CTID> '0 3 * * 0'  change the automatic update schedule
 #   bash the-gathering.sh auto-update <CTID> off          disable automatic updates
 set -euo pipefail
 
 APP="The Gathering"
 REPO="cfbender/the-gathering"
-SCRIPT_URL="https://raw.githubusercontent.com/${REPO}/main/deploy/proxmox/the-gathering.sh"
+# Release tags this script installs: vX.Y.Z, or the rolling nightly (main) and preview (a branch).
+TAG_PATTERN='^(nightly$|preview$|v[0-9]+\.[0-9]+\.[0-9]+)'
 APP_DIR="/opt/the-gathering"
 DATA_DIR="/var/lib/the-gathering"
 ENV_FILE="/etc/the-gathering.env"
@@ -73,6 +80,7 @@ UNIT_FILE="/etc/systemd/system/${SERVICE}.service"
 CRON_FILE="/etc/cron.d/${SERVICE}-update"
 REQUEST_FILE="${DATA_DIR}/update-request"
 HOOK_DROPIN="/etc/systemd/system/${SERVICE}.service.d/self-update.conf"
+NETWORK_DROPIN="/etc/systemd/system/${SERVICE}.service.d/wait-for-ipv4.conf"
 AUTO_UPDATE_DEFAULT="0 4 * * *"
 
 CT_HOSTNAME="${CT_HOSTNAME:-the-gathering}"
@@ -151,7 +159,8 @@ latest_debian_template() {
     grep "^debian-13-standard_.*_${arch}\.tar" | sort -V | tail -n1
 }
 
-# Resolves VERSION to a release tag (vX.Y.Z or nightly), defaulting to the newest GitHub release.
+# Resolves VERSION to a release tag (vX.Y.Z, nightly, or preview), defaulting to the newest GitHub
+# release.
 resolve_version() {
   if [[ -n "$VERSION" ]]; then
     printf '%s\n' "$VERSION"
@@ -270,18 +279,24 @@ pin_dhcp_ip() {
 #                                               tells the app which file to create
 push_helpers() {
   local ctid="$1"
+  push_network_wait "$ctid"
   push_update_hook "$ctid"
   put_file "$ctid" /usr/local/bin/update 0755 <<EOF
 #!/usr/bin/env bash
 # Updates ${APP} in this container (usage: update [tag]). Runs the current
-# deploy/proxmox/the-gathering.sh from GitHub so the updater itself stays current.
+# deploy/proxmox/the-gathering.sh from GitHub so the updater itself stays current: main's copy,
+# or the copy at the preview tag while a preview build is installed (main's may predate the
+# preview channel and would fall back to the latest release).
 set -euo pipefail
-script="\$(curl -fsSL ${SCRIPT_URL})"
+ref=main
+if grep -qs '^preview' ${APP_DIR}/VERSION; then ref=preview; fi
+script="\$(curl -fsSL "https://raw.githubusercontent.com/${REPO}/\${ref}/deploy/proxmox/the-gathering.sh")"
 exec bash -c "\$script" the-gathering.sh update "\$@"
 EOF
   put_file "$ctid" /usr/local/bin/the-gathering-install 0755 <<EOF
 #!/usr/bin/env bash
-# Usage: the-gathering-install <tag>   (a vX.Y.Z release tag, or nightly for the latest main build)
+# Usage: the-gathering-install <tag>   (a vX.Y.Z release tag, nightly for the latest main build, or
+# preview for the latest branch pre-release)
 set -euo pipefail
 tag="\${1:?usage: the-gathering-install <tag>}"
 archive="the_gathering-\${tag}-linux-amd64.tar.gz"
@@ -290,12 +305,12 @@ base="https://github.com/${REPO}/releases/download/\${tag}"
 tmp="\$(mktemp -d)"
 trap 'rm -rf "\$tmp"' EXIT
 curl -fsSL "\${base}/\${archive}.sha256" -o "\${tmp}/\${archive}.sha256"
-# The nightly tag is republished for every push to main, so its builds are told apart by
-# checksum; VERSION then reads nightly-<checksum prefix>, which is how \`update\` knows to
-# keep following nightly.
-if [ "\$tag" = nightly ]; then
+# The nightly and preview tags are republished for every build, so their builds are told apart by
+# checksum; VERSION then reads nightly-<checksum prefix> or preview-<checksum prefix>, which is
+# how \`update\` knows to keep following that channel.
+if [ "\$tag" = nightly ] || [ "\$tag" = preview ]; then
   sum="\$(awk '{print \$1}' "\${tmp}/\${archive}.sha256")"
-  version="nightly-\${sum:0:12}"
+  version="\${tag}-\${sum:0:12}"
 else
   version="\$tag"
 fi
@@ -324,6 +339,26 @@ if systemctl is-enabled -q ${SERVICE} 2>/dev/null; then
   systemctl restart ${SERVICE}
 fi
 echo "installed \${tag}"
+EOF
+}
+
+# Inside an LXC container network-online.target can be reached before DHCP has assigned the
+# address, so the service waits (up to 30 s) for a global IPv4 address before starting. The
+# server gathers webcam media addresses for every room it creates, so a late address is picked
+# up by the next room anyway; this only spares the first rooms after a boot. Written on install
+# and on every update; push_update_hook's daemon-reload applies it.
+push_network_wait() {
+  local ctid="$1"
+  in_ct "$ctid" "mkdir -p $(dirname "$NETWORK_DROPIN")"
+  put_file "$ctid" "$NETWORK_DROPIN" 0644 <<'EOF'
+# Written by deploy/proxmox/the-gathering.sh: wait for DHCP before starting, so webcam rooms
+# can announce the container's address from the first one on.
+[Unit]
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=-/bin/sh -c 'command -v ip >/dev/null || exit 0; timeout 30 sh -c "until ip -4 -o addr show scope global | grep -q inet; do sleep 1; done" || echo "no global IPv4 address after 30s; starting anyway" >&2'
 EOF
 }
 
@@ -457,17 +492,16 @@ create() {
   push_helpers "$ctid"
   local setup
   setup="$(mktemp)"
-  # Runtime libraries match the Dockerfile runner image: OpenSSL/ncurses for ERTS,
-  # libstdc++ and libsctp for NIFs, rsvg-convert + DejaVu for game summary images.
-  # cron runs the automatic updates.
+  # The server needs only glibc; DejaVu is the font for game summary images, iproute2 lets the
+  # service wait for its IPv4 address (push_network_wait), and cron runs the automatic updates.
   cat >"$setup" <<EOF
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 # pct exec inherits the host's LANG, which the template has not generated; use the built-in locale.
 export LC_ALL=C.UTF-8 LANG=C.UTF-8
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates openssl rsync openssh-server cron \\
-  libstdc++6 libssl3t64 libncurses6 libsctp1 librsvg2-bin fonts-dejavu-core >/dev/null
+apt-get install -y -qq curl ca-certificates openssl rsync openssh-server cron iproute2 \\
+  fonts-dejavu-core >/dev/null
 
 if [ "${AUTOLOGIN}" = true ]; then
   # No root password was set, so log root in automatically on the Proxmox web console
@@ -512,7 +546,7 @@ EnvironmentFile=${ENV_FILE}
 WorkingDirectory=${APP_DIR}/current
 # Paths are fixed here, after the env file, so a settings file copied from a Docker install
 # (DATA_DIR=/data, DATABASE_PATH=/data/..., PORT=...) cannot point the service elsewhere.
-ExecStart=/usr/bin/env PHX_SERVER=true PORT=4000 DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp LANG=C.UTF-8 LC_ALL=C.UTF-8 ${APP_DIR}/current/bin/the_gathering start
+ExecStart=/usr/bin/env THE_GATHERING_ENV=prod PORT=4000 DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db LANG=C.UTF-8 LC_ALL=C.UTF-8 ${APP_DIR}/current/bin/the_gathering start
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -538,9 +572,9 @@ EOF
     in_ct "$ctid" "set -a; . ${ENV_FILE}; set +a; \
       THE_GATHERING_ADMIN_USERNAME=$(printf %q "$ADMIN_USERNAME") \
       THE_GATHERING_ADMIN_PASSWORD=$(printf %q "$ADMIN_PASSWORD") \
-      DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp \
+      DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db \
       setpriv --reuid=${APP_USER} --regid=${APP_USER} --init-groups \
-      ${APP_DIR}/current/bin/the_gathering eval 'TheGathering.Release.bootstrap_admin()'"
+      ${APP_DIR}/current/bin/the_gathering bootstrap-admin"
   fi
 
   in_ct "$ctid" "systemctl start ${SERVICE}"
@@ -595,19 +629,25 @@ target_container() {
   fi
 }
 
-# Prints "nightly" when the container runs a nightly build, so an untagged `update` follows the
-# installed channel instead of dropping back to the newest tagged release.
+# Prints "nightly" or "preview" when the container runs a build of that rolling channel, so an
+# untagged `update` (the cron job and the admin UI's button) follows the installed channel
+# instead of dropping back to the newest tagged release.
 installed_channel() {
-  if in_ct "$1" "grep -qs '^nightly' ${APP_DIR}/VERSION"; then echo nightly; fi
+  local version
+  version="$(in_ct "$1" "cat ${APP_DIR}/VERSION 2>/dev/null" || true)"
+  case "$version" in
+  nightly*) echo nightly ;;
+  preview*) echo preview ;;
+  esac
 }
 
 update() {
   target_container "update <CTID> [tag]" "$@"
   VERSION="${ARGS[0]:-$VERSION}"
-  if [[ -n "$VERSION" && ! "$VERSION" =~ ^(nightly|v[0-9]+\.[0-9]+\.[0-9]+) ]]; then
+  if [[ -n "$VERSION" && ! "$VERSION" =~ $TAG_PATTERN ]]; then
     local hint=""
     [[ -n "$TARGET" ]] || hint="; inside the container run \`update [tag]\` without a CTID"
-    die "'$VERSION' is not a release tag (vX.Y.Z or nightly)$hint"
+    die "'$VERSION' is not a release tag (vX.Y.Z, nightly, or preview)$hint"
   fi
   [[ -n "$VERSION" ]] || VERSION="$(installed_channel "$TARGET")"
   local tag
@@ -646,9 +686,9 @@ bootstrap_admin() {
   in_ct "$ctid" "set -a; . ${ENV_FILE}; set +a; \
     THE_GATHERING_ADMIN_USERNAME=$(printf %q "$ADMIN_USERNAME") \
     THE_GATHERING_ADMIN_PASSWORD=$(printf %q "$ADMIN_PASSWORD") \
-    DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db RELEASE_TMP=${DATA_DIR}/tmp \
+    DATA_DIR=${DATA_DIR} DATABASE_PATH=${DATA_DIR}/the_gathering.db \
     setpriv --reuid=${APP_USER} --regid=${APP_USER} --init-groups \
-    ${APP_DIR}/current/bin/the_gathering eval 'TheGathering.Release.bootstrap_admin()'"
+    ${APP_DIR}/current/bin/the_gathering bootstrap-admin"
   in_ct "$ctid" "systemctl start ${SERVICE}"
   ok "administrator $ADMIN_USERNAME is ready in container $ctid"
 }
@@ -660,7 +700,8 @@ usage: the-gathering.sh [create | update <CTID> [tag] | auto-update <CTID> <cron
   create                  create a Debian LXC running ${APP} (default; settings via env vars,
                           see the comment at the top of this script)
   update <CTID> [tag]     install the latest (or given) release in an existing container; the tag
-                          nightly switches it to the newest build of main, vX.Y.Z back to releases
+                          nightly switches it to the newest build of main, preview to the preview
+                          pre-release of a branch, vX.Y.Z back to releases
   auto-update <CTID> <cron expression | off>
                           schedule automatic updates (${AUTO_UPDATE_DEFAULT} by default) or turn them off
   bootstrap-admin <CTID>  create the first administrator from ADMIN_USERNAME/ADMIN_PASSWORD
@@ -668,6 +709,9 @@ usage: the-gathering.sh [create | update <CTID> [tag] | auto-update <CTID> <cron
 Inside the container, \`update [tag]\` is on PATH and update/auto-update take no <CTID>.
 EOF
 }
+
+# deploy/proxmox/test.sh sources this file for its functions without running a command.
+[[ -n "${THE_GATHERING_SH_LIBRARY:-}" ]] && return 0
 
 case "${1:-create}" in
 create) create ;;

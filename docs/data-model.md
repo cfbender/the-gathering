@@ -1,6 +1,6 @@
 # Game tracking data model
 
-The game tracker is owned by `TheGathering.Games`. One installation currently represents one playgroup; no table or query assumes a synthetic playgroup ID, so a future `playgroup_id` can be added to players/games and their uniqueness scopes.
+The game tracker is owned by the server's `games` module (`rust/crates/the-gathering/src/games`). One installation currently represents one playgroup; no table or query assumes a synthetic playgroup ID, so a future `playgroup_id` can be added to players/games and their uniqueness scopes.
 
 ## Tables
 
@@ -54,8 +54,8 @@ Users are soft-disabled rather than deleted. Both user foreign keys therefore us
 ## Context contract for importers
 
 CSV and Mythic Track parsers normalize source payloads into typed
-`TheGathering.Imports.Game` and `TheGathering.Imports.Seat` structs. `Imports.Preview`
-resolves the proposed player/deck plan without writing. `Imports.Commit` parses and
+game and seat structs (`imports/`). `imports/preview.rs`
+resolves the proposed player/deck plan without writing. `imports/commit.rs` parses and
 previews before opening a transaction, then re-resolves players, decks, and external game
 identities while writing the batch atomically. After commit, only the imported games are
 passed to `Games.LinkCatalogCards`; global historical repair remains an explicit bounded
@@ -77,7 +77,7 @@ catalog backfill operation.
   - Seats: `player_id` (with optional `player_result` of `win`/`loss`/`draw`), `winner_id`, `opponent_id` (another player at the table), `deck_id`, `winner_seat`.
   - Decks: `commander` (substring of commander or partner), `colors` / `winner_colors` (exact identity as WUBRG letters, `C` for colorless; unordered stored identities match), `color` / `winner_color` (identity includes one color).
   - Games: `win_condition`, `player_count`, `min_turns` / `max_turns`, `min_duration` / `max_duration`.
-  - Time: `date_from` / `date_to` (inclusive local days), `weekday` (0 = Sunday) and `hour` (0–23), all read in the `tz` IANA zone (default UTC). Weekday and hour are matched in Elixir because SQLite has no time zone data.
+  - Time: `date_from` / `date_to` (inclusive local days), `weekday` (0 = Sunday) and `hour` (0–23), all read in the `tz` IANA zone (default UTC). Weekday and hour are matched in the server, not in SQL, because SQLite has no time zone data.
   - Deck filters describe the `player_id` seat when a player is chosen, and winner filters all describe one winning seat, so "Alice with Golgari" means Alice piloted Golgari.
 - `get_game!/1` preloads each seat's player and deck.
 

@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT 1 FROM players WHERE lower(name) = ?) AS \"taken!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "taken!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3033407651990f3ea43ce0dc18d7cc503fa6a9b376d2a681b9078ea43caed3e2"
+}

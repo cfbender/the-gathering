@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT detailed_stats_from AS \"detailed_stats_from: crate::db::IsoDate\" FROM server_settings WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "detailed_stats_from: crate::db::IsoDate",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "server_settings",
+            "name": "detailed_stats_from"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "2ed2066d11eb35e68e2fb300b9a1ed8153382ab6d9f369b3cdc7f048d3ee2f8d"
+}

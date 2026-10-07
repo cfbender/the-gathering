@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT rulings, fetched_at AS \"fetched_at: UtcDateTime\" FROM card_rulings_cache WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "rulings",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_rulings_cache",
+            "name": "rulings"
+          }
+        }
+      },
+      {
+        "name": "fetched_at: UtcDateTime",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_rulings_cache",
+            "name": "fetched_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "523d31208a468e114fc5f11ce333cfbfe1a9f0805b71da5971228b3c2f821588"
+}

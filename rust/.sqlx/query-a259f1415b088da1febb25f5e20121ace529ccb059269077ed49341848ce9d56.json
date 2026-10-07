@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE games SET created_by_user_id = NULL WHERE created_by_user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "a259f1415b088da1febb25f5e20121ace529ccb059269077ed49341848ce9d56"
+}

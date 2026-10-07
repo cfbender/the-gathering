@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", name, commander_name, partner_name, partner_card_id, color_identity,\n                  commander_printing_id, partner_printing_id\n           FROM decks WHERE id > ? AND commander_card_id IS NULL ORDER BY id LIMIT ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "commander_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_name"
+          }
+        }
+      },
+      {
+        "name": "partner_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_name"
+          }
+        }
+      },
+      {
+        "name": "partner_card_id",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_card_id"
+          }
+        }
+      },
+      {
+        "name": "color_identity",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "color_identity"
+          }
+        }
+      },
+      {
+        "name": "commander_printing_id",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_printing_id"
+          }
+        }
+      },
+      {
+        "name": "partner_printing_id",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_printing_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "92c39e8d14d2f8698774ebbe2800c495633c50c80ca7e47372caf5f8c09dedc2"
+}

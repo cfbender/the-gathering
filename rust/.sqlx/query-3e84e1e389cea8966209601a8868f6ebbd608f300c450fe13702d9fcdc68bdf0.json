@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT commander_card_id, commander_name, partner_card_id, partner_name FROM decks\n         WHERE commander_card_id = ?1 OR partner_card_id = ?1 OR lower(commander_name) = ?2 OR lower(partner_name) = ?2",
+  "describe": {
+    "columns": [
+      {
+        "name": "commander_card_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_card_id"
+          }
+        }
+      },
+      {
+        "name": "commander_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_name"
+          }
+        }
+      },
+      {
+        "name": "partner_card_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_card_id"
+          }
+        }
+      },
+      {
+        "name": "partner_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "3e84e1e389cea8966209601a8868f6ebbd608f300c450fe13702d9fcdc68bdf0"
+}

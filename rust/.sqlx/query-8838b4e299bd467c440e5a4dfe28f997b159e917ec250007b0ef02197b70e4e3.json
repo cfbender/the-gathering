@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: i64\" FROM discord_scheduled_games\n           WHERE id > ? AND message_id IS NOT NULL AND (message_dirty OR (status = 'open' AND start_at <= ?))\n           ORDER BY id LIMIT 100",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "discord_scheduled_games",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8838b4e299bd467c440e5a4dfe28f997b159e917ec250007b0ef02197b70e4e3"
+}

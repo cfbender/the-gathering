@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT disabled_at IS NOT NULL AS \"disabled!: bool\" FROM users WHERE discord_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "disabled!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b69a4aff23ab7ce56f7156b5a9f35433fd065b47fd5fd8a875c11b5545c1902c"
+}

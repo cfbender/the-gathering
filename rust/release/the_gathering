@@ -1,0 +1,21 @@
+#!/bin/sh
+# Compatibility launcher for the release layout earlier versions shipped
+# (`the_gathering/bin/the_gathering start | eval ...`), so existing installs, the Proxmox
+# helper, and the container entrypoint keep working with the Rust server.
+set -eu
+root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+export PRIV_DIR="${PRIV_DIR:-$root/priv}"
+server="$root/bin/the-gathering"
+
+case "${1:-start}" in
+  start | foreground | daemon) exec "$server" serve ;;
+  eval)
+    case "${2:-}" in
+      *bootstrap_admin*) exec "$server" bootstrap-admin ;;
+      *) echo "unsupported eval expression: ${2:-}" >&2; exit 1 ;;
+    esac
+    ;;
+  migrate) exec "$server" migrate ;;
+  version) cat "$PRIV_DIR/VERSION" 2>/dev/null || echo dev ;;
+  *) exec "$server" "$@" ;;
+esac

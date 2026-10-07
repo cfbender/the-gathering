@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM game_players WHERE game_id = ? AND player_id NOT IN (SELECT value FROM json_each(?))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "1b3d76abed219f23785d0f084e5e611745c3afd55b6fd41377235dc44bf36a73"
+}

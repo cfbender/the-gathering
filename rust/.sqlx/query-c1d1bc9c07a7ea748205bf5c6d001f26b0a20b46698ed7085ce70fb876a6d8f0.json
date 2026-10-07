@@ -1,0 +1,458 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT s.id AS \"id!\", s.game_id, s.player_id, s.deck_id, s.seat, s.result AS \"result: GameResult\",\n                  s.kills, s.eliminated_turn, s.eliminated_by_player_id, s.mvp_card_id, s.mvp_card_name, s.notes,\n                  s.inserted_at AS \"inserted_at: UtcDateTime\", s.updated_at AS \"updated_at: UtcDateTime\",\n                  p.name AS player_name, p.user_id AS player_user_id, p.discord_id AS player_discord_id,\n                  p.archived_at AS \"player_archived_at: UtcDateTime\",\n                  p.inserted_at AS \"player_inserted_at: UtcDateTime\", p.updated_at AS \"player_updated_at: UtcDateTime\",\n                  d.id AS \"d_id?: i64\", d.player_id AS \"d_player_id?: i64\", d.name AS \"d_name?: String\",\n                  d.commander_card_id AS \"d_commander_card_id?: String\", d.commander_name AS \"d_commander_name?: String\",\n                  d.commander_printing_id AS \"d_commander_printing_id?: String\",\n                  d.partner_card_id AS \"d_partner_card_id?: String\", d.partner_name AS \"d_partner_name?: String\",\n                  d.partner_printing_id AS \"d_partner_printing_id?: String\",\n                  d.color_identity AS \"d_color_identity?: String\", d.decklist_url AS \"d_decklist_url?: String\",\n                  d.decklist_source AS \"d_decklist_source?: DecklistSource\",\n                  d.archived_at AS \"d_archived_at?: UtcDateTime\", d.skip_count AS \"d_skip_count?: i64\",\n                  d.included_for_play AS \"d_included_for_play?: bool\",\n                  d.inserted_at AS \"d_inserted_at?: UtcDateTime\", d.updated_at AS \"d_updated_at?: UtcDateTime\"\n           FROM game_players s\n           JOIN players p ON p.id = s.player_id\n           LEFT JOIN decks d ON d.id = s.deck_id\n           WHERE s.game_id IN (SELECT value FROM json_each(?))\n           ORDER BY s.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "game_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "game_id"
+          }
+        }
+      },
+      {
+        "name": "player_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "player_id"
+          }
+        }
+      },
+      {
+        "name": "deck_id",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "deck_id"
+          }
+        }
+      },
+      {
+        "name": "seat",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "seat"
+          }
+        }
+      },
+      {
+        "name": "result: GameResult",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "result"
+          }
+        }
+      },
+      {
+        "name": "kills",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "kills"
+          }
+        }
+      },
+      {
+        "name": "eliminated_turn",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "eliminated_turn"
+          }
+        }
+      },
+      {
+        "name": "eliminated_by_player_id",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "eliminated_by_player_id"
+          }
+        }
+      },
+      {
+        "name": "mvp_card_id",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "mvp_card_id"
+          }
+        }
+      },
+      {
+        "name": "mvp_card_name",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "mvp_card_name"
+          }
+        }
+      },
+      {
+        "name": "notes",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "name": "inserted_at: UtcDateTime",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "inserted_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: UtcDateTime",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "name": "player_name",
+        "ordinal": 14,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "player_user_id",
+        "ordinal": 15,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "player_discord_id",
+        "ordinal": 16,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "discord_id"
+          }
+        }
+      },
+      {
+        "name": "player_archived_at: UtcDateTime",
+        "ordinal": 17,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "archived_at"
+          }
+        }
+      },
+      {
+        "name": "player_inserted_at: UtcDateTime",
+        "ordinal": 18,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "inserted_at"
+          }
+        }
+      },
+      {
+        "name": "player_updated_at: UtcDateTime",
+        "ordinal": 19,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "name": "d_id?: i64",
+        "ordinal": 20,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "d_player_id?: i64",
+        "ordinal": 21,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "player_id"
+          }
+        }
+      },
+      {
+        "name": "d_name?: String",
+        "ordinal": 22,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "d_commander_card_id?: String",
+        "ordinal": 23,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_card_id"
+          }
+        }
+      },
+      {
+        "name": "d_commander_name?: String",
+        "ordinal": 24,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_name"
+          }
+        }
+      },
+      {
+        "name": "d_commander_printing_id?: String",
+        "ordinal": 25,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_printing_id"
+          }
+        }
+      },
+      {
+        "name": "d_partner_card_id?: String",
+        "ordinal": 26,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_card_id"
+          }
+        }
+      },
+      {
+        "name": "d_partner_name?: String",
+        "ordinal": 27,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_name"
+          }
+        }
+      },
+      {
+        "name": "d_partner_printing_id?: String",
+        "ordinal": 28,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_printing_id"
+          }
+        }
+      },
+      {
+        "name": "d_color_identity?: String",
+        "ordinal": 29,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "color_identity"
+          }
+        }
+      },
+      {
+        "name": "d_decklist_url?: String",
+        "ordinal": 30,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "decklist_url"
+          }
+        }
+      },
+      {
+        "name": "d_decklist_source?: DecklistSource",
+        "ordinal": 31,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "decklist_source"
+          }
+        }
+      },
+      {
+        "name": "d_archived_at?: UtcDateTime",
+        "ordinal": 32,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "archived_at"
+          }
+        }
+      },
+      {
+        "name": "d_skip_count?: i64",
+        "ordinal": 33,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "skip_count"
+          }
+        }
+      },
+      {
+        "name": "d_included_for_play?: bool",
+        "ordinal": 34,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "included_for_play"
+          }
+        }
+      },
+      {
+        "name": "d_inserted_at?: UtcDateTime",
+        "ordinal": 35,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "inserted_at"
+          }
+        }
+      },
+      {
+        "name": "d_updated_at?: UtcDateTime",
+        "ordinal": 36,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "c1d1bc9c07a7ea748205bf5c6d001f26b0a20b46698ed7085ce70fb876a6d8f0"
+}

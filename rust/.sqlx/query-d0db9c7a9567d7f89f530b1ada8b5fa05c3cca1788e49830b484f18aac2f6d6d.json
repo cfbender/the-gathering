@@ -1,0 +1,42 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n             (SELECT json_group_array(json_array(id, played_at, duration_minutes, turns, notes, source, external_id,\n                                                 created_by_user_id, inserted_at, updated_at, portable_id,\n                                                 win_condition, format))\n              FROM (SELECT * FROM games ORDER BY id)) AS \"games!: String\",\n             (SELECT json_group_array(json_array(id, game_id, player_id, deck_id, seat, result, eliminated_turn,\n                                                 eliminated_by_player_id, mvp_card_id, mvp_card_name, notes,\n                                                 inserted_at, updated_at, kills))\n              FROM (SELECT * FROM game_players ORDER BY id)) AS \"seats!: String\",\n             (SELECT json_group_array(json_array(id, name, user_id, discord_id, archived_at, inserted_at, updated_at))\n              FROM (SELECT * FROM players ORDER BY id)) AS \"players!: String\",\n             (SELECT json_group_array(json_array(id, player_id, name, commander_card_id, commander_name,\n                                                 partner_card_id, partner_name, color_identity, decklist_url,\n                                                 decklist_source, archived_at, inserted_at, updated_at, skip_count,\n                                                 included_for_play, commander_printing_id, partner_printing_id))\n              FROM (SELECT * FROM decks ORDER BY id)) AS \"decks!: String\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "games!: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "name": "seats!: String",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "name": "players!: String",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "name": "decks!: String",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "d0db9c7a9567d7f89f530b1ada8b5fa05c3cca1788e49830b484f18aac2f6d6d"
+}

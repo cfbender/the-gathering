@@ -23,8 +23,8 @@ advisory badges, not enforced attacks or alliances. Spectators see no restrictio
 is fixed after starting either new mode, including across reconnects.
 
 Recorded games store `format` (`commander`, `two_headed_giant`, or `five_star`), also selectable
-in the manual game form. Existing games and imports default to Commander. Run `mix ecto.migrate`
-when upgrading to apply the `add_format_to_games` migration. Room snapshot version 2 stores mode
+in the manual game form. Existing games and imports default to Commander (the `add_format_to_games` migration, applied
+at boot). Room snapshot version 2 stores mode
 and team life; version 1 snapshots continue loading as Commander.
 
 Card clicks assist the room rather than define its durable record. A click on any board fetches
@@ -39,12 +39,13 @@ only a seat's owner may choose its commander).
 
 ### A server-side SFU with simulcast
 
-Every browser holds one `RTCPeerConnection` to the server (`TheGathering.WebcamTables.Sfu`,
-built on `ex_webrtc`), not one to each other seat. Phoenix Channels carry authenticated presence
+Every browser holds one `RTCPeerConnection` to the server (the `the-gathering-sfu` crate in
+`rust/crates/sfu`, built on [str0m](https://github.com/algesten/str0m)), not one to each other
+seat. The table's channel (Phoenix Channels wire protocol) carries authenticated presence
 and the signaling for that single connection: the browser's first `sfu_offer` carries its camera
 and every later offer comes from the server (`sfu_offer` with a `tracks` map of mid → owner peer
 id) and is answered with `sfu_answer`; `sfu_candidate` trickles ICE in both directions.
-`Sfu.Room` is one GenServer per table owning one `ExWebRTC.PeerConnection` per seat; it adds a
+A room is one tokio task per table owning one str0m `Rtc` per seat; it adds a
 send-only track per other publisher (stream id = owner's peer id, so the browser can map a
 remote stream to its seat), and forwards RTP between them. If a seat's connection fails the room
 first re-offers with an ICE restart (new credentials and candidates, DTLS and tracks kept, so the
@@ -67,32 +68,24 @@ up to 270 px, `m` up to 540 px, and `h` above that (`sfu_layer {peer_id, layer}`
 the answer changes). A rail tile therefore costs a quarter-resolution decode while the pinned
 board stays sharp, and pinning another board switches within a keyframe.
 
-`Sfu.Subscription` is the pure per-viewer-per-publisher state: which layer is live, which is
-pending, and an `ExWebRTC.RTP.Munger` rewriting sequence numbers and timestamps so the viewer's
+`Subscription` (`subscription.rs`) is the pure per-viewer-per-publisher state: which layer is
+live, which is pending, and a munger (`munger.rs`) rewriting sequence numbers and timestamps so the viewer's
 decoder sees one continuous stream across switches. A switch waits for a keyframe of the new
 layer; the room asks the publisher for one with a PLI on that rid, rate-limited to one per
 300 ms per layer so several viewers switching at once do not make the browser spend its whole
 bitrate on keyframes. A viewer showing nothing yet adopts a keyframe of any layer rather than
 staying black while its wanted layer is paused under CPU pressure. Browsers also resend recent
-packets over RTX to probe bandwidth and `ex_webrtc` recovers those into the original packets
+packets over RTX to probe bandwidth and those are recovered into the original packets
 again, so the subscription keeps a 256-packet window of forwarded sequence numbers and drops the
 duplicates (forwarding one twice fails the viewer's SRTP replay check).
 
-Two `ex_webrtc` 0.17 gaps are worked around here. Its re-offers never carry `a=rid` /
-`a=simulcast` for a receiving transceiver, so after the second seat joined the browser silently
-dropped to a single layer; `Sfu.SimulcastSdp` captures those attributes from the browser's first
-offer and restores them in the copy of each server offer sent to the browser (the server keeps
-its own unaltered SDP because `set_local_description` rejects a changed one). And the server
-answers a browser offer that includes H.264 and VP8 with both; the browser ranks H.264 first via
-`setCodecPreferences` (`orderVideoCodecs`) for the reasons below, and the SFU forwards whatever
-codec each publisher ends up with, since every WebRTC browser decodes both.
-
-One cost is not worked around: `ex_webrtc` generates a fresh RSA-2048 DTLS certificate for every
-peer connection inside a regular (non-dirty) `ex_dtls` NIF, which blocks one BEAM scheduler for
-50–500 ms per join (`:erlang.system_monitor` `long_schedule` on `ExWebRTC.DTLSTransport.init/1`).
-On a four-core host a full table arriving at once stalls other work by that much; it is why
-`test/test_helper.exs` raises ExUnit's `assert_receive_timeout`. Fixing it needs an upstream
-option to supply a pre-generated certificate or a dirty-scheduler NIF.
+Server re-offers carry `a=rid` / `a=simulcast` for each receiving transceiver, restored from the
+browser's first offer (`simulcast_sdp.rs`), so the browser keeps sending three layers after
+later seats join. The server answers a browser offer that includes H.264 and VP8 with both; the
+browser ranks H.264 first via `setCodecPreferences` (`orderVideoCodecs`) for the reasons below,
+and the SFU forwards whatever codec each publisher ends up with, since every WebRTC browser
+decodes both. DTLS and SRTP use RustCrypto, so joins do not stall other tables while a
+certificate is generated. `rust/crates/sfu/README.md` lists the remaining design details.
 
 H.264 is the codec hardware encoders and decoders cover (VideoToolbox on macOS and iOS, Media
 Foundation on Windows, VA-API on Linux once Chrome's accelerated-video flags are on), and even in
@@ -101,7 +94,7 @@ software it is cheaper: in a three-seat 1080p/15 fps room in Chrome 154, each br
 (`about:webrtc` in Firefox) shows the result as the codec and `encoderImplementation` /
 `decoderImplementation` of each stream.
 
-Reveals are enforced server-side: `Sfu.reveal/3` limits a publisher to one viewer and the room
+Reveals are enforced server-side: `Sfu::reveal` limits a publisher to one viewer and the room
 stops forwarding to everyone else, so hidden video never leaves the server. The native crop RPC
 that used to ride each pair's data channel is a targeted channel event instead
 (`peer_message {to, message}` in, `peer_message {from, message}` out, capped at 256 KB, so the
@@ -110,21 +103,20 @@ own camera, and a viewer whose `<video>` already decodes the board at the owner'
 `camera_height` skips the RPC and crops its own frame. Spectators add a receive-only
 transceiver so the server has a connection to offer boards on without a camera.
 
-The room keeps one UDP socket per connected browser from `WEBRTC_SFU_PORT_RANGE` and announces
+Each room binds one UDP socket per interface address on the first free port in
+`WEBRTC_SFU_PORT_RANGE` and announces
 `WEBRTC_SFU_PUBLIC_IP` as its server-reflexive address when set, so a host that forwards that
 range needs no STUN of its own. `WEBRTC_SFU_RELAY_ONLY=true` instead makes the server connect
-out through Cloudflare TURN (`ice_transport_policy: :relay`) for hosts that cannot forward ports,
+out through Cloudflare TURN (relay-only ICE) for hosts that cannot forward ports,
 at the cost of every byte crossing the relay. `GET /api/webcam-table/config` tells the browser
 which (`sfu.transport`).
 
-Phoenix's own Channels documentation confirms that signaling is application-defined and that
-signed-token authentication belongs in `connect`; the authenticated config endpoint signs the
-existing tracked session token for the socket handshake. MDN documents SDP and ICE exchange
-through such a signaling service. References:
+Signaling is application-defined, and the socket authenticates on connect: the authenticated
+config endpoint signs the existing tracked session token for the socket handshake. MDN documents
+SDP and ICE exchange through such a signaling service. References:
 
-- <https://hexdocs.pm/phoenix/channels.html>
 - <https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling>
-- <https://github.com/elixir-webrtc/ex_webrtc>
+- <https://github.com/algesten/str0m>
 
 ### ICE, STUN, TURN, and proxies
 
@@ -157,7 +149,7 @@ relayed 1080p player in a three-hour game.
 
 The hosted alternative is Cloudflare Realtime TURN: set `CLOUDFLARE_TURN_KEY_ID` and
 `CLOUDFLARE_TURN_API_TOKEN` (create the key under Realtime → TURN in the Cloudflare dashboard) and
-`TheGathering.CloudflareTurn` exchanges that long-lived key for per-join credentials via
+`cloudflare_turn.rs` exchanges that long-lived key for per-join credentials via
 `POST https://rtc.live.cloudflare.com/v1/turn/keys/:id/credentials/generate-ice-servers`. The
 credentials expire after `CLOUDFLARE_TURN_TTL_SECONDS` (default six hours, longer than a game;
 refreshing mid-session would need `RTCPeerConnection.setConfiguration`). Cloudflare answers with
@@ -206,9 +198,9 @@ A timeout is a `load_failed`, so the same one-thread retry runs and the panel en
 
 Isolation is scoped to the table and needs three things to hold:
 
-- **The table document** (`GET /table/*`, before the SPA catch-all in `router.ex`) is served
+- **The table document** (`GET /table/*`, before the SPA catch-all in `web/mod.rs`) is served
   with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy:
-  require-corp` by `TheGatheringWeb.CrossOriginIsolation`. `require-corp`, not
+  require-corp` by `shell::cross_origin_isolation`. `require-corp`, not
   `credentialless`, because Safari/iOS lacks the latter. Nothing else is isolated: the rest of
   the app shows Discord avatars and other third-party images that COEP would block. The table
   loads nothing cross-origin (card images come through `/api/card-images`, captures are data
@@ -217,8 +209,8 @@ Isolation is scoped to the table and needs three things to hold:
 - **Worker scripts** must carry `Cross-Origin-Embedder-Policy: require-corp` too, or the
   browser refuses to start a dedicated worker inside the isolated document and reports only an
   `ErrorEvent` with an empty message ("worker crashed"). Vite's `server.headers` adds it in
-  development (to files Vite serves, not responses proxied from Phoenix) and the
-  `/assets/react` `Plug.Static` adds it in production. That covers the recognizer worker and the
+  development (to files Vite serves, not responses proxied from the server) and the
+  server's `/assets/react` static handler adds it in production. That covers the recognizer worker and the
   pthread workers onnxruntime spawns from the standalone `ort-wasm-simd-threaded.mjs`.
   Those assets are `immutable` for a year under content-hashed names, and the `.mjs` hash
   predates the header, so browsers that visited earlier kept a copy without COEP and Firefox
@@ -256,7 +248,7 @@ References:
 - <https://onnxruntime.ai/docs/tutorials/web/>
 - <https://onnxruntime.ai/docs/tutorials/web/ep-webgpu.html>
 
-Do not run inference in Phoenix: Ortex/Nx would make the application host the hot compute path,
+Do not run inference in the server: server-side ONNX would make the application host the hot compute path,
 complicate CPU portability, and upload imagery. A Python sidecar could remain in one container,
 but would add a second supervised runtime and duplicate the spike runtime in production.
 
@@ -345,7 +337,7 @@ in its assigns and presence and pushes `seat_reset` so the browser rehydrates it
 counters. If recording succeeds but the rematch does not, the form still closes (the game is saved)
 and the owner can retry with Rematch without recording.
 
-Rooms keep running after their last seat leaves. `TheGathering.WebcamTables.Pruner` runs every
+Rooms keep running after their last seat leaves. The pruner runs every
 minute: it closes rooms that have had no connections and no activity (joins, saved changes or
 disconnects) for 30 minutes, deleting their snapshots, and deletes snapshots that have expired.
 Snapshots expire seven days after their last write; running rooms refresh theirs hourly, so expiry
@@ -367,8 +359,7 @@ The first seated player owns table setup, timer and turn-count corrections; play
 own life/counter/commander controls. Any seated player can pass the turn.
 
 Join replies carry the authoritative seat, and `table_state` includes `seats`, `owner_id`,
-`monarch` and `cards`. Clients refresh the one-day socket token (encrypted with
-`Phoenix.Token.encrypt`, so page scripts cannot read the session token inside it) on connection
+`monarch` and `cards`. Clients refresh the one-day socket token (encrypted, so page scripts cannot read the session token inside it) on connection
 failure. Game state survives restarts: rooms reload their saved session on the next join.
 
 The server bounds untrusted input: `peer_id` must be a canonical UUID (clients use
@@ -376,10 +367,10 @@ The server bounds untrusted input: `peer_id` must be a canonical UUID (clients u
 `peer_message` at 256 KiB, and the websocket refuses frames over 384 KiB. Every channel event spends a token from a per-connection bucket
 (signals have their own, larger bucket) and replies `{reason: "rate limited"}` when it is empty;
 joins and TURN credential requests (`GET /api/webcam-table/config`) are limited per account.
-Limits live under `config :the_gathering, TheGatheringWeb.RateLimit`.
+Limits live in `rate_limit.rs` and `config.rs`.
 
 The Games page still finds open tables without the URL: `GET /api/webcam-table/rooms`
-(`TheGatheringWeb.WebcamTableRooms`) lists every running room, and every seated channel process
+(`web/channels/rooms.rs`) lists every running room, and every seated channel process
 also tracks itself on one lobby presence topic that supplies each room's connected players (join
 order, `full` at ten seats). `PlayActions` (`features/webcam-table/play-actions.tsx`) polls it
 every 15 s: with no open table the header shows **Play**; with one it shows **Join** naming the
@@ -616,7 +607,7 @@ event validates the request, generates the result on the server, stamps it with 
 seat's name/id and server time, then broadcasts to everyone. Results appear in a five-second
 overlay and in the Log. Clients cannot supply a result or impersonate the roller.
 
-The Log tab is owned by the room (`TheGathering.WebcamTables.Log`): the room process writes
+The Log tab is owned by the room (`webcam/log.rs`): the room task writes
 entries for joins and leaves, deck/life/camera/counter changes, eliminations, the monarch, seat
 order and rolls, keeps the newest 200 in the saved snapshot, and broadcasts each new or merged
 entry as `log_entry`. Every (re)join receives the whole log as `table_log`, so all seats see the
@@ -655,29 +646,27 @@ can still save or share what they saw; this feature cannot revoke frames already
 
 ## File and component structure
 
-- `TheGatheringWeb.UserSocket` issues and decrypts a short-lived encrypted token wrapping the tracked
-  cookie session.
-- `TheGatheringWeb.WebcamTableChannel` caps rooms at ten, carries SFU signaling and targeted
-  `peer_message`s,
-  merges `update_status`/`set_eliminated` into presence, validates `seat_order`/`timer`/`timer_sync`,
+- The socket (`GET /socket/websocket`, `web/api/webcam.rs`) issues and decrypts a short-lived
+  encrypted token wrapping the tracked cookie session; `web/channels/` is the channels server
+  (V2 JSON wire protocol, pubsub, and presence for room membership and seat status).
+- The `webcam_table:*` channel (`web/channels/webcam_table.rs`) caps rooms at ten, carries SFU
+  signaling and targeted `peer_message`s, merges `update_status`/`set_eliminated` into presence,
+  validates `seat_order`/`timer`/`timer_sync`,
   `start_game`/`turn_settings`/`pass_turn`/`unpass_turn`/`adjust_turn`, and generates
   and broadcasts validated `roll` results.
-- `TheGathering.WebcamTables` is the context API for admission and game state. Each room is a
-  `WebcamTables.Room` process (one per room, started on first join under
-  `WebcamTables.RoomSupervisor`, registered in `WebcamTables.Registry`) that loads its
-  `WebcamTables.Session` snapshot on start, saves every change before broadcasting it, and stops
-  when its last connection leaves. A crashing room only disconnects its own channels, which rejoin
-  from the saved snapshot. `WebcamTables.Pruner` deletes expired sessions hourly; running rooms
-  refresh their own expiry (covered by `webcam_table_channel_test.exs`).
-- `TheGathering.WebcamTables.Turns` owns pure turn advancement, elimination skipping, counts and
-  accumulated-time accounting, and `WebcamTables.Timer` the pause-aware game clock
-  (`test/the_gathering/webcam_tables/`).
-- `TheGatheringWeb.Presence` owns ephemeral room membership and seat status.
-- `WebcamTableConfigController` exposes authenticated ICE configuration and the SFU transport mode.
-- `TheGathering.WebcamTables.Sfu` (`Sfu.Room`, `Sfu.Subscription`, `Sfu.SimulcastSdp`) is the
-  media server: one room process per table, one `ExWebRTC.PeerConnection` per seat, per-viewer
-  layer selection and packet rewriting, and the simulcast SDP repair
-  (`test/the_gathering/webcam_tables/sfu/`).
+- `webcam/` holds admission and game state. Each room is a tokio task (`webcam/room.rs`, one
+  per room, started on first join) that loads its saved session (`webcam/session.rs`) on start,
+  saves every change before broadcasting it, and stops when its last connection leaves. A failing
+  room only disconnects its own channels, which rejoin from the saved snapshot. A pruner closes
+  idle rooms and deletes expired sessions; running rooms refresh their own expiry (covered by
+  `tests/integration/webcam_room_lifecycle.rs`).
+- `webcam/turns.rs` owns pure turn advancement, elimination skipping, counts and
+  accumulated-time accounting, and `webcam/timer.rs` the pause-aware game clock
+  (`tests/integration/webcam_tables_pure.rs`).
+- `GET /api/webcam-table/config` exposes authenticated ICE configuration and the SFU transport mode.
+- `rust/crates/sfu` is the media server: one room task per table, one str0m `Rtc` per seat,
+  per-viewer layer selection and packet rewriting, and the simulcast SDP repair (its unit tests
+  and `tests/e2e.rs`).
 - `features/webcam-table/use-sfu-connection.ts` owns the browser's one peer connection: simulcast
   publishing, remote streams keyed by owner, `watchTile`/`layerForHeight` layer requests, and the
   `peer_message` relay; `stream-tiles.ts` hands `watchTile` to `StreamVideo` through context.
@@ -705,7 +694,7 @@ can still save or share what they saw; this feature cannot revoke frames already
   sessions, warm-up, identify and search), `pipeline.ts` (pure port of Oracle's `cardid/bundle.py`:
   window resample, detector refine pass, upright vote, gallery search parsing; unit-tested in
   `pipeline.test.ts`), and `messages.ts` (worker protocol types).
-- `TheGathering.CardId` + `CardIdBundleController` serve the published bundle from
+- `card_id/` and `web/api/cardid.rs` serve the published bundle from
   `DATA_DIR/cardid/current` (`GET /api/cardid/bundle` for the manifest and file URLs,
   `GET /api/cardid/bundles/:version/:name` for the immutable files). `404` means no bundle is
   published and the UI falls back to deck suggestions.
@@ -747,7 +736,7 @@ render every participant in the shared order.
 ## Recognition
 
 The recognizer ships as a **bundle** exported and published from [Oracle](https://github.com/cfbender/oracle) (`cardid.export`,
-`cardid.publish`; see its README, "Shipping"). Phoenix serves whatever
+`cardid.publish`; see its README, "Shipping"). The server serves whatever
 `DATA_DIR/cardid/current` points at; nothing model-related is committed to this repository or
 baked into the container image, so a new bundle (new model, or the same model with a refreshed
 gallery after a set release: `mise run new-set` in Oracle) is a `publish` away and browsers pick it up on their next table
@@ -875,7 +864,7 @@ The card popup keeps **Wrong card?**, **Remove**, **Rulings**, and close togethe
 consistently sized toolbar. Clicking outside the visible content, including the space below
 the rules text, closes it. Right-click its content or use **Rulings** to view Scryfall rulings;
 the popup is the only place rulings are offered (tray entries just open the popup). The authenticated
-`GET /api/card-printings/:id/rulings` endpoint fetches `/cards/:id/rulings` with Req and caches
+`GET /api/card-printings/:id/rulings` endpoint fetches `/cards/:id/rulings` and caches
 successful results (including an empty list) in `card_rulings_cache` for one day. Errors are
 not cached, and the dialog offers retry. This cache is independent of printing/catalog refreshes.
 
@@ -949,7 +938,7 @@ server accepts `detector` or `manual`, and `manual` only with a quad). The small
 localStorage; the camera owner's preference also travels with each crop. The save note only
 appears after server acknowledgement and failures never interrupt identification.
 
-Phoenix stores the private, bounded samples under `DATA_DIR/cardid/corrections`. The offline
+The server stores the private, bounded samples under `DATA_DIR/cardid/corrections`. The offline
 desktop importer creates the card warp and merges captures into Oracle's `data/real`; the NUC never
 trains or runs Python. Admin-only export, filesystem import, manual training and optional
 guarded nightly runs are documented in Oracle's README, **Training from in-app corrections**.

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO card_printings (id, oracle_id, name, set_code, set_name, collector_number, lang, image_uris,\n                                     game_changer)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "28fd894e325389a48d8040151714b0ee99789b2535ccb34a78699f8f43c03a8d"
+}

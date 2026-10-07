@@ -1,0 +1,278 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", oracle_id, name, normalized_name, mana_cost, cmc AS \"cmc: f64\", type_line,\n                oracle_text, colors, color_identity, image_uris, set_code, collector_number,\n                released_at AS \"released_at: IsoDate\", layout, rarity, game_changer AS \"game_changer: bool\",\n                commander_legal AS \"commander_legal: bool\", can_be_commander AS \"can_be_commander: bool\",\n                commander_pairing, inserted_at AS \"inserted_at: UtcDateTime\", updated_at AS \"updated_at: UtcDateTime\"\n               FROM cards WHERE replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\\'\n            AND (? IS NULL OR can_be_commander = ?)\n            AND (? = 0 OR can_be_commander OR commander_pairing IS NOT NULL)\n          ORDER BY CASE\n              WHEN replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') = ? THEN 0\n              WHEN replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\\' THEN 1\n              WHEN replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\\' THEN 2\n              ELSE 3 END,\n            normalized_name, id\n          LIMIT ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "oracle_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "oracle_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "normalized_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "normalized_name"
+          }
+        }
+      },
+      {
+        "name": "mana_cost",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "mana_cost"
+          }
+        }
+      },
+      {
+        "name": "cmc: f64",
+        "ordinal": 5,
+        "type_info": "Null",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "cmc"
+          }
+        }
+      },
+      {
+        "name": "type_line",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "type_line"
+          }
+        }
+      },
+      {
+        "name": "oracle_text",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "oracle_text"
+          }
+        }
+      },
+      {
+        "name": "colors",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "colors"
+          }
+        }
+      },
+      {
+        "name": "color_identity",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "color_identity"
+          }
+        }
+      },
+      {
+        "name": "image_uris",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "image_uris"
+          }
+        }
+      },
+      {
+        "name": "set_code",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "set_code"
+          }
+        }
+      },
+      {
+        "name": "collector_number",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "collector_number"
+          }
+        }
+      },
+      {
+        "name": "released_at: IsoDate",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "released_at"
+          }
+        }
+      },
+      {
+        "name": "layout",
+        "ordinal": 14,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "layout"
+          }
+        }
+      },
+      {
+        "name": "rarity",
+        "ordinal": 15,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "rarity"
+          }
+        }
+      },
+      {
+        "name": "game_changer: bool",
+        "ordinal": 16,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "game_changer"
+          }
+        }
+      },
+      {
+        "name": "commander_legal: bool",
+        "ordinal": 17,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "commander_legal"
+          }
+        }
+      },
+      {
+        "name": "can_be_commander: bool",
+        "ordinal": 18,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "can_be_commander"
+          }
+        }
+      },
+      {
+        "name": "commander_pairing",
+        "ordinal": 19,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "commander_pairing"
+          }
+        }
+      },
+      {
+        "name": "inserted_at: UtcDateTime",
+        "ordinal": 20,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "inserted_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: UtcDateTime",
+        "ordinal": 21,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cards",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "6f332f86c2c269966595c021761291b859b3beee33740c6255059e556e3ea815"
+}

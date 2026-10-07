@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO cards (id, oracle_id, name, normalized_name, mana_cost, cmc, type_line, oracle_text, colors,\n                            color_identity, image_uris, set_code, collector_number, released_at, layout, rarity,\n                            game_changer, commander_legal, can_be_commander, commander_pairing, inserted_at, updated_at)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 22
+    },
+    "nullable": []
+  },
+  "hash": "352c5bdd862913af065c11294649f2b2073d803837e47098d9c37f41ff6040d3"
+}

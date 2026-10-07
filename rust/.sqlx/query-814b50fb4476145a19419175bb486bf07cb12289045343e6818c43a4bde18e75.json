@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", oracle_id, name, set_code, set_name, collector_number, lang, image_uris,\n                  game_changer AS \"game_changer: bool\" FROM card_printings WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "oracle_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "oracle_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "set_code",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "set_code"
+          }
+        }
+      },
+      {
+        "name": "set_name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "set_name"
+          }
+        }
+      },
+      {
+        "name": "collector_number",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "collector_number"
+          }
+        }
+      },
+      {
+        "name": "lang",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "lang"
+          }
+        }
+      },
+      {
+        "name": "image_uris",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "image_uris"
+          }
+        }
+      },
+      {
+        "name": "game_changer: bool",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "game_changer"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "814b50fb4476145a19419175bb486bf07cb12289045343e6818c43a4bde18e75"
+}

@@ -1,0 +1,105 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", name, user_id, discord_id, archived_at AS \"archived_at: crate::db::UtcDateTime\",\n                NULL AS \"avatar_url?: String\",\n                inserted_at AS \"inserted_at: crate::db::UtcDateTime\", updated_at AS \"updated_at: crate::db::UtcDateTime\"\n               FROM players WHERE user_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "discord_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "discord_id"
+          }
+        }
+      },
+      {
+        "name": "archived_at: crate::db::UtcDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "archived_at"
+          }
+        }
+      },
+      {
+        "name": "avatar_url?: String",
+        "ordinal": 5,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "inserted_at: crate::db::UtcDateTime",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "inserted_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: crate::db::UtcDateTime",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "e77572488a1c0ec31803f56f89da0cbcecd113a95a95794de6b5b0a619754201"
+}

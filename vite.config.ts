@@ -4,12 +4,12 @@ import react from "@vitejs/plugin-react"
 import { fileURLToPath } from "node:url"
 import { defineConfig } from "vite-plus"
 
-const phoenixOrigin = `http://127.0.0.1:${process.env.PORT || "4000"}`
+const backendOrigin = `http://127.0.0.1:${process.env.PORT || "4000"}`
 // VITE_PORT moves the dev server off 5173, for example beside another app's in the same orb.
 const vitePort = Number(process.env.VITE_PORT || 5173)
 
 // Paths the Vite dev server owns. Everything else (the SPA shell, /api, static
-// files under priv/static) is proxied to Phoenix so one origin serves it all.
+// files under priv/static) is proxied to the backend so one origin serves it all.
 const vitePathPrefixes = ["/assets/react/", "/@", "/node_modules/", "/__vite"]
 
 export default defineConfig({
@@ -21,13 +21,12 @@ export default defineConfig({
       "aube-lock.yaml",
       "assets/react/src/routeTree.gen.ts",
       "priv/static/**",
-      "deps/**",
-      "_build/**",
+      "rust/**",
       "*.md",
     ],
   },
   lint: {
-    ignorePatterns: ["assets/react/src/routeTree.gen.ts", "priv/static/**", "deps/**", "_build/**"],
+    ignorePatterns: ["assets/react/src/routeTree.gen.ts", "priv/static/**", "rust/**"],
     options: { typeAware: true, typeCheck: true },
   },
   test: {
@@ -68,15 +67,15 @@ export default defineConfig({
     allowedHosts: [".onamp.dev"],
     // Dedicated workers (the card recognizer and onnxruntime's pthreads) only start inside the
     // cross-origin-isolated webcam table when their scripts carry COEP too. Applies to files
-    // Vite serves, not to responses proxied from Phoenix.
+    // Vite serves, not to responses proxied from the backend.
     headers: { "Cross-Origin-Embedder-Policy": "require-corp" },
     proxy: {
       "/socket": {
-        target: phoenixOrigin,
+        target: backendOrigin,
         ws: true,
       },
       "^/.*": {
-        target: phoenixOrigin,
+        target: backendOrigin,
         headers: { "x-the-gathering-vite-proxy": "1" },
         bypass(req) {
           const url = req.url ?? "/"

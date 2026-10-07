@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT s.game_id, s.result AS \"result: GameResult\", g.played_at AS \"played_at: UtcDateTime\",\n                  g.format AS \"format: GameFormat\"\n           FROM game_players s JOIN games g ON g.id = s.game_id\n           WHERE s.deck_id = ?\n           ORDER BY g.played_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "game_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "game_id"
+          }
+        }
+      },
+      {
+        "name": "result: GameResult",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "result"
+          }
+        }
+      },
+      {
+        "name": "played_at: UtcDateTime",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "played_at"
+          }
+        }
+      },
+      {
+        "name": "format: GameFormat",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "format"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "26b6eb421e1bf866f2f4d0ab01c64294f4c82773bc3a4ebdc5bf3cb05b401f75"
+}

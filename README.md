@@ -41,7 +41,8 @@ Health check: `GET /api/health` returns `{"status":"ok"}` when the database is r
 
 **Administration → Server settings → Software update** shows the running version and whether
 GitHub has a newer one (the latest release for `vX.Y.Z` builds, the newest `main` commit for
-`nightly-<commit>` builds; the check is cached for 15 minutes). The **Update now** button installs
+`nightly-<commit>` builds, the `preview` tag's commit for `preview-<commit>` builds; the check is
+cached for 15 minutes). The **Update now** button installs
 the newest build of the channel the server already follows; it does not switch channels. The app
 never replaces itself, it asks whatever runs it:
 
@@ -62,7 +63,7 @@ write; development builds have none.
 ### Proxmox VE
 
 [`deploy/proxmox/the-gathering.sh`](deploy/proxmox/the-gathering.sh) creates an unprivileged
-Debian LXC that runs the app natively (no Docker): it installs the Elixir release tarball from the
+Debian LXC that runs the app natively (no Docker): it installs the release tarball (the Rust server and the built web app) from the
 latest [GitHub release](https://github.com/cfbender/the-gathering/releases) into
 `/opt/the-gathering`, keeps data in `/var/lib/the-gathering`, reads settings from
 `/etc/the-gathering.env` (same keys as `.env.example`), and runs it as the `the-gathering`
@@ -88,6 +89,20 @@ push to `main` republishes the rolling
 [`nightly`](https://github.com/cfbender/the-gathering/releases/tag/nightly) prerelease. `update
 nightly` (or `VERSION=nightly` at install time) switches a container to that channel: from then on
 untagged and automatic updates follow `main`, and `update vX.Y.Z` returns to tagged releases.
+
+To try a branch before it is merged, run the **Release** workflow manually on that branch
+(Actions → Release → Run workflow, or `gh workflow run release.yml --ref <branch>`). It republishes
+the rolling [`preview`](https://github.com/cfbender/the-gathering/releases/tag/preview) prerelease
+from that branch (version `preview-<commit>`) and never touches `nightly` or the latest release.
+Install it with the branch's copy of the script, since `main`'s may not know the channel yet:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/cfbender/the-gathering/<branch>/deploy/proxmox/the-gathering.sh)" \
+  the-gathering.sh update <CTID> preview
+```
+
+From then on untagged and automatic updates (and **Update now**) follow `preview`, using the
+script at the `preview` tag; `update vX.Y.Z` or `update nightly` leaves the channel.
 
 The container also updates itself on a cron schedule: `AUTO_UPDATE` (asked at install time;
 default `0 4 * * *`, daily at 04:00 in the container's time zone; `off` disables it) is written to
@@ -211,7 +226,7 @@ configured TURN servers instead (see `docs/webcam-table.md`).
 **Reveal hand to** privately sends your camera to one chosen player; everyone else receives no
 video until you end the reveal or the target leaves. Clicking a card on
 any board identifies it with the recognizer bundle published from [Oracle](https://github.com/cfbender/oracle) (see
-its README, "Shipping"): Phoenix serves `DATA_DIR/cardid/current/*` at `/api/cardid/*`
+its README, "Shipping"): The server serves `DATA_DIR/cardid/current/*` at `/api/cardid/*`
 and the browser runs the models itself. A recognized card opens with its rules text (fetched
 from Scryfall per printing and cached) and lands in that board's card tray for every seat.
 Without a published bundle the table still works and offers the player's commanders as
@@ -280,10 +295,12 @@ members can always sign in. This flag is stored in the singleton `server_setting
 
 For headless container bootstrap, set `THE_GATHERING_ADMIN_USERNAME` and
 `THE_GATHERING_ADMIN_PASSWORD`. Startup creates the admin if absent and is idempotent on later
-restarts. In a source checkout, the equivalent task is:
+restarts. In a source checkout, the equivalent command is:
 
 ```sh
-THE_GATHERING_ADMIN_PASSWORD='use-a-long-password' mix the_gathering.create_admin USERNAME
+cd rust
+THE_GATHERING_ENV=dev THE_GATHERING_ADMIN_PASSWORD='use-a-long-password' \
+  mise exec -- cargo run -- create-admin USERNAME
 ```
 
 **Detailed statistics from** on the same page sets a cutoff date for statistics that depend on
@@ -305,8 +322,7 @@ preserving the player's games and decks. It does not delete the account or chang
 a future sign-in or import may create a separate player. Use **Admin → Users** to link the account
 to the correct player. Identity management requires recent administrator authentication.
 
-Sessions use random tokens stored in the `users_tokens` table, following Phoenix's generated-auth
-design. The session cookie and its token last 14 days and are reissued after 7, so members who
+Sessions use random tokens stored in the `users_tokens` table. The session cookie and its token last 14 days and are reissued after 7, so members who
 visit at least every two weeks stay signed in; Discord sign-in skips the consent screen once a
 member has authorized the app. Signing out ends only the current device's session. Changing the
 administrator password expires every session for that account, and expired session rows are pruned
@@ -335,12 +351,13 @@ See [CSV game import](docs/csv-import.md) for the spreadsheet format and admin i
 The app downloads Scryfall's compressed `default_cards` JSONL feed when the catalog is empty and refreshes it weekly. The response is streamed to a temporary file and decoded incrementally, then a complete staged generation is published atomically. Search uses only SQLite after sync; run a refresh manually with:
 
 ```sh
-mise exec -- mix the_gathering.catalog.sync
+docker exec the-gathering /app/bin/the-gathering catalog-sync
+# from a checkout: (cd rust && THE_GATHERING_ENV=dev mise exec -- cargo run -- catalog-sync)
 ```
 
-After each sync (and after every CSV or Mythic Track import) the app links decks and MVP cards that only carry a card name to catalog cards by name, filling in Scryfall IDs and missing colour identities. Trigger that alone from **Admin → Users → Link imported cards to the catalog** or with `mise exec -- mix the_gathering.catalog.backfill`.
+After each sync (and after every CSV or Mythic Track import) the app links decks and MVP cards that only carry a card name to catalog cards by name, filling in Scryfall IDs and missing colour identities. Trigger that alone from **Admin → Users → Link imported cards to the catalog** or with `the-gathering catalog-backfill`.
 
-**Game Changer badges** use Scryfall's `game_changer` flag for the Commander Brackets list, not a separate hard-coded card list or a bracket recommendation. After deploying the Game Changer migration, run `mise exec -- mix the_gathering.catalog.sync` once: existing catalog rows initially default to false, and linking/backfilling alone cannot populate this flag. Future catalog syncs keep the badges current. Printing searches and webcam printing details also refresh the flag from Scryfall on demand (details may be cached for one hour). Offline recognition-gallery candidates do not carry this metadata; their preview shows the badge once printing details load. No badge means no known positive flag, not a guarantee that the card is absent from the list. Deck summaries label each commander independently; the app does not store full decklists, so it cannot report a whole-deck Game Changer count.
+**Game Changer badges** use Scryfall's `game_changer` flag for the Commander Brackets list, not a separate hard-coded card list or a bracket recommendation. After deploying the Game Changer migration, run `the-gathering catalog-sync` once: existing catalog rows initially default to false, and linking/backfilling alone cannot populate this flag. Future catalog syncs keep the badges current. Printing searches and webcam printing details also refresh the flag from Scryfall on demand (details may be cached for one hour). Offline recognition-gallery candidates do not carry this metadata; their preview shows the badge once printing details load. No badge means no known positive flag, not a guarantee that the card is absent from the list. Deck summaries label each commander independently; the app does not store full decklists, so it cannot report a whole-deck Game Changer count.
 
 There is one row per Scryfall `oracle_id`. The preferred printing is English, available on paper, non-digital, and non-promo, then the newest `released_at`; set code, collector number, and Scryfall UUID break ties. `default_cards` is used instead of `oracle_cards` because it provides printing images and lets the app choose that representative deterministically.
 
@@ -367,7 +384,7 @@ can wait or run; excess requests return 502. Scryfall's current [rate limits](ht
 exempt image file origins; the separate card-data API limits remain in force. Images are not
 resized, transformed, or stripped of artist/copyright information.
 
-A card can be a commander when it is a legendary creature or its oracle text says it can be your commander. Backgrounds are deliberately excluded. Partner, Partner with, Friends forever, Choose a Background, and Background are stored as a separate pairing classification for deck-building interfaces.
+A card can be a commander when, per Comprehensive Rules 903.3, its front face is a legendary creature, Vehicle, or Spacecraft, or its oracle text says it can be your commander. Backgrounds are deliberately excluded. Partner, Partner with, Friends forever, Choose a Background, and Background are stored as a separate pairing classification for deck-building interfaces.
 
 ### Building the image yourself
 
@@ -379,28 +396,41 @@ Images are published to `ghcr.io/cfbender/the-gathering` by the [container workf
 
 ## Development
 
-The toolchain (Erlang, Elixir, Node, aube) is pinned in `mise.toml`. Install [mise](https://mise.jdx.dev), then:
+The backend is a Rust server in [`rust/`](rust/README.md) (axum + sqlx on SQLite, the shared
+[lotus](https://github.com/cfbender/lotus) crate for Scryfall and deck-list sources). The
+toolchain (Rust, SQLite, Node, aube) is pinned in `mise.toml`. Install
+[mise](https://mise.jdx.dev), then:
 
 ```sh
-mise install
-mise exec -- mix setup        # deps, database, first asset build
-mise exec -- mix phx.server   # http://localhost:5173
+mise run setup                # tools, JavaScript dependencies, server build, demo data
+mise run dev                  # Rust server on $PORT (4000) + Vite on http://localhost:5173
 ```
 
-`mix phx.server` starts Phoenix on `$PORT` (default 4000) and the Vite dev server on 5173. Open the Vite port: it serves the React app with hot reload and proxies API and page requests to Phoenix.
+Open the Vite port: it serves the React app with hot reload and proxies API, socket, and page
+requests to the server. The server applies any missing migrations to `the_gathering_dev.db` at
+startup and syncs the Scryfall catalog when it is empty.
 
-In development every request is signed in automatically as the first administrator (a passwordless `dev` admin is created if none exists) and sudo re-authentication is skipped. Run with `DEV_AUTO_LOGIN=false` to exercise the real login flow; `/login` stays reachable either way.
+In development (`THE_GATHERING_ENV=dev`, set by `mise run dev`) every request is signed in
+automatically as the first administrator (a passwordless `dev` admin is created if none exists)
+and sudo re-authentication is skipped. Run with `DEV_AUTO_LOGIN=false` to exercise the real
+login flow; `/login` stays reachable either way.
 
 Other commands:
 
 ```sh
-mise exec -- mix test
-mise exec -- mix precommit             # everything CI runs
+mise run rust:check                    # schema check, cargo fmt --check, clippy -D warnings, cargo test
+mise run test                          # Rust tests only
+mise run precommit                     # Rust checks + frontend checks, tests, and build
 mise exec -- aube exec vp check        # frontend fmt + lint + typecheck
 mise exec -- aube run build            # production frontend bundle
+mise run rust:new-migration add_thing  # new rust/migrations/<timestamp>_add_thing.sql
+mise run rust:sqlx-prepare             # after a migration or a query change
 ```
 
-Layout: `lib/the_gathering` (domain), `lib/the_gathering_web` (API and SPA shell), `assets/react` (frontend), `priv/repo/migrations`, `test`. See [`AGENTS.md`](AGENTS.md) for conventions.
+Layout: `rust/` (server, with the SQL migrations in `rust/migrations`), `assets/react`
+(frontend), `priv/static` (static files). The version lives in `rust/crates/the-gathering/Cargo.toml`
+and `package.json`; releases are cut by tagging `vX.Y.Z`. See [`AGENTS.md`](AGENTS.md) for
+conventions.
 
 ## License
 

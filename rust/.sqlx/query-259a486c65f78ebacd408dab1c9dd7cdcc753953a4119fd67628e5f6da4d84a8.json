@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE server_settings SET registration_invite_hash = ?, updated_at = ? WHERE id = 1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "259a486c65f78ebacd408dab1c9dd7cdcc753953a4119fd67628e5f6da4d84a8"
+}
