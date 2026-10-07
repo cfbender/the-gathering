@@ -491,6 +491,13 @@ impl Table {
         metas[0].clone()
     }
 
+    /// Waits until `peer`'s meta satisfies `condition` (presence updates from room events land
+    /// just after the triggering reply).
+    pub async fn wait_meta(&self, peer: &str, condition: impl Fn(&Value) -> bool) -> Value {
+        wait_until(|| async { condition(&self.meta(peer)) }).await;
+        self.meta(peer)
+    }
+
     /// The seat of `peer` in the snapshot.
     pub async fn seat(&self, peer: &str) -> the_gathering::webcam::seat::Seat {
         self.snapshot().await.seats.into_iter().find(|seat| seat.peer_id == peer).expect("seat")

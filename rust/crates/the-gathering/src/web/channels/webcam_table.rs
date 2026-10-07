@@ -303,7 +303,24 @@ pub async fn run(socket: SocketCtx, join: Frame, mut client: mpsc::UnboundedRece
     let (sfu_tx, mut sfu_rx) = mpsc::unbounded_channel();
     let mut stop = channel.after_join(sfu_tx).await.err();
     while stop.is_none() {
+        // Biased: room, presence and SFU events that arrived before a client frame are handled
+        // first, in mailbox order.
         let outcome = tokio::select! {
+            biased;
+            Some(event) = inboxes.conn.recv() => channel.handle_conn_event(event),
+            Some(broadcast) = inboxes.intercepts.recv() => channel.handle_out(&broadcast).await,
+            Some(event) = sfu_rx.recv() => channel.handle_sfu(event),
+            changed = inboxes.exit.changed() => Err(match changed.ok().and(*inboxes.exit.borrow()) {
+                // The owner ended the table. Stopping normally sends phx_close, so the client
+                // leaves instead of rejoining (which would open a fresh room under the id).
+                Some(RoomExit::Closed) => {
+                    channel.push("table_closed", &json!({}));
+                    Stop::Close
+                }
+                // The room crashed. Stopping abnormally sends phx_error, so the client rejoins a
+                // fresh room restored from the saved session.
+                _ => Stop::Error("room_down".into()),
+            }),
             message = client.recv() => match message {
                 None => Err(Stop::Silent),
                 Some(ClientMsg::Shutdown) => Err(Stop::Close),
@@ -320,20 +337,6 @@ pub async fn run(socket: SocketCtx, join: Frame, mut client: mpsc::UnboundedRece
                     Err(stop) => Err(stop),
                 },
             },
-            Some(event) = inboxes.conn.recv() => channel.handle_conn_event(event),
-            Some(broadcast) = inboxes.intercepts.recv() => channel.handle_out(&broadcast).await,
-            Some(event) = sfu_rx.recv() => channel.handle_sfu(event),
-            changed = inboxes.exit.changed() => Err(match changed.ok().and(*inboxes.exit.borrow()) {
-                // The owner ended the table. Stopping normally sends phx_close, so the client
-                // leaves instead of rejoining (which would open a fresh room under the id).
-                Some(RoomExit::Closed) => {
-                    channel.push("table_closed", &json!({}));
-                    Stop::Close
-                }
-                // The room crashed. Stopping abnormally sends phx_error, so the client rejoins a
-                // fresh room restored from the saved session.
-                _ => Stop::Error("room_down".into()),
-            }),
         };
         stop = outcome.err();
     }
