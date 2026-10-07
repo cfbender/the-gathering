@@ -9,6 +9,7 @@ use tokio::sync::broadcast;
 use crate::accounts::Accounts;
 use crate::config::Config;
 use crate::db::Pool;
+use crate::games::Games;
 use crate::rate_limit::RateLimiter;
 
 /// Cheap to clone; everything lives behind one `Arc`.
@@ -23,6 +24,8 @@ pub struct Inner {
     pub pool: Pool,
     /// Accounts and sessions.
     pub accounts: Accounts,
+    /// Players, decks, and games.
+    pub games: Games,
     /// Fixed-window rate limiter (Hammer).
     pub rate_limiter: RateLimiter,
     /// Outbound HTTP client for trusted APIs (Discord, GitHub, Cloudflare).
@@ -44,6 +47,7 @@ impl Deref for AppState {
 impl AppState {
     /// Builds the state around an open, migrated pool.
     pub fn new(config: Config, pool: Pool) -> anyhow::Result<Self> {
+        let games = Games::new(pool.clone());
         let accounts = Accounts {
             pool: pool.clone(),
             secret_key_base: config.secret_key_base.clone(),
@@ -68,6 +72,7 @@ impl AppState {
             config,
             pool,
             accounts,
+            games,
             rate_limiter: RateLimiter::new(),
             http,
             sfu,

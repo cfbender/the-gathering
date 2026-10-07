@@ -280,7 +280,7 @@ async fn find_by_face(conn: &mut SqliteConnection, normalized: &str) -> Result<O
 impl Catalog {
     /// A card by id.
     pub async fn get_card(&self, id: &str) -> Result<Option<Card>, sqlx::Error> {
-        Ok(select_cards!("WHERE id = ?", id).fetch_optional(&self.pool).await?.map(Card::from))
+        get_card_in(&mut *self.pool.acquire().await?, id).await
     }
 
     /// How many cards are cached.
@@ -290,54 +290,18 @@ impl Catalog {
 
     /// `resolve_card/2`: by id, else by name.
     pub async fn resolve_card(&self, id: Option<&str>, name: Option<&str>) -> Result<Option<Card>, sqlx::Error> {
-        if let Some(id) = id
-            && let Some(card) = self.get_card(id).await?
-        {
-            return Ok(Some(card));
-        }
-        match name {
-            Some(name) => self.find_card_by_name(name).await,
-            None => Ok(None),
-        }
+        resolve_card_in(&mut *self.pool.acquire().await?, id, name).await
     }
 
     /// A cached printing.
     pub async fn get_printing(&self, id: &str) -> Result<Option<Printing>, sqlx::Error> {
-        let row = sqlx::query!(
-            r#"SELECT id AS "id!", oracle_id, name, set_code, set_name, collector_number, lang, image_uris,
-                      game_changer AS "game_changer: bool" FROM card_printings WHERE id = ?"#,
-            id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row.map(|row| Printing {
-            id: row.id,
-            oracle_id: row.oracle_id,
-            name: row.name,
-            set_code: row.set_code,
-            set_name: row.set_name,
-            collector_number: row.collector_number,
-            lang: row.lang,
-            image_uris: parse_image_uris(&row.image_uris),
-            game_changer: row.game_changer,
-        }))
+        get_printing_in(&mut *self.pool.acquire().await?, id).await
     }
 
     /// `find_card_by_name/1`: exact normalized name (commanders and newer printings first),
     /// else a face of a multi-faced card.
     pub async fn find_card_by_name(&self, name: &str) -> Result<Option<Card>, sqlx::Error> {
-        let normalized = lotus::normalize_name(name);
-        let mut conn = self.pool.acquire().await?;
-        if let Some(card) = select_cards!(
-            "WHERE normalized_name = ? ORDER BY can_be_commander DESC, released_at DESC LIMIT 1",
-            normalized
-        )
-        .fetch_optional(&mut *conn)
-        .await?
-        {
-            return Ok(Some(card.into()));
-        }
-        find_by_face(&mut conn, &normalized).await
+        find_card_by_name_in(&mut *self.pool.acquire().await?, name).await
     }
 
     /// `cards_by_name/1`: every given name that resolves, keyed by the given name.
@@ -421,78 +385,151 @@ impl Catalog {
 
     /// `card_summaries/1`: one lookup for many `(id, name)` references.
     pub async fn card_summaries(&self, refs: &[(Option<String>, Option<String>)]) -> Result<CardSummaries, sqlx::Error> {
-        let mut ids: Vec<String> = refs.iter().filter_map(|(id, _)| id.clone()).collect();
-        ids.sort();
-        ids.dedup();
-        let mut names: Vec<String> = refs.iter().filter_map(|(_, name)| name.as_deref().map(lotus::normalize_name)).collect();
-        names.sort();
-        names.dedup();
-        let mut summaries = CardSummaries::default();
-        if ids.is_empty() && names.is_empty() {
-            return Ok(summaries);
-        }
-        let ids_json = serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into());
-        let names_json = serde_json::to_string(&names).unwrap_or_else(|_| "[]".into());
-        let rows = sqlx::query!(
-            r#"SELECT id AS "id!", name, normalized_name, image_uris, color_identity, game_changer AS "game_changer: bool"
-               FROM cards
-               WHERE id IN (SELECT value FROM json_each(?)) OR normalized_name IN (SELECT value FROM json_each(?))"#,
-            ids_json,
-            names_json
-        )
-        .fetch_all(&self.pool)
-        .await?;
-        for row in rows {
-            let images = parse_image_uris(&row.image_uris);
-            let identity: Vec<String> = serde_json::from_str(&row.color_identity).unwrap_or_default();
-            let summary = CardSummary {
-                id: row.id.clone(),
-                name: row.name,
-                game_changer: row.game_changer,
-                art_crop_url: images::url_opt(images.get("art_crop").map(String::as_str)),
-                image_url: images::url_opt(images.get("normal").map(String::as_str)),
-                color_identity: color_identity::canonical(&identity.concat()),
-            };
-            summaries.by_name.insert(row.normalized_name, summary.clone());
-            summaries.by_id.insert(row.id, summary);
-        }
-        Ok(summaries)
+        card_summaries_in(&mut *self.pool.acquire().await?, refs).await
     }
 
     /// `art_crop_urls/1`.
     pub async fn art_crop_urls(&self, refs: &[CardRef]) -> Result<ArtUrls, sqlx::Error> {
-        let mut identities = Vec::new();
-        let mut printing_ids = Vec::new();
-        for card_ref in refs {
-            match card_ref {
-                CardRef::Card(id, name) => identities.push((id.clone(), name.clone())),
-                CardRef::Printing(Some(id)) => printing_ids.push(id.clone()),
-                CardRef::Printing(None) => {}
-            }
-        }
-        printing_ids.sort();
-        printing_ids.dedup();
-        let summaries = self.card_summaries(&identities).await?;
-        let mut printings = HashMap::new();
-        if !printing_ids.is_empty() {
-            let ids_json = serde_json::to_string(&printing_ids).unwrap_or_else(|_| "[]".into());
-            let rows = sqlx::query!(
-                r#"SELECT id AS "id!", image_uris FROM card_printings WHERE id IN (SELECT value FROM json_each(?))"#,
-                ids_json
-            )
-            .fetch_all(&self.pool)
-            .await?;
-            for row in rows {
-                let images = parse_image_uris(&row.image_uris);
-                printings.insert(
-                    row.id,
-                    (
-                        images::url_opt(images.get("art_crop").map(String::as_str)),
-                        images::url_opt(images.get("normal").map(String::as_str)),
-                    ),
-                );
-            }
-        }
-        Ok(ArtUrls { summaries, printings })
+        art_crop_urls_in(&mut *self.pool.acquire().await?, refs).await
     }
 }
+
+/// [`Catalog::get_card`] on a connection (for callers inside a transaction).
+pub async fn get_card_in(conn: &mut SqliteConnection, id: &str) -> Result<Option<Card>, sqlx::Error> {
+    Ok(select_cards!("WHERE id = ?", id).fetch_optional(&mut *conn).await?.map(Card::from))
+}
+
+/// [`Catalog::resolve_card`] on a connection.
+pub async fn resolve_card_in(
+    conn: &mut SqliteConnection,
+    id: Option<&str>,
+    name: Option<&str>,
+) -> Result<Option<Card>, sqlx::Error> {
+    if let Some(id) = id
+        && let Some(card) = get_card_in(conn, id).await?
+    {
+        return Ok(Some(card));
+    }
+    match name {
+        Some(name) => find_card_by_name_in(conn, name).await,
+        None => Ok(None),
+    }
+}
+
+/// [`Catalog::get_printing`] on a connection.
+pub async fn get_printing_in(conn: &mut SqliteConnection, id: &str) -> Result<Option<Printing>, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"SELECT id AS "id!", oracle_id, name, set_code, set_name, collector_number, lang, image_uris,
+                  game_changer AS "game_changer: bool" FROM card_printings WHERE id = ?"#,
+        id
+    )
+    .fetch_optional(&mut *conn)
+    .await?;
+    Ok(row.map(|row| Printing {
+        id: row.id,
+        oracle_id: row.oracle_id,
+        name: row.name,
+        set_code: row.set_code,
+        set_name: row.set_name,
+        collector_number: row.collector_number,
+        lang: row.lang,
+        image_uris: parse_image_uris(&row.image_uris),
+        game_changer: row.game_changer,
+    }))
+}
+
+/// [`Catalog::find_card_by_name`] on a connection.
+pub async fn find_card_by_name_in(conn: &mut SqliteConnection, name: &str) -> Result<Option<Card>, sqlx::Error> {
+    let normalized = lotus::normalize_name(name);
+    if let Some(card) = select_cards!(
+        "WHERE normalized_name = ? ORDER BY can_be_commander DESC, released_at DESC LIMIT 1",
+        normalized
+    )
+    .fetch_optional(&mut *conn)
+    .await?
+    {
+        return Ok(Some(card.into()));
+    }
+    find_by_face(conn, &normalized).await
+}
+
+/// [`Catalog::card_summaries`] on a connection.
+pub async fn card_summaries_in(
+    conn: &mut SqliteConnection,
+    refs: &[(Option<String>, Option<String>)],
+) -> Result<CardSummaries, sqlx::Error> {
+    let mut ids: Vec<String> = refs.iter().filter_map(|(id, _)| id.clone()).collect();
+    ids.sort();
+    ids.dedup();
+    let mut names: Vec<String> = refs.iter().filter_map(|(_, name)| name.as_deref().map(lotus::normalize_name)).collect();
+    names.sort();
+    names.dedup();
+    let mut summaries = CardSummaries::default();
+    if ids.is_empty() && names.is_empty() {
+        return Ok(summaries);
+    }
+    let ids_json = serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into());
+    let names_json = serde_json::to_string(&names).unwrap_or_else(|_| "[]".into());
+    let rows = sqlx::query!(
+        r#"SELECT id AS "id!", name, normalized_name, image_uris, color_identity, game_changer AS "game_changer: bool"
+           FROM cards
+           WHERE id IN (SELECT value FROM json_each(?)) OR normalized_name IN (SELECT value FROM json_each(?))"#,
+        ids_json,
+        names_json
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    for row in rows {
+        let images = parse_image_uris(&row.image_uris);
+        let identity: Vec<String> = serde_json::from_str(&row.color_identity).unwrap_or_default();
+        let summary = CardSummary {
+            id: row.id.clone(),
+            name: row.name,
+            game_changer: row.game_changer,
+            art_crop_url: images::url_opt(images.get("art_crop").map(String::as_str)),
+            image_url: images::url_opt(images.get("normal").map(String::as_str)),
+            color_identity: color_identity::canonical(&identity.concat()),
+        };
+        summaries.by_name.insert(row.normalized_name, summary.clone());
+        summaries.by_id.insert(row.id, summary);
+    }
+    Ok(summaries)
+}
+
+/// [`Catalog::art_crop_urls`] on a connection.
+pub async fn art_crop_urls_in(conn: &mut SqliteConnection, refs: &[CardRef]) -> Result<ArtUrls, sqlx::Error> {
+    let mut identities = Vec::new();
+    let mut printing_ids = Vec::new();
+    for card_ref in refs {
+        match card_ref {
+            CardRef::Card(id, name) => identities.push((id.clone(), name.clone())),
+            CardRef::Printing(Some(id)) => printing_ids.push(id.clone()),
+            CardRef::Printing(None) => {}
+        }
+    }
+    printing_ids.sort();
+    printing_ids.dedup();
+    let summaries = card_summaries_in(&mut *conn, &identities).await?;
+    let mut printings = HashMap::new();
+    if !printing_ids.is_empty() {
+        let ids_json = serde_json::to_string(&printing_ids).unwrap_or_else(|_| "[]".into());
+        let rows = sqlx::query!(
+            r#"SELECT id AS "id!", image_uris FROM card_printings WHERE id IN (SELECT value FROM json_each(?))"#,
+            ids_json
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        for row in rows {
+            let images = parse_image_uris(&row.image_uris);
+            printings.insert(
+                row.id,
+                (
+                    images::url_opt(images.get("art_crop").map(String::as_str)),
+                    images::url_opt(images.get("normal").map(String::as_str)),
+                ),
+            );
+        }
+    }
+    Ok(ArtUrls { summaries, printings })
+}
+

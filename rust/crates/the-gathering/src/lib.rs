@@ -10,9 +10,11 @@ pub mod db;
 pub mod decklists;
 pub mod error;
 pub mod games;
+pub mod local_time;
 pub mod rate_limit;
 pub mod regex;
 pub mod state;
+pub mod stats;
 pub mod web;
 
 /// `TheGathering.Release.bootstrap_admin/0`: creates the administrator named by

@@ -57,6 +57,11 @@ impl Errors {
         self.fields.get(field).map_or(&[], Vec::as_slice)
     }
 
+    /// Per-row errors of a nested list (empty when no row has errors).
+    pub fn nested(&self, field: &str) -> &[Errors] {
+        self.nested.get(field).map_or(&[], Vec::as_slice)
+    }
+
     /// `Ok(())` when empty.
     pub fn into_result(self) -> Result<(), Errors> {
         if self.is_empty() { Ok(()) } else { Err(self) }
@@ -70,13 +75,10 @@ impl Errors {
         }
         for (field, rows) in &self.nested {
             let rows: Vec<Value> = rows.iter().map(Errors::to_json).collect();
-            match object.get_mut(field) {
-                // A list with both its own messages and per-row errors keeps the messages.
-                Some(Value::Array(existing)) => existing.extend(rows),
-                _ => {
-                    object.insert(field.clone(), Value::Array(rows));
-                }
-            }
+            // `Ecto.Changeset.traverse_errors/2` replaces a list's own messages with its
+            // per-row errors, so row `i` of the JSON is always params row `i` (the SPA numbers
+            // rows by index).
+            object.insert(field.clone(), Value::Array(rows));
         }
         Value::Object(object)
     }
@@ -200,6 +202,10 @@ mod tests {
 
         let mut nested = Errors::new();
         nested.set_nested("seats", vec![Errors::new(), Errors::single("seat", "has already been taken")]);
+        assert_eq!(nested.to_json(), json!({ "seats": [{}, { "seat": ["has already been taken"] }] }));
+
+        // Like Ecto, per-row errors replace the list's own messages.
+        nested.add("seats", "must contain between 2 and 10 players");
         assert_eq!(nested.to_json(), json!({ "seats": [{}, { "seat": ["has already been taken"] }] }));
     }
 }

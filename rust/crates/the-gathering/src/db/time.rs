@@ -94,6 +94,13 @@ impl UtcDateTime {
     }
 }
 
+impl Default for UtcDateTime {
+    /// The Unix epoch (a placeholder for structs built in memory).
+    fn default() -> Self {
+        Self(OffsetDateTime::UNIX_EPOCH)
+    }
+}
+
 impl fmt::Display for UtcDateTime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.to_ecto_string())
