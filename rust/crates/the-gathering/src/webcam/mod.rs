@@ -42,8 +42,12 @@ pub const IDLE_TIMEOUT_MS: i64 = 30 * 60 * 1000;
 
 /// Milliseconds since the epoch (`System.system_time(:millisecond)`).
 pub fn now() -> i64 {
-    i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_millis()))
-        .unwrap_or(i64::MAX)
+    i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_millis()),
+    )
+    .unwrap_or(i64::MAX)
 }
 
 /// The table's game mode.
@@ -103,13 +107,18 @@ pub(crate) struct Shared {
 
 impl Shared {
     fn rooms(&self) -> MutexGuard<'_, HashMap<String, RoomHandle>> {
-        self.rooms.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.rooms
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Forgets a stopped room (unless a newer room took its id).
     fn deregister(&self, id: &str, instance: u64) {
         let mut rooms = self.rooms();
-        if rooms.get(id).is_some_and(|handle| handle.instance == instance) {
+        if rooms
+            .get(id)
+            .is_some_and(|handle| handle.instance == instance)
+        {
             rooms.remove(id);
         }
     }
@@ -122,11 +131,20 @@ pub struct WebcamTables(Arc<Shared>);
 impl WebcamTables {
     /// No rooms yet.
     pub fn new(pool: Pool, pubsub: PubSub) -> Self {
-        Self(Arc::new(Shared { pool, pubsub, rooms: Mutex::new(HashMap::new()), next_instance: AtomicU64::new(1) }))
+        Self(Arc::new(Shared {
+            pool,
+            pubsub,
+            rooms: Mutex::new(HashMap::new()),
+            next_instance: AtomicU64::new(1),
+        }))
     }
 
     fn live(&self, id: &str) -> Option<RoomHandle> {
-        self.0.rooms().get(id).filter(|handle| !handle.tx.is_closed()).cloned()
+        self.0
+            .rooms()
+            .get(id)
+            .filter(|handle| !handle.tx.is_closed())
+            .cloned()
     }
 
     fn start_room(&self, id: &str) -> RoomHandle {
@@ -138,18 +156,30 @@ impl WebcamTables {
         let (tx, rx) = mpsc::unbounded_channel();
         let room = Room::new(id.to_owned(), instance, Arc::clone(&self.0), tx.downgrade());
         let abort = tokio::spawn(room.run(rx)).abort_handle();
-        let handle = RoomHandle { instance, tx, opened_at: now(), abort };
+        let handle = RoomHandle {
+            instance,
+            tx,
+            opened_at: now(),
+            abort,
+        };
         rooms.insert(id.to_owned(), handle.clone());
         handle
     }
 
-    async fn ask<T>(handle: &RoomHandle, message: impl FnOnce(oneshot::Sender<T>) -> RoomMsg) -> Result<T, RoomGone> {
+    async fn ask<T>(
+        handle: &RoomHandle,
+        message: impl FnOnce(oneshot::Sender<T>) -> RoomMsg,
+    ) -> Result<T, RoomGone> {
         let (reply, answer) = oneshot::channel();
         handle.tx.send(message(reply)).map_err(|_| RoomGone)?;
         answer.await.map_err(|_| RoomGone)
     }
 
-    async fn call<T>(&self, room: &str, message: impl FnOnce(oneshot::Sender<T>) -> RoomMsg) -> Result<T, RoomGone> {
+    async fn call<T>(
+        &self,
+        room: &str,
+        message: impl FnOnce(oneshot::Sender<T>) -> RoomMsg,
+    ) -> Result<T, RoomGone> {
         let handle = self.live(room).ok_or(RoomGone)?;
         Self::ask(&handle, message).await
     }
@@ -158,7 +188,12 @@ impl WebcamTables {
     ///
     /// Returns the table snapshot, the admitted participant (a returning player gets their
     /// saved seat back; late arrivals become spectators) and a watch on the room's end.
-    pub async fn join(&self, room: &str, participant: Seat, conn: Conn) -> Result<Result<Admitted, String>, RoomGone> {
+    pub async fn join(
+        &self,
+        room: &str,
+        participant: Seat,
+        conn: Conn,
+    ) -> Result<Result<Admitted, String>, RoomGone> {
         let mut attempts = 3;
         loop {
             let handle = self.start_room(room);
@@ -183,8 +218,15 @@ impl WebcamTables {
     }
 
     /// Records and broadcasts a seat's dice or coin roll.
-    pub async fn roll(&self, room: &str, actor: Holder, kind: RollKind, result: RollResult) -> Result<(), RoomGone> {
-        self.call(room, |reply| RoomMsg::Roll(actor, kind, result, reply)).await
+    pub async fn roll(
+        &self,
+        room: &str,
+        actor: Holder,
+        kind: RollKind,
+        result: RollResult,
+    ) -> Result<(), RoomGone> {
+        self.call(room, |reply| RoomMsg::Roll(actor, kind, result, reply))
+            .await
     }
 
     /// Running rooms, connected or not.
@@ -193,12 +235,19 @@ impl WebcamTables {
             .rooms()
             .iter()
             .filter(|(_, handle)| !handle.tx.is_closed())
-            .map(|(id, handle)| RoomInfo { id: id.clone(), opened_at: handle.opened_at })
+            .map(|(id, handle)| RoomInfo {
+                id: id.clone(),
+                opened_at: handle.opened_at,
+            })
             .collect()
     }
 
     fn handles(&self) -> Vec<(String, RoomHandle)> {
-        self.0.rooms().iter().map(|(id, handle)| (id.clone(), handle.clone())).collect()
+        self.0
+            .rooms()
+            .iter()
+            .map(|(id, handle)| (id.clone(), handle.clone()))
+            .collect()
     }
 
     /// Closes every room with no connections and no activity for `idle_ms`, deleting its
@@ -236,23 +285,43 @@ impl WebcamTables {
     }
 
     /// Whether connection `conn_id` is `player_id`'s current connection.
-    pub async fn current(&self, room: &str, player_id: i64, conn_id: u64) -> Result<bool, RoomGone> {
-        self.call(room, |reply| RoomMsg::Current(player_id, conn_id, reply)).await
+    pub async fn current(
+        &self,
+        room: &str,
+        player_id: i64,
+        conn_id: u64,
+    ) -> Result<bool, RoomGone> {
+        self.call(room, |reply| RoomMsg::Current(player_id, conn_id, reply))
+            .await
     }
 
     /// Records the calling connection's seat (life, counters, deck, reveal).
-    pub async fn remember_seat(&self, room: &str, participant: Seat, conn_id: u64) -> Result<(), RoomGone> {
-        self.call(room, |reply| RoomMsg::RememberSeat(Box::new(participant), conn_id, reply)).await
+    pub async fn remember_seat(
+        &self,
+        room: &str,
+        participant: Seat,
+        conn_id: u64,
+    ) -> Result<(), RoomGone> {
+        self.call(room, |reply| {
+            RoomMsg::RememberSeat(Box::new(participant), conn_id, reply)
+        })
+        .await
     }
 
     /// Reorders seats (Commander); starts the clock if needed.
     pub async fn order(&self, room: &str, peer_ids: Vec<String>) -> Result<(), RoomGone> {
-        self.call(room, |reply| RoomMsg::Order(peer_ids, reply)).await
+        self.call(room, |reply| RoomMsg::Order(peer_ids, reply))
+            .await
     }
 
     /// Arranges lobby seats before the game starts.
-    pub async fn arrange(&self, room: &str, peer_ids: Vec<String>) -> Result<Result<(), String>, RoomGone> {
-        self.call(room, |reply| RoomMsg::Arrange(peer_ids, reply)).await
+    pub async fn arrange(
+        &self,
+        room: &str,
+        peer_ids: Vec<String>,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::Arrange(peer_ids, reply))
+            .await
     }
 
     /// Changes the game mode before the start.
@@ -268,13 +337,22 @@ impl WebcamTables {
         team_index: i64,
         delta: i64,
     ) -> Result<Result<(), String>, RoomGone> {
-        self.call(room, |reply| RoomMsg::TeamLife(actor, team_index, delta, reply)).await
+        self.call(room, |reply| {
+            RoomMsg::TeamLife(actor, team_index, delta, reply)
+        })
+        .await
     }
 
     /// Eliminates or restores the seat with `peer_id` (its whole team in Two-Headed Giant).
-    pub async fn eliminate(&self, room: &str, peer_id: &str, eliminated: bool) -> Result<(), RoomGone> {
+    pub async fn eliminate(
+        &self,
+        room: &str,
+        peer_id: &str,
+        eliminated: bool,
+    ) -> Result<(), RoomGone> {
         let peer_id = peer_id.to_owned();
-        self.call(room, |reply| RoomMsg::Eliminate(peer_id, eliminated, reply)).await
+        self.call(room, |reply| RoomMsg::Eliminate(peer_id, eliminated, reply))
+            .await
     }
 
     /// Pauses or resumes the clock.
@@ -283,43 +361,82 @@ impl WebcamTables {
     }
 
     /// Ends the mulligan window by starting the game clock.
-    pub async fn begin_play(&self, room: &str, actor: Actor) -> Result<Result<TimerState, String>, RoomGone> {
-        self.call(room, |reply| RoomMsg::BeginPlay(actor, reply)).await
+    pub async fn begin_play(
+        &self,
+        room: &str,
+        actor: Actor,
+    ) -> Result<Result<TimerState, String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::BeginPlay(actor, reply))
+            .await
     }
 
     /// Starts the game; `randomize` overrides the room's auto-randomize setting.
-    pub async fn start_game(&self, room: &str, randomize: Option<bool>) -> Result<Result<(), String>, RoomGone> {
-        self.call(room, |reply| RoomMsg::StartGame(randomize, reply)).await
+    pub async fn start_game(
+        &self,
+        room: &str,
+        randomize: Option<bool>,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::StartGame(randomize, reply))
+            .await
     }
 
     /// Sets auto-randomize.
     pub async fn turn_settings(&self, room: &str, auto_randomize: bool) -> Result<(), RoomGone> {
-        self.call(room, |reply| RoomMsg::TurnSettings(auto_randomize, reply)).await
+        self.call(room, |reply| RoomMsg::TurnSettings(auto_randomize, reply))
+            .await
     }
 
     /// Passes the turn if `revision` is current.
-    pub async fn pass_turn(&self, room: &str, revision: i64) -> Result<Result<(), String>, RoomGone> {
-        self.call(room, |reply| RoomMsg::PassTurn(revision, reply)).await
+    pub async fn pass_turn(
+        &self,
+        room: &str,
+        revision: i64,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::PassTurn(revision, reply))
+            .await
     }
 
     /// Undoes the last pass if `revision` is current.
-    pub async fn unpass_turn(&self, room: &str, revision: i64) -> Result<Result<(), String>, RoomGone> {
-        self.call(room, |reply| RoomMsg::UnpassTurn(revision, reply)).await
+    pub async fn unpass_turn(
+        &self,
+        room: &str,
+        revision: i64,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::UnpassTurn(revision, reply))
+            .await
     }
 
     /// Corrects a player's turn count.
-    pub async fn adjust_turn(&self, room: &str, player_id: i64, delta: i64) -> Result<Result<(), String>, RoomGone> {
-        self.call(room, |reply| RoomMsg::AdjustTurn(player_id, delta, reply)).await
+    pub async fn adjust_turn(
+        &self,
+        room: &str,
+        player_id: i64,
+        delta: i64,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::AdjustTurn(player_id, delta, reply))
+            .await
     }
 
     /// Makes `holder` the monarch on behalf of `actor`, who may be the holder themselves.
-    pub async fn take_monarch(&self, room: &str, holder: Holder, actor: Holder) -> Result<(), RoomGone> {
-        self.call(room, |reply| RoomMsg::Monarch(holder, actor, reply)).await
+    pub async fn take_monarch(
+        &self,
+        room: &str,
+        holder: Holder,
+        actor: Holder,
+    ) -> Result<(), RoomGone> {
+        self.call(room, |reply| RoomMsg::Monarch(holder, actor, reply))
+            .await
     }
 
     /// Applies a card list change on behalf of `actor`.
-    pub async fn cards(&self, room: &str, change: Change, actor: Holder) -> Result<Result<(), String>, RoomGone> {
-        self.call(room, |reply| RoomMsg::Cards(change, actor, reply)).await
+    pub async fn cards(
+        &self,
+        room: &str,
+        change: Change,
+        actor: Holder,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::Cards(change, actor, reply))
+            .await
     }
 
     /// Deletes expired sessions.
@@ -332,7 +449,10 @@ impl WebcamTables {
     pub fn spawn_pruner(&self) -> tokio::task::JoinHandle<()> {
         let tables = self.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + PRUNE_INTERVAL, PRUNE_INTERVAL);
+            let mut interval = tokio::time::interval_at(
+                tokio::time::Instant::now() + PRUNE_INTERVAL,
+                PRUNE_INTERVAL,
+            );
             loop {
                 interval.tick().await;
                 tables.close_idle_rooms(IDLE_TIMEOUT_MS).await;
@@ -396,16 +516,30 @@ pub struct Deck {
 
 /// Looks up a player. Swap for the games module's API when it lands.
 pub async fn get_player(pool: &Pool, id: i64) -> Result<Option<Player>, sqlx::Error> {
-    let row = sqlx::query!(r#"SELECT id AS "id!", name, user_id FROM players WHERE id = ?"#, id)
-        .fetch_optional(pool)
-        .await?;
-    Ok(row.map(|row| Player { id: row.id, name: row.name, user_id: row.user_id }))
+    let row = sqlx::query!(
+        r#"SELECT id AS "id!", name, user_id FROM players WHERE id = ?"#,
+        id
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| Player {
+        id: row.id,
+        name: row.name,
+        user_id: row.user_id,
+    }))
 }
 
 /// Looks up a deck. Swap for the games module's API when it lands.
 pub async fn get_deck(pool: &Pool, id: i64) -> Result<Option<Deck>, sqlx::Error> {
-    let row = sqlx::query!(r#"SELECT id AS "id!", player_id, name FROM decks WHERE id = ?"#, id)
-        .fetch_optional(pool)
-        .await?;
-    Ok(row.map(|row| Deck { id: row.id, player_id: row.player_id, name: row.name }))
+    let row = sqlx::query!(
+        r#"SELECT id AS "id!", player_id, name FROM decks WHERE id = ?"#,
+        id
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| Deck {
+        id: row.id,
+        player_id: row.player_id,
+        name: row.name,
+    }))
 }

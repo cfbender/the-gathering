@@ -37,15 +37,31 @@ const MAX_SDP_BYTES: usize = 65_536;
 const MAX_PEER_MESSAGE_BYTES: usize = 262_144;
 /// No webcam publishes more rows than 8K; anything above is a bogus status.
 const MAX_CAMERA_HEIGHT: i64 = 4_320;
-const SIGNAL_EVENTS: [&str; 5] = ["sfu_offer", "sfu_answer", "sfu_candidate", "sfu_layer", "peer_message"];
-const OWNER_EVENTS: [&str; 9] =
-    ["start_game", "seat_order", "arrange_seats", "set_mode", "turn_settings", "adjust_turn", "timer", "end_game", "rematch"];
+const SIGNAL_EVENTS: [&str; 5] = [
+    "sfu_offer",
+    "sfu_answer",
+    "sfu_candidate",
+    "sfu_layer",
+    "peer_message",
+];
+const OWNER_EVENTS: [&str; 9] = [
+    "start_game",
+    "seat_order",
+    "arrange_seats",
+    "set_mode",
+    "turn_settings",
+    "adjust_turn",
+    "timer",
+    "end_game",
+    "rematch",
+];
 const INTERCEPTS: &[&str] = &["presence_diff"];
 
 static UUID: LazyLock<Regex> =
     LazyLock::new(|| compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"));
-static ROOM_ID: LazyLock<Regex> =
-    LazyLock::new(|| compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"));
+static ROOM_ID: LazyLock<Regex> = LazyLock::new(|| {
+    compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+});
 static PLAYER_KEY: LazyLock<Regex> = LazyLock::new(|| compile(r"^[1-9][0-9]{0,15}$"));
 
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
@@ -113,7 +129,9 @@ fn int(value: Option<&Value>) -> Option<i64> {
 }
 
 fn short_string(value: &Value, max: usize) -> bool {
-    value.as_str().is_some_and(|text| (1..=max).contains(&text.len()))
+    value
+        .as_str()
+        .is_some_and(|text| (1..=max).contains(&text.len()))
 }
 
 /// Status changes a seat publishes about itself. `camera_height` distinguishes "unchanged"
@@ -140,17 +158,27 @@ impl StatusChanges {
         let mut changes = Self::default();
         for (key, value) in payload {
             match key.as_str() {
-                "life" => changes.life = Some(int(Some(value)).filter(|life| LIFE_RANGE.contains(life))?),
+                "life" => {
+                    changes.life = Some(int(Some(value)).filter(|life| LIFE_RANGE.contains(life))?);
+                }
                 "camera_off" => changes.camera_off = Some(value.as_bool()?),
                 "camera_height" => {
                     changes.camera_height = Some(match value {
                         Value::Null => None,
-                        other => Some(int(Some(other)).filter(|rows| (1..=MAX_CAMERA_HEIGHT).contains(rows))?),
+                        other => Some(
+                            int(Some(other))
+                                .filter(|rows| (1..=MAX_CAMERA_HEIGHT).contains(rows))?,
+                        ),
                     });
                 }
                 "shares_corrections" => changes.shares_corrections = Some(value.as_bool()?),
-                "poison" => changes.poison = Some(int(Some(value)).filter(|count| (0..=999).contains(count))?),
-                "rad" => changes.rad = Some(int(Some(value)).filter(|count| (0..=999).contains(count))?),
+                "poison" => {
+                    changes.poison =
+                        Some(int(Some(value)).filter(|count| (0..=999).contains(count))?);
+                }
+                "rad" => {
+                    changes.rad = Some(int(Some(value)).filter(|count| (0..=999).contains(count))?);
+                }
                 "commander_casts" => changes.commander_casts = Some(counts(value)?),
                 "commander_damage" => changes.commander_damage = Some(damage(value)?),
                 "eliminated" => changes.eliminated = Some(value.as_bool()?),
@@ -204,7 +232,9 @@ fn counts(value: &Value) -> Option<BTreeMap<String, i64>> {
     map.iter()
         .map(|(name, count)| {
             let count = int(Some(count)).filter(|count| (0..=999).contains(count))?;
-            (1..=300).contains(&name.len()).then(|| (name.clone(), count))
+            (1..=300)
+                .contains(&name.len())
+                .then(|| (name.clone(), count))
         })
         .collect()
 }
@@ -212,7 +242,11 @@ fn counts(value: &Value) -> Option<BTreeMap<String, i64>> {
 fn damage(value: &Value) -> Option<BTreeMap<String, BTreeMap<String, i64>>> {
     let map = value.as_object().filter(|map| map.len() <= 100)?;
     map.iter()
-        .map(|(player_id, value)| PLAYER_KEY.is_match(player_id).then(|| counts(value).map(|c| (player_id.clone(), c)))?)
+        .map(|(player_id, value)| {
+            PLAYER_KEY
+                .is_match(player_id)
+                .then(|| counts(value).map(|c| (player_id.clone(), c)))?
+        })
         .collect()
 }
 
@@ -223,18 +257,22 @@ fn custom_counters(value: &Value) -> Option<Vec<CustomCounter>> {
         .map(|counter| {
             let map = exactly(counter, 3)?;
             let (id, label, value) = (map.get("id")?, map.get("label")?, int(map.get("value"))?);
-            (short_string(id, 40) && short_string(label, 40) && (0..=100).contains(&value)).then(|| CustomCounter {
-                id: id.as_str().unwrap_or_default().to_owned(),
-                label: label.as_str().unwrap_or_default().to_owned(),
-                value,
-            })
+            (short_string(id, 40) && short_string(label, 40) && (0..=100).contains(&value)).then(
+                || CustomCounter {
+                    id: id.as_str().unwrap_or_default().to_owned(),
+                    label: label.as_str().unwrap_or_default().to_owned(),
+                    value,
+                },
+            )
         })
         .collect()
 }
 
 fn string_list(value: Option<&Value>, max_items: usize) -> Option<Vec<String>> {
     let list = value?.as_array().filter(|list| list.len() <= max_items)?;
-    list.iter().map(|item| short_string(item, 40).then(|| item.as_str().unwrap_or_default().to_owned())).collect()
+    list.iter()
+        .map(|item| short_string(item, 40).then(|| item.as_str().unwrap_or_default().to_owned()))
+        .collect()
 }
 
 /// Anthems and combat buffs a seat shares; every client derives the same totals from them.
@@ -244,8 +282,16 @@ fn combat_effects(value: &Value) -> Option<Vec<CombatEffect>> {
     list.iter()
         .map(|effect| {
             let map = exactly(effect, 6)?;
-            let id = map.get("id").filter(|id| short_string(id, 40))?.as_str()?.to_owned();
-            let name = map.get("name")?.as_str().filter(|name| name.len() <= 80)?.to_owned();
+            let id = map
+                .get("id")
+                .filter(|id| short_string(id, 40))?
+                .as_str()?
+                .to_owned();
+            let name = map
+                .get("name")?
+                .as_str()
+                .filter(|name| name.len() <= 80)?
+                .to_owned();
             Some(CombatEffect {
                 id,
                 name,
@@ -288,7 +334,13 @@ pub async fn run(socket: SocketCtx, join: Frame, mut client: mpsc::UnboundedRece
     let topic = join.topic.clone();
     let join_ref = join.join_ref.clone();
     let reply_join = |reply: &Reply| {
-        socket.send(join_ref.as_deref(), join.ref_.as_deref(), &topic, "phx_reply", &reply.payload());
+        socket.send(
+            join_ref.as_deref(),
+            join.ref_.as_deref(),
+            &topic,
+            "phx_reply",
+            &reply.payload(),
+        );
     };
     let (mut channel, mut inboxes, response) = match Channel::join(&socket, &join).await {
         Ok(joined) => joined,
@@ -340,16 +392,25 @@ pub async fn run(socket: SocketCtx, join: Frame, mut client: mpsc::UnboundedRece
         };
         stop = outcome.err();
     }
-    channel.terminate(stop.unwrap_or(Stop::Silent), inboxes.subscription).await;
+    channel
+        .terminate(stop.unwrap_or(Stop::Silent), inboxes.subscription)
+        .await;
 }
 
 impl Channel {
     fn push(&self, event: &str, payload: &Value) {
-        self.socket.send(self.join_ref.as_deref(), None, &self.topic, event, payload);
+        self.socket
+            .send(self.join_ref.as_deref(), None, &self.topic, event, payload);
     }
 
     fn reply(&self, ref_: Option<&str>, reply: &Reply) {
-        self.socket.send(self.join_ref.as_deref(), ref_, &self.topic, "phx_reply", &reply.payload());
+        self.socket.send(
+            self.join_ref.as_deref(),
+            ref_,
+            &self.topic,
+            "phx_reply",
+            &reply.payload(),
+        );
     }
 
     fn tables(&self) -> &webcam::WebcamTables {
@@ -360,19 +421,38 @@ impl Channel {
         let state = &socket.state;
         let user = &socket.user;
         let limits = &state.config.rate_limits;
-        if let Decision::Deny(_) = state.rate_limiter.hit(&format!("webcam_table_joins:{}", user.id), limits.webcam_table_joins)
-        {
+        if let Decision::Deny(_) = state.rate_limiter.hit(
+            &format!("webcam_table_joins:{}", user.id),
+            limits.webcam_table_joins,
+        ) {
             return Err(Reply::reason("rate limited"));
         }
-        let room_id = join.topic.strip_prefix(WEBCAM_TABLE_PREFIX).unwrap_or_default().to_owned();
+        let room_id = join
+            .topic
+            .strip_prefix(WEBCAM_TABLE_PREFIX)
+            .unwrap_or_default()
+            .to_owned();
         if !valid_room_id(&room_id) {
             return Err(Reply::reason("invalid room"));
         }
-        let participant = participant(state, &join.payload, user).await.map_err(Reply::reason)?;
+        let participant = participant(state, &join.payload, user)
+            .await
+            .map_err(Reply::reason)?;
 
         let conn_id = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
         let (conn_tx, conn_rx) = mpsc::unbounded_channel();
-        let admitted = match state.webcam_tables.join(&room_id, participant, Conn { id: conn_id, tx: conn_tx }).await {
+        let admitted = match state
+            .webcam_tables
+            .join(
+                &room_id,
+                participant,
+                Conn {
+                    id: conn_id,
+                    tx: conn_tx,
+                },
+            )
+            .await
+        {
             Ok(Ok(admitted)) => admitted,
             Ok(Err(reason)) => return Err(Reply::reason(reason)),
             Err(RoomGone) => return Err(Reply::reason("join crashed")),
@@ -380,14 +460,20 @@ impl Channel {
         let participant = admitted.participant;
         // Admins run every table they sit at, alongside the player who opened it. Spectators
         // never hold table controls.
-        let owner = !participant.spectator && (user.is_admin() || admitted.snapshot.owner_id == participant.player_id);
+        let owner = !participant.spectator
+            && (user.is_admin() || admitted.snapshot.owner_id == participant.player_id);
 
         let (intercept_tx, intercepts) = mpsc::unbounded_channel();
         let subscription = state.pubsub.subscribe(
             &join.topic,
-            Sink::Channel { outbound: socket.out.clone(), intercept: intercept_tx, intercepts: INTERCEPTS },
+            Sink::Channel {
+                outbound: socket.out.clone(),
+                intercept: intercept_tx,
+                intercepts: INTERCEPTS,
+            },
         );
-        let response = json!({ "participant": participant, "table_state": admitted.snapshot, "owner": owner });
+        let response =
+            json!({ "participant": participant, "table_state": admitted.snapshot, "owner": owner });
         let channel = Self {
             socket: socket.clone(),
             topic: join.topic.clone(),
@@ -400,12 +486,26 @@ impl Channel {
             signals: TokenBucket::new(limits.webcam_table_signals),
             joined_at: Instant::now(),
         };
-        Ok((channel, Inboxes { conn: conn_rx, intercepts, exit: admitted.exit, subscription }, response))
+        Ok((
+            channel,
+            Inboxes {
+                conn: conn_rx,
+                intercepts,
+                exit: admitted.exit,
+                subscription,
+            },
+            response,
+        ))
     }
 
     async fn after_join(&mut self, sfu: mpsc::UnboundedSender<SfuEvent>) -> Result<(), Stop> {
         let state = self.socket.state.clone();
-        state.presence.track(&self.topic, self.conn_id, &self.participant.peer_id, &to_value(&self.participant));
+        state.presence.track(
+            &self.topic,
+            self.conn_id,
+            &self.participant.peer_id,
+            &to_value(&self.participant),
+        );
         if !self.participant.spectator {
             rooms::track_seat(&state, self.conn_id, &self.room_id, &self.participant);
         }
@@ -420,7 +520,12 @@ impl Channel {
         // reply arrives.
         state
             .sfu
-            .join(&self.room_id, &self.participant.peer_id, self.participant.spectator, sfu)
+            .join(
+                &self.room_id,
+                &self.participant.peer_id,
+                self.participant.spectator,
+                sfu,
+            )
             .await
             .map_err(|error| Stop::Error(format!("sfu_unavailable: {error}")))
     }
@@ -433,24 +538,44 @@ impl Channel {
             Stop::Error(reason) => reason.as_str(),
             Stop::Silent => "socket closed",
         };
-        tracing::info!("Webcam table seat {} left after {lifetime}ms: {reason}", self.participant.peer_id);
+        tracing::info!(
+            "Webcam table seat {} left after {lifetime}ms: {reason}",
+            self.participant.peer_id
+        );
         state.pubsub.unsubscribe(&self.topic, subscription);
         state.presence.untrack(&self.topic, self.conn_id);
         state.presence.untrack(LOBBY_TOPIC, self.conn_id);
-        state.sfu.leave(&self.room_id, &self.participant.peer_id).await;
+        state
+            .sfu
+            .leave(&self.room_id, &self.participant.peer_id)
+            .await;
         let event = match stop {
             Stop::Close => Some("phx_close"),
             Stop::Error(_) => Some("phx_error"),
             Stop::Silent => None,
         };
         if let Some(event) = event {
-            self.socket.send(self.join_ref.as_deref(), self.join_ref.as_deref(), &self.topic, event, &json!({}));
+            self.socket.send(
+                self.join_ref.as_deref(),
+                self.join_ref.as_deref(),
+                &self.topic,
+                event,
+                &json!({}),
+            );
         }
-        let _ = self.socket.exited.send((self.topic.clone(), self.join_ref.clone()));
+        let _ = self
+            .socket
+            .exited
+            .send((self.topic.clone(), self.join_ref.clone()));
     }
 
     fn update_presence(&self) {
-        self.socket.state.presence.update(&self.topic, self.conn_id, &self.participant.peer_id, &to_value(&self.participant));
+        self.socket.state.presence.update(
+            &self.topic,
+            self.conn_id,
+            &self.participant.peer_id,
+            &to_value(&self.participant),
+        );
     }
 
     fn present(&self, peer_id: &str) -> bool {
@@ -458,7 +583,9 @@ impl Channel {
     }
 
     async fn remember_seat(&self) -> Result<(), RoomGone> {
-        self.tables().remember_seat(&self.room_id, self.participant.clone(), self.conn_id).await
+        self.tables()
+            .remember_seat(&self.room_id, self.participant.clone(), self.conn_id)
+            .await
     }
 
     fn handle_sfu(&self, event: SfuEvent) -> Result<(), Stop> {
@@ -497,7 +624,11 @@ impl Channel {
     /// `handle_out("presence_diff", ...)`: a reveal ends when its target leaves.
     async fn handle_out(&mut self, broadcast: &Broadcast) -> Result<(), Stop> {
         if let Some(target) = self.participant.reveal_to.clone()
-            && broadcast.payload.get("leaves").and_then(|leaves| leaves.get(&target)).is_some()
+            && broadcast
+                .payload
+                .get("leaves")
+                .and_then(|leaves| leaves.get(&target))
+                .is_some()
             && !self.present(&target)
         {
             self.put_reveal(None).await?;
@@ -515,14 +646,22 @@ impl Channel {
             .socket
             .state
             .sfu
-            .reveal(&self.room_id, &self.participant.peer_id, self.participant.reveal_to.as_deref())
+            .reveal(
+                &self.room_id,
+                &self.participant.peer_id,
+                self.participant.reveal_to.as_deref(),
+            )
             .await;
         Ok(())
     }
 
     async fn handle_in(&mut self, event: &str, payload: &Value) -> Handled {
         let signal = SIGNAL_EVENTS.contains(&event);
-        let bucket = if signal { &mut self.signals } else { &mut self.events };
+        let bucket = if signal {
+            &mut self.signals
+        } else {
+            &mut self.events
+        };
         if !bucket.take() {
             return error("rate limited");
         }
@@ -559,13 +698,15 @@ impl Channel {
             }
             "rematch" => error("invalid rematch"),
             "start_game" => self.start_game(payload).await,
-            "turn_settings" => match exactly(payload, 1).and_then(|map| map.get("auto_randomize")?.as_bool()) {
-                Some(enabled) => {
-                    self.tables().turn_settings(&self.room_id, enabled).await?;
-                    reply(Reply::ok())
+            "turn_settings" => {
+                match exactly(payload, 1).and_then(|map| map.get("auto_randomize")?.as_bool()) {
+                    Some(enabled) => {
+                        self.tables().turn_settings(&self.room_id, enabled).await?;
+                        reply(Reply::ok())
+                    }
+                    None => error("invalid turn settings"),
                 }
-                None => error("invalid turn settings"),
-            },
+            }
             "pass_turn" => match revision(payload) {
                 Some(revision) => reply(self.tables().pass_turn(&self.room_id, revision).await?),
                 None => error("invalid pass turn"),
@@ -575,7 +716,10 @@ impl Channel {
                 None => error("invalid un-pass turn"),
             },
             "adjust_turn" => self.adjust_turn(payload).await,
-            "timer" => match exactly(payload, 1).and_then(|map| map.get("action")?.as_str()).and_then(Action::parse_client) {
+            "timer" => match exactly(payload, 1)
+                .and_then(|map| map.get("action")?.as_str())
+                .and_then(Action::parse_client)
+            {
                 Some(action) => {
                     let timer = self.tables().timer(&self.room_id, action).await?;
                     reply(Reply::Ok(to_value(&timer)))
@@ -603,14 +747,22 @@ impl Channel {
     }
 
     fn actor(&self) -> Actor {
-        if self.owner { Actor::Owner } else { Actor::Player(self.participant.player_id) }
+        if self.owner {
+            Actor::Owner
+        } else {
+            Actor::Player(self.participant.player_id)
+        }
     }
 
     async fn update_cards(&self, payload: &Value) -> Handled {
         let Some(change) = Change::parse(payload) else {
             return error("invalid cards");
         };
-        reply(self.tables().cards(&self.room_id, change, self.participant.holder()).await?)
+        reply(
+            self.tables()
+                .cards(&self.room_id, change, self.participant.holder())
+                .await?,
+        )
     }
 
     async fn cards(&self, payload: &Value) -> Handled {
@@ -640,7 +792,10 @@ impl Channel {
     }
 
     fn sdp(payload: &Value) -> Option<&str> {
-        exactly(payload, 1)?.get("sdp")?.as_str().filter(|sdp| sdp.len() <= MAX_SDP_BYTES)
+        exactly(payload, 1)?
+            .get("sdp")?
+            .as_str()
+            .filter(|sdp| sdp.len() <= MAX_SDP_BYTES)
     }
 
     /// The browser's one offer carries its camera; every later offer comes from the server.
@@ -648,7 +803,13 @@ impl Channel {
         let Some(sdp) = Self::sdp(payload) else {
             return error("invalid offer");
         };
-        match self.socket.state.sfu.offer(&self.room_id, &self.participant.peer_id, sdp).await {
+        match self
+            .socket
+            .state
+            .sfu
+            .offer(&self.room_id, &self.participant.peer_id, sdp)
+            .await
+        {
             Ok(answer) => reply(Reply::Ok(json!({ "sdp": answer }))),
             Err(_) => error("offer rejected"),
         }
@@ -658,17 +819,32 @@ impl Channel {
         let Some(sdp) = Self::sdp(payload) else {
             return error("invalid answer");
         };
-        match self.socket.state.sfu.answer(&self.room_id, &self.participant.peer_id, sdp).await {
+        match self
+            .socket
+            .state
+            .sfu
+            .answer(&self.room_id, &self.participant.peer_id, sdp)
+            .await
+        {
             Ok(()) => reply(Reply::ok()),
             Err(_) => error("answer rejected"),
         }
     }
 
     async fn sfu_candidate(&self, payload: &Value) -> Handled {
-        let Some(candidate) = payload.get("candidate").filter(|candidate| candidate.get("candidate").is_some()) else {
+        let Some(candidate) = payload
+            .get("candidate")
+            .filter(|candidate| candidate.get("candidate").is_some())
+        else {
             return error("invalid candidate");
         };
-        match self.socket.state.sfu.candidate(&self.room_id, &self.participant.peer_id, candidate).await {
+        match self
+            .socket
+            .state
+            .sfu
+            .candidate(&self.room_id, &self.participant.peer_id, candidate)
+            .await
+        {
             Ok(()) => Ok(None),
             Err(_) => error("invalid candidate"),
         }
@@ -679,15 +855,22 @@ impl Channel {
         let Some(map) = exactly(payload, 2) else {
             return error("invalid layer");
         };
-        let (Some(owner), Some(layer)) =
-            (map.get("peer_id").and_then(Value::as_str), map.get("layer").and_then(Value::as_str))
-        else {
+        let (Some(owner), Some(layer)) = (
+            map.get("peer_id").and_then(Value::as_str),
+            map.get("layer").and_then(Value::as_str),
+        ) else {
             return error("invalid layer");
         };
         if !uuid(owner) || !the_gathering_sfu::valid_layer(layer) {
             return error("invalid layer");
         }
-        match self.socket.state.sfu.layer(&self.room_id, &self.participant.peer_id, owner, layer).await {
+        match self
+            .socket
+            .state
+            .sfu
+            .layer(&self.room_id, &self.participant.peer_id, owner, layer)
+            .await
+        {
             Ok(()) => Ok(None),
             Err(_) => error("unknown board"),
         }
@@ -698,17 +881,32 @@ impl Channel {
         let Some(map) = exactly(payload, 2) else {
             return error("invalid message");
         };
-        let (Some(to), Some(message)) = (map.get("to").and_then(Value::as_str), map.get("message").filter(|m| m.is_object()))
-        else {
+        let (Some(to), Some(message)) = (
+            map.get("to").and_then(Value::as_str),
+            map.get("message").filter(|m| m.is_object()),
+        ) else {
             return error("invalid message");
         };
         if !uuid(to) || to == self.participant.peer_id {
             return error("invalid recipient");
         }
-        if serde_json::to_vec(message).map_or(true, |encoded| encoded.len() > MAX_PEER_MESSAGE_BYTES) {
+        if serde_json::to_vec(message)
+            .map_or(true, |encoded| encoded.len() > MAX_PEER_MESSAGE_BYTES)
+        {
             return error("message too large");
         }
-        match self.socket.state.sfu.relay(&self.room_id, &self.participant.peer_id, to, message.clone()).await {
+        match self
+            .socket
+            .state
+            .sfu
+            .relay(
+                &self.room_id,
+                &self.participant.peer_id,
+                to,
+                message.clone(),
+            )
+            .await
+        {
             Ok(()) => Ok(None),
             Err(_) => error("recipient has left"),
         }
@@ -725,7 +923,9 @@ impl Channel {
                 self.participant.deck_name = Some(deck.name);
                 self.update_presence();
                 // Peers may have cached the deck list before this deck was created or edited.
-                state.pubsub.broadcast(&self.topic, "deck_selected", json!({ "deck_id": deck.id }));
+                state
+                    .pubsub
+                    .broadcast(&self.topic, "deck_selected", json!({ "deck_id": deck.id }));
                 self.remember_seat().await?;
                 reply(Reply::ok())
             }
@@ -757,7 +957,10 @@ impl Channel {
         };
         // Dropping to zero life knocks a player out in every format. Restoring is
         // deliberately manual, so gaining life back does not silently un-eliminate.
-        if changes.life.is_some_and(|life| life <= 0) && !self.participant.eliminated && changes.eliminated.is_none() {
+        if changes.life.is_some_and(|life| life <= 0)
+            && !self.participant.eliminated
+            && changes.eliminated.is_none()
+        {
             changes.eliminated = Some(true);
         }
         let eliminated = changes.eliminated;
@@ -765,7 +968,9 @@ impl Channel {
         self.update_presence();
         self.remember_seat().await?;
         if let Some(eliminated) = eliminated {
-            self.tables().eliminate(&self.room_id, &self.participant.peer_id, eliminated).await?;
+            self.tables()
+                .eliminate(&self.room_id, &self.participant.peer_id, eliminated)
+                .await?;
         }
         reply(Reply::ok())
     }
@@ -773,7 +978,9 @@ impl Channel {
     async fn take_monarch(&self, payload: &Value) -> Handled {
         let me = self.participant.holder();
         if empty(payload) {
-            self.tables().take_monarch(&self.room_id, me.clone(), me).await?;
+            self.tables()
+                .take_monarch(&self.room_id, me.clone(), me)
+                .await?;
             return reply(Reply::ok());
         }
         // Any player may hand the monarch to another present, seated player.
@@ -783,7 +990,9 @@ impl Channel {
         let snapshot = self.tables().snapshot(&self.room_id).await?;
         match snapshot.seats.iter().find(|seat| seat.peer_id == peer_id) {
             Some(seat) if self.present(peer_id) => {
-                self.tables().take_monarch(&self.room_id, seat.holder(), me).await?;
+                self.tables()
+                    .take_monarch(&self.room_id, seat.holder(), me)
+                    .await?;
                 reply(Reply::ok())
             }
             _ => error("the monarch must go to a seated player"),
@@ -795,18 +1004,27 @@ impl Channel {
         let Some(map) = exactly(payload, 2) else {
             return error("invalid elimination");
         };
-        let (Some(peer_id), Some(eliminated)) =
-            (map.get("peer_id").and_then(Value::as_str), map.get("eliminated").and_then(Value::as_bool))
-        else {
+        let (Some(peer_id), Some(eliminated)) = (
+            map.get("peer_id").and_then(Value::as_str),
+            map.get("eliminated").and_then(Value::as_bool),
+        ) else {
             return error("invalid elimination");
         };
         let allowed = (self.owner || peer_id == self.participant.peer_id)
-            && self.tables().snapshot(&self.room_id).await?.seats.iter().any(|seat| seat.peer_id == peer_id)
+            && self
+                .tables()
+                .snapshot(&self.room_id)
+                .await?
+                .seats
+                .iter()
+                .any(|seat| seat.peer_id == peer_id)
             && self.present(peer_id);
         if !allowed {
             return error("player must be present to change elimination");
         }
-        self.tables().eliminate(&self.room_id, peer_id, eliminated).await?;
+        self.tables()
+            .eliminate(&self.room_id, peer_id, eliminated)
+            .await?;
         reply(Reply::ok())
     }
 
@@ -817,9 +1035,16 @@ impl Channel {
             return error("invalid seat order");
         };
         let snapshot = self.tables().snapshot(&self.room_id).await?;
-        let mut present: Vec<&str> = snapshot.seats.iter().map(|seat| seat.peer_id.as_str()).collect();
+        let mut present: Vec<&str> = snapshot
+            .seats
+            .iter()
+            .map(|seat| seat.peer_id.as_str())
+            .collect();
         present.sort_unstable();
-        let proposed: Option<Vec<String>> = peer_ids.iter().map(|id| id.as_str().map(str::to_owned)).collect();
+        let proposed: Option<Vec<String>> = peer_ids
+            .iter()
+            .map(|id| id.as_str().map(str::to_owned))
+            .collect();
         let Some(proposed) = proposed else {
             return error("seat order must list every seated player");
         };
@@ -837,7 +1062,10 @@ impl Channel {
     }
 
     async fn set_mode(&self, payload: &Value) -> Handled {
-        match exactly(payload, 1).and_then(|map| map.get("mode")?.as_str()).and_then(Mode::parse) {
+        match exactly(payload, 1)
+            .and_then(|map| map.get("mode")?.as_str())
+            .and_then(Mode::parse)
+        {
             Some(mode) => reply(self.tables().set_mode(&self.room_id, mode).await?),
             None => error("invalid game mode"),
         }
@@ -850,7 +1078,11 @@ impl Channel {
             Some((team, delta))
         });
         match parsed {
-            Some((team, delta)) => reply(self.tables().adjust_team_life(&self.room_id, self.actor(), team, delta).await?),
+            Some((team, delta)) => reply(
+                self.tables()
+                    .adjust_team_life(&self.room_id, self.actor(), team, delta)
+                    .await?,
+            ),
             None => error("invalid team life adjustment"),
         }
     }
@@ -875,7 +1107,11 @@ impl Channel {
             Some((player_id, delta))
         });
         match parsed {
-            Some((player_id, delta)) => reply(self.tables().adjust_turn(&self.room_id, player_id, delta).await?),
+            Some((player_id, delta)) => reply(
+                self.tables()
+                    .adjust_turn(&self.room_id, player_id, delta)
+                    .await?,
+            ),
             None => error("invalid turn adjustment"),
         }
     }
@@ -885,35 +1121,57 @@ impl Channel {
             .filter(|map| map.get("kind").and_then(Value::as_str) == Some("dice"))
             .and_then(|map| int(map.get("sides")))
             .filter(|sides| (2..=1000).contains(sides))
-            .map(|sides| (RollKind::Dice(sides), RollResult::Number(rand::rng().random_range(1..=sides))))
+            .map(|sides| {
+                (
+                    RollKind::Dice(sides),
+                    RollResult::Number(rand::rng().random_range(1..=sides)),
+                )
+            })
             .or_else(|| {
-                exactly(payload, 1).filter(|map| map.get("kind").and_then(Value::as_str) == Some("coin")).map(|_| {
-                    let face = if rand::rng().random_bool(0.5) { "Heads" } else { "Tails" };
-                    (RollKind::Coin, RollResult::Face(face.into()))
-                })
+                exactly(payload, 1)
+                    .filter(|map| map.get("kind").and_then(Value::as_str) == Some("coin"))
+                    .map(|_| {
+                        let face = if rand::rng().random_bool(0.5) {
+                            "Heads"
+                        } else {
+                            "Tails"
+                        };
+                        (RollKind::Coin, RollResult::Face(face.into()))
+                    })
             });
         let Some((kind, result)) = roll else {
             return error("invalid roll (dice must have 2–1000 sides)");
         };
-        self.tables().roll(&self.room_id, self.participant.holder(), kind, result).await?;
+        self.tables()
+            .roll(&self.room_id, self.participant.holder(), kind, result)
+            .await?;
         reply(Reply::ok())
     }
 }
 
 fn revision(payload: &Value) -> Option<i64> {
-    exactly(payload, 1).and_then(|map| int(map.get("revision"))).filter(|revision| *revision >= 0)
+    exactly(payload, 1)
+        .and_then(|map| int(map.get("revision")))
+        .filter(|revision| *revision >= 0)
 }
 
 /// Builds the joining participant from the join params, checking the player belongs to the
 /// signed-in account.
-async fn participant(state: &crate::state::AppState, params: &Value, user: &User) -> Result<Seat, String> {
-    let (Some(peer_id), Some(player_id)) = (params.get("peer_id"), int(params.get("player_id"))) else {
+async fn participant(
+    state: &crate::state::AppState,
+    params: &Value,
+    user: &User,
+) -> Result<Seat, String> {
+    let (Some(peer_id), Some(player_id)) = (params.get("peer_id"), int(params.get("player_id")))
+    else {
         return Err("account is not linked to a player".into());
     };
     let Some(peer_id) = peer_id.as_str().filter(|peer_id| uuid(peer_id)) else {
         return Err("invalid peer id".into());
     };
-    let player = webcam::get_player(&state.pool, player_id).await.map_err(|_| "join crashed".to_owned())?;
+    let player = webcam::get_player(&state.pool, player_id)
+        .await
+        .map_err(|_| "join crashed".to_owned())?;
     let Some(player) = player.filter(|player| player.user_id == Some(user.id)) else {
         return Err("account is not linked to this player".into());
     };

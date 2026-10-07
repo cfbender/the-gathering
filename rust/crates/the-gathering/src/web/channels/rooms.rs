@@ -65,7 +65,10 @@ pub fn active_rooms(state: &AppState) -> Vec<ActiveRoom> {
             continue;
         };
         let joined_at = meta.get("joined_at").and_then(Value::as_i64).unwrap_or(0);
-        by_room.entry(room.to_owned()).or_default().push((joined_at, player_id, name.to_owned()));
+        by_room
+            .entry(room.to_owned())
+            .or_default()
+            .push((joined_at, player_id, name.to_owned()));
     }
     let mut rooms: Vec<ActiveRoom> = state
         .webcam_tables
@@ -80,7 +83,10 @@ pub fn active_rooms(state: &AppState) -> Vec<ActiveRoom> {
                 id: room.id,
                 started_at: room.opened_at,
                 full: seats.len() >= MAX_PLAYERS,
-                players: seats.into_iter().map(|(_, id, name)| LobbyPlayer { id, name }).collect(),
+                players: seats
+                    .into_iter()
+                    .map(|(_, id, name)| LobbyPlayer { id, name })
+                    .collect(),
             }
         })
         .collect();

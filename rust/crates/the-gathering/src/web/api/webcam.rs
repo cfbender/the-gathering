@@ -21,14 +21,26 @@ use crate::web::session::Session;
 use super::check_user_limit;
 
 fn no_store(mut response: Response) -> Response {
-    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
     response
 }
 
 /// `GET /api/webcam-table/config`: ICE servers (minting Cloudflare TURN credentials, so it is
 /// rate-limited per account), SFU transport, and the socket token.
-pub async fn config_show(State(state): State<AppState>, AuthUser(user): AuthUser, session: Session) -> ApiResult<Response> {
-    check_user_limit(&state, "turn_credentials", user.id, state.config.rate_limits.turn_credentials)?;
+pub async fn config_show(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    session: Session,
+) -> ApiResult<Response> {
+    check_user_limit(
+        &state,
+        "turn_credentials",
+        user.id,
+        state.config.rate_limits.turn_credentials,
+    )?;
     let session_token = session.get_bytes("user_token").unwrap_or_default();
     let body = json!({
         "data": {
@@ -46,16 +58,25 @@ pub async fn config_show(State(state): State<AppState>, AuthUser(user): AuthUser
 /// A Cloudflare outage degrades to the static list rather than failing the room.
 async fn ice_servers(state: &AppState) -> Vec<Value> {
     let config = &state.config.webcam_table;
-    let static_servers: Vec<Value> = [stun_server(config), turn_server(config)].into_iter().flatten().collect();
+    let static_servers: Vec<Value> = [stun_server(config), turn_server(config)]
+        .into_iter()
+        .flatten()
+        .collect();
     let cloudflare = if cloudflare_turn::configured(&state.config.cloudflare_turn) {
-        cloudflare_turn::ice_servers(&state.http, &state.config.cloudflare_turn).await.unwrap_or_default()
+        cloudflare_turn::ice_servers(&state.http, &state.config.cloudflare_turn)
+            .await
+            .unwrap_or_default()
     } else {
         Vec::new()
     };
     let known: HashSet<String> = static_servers.iter().flat_map(urls).collect();
     let mut servers = static_servers;
     for mut server in cloudflare {
-        let remaining: Vec<Value> = urls(&server).into_iter().filter(|url| !known.contains(url)).map(Value::String).collect();
+        let remaining: Vec<Value> = urls(&server)
+            .into_iter()
+            .filter(|url| !known.contains(url))
+            .map(Value::String)
+            .collect();
         if remaining.is_empty() {
             continue;
         }
@@ -71,7 +92,11 @@ async fn ice_servers(state: &AppState) -> Vec<Value> {
 fn urls(server: &Value) -> Vec<String> {
     match server.get("urls") {
         Some(Value::String(url)) => vec![url.clone()],
-        Some(Value::Array(urls)) => urls.iter().filter_map(Value::as_str).map(str::to_owned).collect(),
+        Some(Value::Array(urls)) => urls
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -112,7 +137,11 @@ pub async fn socket(
     Query(params): Query<SocketParams>,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Response {
-    if params.vsn.as_deref().is_some_and(|vsn| !vsn.starts_with("2.")) {
+    if params
+        .vsn
+        .as_deref()
+        .is_some_and(|vsn| !vsn.starts_with("2."))
+    {
         return StatusCode::BAD_REQUEST.into_response();
     }
     let authenticated = match &params.token {

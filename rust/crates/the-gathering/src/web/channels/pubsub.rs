@@ -43,7 +43,11 @@ pub enum Sink {
 impl Sink {
     fn closed(&self) -> bool {
         match self {
-            Self::Channel { outbound, intercept, .. } => outbound.is_closed() || intercept.is_closed(),
+            Self::Channel {
+                outbound,
+                intercept,
+                ..
+            } => outbound.is_closed() || intercept.is_closed(),
             Self::Listener(sender) => sender.is_closed(),
         }
     }
@@ -66,13 +70,19 @@ impl PubSub {
     }
 
     fn topics(&self) -> MutexGuard<'_, HashMap<String, Vec<(u64, Sink)>>> {
-        self.0.topics.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.0
+            .topics
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Subscribes `sink` to `topic`; returns the subscription id.
     pub fn subscribe(&self, topic: &str, sink: Sink) -> u64 {
         let id = self.0.next_id.fetch_add(1, Ordering::Relaxed);
-        self.topics().entry(topic.to_owned()).or_default().push((id, sink));
+        self.topics()
+            .entry(topic.to_owned())
+            .or_default()
+            .push((id, sink));
         id
     }
 
@@ -102,15 +112,24 @@ impl PubSub {
             return;
         };
         subscribers.retain(|(_, sink)| !sink.closed());
-        let message = Broadcast { topic: topic.to_owned(), event: event.to_owned(), payload: Arc::clone(&payload) };
+        let message = Broadcast {
+            topic: topic.to_owned(),
+            event: event.to_owned(),
+            payload: Arc::clone(&payload),
+        };
         let mut frame: Option<axum::extract::ws::Utf8Bytes> = None;
         for (_, sink) in subscribers.iter() {
             match sink {
-                Sink::Channel { intercept, intercepts, .. } if intercepts.contains(&event) => {
+                Sink::Channel {
+                    intercept,
+                    intercepts,
+                    ..
+                } if intercepts.contains(&event) => {
                     let _ = intercept.send(message.clone());
                 }
                 Sink::Channel { outbound, .. } => {
-                    let text = frame.get_or_insert_with(|| encode(None, None, topic, event, &payload).into());
+                    let text = frame
+                        .get_or_insert_with(|| encode(None, None, topic, event, &payload).into());
                     let _ = outbound.send(Outbound::Text(text.clone()));
                 }
                 Sink::Listener(sender) => {

@@ -16,7 +16,10 @@ use crate::regex::{Regex, compile};
 /// Cloudflare returns six TURN URLs; only UDP on 3478 and TLS on 443 are passed on (a browser
 /// opens one relay allocation per URL, and Firefox warns that five or more slow discovery).
 static PREFERRED_TURN_URLS: LazyLock<[Regex; 2]> = LazyLock::new(|| {
-    [compile(r"^turn:[^?]*:3478\?transport=udp$"), compile(r"^turns:[^?]*:443\?transport=tcp$")]
+    [
+        compile(r"^turn:[^?]*:3478\?transport=udp$"),
+        compile(r"^turns:[^?]*:443\?transport=tcp$"),
+    ]
 });
 
 fn present(value: Option<&String>) -> bool {
@@ -41,7 +44,10 @@ pub enum TurnError {
 
 /// Requests ICE servers carrying fresh TURN credentials: maps with `urls` and, for the TURN
 /// entry, `username` and `credential`.
-pub async fn ice_servers(http: &reqwest::Client, config: &CloudflareTurnConfig) -> Result<Vec<Value>, TurnError> {
+pub async fn ice_servers(
+    http: &reqwest::Client,
+    config: &CloudflareTurnConfig,
+) -> Result<Vec<Value>, TurnError> {
     let url = format!(
         "{}/v1/turn/keys/{}/credentials/generate-ice-servers",
         config.api_base.trim_end_matches('/'),
@@ -54,11 +60,16 @@ pub async fn ice_servers(http: &reqwest::Client, config: &CloudflareTurnConfig) 
         .timeout(Duration::from_secs(5))
         .send()
         .await
-        .inspect_err(|error| tracing::warn!("Cloudflare TURN credential request failed: {error}"))?;
+        .inspect_err(|error| {
+            tracing::warn!("Cloudflare TURN credential request failed: {error}");
+        })?;
     let status = response.status();
     let body: Value = response.json().await.unwrap_or(Value::Null);
     match body.get("iceServers").and_then(Value::as_array) {
-        Some(servers) if status.is_success() => Ok(servers.iter().map(|server| prefer_urls(take(server))).collect()),
+        Some(servers) if status.is_success() => Ok(servers
+            .iter()
+            .map(|server| prefer_urls(take(server)))
+            .collect()),
         _ => {
             tracing::warn!("Cloudflare TURN credential request failed with {status}: {body}");
             Err(TurnError::Status(status.as_u16()))
@@ -84,7 +95,10 @@ fn prefer_urls(mut server: Value) -> Value {
     };
     let preferred: Vec<Value> = urls
         .iter()
-        .filter(|url| url.as_str().is_some_and(|url| PREFERRED_TURN_URLS.iter().any(|regex| regex.is_match(url))))
+        .filter(|url| {
+            url.as_str()
+                .is_some_and(|url| PREFERRED_TURN_URLS.iter().any(|regex| regex.is_match(url)))
+        })
         .cloned()
         .collect();
     if !preferred.is_empty()
@@ -97,7 +111,10 @@ fn prefer_urls(mut server: Value) -> Value {
 
 /// Relay servers for the SFU's relay-only mode (`Sfu.relay_servers/0`): TURN entries with
 /// credentials, or none when Cloudflare is unavailable.
-pub async fn relay_servers(http: &reqwest::Client, config: &CloudflareTurnConfig) -> Vec<the_gathering_sfu::IceServer> {
+pub async fn relay_servers(
+    http: &reqwest::Client,
+    config: &CloudflareTurnConfig,
+) -> Vec<the_gathering_sfu::IceServer> {
     let Ok(servers) = ice_servers(http, config).await else {
         return Vec::new();
     };
@@ -107,13 +124,20 @@ pub async fn relay_servers(http: &reqwest::Client, config: &CloudflareTurnConfig
             let username = server.get("username").and_then(Value::as_str)?;
             let urls = match server.get("urls")? {
                 Value::String(url) => vec![url.clone()],
-                Value::Array(urls) => urls.iter().filter_map(Value::as_str).map(str::to_owned).collect(),
+                Value::Array(urls) => urls
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect(),
                 _ => return None,
             };
             Some(the_gathering_sfu::IceServer {
                 urls,
                 username: Some(username.to_owned()),
-                credential: server.get("credential").and_then(Value::as_str).map(str::to_owned),
+                credential: server
+                    .get("credential")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
             })
         })
         .collect()

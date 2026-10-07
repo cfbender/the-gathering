@@ -75,28 +75,44 @@ impl Presence {
     }
 
     fn topics(&self) -> MutexGuard<'_, HashMap<String, Topic>> {
-        self.0.topics.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.0
+            .topics
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn next_ref(&self) -> String {
-        format!("{}{}", self.0.prefix, self.0.counter.fetch_add(1, Ordering::Relaxed))
+        format!(
+            "{}{}",
+            self.0.prefix,
+            self.0.counter.fetch_add(1, Ordering::Relaxed)
+        )
     }
 
     fn publish(&self, topic: &str, joins: Vec<(String, Value)>, leaves: Vec<(String, Value)>) {
         if joins.is_empty() && leaves.is_empty() {
             return;
         }
-        self.0.pubsub.broadcast(topic, "presence_diff", json!({ "joins": grouped(joins), "leaves": grouped(leaves) }));
+        self.0.pubsub.broadcast(
+            topic,
+            "presence_diff",
+            json!({ "joins": grouped(joins), "leaves": grouped(leaves) }),
+        );
     }
 
     /// `Presence.track/4`: `owner` is present on `topic` under `key` with `meta`.
     pub fn track(&self, topic: &str, owner: u64, key: &str, meta: &Value) {
         let mut topics = self.topics();
         let meta = with_refs(meta, &self.next_ref(), None);
-        topics.entry(topic.to_owned()).or_default().entry(key.to_owned()).or_default().push(Tracked {
-            owner,
-            meta: meta.clone(),
-        });
+        topics
+            .entry(topic.to_owned())
+            .or_default()
+            .entry(key.to_owned())
+            .or_default()
+            .push(Tracked {
+                owner,
+                meta: meta.clone(),
+            });
         self.publish(topic, vec![(key.to_owned(), meta)], Vec::new());
     }
 
@@ -113,7 +129,11 @@ impl Presence {
         let previous = tracked.meta.clone();
         let next = with_refs(meta, &self.next_ref(), phx_ref_of(&previous));
         tracked.meta = next.clone();
-        self.publish(topic, vec![(key.to_owned(), next)], vec![(key.to_owned(), previous)]);
+        self.publish(
+            topic,
+            vec![(key.to_owned(), next)],
+            vec![(key.to_owned(), previous)],
+        );
     }
 
     /// Removes everything `owner` tracks on `topic`.
@@ -146,7 +166,11 @@ impl Presence {
             .get(topic)
             .map(|keys| {
                 keys.iter()
-                    .flat_map(|(key, entries)| entries.iter().map(|entry| (key.clone(), entry.meta.clone())))
+                    .flat_map(|(key, entries)| {
+                        entries
+                            .iter()
+                            .map(|entry| (key.clone(), entry.meta.clone()))
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -158,7 +182,12 @@ impl Presence {
         let topics = self.topics();
         topics
             .get(topic)
-            .map(|keys| keys.values().flatten().map(|entry| entry.meta.clone()).collect())
+            .map(|keys| {
+                keys.values()
+                    .flatten()
+                    .map(|entry| entry.meta.clone())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -171,7 +200,9 @@ impl Presence {
 
     /// Whether anyone is present under `key`.
     pub fn has_key(&self, topic: &str, key: &str) -> bool {
-        self.topics().get(topic).is_some_and(|keys| keys.contains_key(key))
+        self.topics()
+            .get(topic)
+            .is_some_and(|keys| keys.contains_key(key))
     }
 
     /// How many keys are present.

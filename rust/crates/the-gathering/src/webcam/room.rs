@@ -101,11 +101,20 @@ impl Entry {
 
     /// Seats in turn order: by seat order, then join time, then peer id.
     pub fn ordered_seats(&self) -> Vec<Seat> {
-        let positions: HashMap<&str, usize> =
-            self.peer_ids.iter().enumerate().map(|(index, id)| (id.as_str(), index)).collect();
+        let positions: HashMap<&str, usize> = self
+            .peer_ids
+            .iter()
+            .enumerate()
+            .map(|(index, id)| (id.as_str(), index))
+            .collect();
         let mut seats: Vec<Seat> = self.all_seats.values().cloned().collect();
         seats.sort_by(|a, b| {
-            let key = |seat: &Seat| (positions.get(seat.peer_id.as_str()).copied().unwrap_or(999), seat.joined_at);
+            let key = |seat: &Seat| {
+                (
+                    positions.get(seat.peer_id.as_str()).copied().unwrap_or(999),
+                    seat.joined_at,
+                )
+            };
             key(a).cmp(&key(b)).then_with(|| a.peer_id.cmp(&b.peer_id))
         });
         seats
@@ -121,7 +130,10 @@ impl Entry {
             peer_ids: self.peer_ids.clone(),
             seats: self.all_seats.values().cloned().collect(),
             owner_id: self.owner_id,
-            monarch: MonarchState { holder: self.monarch.clone(), revision: self.monarch_revision },
+            monarch: MonarchState {
+                holder: self.monarch.clone(),
+                revision: self.monarch_revision,
+            },
             cards: self.cards.clone(),
             eliminated_seats: self.eliminated_seats.values().cloned().collect(),
             turns: self.turns.clone(),
@@ -141,7 +153,12 @@ impl Entry {
 
     fn reconcile_turn(mut self) -> Self {
         if self.timer.started_at.is_some() {
-            self.turns = turns::reconcile(&self.turns, &self.ordered_seats(), self.timer.elapsed(now()), self.mode);
+            self.turns = turns::reconcile(
+                &self.turns,
+                &self.ordered_seats(),
+                self.timer.elapsed(now()),
+                self.mode,
+            );
         }
         self
     }
@@ -162,12 +179,21 @@ pub struct TimerState {
 
 impl TimerState {
     fn new(timer: Timer, server_now: i64) -> Self {
-        Self { started_at: timer.started_at, paused_at: timer.paused_at, paused_ms: timer.paused_ms, server_now }
+        Self {
+            started_at: timer.started_at,
+            paused_at: timer.paused_at,
+            paused_ms: timer.paused_ms,
+            server_now,
+        }
     }
 
     /// The timer without `server_now`.
     pub fn timer(&self) -> Timer {
-        Timer { started_at: self.started_at, paused_at: self.paused_at, paused_ms: self.paused_ms }
+        Timer {
+            started_at: self.started_at,
+            paused_at: self.paused_at,
+            paused_ms: self.paused_ms,
+        }
     }
 }
 
@@ -403,8 +429,16 @@ fn shuffle(peers: Vec<String>, mode: Mode, randomize: bool) -> Vec<String> {
 
 /// Entries that are new or changed by a merge, oldest first.
 fn new_log_entries(old: Option<&[LogEntry]>, new: &[LogEntry]) -> Vec<LogEntry> {
-    let old: HashMap<i64, &LogEntry> = old.unwrap_or(&[]).iter().map(|entry| (entry.id, entry)).collect();
-    new.iter().filter(|entry| old.get(&entry.id) != Some(entry)).rev().cloned().collect()
+    let old: HashMap<i64, &LogEntry> = old
+        .unwrap_or(&[])
+        .iter()
+        .map(|entry| (entry.id, entry))
+        .collect();
+    new.iter()
+        .filter(|entry| old.get(&entry.id) != Some(entry))
+        .rev()
+        .cloned()
+        .collect()
 }
 
 impl Room {
@@ -434,12 +468,18 @@ impl Room {
         match super::session::load(&self.shared.pool, &self.id).await {
             Ok(entry) => self.entry = entry,
             Err(error) => {
-                tracing::error!("webcam table {} could not load its session: {error}", self.id);
+                tracing::error!(
+                    "webcam table {} could not load its session: {error}",
+                    self.id
+                );
                 self.shared.deregister(&self.id, self.instance);
                 return;
             }
         }
-        let mut refresh = tokio::time::interval_at(tokio::time::Instant::now() + REFRESH_INTERVAL, REFRESH_INTERVAL);
+        let mut refresh = tokio::time::interval_at(
+            tokio::time::Instant::now() + REFRESH_INTERVAL,
+            REFRESH_INTERVAL,
+        );
         loop {
             let flow = tokio::select! {
                 message = inbox.recv() => match message {
@@ -475,18 +515,35 @@ impl Room {
 
     /// Saves before broadcasting, so everything clients see is recoverable. New and merged log
     /// entries follow the broadcasts as `log_entry` events.
-    async fn commit(&mut self, entry: Entry, broadcasts: Vec<Broadcast>) -> Result<(), sqlx::Error> {
+    async fn commit(
+        &mut self,
+        entry: Entry,
+        broadcasts: Vec<Broadcast>,
+    ) -> Result<(), sqlx::Error> {
         super::session::save(&self.shared.pool, &self.id, &entry).await?;
-        let log_entries = new_log_entries(self.entry.as_ref().map(|old| old.log.as_slice()), &entry.log);
+        let log_entries = new_log_entries(
+            self.entry.as_ref().map(|old| old.log.as_slice()),
+            &entry.log,
+        );
         let topic = format!("webcam_table:{}", self.id);
         for broadcast in broadcasts {
             match broadcast {
-                Broadcast::TableState => self.shared.pubsub.broadcast(&topic, "table_state", to_value(&entry.snapshot())),
-                Broadcast::Event(event, payload) => self.shared.pubsub.broadcast(&topic, event, payload),
+                Broadcast::TableState => {
+                    self.shared.pubsub.broadcast(
+                        &topic,
+                        "table_state",
+                        to_value(&entry.snapshot()),
+                    );
+                }
+                Broadcast::Event(event, payload) => {
+                    self.shared.pubsub.broadcast(&topic, event, payload);
+                }
             }
         }
         for log_entry in log_entries {
-            self.shared.pubsub.broadcast(&topic, "log_entry", to_value(&log_entry));
+            self.shared
+                .pubsub
+                .broadcast(&topic, "log_entry", to_value(&log_entry));
         }
         self.entry = Some(entry);
         self.active_at = now();
@@ -494,7 +551,9 @@ impl Room {
     }
 
     fn connection(&self, player_id: i64) -> Option<&Conn> {
-        self.connections.get(&player_id).map(|connection| &connection.conn)
+        self.connections
+            .get(&player_id)
+            .map(|connection| &connection.conn)
     }
 
     async fn handle(&mut self, message: RoomMsg) -> Result<Flow, sqlx::Error> {
@@ -515,12 +574,18 @@ impl Room {
                 return Ok(Flow::Continue);
             }
             RoomMsg::Seated(player_id, reply) => {
-                let seated = self.entry.as_ref().is_some_and(|entry| entry.all_seats.contains_key(&player_id));
+                let seated = self
+                    .entry
+                    .as_ref()
+                    .is_some_and(|entry| entry.all_seats.contains_key(&player_id));
                 let _ = reply.send(seated);
                 return Ok(Flow::Continue);
             }
             RoomMsg::Current(player_id, conn_id, reply) => {
-                let _ = reply.send(self.connection(player_id).is_some_and(|conn| conn.id == conn_id));
+                let _ = reply.send(
+                    self.connection(player_id)
+                        .is_some_and(|conn| conn.id == conn_id),
+                );
                 return Ok(Flow::Continue);
             }
             RoomMsg::Down(monitor) => {
@@ -544,7 +609,11 @@ impl Room {
         self.handle_entry(entry.0, entry.1).await
     }
 
-    async fn handle_entry(&mut self, message: RoomMsg, mut entry: Entry) -> Result<Flow, sqlx::Error> {
+    async fn handle_entry(
+        &mut self,
+        message: RoomMsg,
+        mut entry: Entry,
+    ) -> Result<Flow, sqlx::Error> {
         match message {
             RoomMsg::Snapshot(reply) => {
                 let _ = reply.send(entry.snapshot());
@@ -564,8 +633,14 @@ impl Room {
                 if let (RollKind::Dice(sides), Some(object)) = (kind, roll.as_object_mut()) {
                     object.insert("sides".into(), json!(sides));
                 }
-                let entry = entry.log(vec![log::roll(kind, &result, &actor.peer_id, &actor.player_name)]);
-                self.commit(entry, vec![Broadcast::Event("roll", roll)]).await?;
+                let entry = entry.log(vec![log::roll(
+                    kind,
+                    &result,
+                    &actor.peer_id,
+                    &actor.player_name,
+                )]);
+                self.commit(entry, vec![Broadcast::Event("roll", roll)])
+                    .await?;
                 let _ = reply.send(());
             }
             RoomMsg::Close(reply) => {
@@ -584,7 +659,8 @@ impl Room {
                     entry.monarch_revision += 1;
                     let event = json!({ "holder": holder, "revision": entry.monarch_revision });
                     let entry = entry.log(vec![log::monarch(&holder, &actor)]);
-                    self.commit(entry, vec![Broadcast::Event("monarch", event)]).await?;
+                    self.commit(entry, vec![Broadcast::Event("monarch", event)])
+                        .await?;
                 }
                 let _ = reply.send(());
             }
@@ -599,7 +675,8 @@ impl Room {
                         };
                         let event = json!({ "entries": cards, "type": kind, "by": actor });
                         entry.cards = cards;
-                        self.commit(entry, vec![Broadcast::Event("identified_cards", event)]).await?;
+                        self.commit(entry, vec![Broadcast::Event("identified_cards", event)])
+                            .await?;
                         let _ = reply.send(Ok(()));
                     }
                     None => {
@@ -638,8 +715,16 @@ impl Room {
                 let outcome = self.team_life(entry, actor, team_index, delta).await?;
                 let _ = reply.send(outcome);
             }
+            // Elixir bug fixed: an unknown peer id (a seat whose peer changed between the
+            // channel's check and this call) crashed the room (`seat.player_id` on nil); it is
+            // ignored here.
             RoomMsg::Eliminate(peer_id, eliminated, reply) => {
-                if let Some(seat) = entry.all_seats.values().find(|seat| seat.peer_id == peer_id).cloned() {
+                if let Some(seat) = entry
+                    .all_seats
+                    .values()
+                    .find(|seat| seat.peer_id == peer_id)
+                    .cloned()
+                {
                     let targets = if entry.mode == Mode::TwoHeadedGiant {
                         turns::team(&entry.ordered_seats(), seat.player_id).to_vec()
                     } else {
@@ -654,20 +739,32 @@ impl Room {
             RoomMsg::Timer(action, reply) => {
                 entry.timer = entry.timer.update(action, now());
                 let timer = entry.timer_state();
-                self.commit(entry, vec![Broadcast::Event("timer_state", to_value(&timer))]).await?;
+                self.commit(
+                    entry,
+                    vec![Broadcast::Event("timer_state", to_value(&timer))],
+                )
+                .await?;
                 let _ = reply.send(timer);
             }
             RoomMsg::BeginPlay(actor, reply) => {
                 let outcome = if !entry.timer.awaiting_start() {
                     Ok(entry.timer_state())
                 } else if let Actor::Player(player_id) = actor
-                    && Some(turns::turn_id(&entry.ordered_seats(), player_id, entry.mode)) != entry.turns.active_player_id
+                    && Some(turns::turn_id(
+                        &entry.ordered_seats(),
+                        player_id,
+                        entry.mode,
+                    )) != entry.turns.active_player_id
                 {
                     Err("only the first player can start the game".to_owned())
                 } else {
                     entry.timer = entry.timer.update(Action::Resume, now());
                     let timer = entry.timer_state();
-                    self.commit(entry, vec![Broadcast::Event("timer_state", to_value(&timer))]).await?;
+                    self.commit(
+                        entry,
+                        vec![Broadcast::Event("timer_state", to_value(&timer))],
+                    )
+                    .await?;
                     Ok(timer)
                 };
                 let _ = reply.send(outcome);
@@ -688,10 +785,17 @@ impl Room {
                     if awaiting {
                         entry.timer = entry.timer.update(Action::Resume, now());
                     }
-                    entry.turns =
-                        turns::pass(&entry.turns, &entry.ordered_seats(), entry.timer.elapsed(now()), entry.mode);
+                    entry.turns = turns::pass(
+                        &entry.turns,
+                        &entry.ordered_seats(),
+                        entry.timer.elapsed(now()),
+                        entry.mode,
+                    );
                     let events = if awaiting {
-                        vec![Broadcast::Event("timer_state", to_value(&entry.timer_state())), Broadcast::TableState]
+                        vec![
+                            Broadcast::Event("timer_state", to_value(&entry.timer_state())),
+                            Broadcast::TableState,
+                        ]
                     } else {
                         vec![Broadcast::TableState]
                     };
@@ -725,10 +829,14 @@ impl Room {
             }
             RoomMsg::Departed(player_id, token) => {
                 // Stale tokens belong to an earlier disconnect the player already returned from.
-                if self.departing.get(&player_id).is_some_and(|(_, current)| *current == token)
+                if self
+                    .departing
+                    .get(&player_id)
+                    .is_some_and(|(_, current)| *current == token)
                     && let Some((name, _)) = self.departing.remove(&player_id)
                 {
-                    self.commit(entry.log(vec![log::left(&name)]), Vec::new()).await?;
+                    self.commit(entry.log(vec![log::left(&name)]), Vec::new())
+                        .await?;
                 }
             }
             RoomMsg::Join(..)
@@ -741,8 +849,15 @@ impl Room {
         Ok(Flow::Continue)
     }
 
-    async fn join(&mut self, participant: Seat, conn: Conn) -> Result<Result<Admitted, String>, sqlx::Error> {
-        let entry = self.entry.clone().unwrap_or_else(|| Entry::new(participant.player_id));
+    async fn join(
+        &mut self,
+        participant: Seat,
+        conn: Conn,
+    ) -> Result<Result<Admitted, String>, sqlx::Error> {
+        let entry = self
+            .entry
+            .clone()
+            .unwrap_or_else(|| Entry::new(participant.player_id));
         let previous = entry.all_seats.get(&participant.player_id).cloned();
         let duplicate = entry
             .all_seats
@@ -751,7 +866,10 @@ impl Room {
         if duplicate {
             return Ok(Err("peer id is already in use".into()));
         }
-        if entry.timer.started_at.is_none() && previous.is_none() && entry.all_seats.len() >= MAX_SEATS {
+        if entry.timer.started_at.is_none()
+            && previous.is_none()
+            && entry.all_seats.len() >= MAX_SEATS
+        {
             return Ok(Err("room is full".into()));
         }
         self.admit(entry, previous, participant, conn).await.map(Ok)
@@ -768,7 +886,10 @@ impl Room {
     ) -> Result<Admitted, sqlx::Error> {
         let spectator = previous.is_none() && entry.timer.started_at.is_some();
         let mut participant = match &previous {
-            Some(previous) => Seat { peer_id: participant.peer_id, ..previous.clone() },
+            Some(previous) => Seat {
+                peer_id: participant.peer_id,
+                ..previous.clone()
+            },
             None => participant,
         };
         participant.spectator = spectator;
@@ -777,11 +898,23 @@ impl Room {
             || self.departing.contains_key(&participant.player_id);
         self.departing.remove(&participant.player_id);
         self.replace_connection(conn, &participant);
-        let entry = if spectator { entry } else { restore_seat(entry, previous.as_ref(), &participant) };
-        let entry = if returning { entry } else { entry.log(vec![log::joined(&participant.player_name)]) };
+        let entry = if spectator {
+            entry
+        } else {
+            restore_seat(entry, previous.as_ref(), &participant)
+        };
+        let entry = if returning {
+            entry
+        } else {
+            entry.log(vec![log::joined(&participant.player_name)])
+        };
         let snapshot = entry.snapshot();
         self.commit(entry, vec![Broadcast::TableState]).await?;
-        Ok(Admitted { snapshot, participant, exit: self.exit.subscribe() })
+        Ok(Admitted {
+            snapshot,
+            participant,
+            exit: self.exit.subscribe(),
+        })
     }
 
     /// One live connection per player: a reload replaces the older tab.
@@ -800,8 +933,12 @@ impl Room {
                 let _ = room.send(RoomMsg::Down(monitor));
             }
         });
-        self.monitors.insert(monitor, (participant.player_id, participant.player_name.clone()));
-        self.connections.insert(participant.player_id, Connection { conn, monitor });
+        self.monitors.insert(
+            monitor,
+            (participant.player_id, participant.player_name.clone()),
+        );
+        self.connections
+            .insert(participant.player_id, Connection { conn, monitor });
     }
 
     fn down(&mut self, monitor: u64) {
@@ -826,7 +963,12 @@ impl Room {
     /// here (in their last order, with their decks, cameras and reveals) and puts everything
     /// else back to a fresh lobby. Connected seats are sent their reset seat to adopt.
     async fn rematch(&mut self, entry: Entry) -> Result<(), sqlx::Error> {
-        let present: Vec<i64> = self.connections.keys().chain(self.departing.keys()).copied().collect();
+        let present: Vec<i64> = self
+            .connections
+            .keys()
+            .chain(self.departing.keys())
+            .copied()
+            .collect();
         let seats: BTreeMap<i64, Seat> = entry
             .all_seats
             .iter()
@@ -834,7 +976,12 @@ impl Room {
             .map(|(id, seat)| (*id, seat.clone().reset()))
             .collect();
         let kept: Vec<&str> = seats.values().map(|seat| seat.peer_id.as_str()).collect();
-        let peer_ids = entry.peer_ids.iter().filter(|id| kept.contains(&id.as_str())).cloned().collect();
+        let peer_ids = entry
+            .peer_ids
+            .iter()
+            .filter(|id| kept.contains(&id.as_str()))
+            .cloned()
+            .collect();
         let log = log::append(&[], log::rematch(), now());
         let entry = Entry {
             timer: Timer::new(),
@@ -850,8 +997,14 @@ impl Room {
             log: log.clone(),
             ..entry
         };
-        self.commit(entry, vec![Broadcast::TableState, Broadcast::Event("table_log", json!({ "entries": log }))])
-            .await?;
+        self.commit(
+            entry,
+            vec![
+                Broadcast::TableState,
+                Broadcast::Event("table_log", json!({ "entries": log })),
+            ],
+        )
+        .await?;
         for (id, seat) in seats {
             if let Some(conn) = self.connection(id) {
                 let _ = conn.tx.send(ConnEvent::SeatReset(Box::new(seat)));
@@ -862,10 +1015,19 @@ impl Room {
 
     /// Only the seat's current connection may update it, so a replaced tab's late updates
     /// cannot overwrite the reloaded seat.
-    async fn remember_seat(&mut self, mut entry: Entry, mut participant: Seat, conn_id: u64) -> Result<(), sqlx::Error> {
-        if self.connection(participant.player_id).is_none_or(|conn| conn.id != conn_id) {
+    async fn remember_seat(
+        &mut self,
+        mut entry: Entry,
+        mut participant: Seat,
+        conn_id: u64,
+    ) -> Result<(), sqlx::Error> {
+        if self
+            .connection(participant.player_id)
+            .is_none_or(|conn| conn.id != conn_id)
+        {
             return Ok(());
         }
+        // The Elixir room crashed if the seat was missing; there is nothing to remember then.
         let Some(previous) = entry.all_seats.get(&participant.player_id).cloned() else {
             return Ok(());
         };
@@ -874,7 +1036,9 @@ impl Room {
         put_eliminated(&mut eliminated_seats, &participant);
         let changed = eliminated_seats != entry.eliminated_seats;
         entry.eliminated_seats = eliminated_seats;
-        entry.all_seats.insert(participant.player_id, participant.clone());
+        entry
+            .all_seats
+            .insert(participant.player_id, participant.clone());
         let entry = entry.reconcile_turn();
         let seats: Vec<Seat> = entry.all_seats.values().cloned().collect();
         let entry = entry.log(log::seat_changes(&previous, &participant, &seats));
@@ -886,7 +1050,13 @@ impl Room {
         self.commit(entry, events).await
     }
 
-    async fn team_life(&mut self, mut entry: Entry, actor: Actor, team_index: i64, delta: i64) -> Result<Outcome, sqlx::Error> {
+    async fn team_life(
+        &mut self,
+        mut entry: Entry,
+        actor: Actor,
+        team_index: i64,
+        delta: i64,
+    ) -> Result<Outcome, sqlx::Error> {
         let ordered = entry.ordered_seats();
         let team: Vec<Seat> = usize::try_from(team_index)
             .ok()
@@ -897,9 +1067,15 @@ impl Room {
             Actor::Owner => true,
             Actor::Player(player_id) => team.iter().any(|seat| seat.player_id == player_id),
         };
-        let Some(current) = entry.team_life.get(&team_index).copied().filter(|_| entry.mode == Mode::TwoHeadedGiant && allowed)
+        let Some(current) = entry
+            .team_life
+            .get(&team_index)
+            .copied()
+            .filter(|_| entry.mode == Mode::TwoHeadedGiant && allowed)
         else {
-            return Ok(Err("only teammates or the owner can change a started team's life".into()));
+            return Ok(Err(
+                "only teammates or the owner can change a started team's life".into(),
+            ));
         };
         let life = (current + delta).clamp(-999, 999);
         entry.team_life.insert(team_index, life);
@@ -914,7 +1090,11 @@ impl Room {
         Ok(Ok(()))
     }
 
-    async fn start_game(&mut self, mut entry: Entry, randomize: Option<bool>) -> Result<Outcome, sqlx::Error> {
+    async fn start_game(
+        &mut self,
+        mut entry: Entry,
+        randomize: Option<bool>,
+    ) -> Result<Outcome, sqlx::Error> {
         let randomize = randomize.unwrap_or(entry.auto_randomize);
         let peers: Vec<String> = entry
             .ordered_seats()
@@ -941,7 +1121,12 @@ impl Room {
 
     /// Sets the seat order and starts the clock (idempotently). Shared by the initial start
     /// and mid-game Commander reorders.
-    async fn reorder(&mut self, entry: Entry, peers: Vec<String>, shuffled: bool) -> Result<(), sqlx::Error> {
+    async fn reorder(
+        &mut self,
+        entry: Entry,
+        peers: Vec<String>,
+        shuffled: bool,
+    ) -> Result<(), sqlx::Error> {
         // Keep departed eliminated seats in their recorded positions when live seats reshuffle.
         let departed: Vec<String> = entry
             .eliminated_seats
@@ -953,25 +1138,44 @@ impl Room {
         let mut ordered: Vec<String> = entry
             .peer_ids
             .iter()
-            .filter_map(|id| if departed.contains(id) { Some(id.clone()) } else { rest.next() })
+            .filter_map(|id| {
+                if departed.contains(id) {
+                    Some(id.clone())
+                } else {
+                    rest.next()
+                }
+            })
             .collect();
         ordered.extend(rest);
-        ordered.extend(departed.into_iter().filter(|id| !entry.peer_ids.contains(id)));
+        ordered.extend(
+            departed
+                .into_iter()
+                .filter(|id| !entry.peer_ids.contains(id)),
+        );
 
         // Cards identified in the lobby do not carry into the game.
         let started = entry.timer.started_at.is_some();
         let entry = Entry {
-            cards: if started { entry.cards.clone() } else { Vec::new() },
+            cards: if started {
+                entry.cards.clone()
+            } else {
+                Vec::new()
+            },
             timer: entry.timer.update(Action::Start, now()),
             peer_ids: ordered.clone(),
             ..entry
         };
-        let entry = entry.reconcile_turn().log(vec![log::seat_order(shuffled, started)]);
+        let entry = entry
+            .reconcile_turn()
+            .log(vec![log::seat_order(shuffled, started)]);
         let timer = entry.timer_state();
         self.commit(
             entry,
             vec![
-                Broadcast::Event("seat_order", json!({ "peer_ids": ordered, "shuffled": shuffled })),
+                Broadcast::Event(
+                    "seat_order",
+                    json!({ "peer_ids": ordered, "shuffled": shuffled }),
+                ),
                 Broadcast::Event("timer_state", to_value(&timer)),
                 Broadcast::TableState,
             ],
@@ -1000,17 +1204,32 @@ impl Room {
 /// A returning player keeps their seat, position, crown and cards under the new peer id.
 fn restore_seat(mut entry: Entry, previous: Option<&Seat>, participant: &Seat) -> Entry {
     let replace = |id: &str| -> String {
-        if previous.is_some_and(|previous| previous.peer_id == id) { participant.peer_id.clone() } else { id.to_owned() }
+        if previous.is_some_and(|previous| previous.peer_id == id) {
+            participant.peer_id.clone()
+        } else {
+            id.to_owned()
+        }
     };
     entry.peer_ids = entry.peer_ids.iter().map(|id| replace(id)).collect();
-    entry.monarch = entry.monarch.map(|holder| Holder { peer_id: replace(&holder.peer_id), ..holder });
+    entry.monarch = entry.monarch.map(|holder| Holder {
+        peer_id: replace(&holder.peer_id),
+        ..holder
+    });
     for card in &mut entry.cards {
         if let Some(object) = card.as_object_mut() {
-            let owner = object.get("ownerPeerId").and_then(Value::as_str).map(replace);
-            object.insert("ownerPeerId".into(), owner.map_or(Value::Null, Value::String));
+            let owner = object
+                .get("ownerPeerId")
+                .and_then(Value::as_str)
+                .map(replace);
+            object.insert(
+                "ownerPeerId".into(),
+                owner.map_or(Value::Null, Value::String),
+            );
         }
     }
     put_eliminated(&mut entry.eliminated_seats, participant);
-    entry.all_seats.insert(participant.player_id, participant.clone());
+    entry
+        .all_seats
+        .insert(participant.player_id, participant.clone());
     entry
 }

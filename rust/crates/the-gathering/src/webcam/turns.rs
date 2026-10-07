@@ -91,13 +91,18 @@ fn eligible(seat: &impl TurnSeat) -> bool {
 /// The two-seat team holding `player_id` (empty when none). A team's first seat is its stable
 /// accounting key; keep the full order when grouping.
 pub fn team<S: TurnSeat>(seats: &[S], player_id: i64) -> &[S] {
-    seats.chunks(2).find(|team| team.iter().any(|seat| seat.player_id() == player_id)).unwrap_or(&[])
+    seats
+        .chunks(2)
+        .find(|team| team.iter().any(|seat| seat.player_id() == player_id))
+        .unwrap_or(&[])
 }
 
 /// The id turns are accounted under: the team's first seat in Two-Headed Giant.
 pub fn turn_id<S: TurnSeat>(seats: &[S], player_id: i64, mode: Mode) -> i64 {
     if mode == Mode::TwoHeadedGiant {
-        team(seats, player_id).first().map_or(player_id, TurnSeat::player_id)
+        team(seats, player_id)
+            .first()
+            .map_or(player_id, TurnSeat::player_id)
     } else {
         player_id
     }
@@ -118,7 +123,11 @@ fn units<S: TurnSeat>(seats: &[S], mode: Mode) -> Vec<Unit> {
     } else {
         seats
             .iter()
-            .map(|seat| Unit { player_id: seat.player_id(), eliminated: seat.eliminated(), departed: seat.departed() })
+            .map(|seat| Unit {
+                player_id: seat.player_id(),
+                eliminated: seat.eliminated(),
+                departed: seat.departed(),
+            })
             .collect()
     }
 }
@@ -127,8 +136,16 @@ fn units<S: TurnSeat>(seats: &[S], mode: Mode) -> Vec<Unit> {
 pub fn next_player<S: TurnSeat>(seats: &[S], active_id: Option<i64>, mode: Mode) -> Option<i64> {
     let active_id = active_id.map(|id| turn_id(seats, id, mode));
     let units = units(seats, mode);
-    let offset = units.iter().position(|unit| Some(unit.player_id) == active_id).map_or(0, |index| index + 1);
-    units.iter().skip(offset).chain(units.iter().take(offset)).find(|unit| eligible(*unit)).map(|unit| unit.player_id)
+    let offset = units
+        .iter()
+        .position(|unit| Some(unit.player_id) == active_id)
+        .map_or(0, |index| index + 1);
+    units
+        .iter()
+        .skip(offset)
+        .chain(units.iter().take(offset))
+        .find(|unit| eligible(*unit))
+        .map(|unit| unit.player_id)
 }
 
 /// Passes the turn at `elapsed` game milliseconds.
@@ -146,8 +163,15 @@ pub fn pass<S: TurnSeat>(turns: &Turns, seats: &[S], elapsed: i64, mode: Mode) -
         // A turn that starts from no active player has no one to hand it back to.
         None => turns.history.clone(),
         Some(active) => {
-            let entry = Pass { player_id: active, started_elapsed_ms: turns.started_elapsed_ms, next_player_id: next };
-            std::iter::once(entry).chain(turns.history.iter().cloned()).take(HISTORY_LIMIT).collect()
+            let entry = Pass {
+                player_id: active,
+                started_elapsed_ms: turns.started_elapsed_ms,
+                next_player_id: next,
+            };
+            std::iter::once(entry)
+                .chain(turns.history.iter().cloned())
+                .take(HISTORY_LIMIT)
+                .collect()
         }
     };
     Turns {
@@ -169,7 +193,10 @@ pub fn unpass<S: TurnSeat>(turns: &Turns, seats: &[S], mode: Mode) -> Option<Tur
     if last.next_player_id != turns.active_player_id {
         return None;
     }
-    if !units(seats, mode).iter().any(|unit| unit.player_id == last.player_id && eligible(unit)) {
+    if !units(seats, mode)
+        .iter()
+        .any(|unit| unit.player_id == last.player_id && eligible(unit))
+    {
         return None;
     }
     let banked = turns.started_elapsed_ms - last.started_elapsed_ms;
@@ -194,7 +221,9 @@ pub fn unpass<S: TurnSeat>(turns: &Turns, seats: &[S], mode: Mode) -> Option<Tur
 /// Moves the turn on when the active player can no longer take it, or starts it when a seat
 /// becomes eligible again.
 pub fn reconcile<S: TurnSeat>(turns: &Turns, seats: &[S], elapsed: i64, mode: Mode) -> Turns {
-    let active = units(seats, mode).iter().any(|unit| Some(unit.player_id) == turns.active_player_id && eligible(unit));
+    let active = units(seats, mode)
+        .iter()
+        .any(|unit| Some(unit.player_id) == turns.active_player_id && eligible(unit));
     if active || (turns.active_player_id.is_none() && next_player(seats, None, mode).is_none()) {
         turns.clone()
     } else {
@@ -207,5 +236,8 @@ pub fn adjust(turns: &Turns, player_id: i64, delta: i64) -> Turns {
     let mut counts = turns.counts.clone();
     let count = (counts.get(&player_id).copied().unwrap_or(0) + delta).clamp(0, 999);
     counts.insert(player_id, count);
-    Turns { counts, ..turns.clone() }
+    Turns {
+        counts,
+        ..turns.clone()
+    }
 }

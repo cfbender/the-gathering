@@ -97,11 +97,18 @@ pub struct LogEntry {
 }
 
 fn text(text: impl Into<String>) -> LogEntry {
-    LogEntry { text: text.into(), ..LogEntry::default() }
+    LogEntry {
+        text: text.into(),
+        ..LogEntry::default()
+    }
 }
 
 fn by(actor: &str, kind: impl Into<String>, line: impl Into<String>) -> LogEntry {
-    LogEntry { actor: Some(actor.to_owned()), kind: Some(kind.into()), ..text(line) }
+    LogEntry {
+        actor: Some(actor.to_owned()),
+        kind: Some(kind.into()),
+        ..text(line)
+    }
 }
 
 /// Adds `content` at `at` (ms). It merges into the latest entry with the same actor and kind
@@ -109,13 +116,26 @@ fn by(actor: &str, kind: impl Into<String>, line: impl Into<String>) -> LogEntry
 /// merge, table-wide entries (no actor) do. Life and counters keep the original value, rolls
 /// keep every result.
 pub fn append(log: &[LogEntry], content: LogEntry, at: i64) -> Vec<LogEntry> {
-    let next = LogEntry { id: log.first().map_or(1, |head| head.id + 1), at, ..content };
+    let next = LogEntry {
+        id: log.first().map_or(1, |head| head.id + 1),
+        at,
+        ..content
+    };
     match merge_index(log, &next) {
-        None => std::iter::once(next).chain(log.iter().cloned()).take(MAX_ENTRIES).collect(),
+        None => std::iter::once(next)
+            .chain(log.iter().cloned())
+            .take(MAX_ENTRIES)
+            .collect(),
         Some(index) => log
             .iter()
             .enumerate()
-            .map(|(position, entry)| if position == index { merge(entry, next.clone()) } else { entry.clone() })
+            .map(|(position, entry)| {
+                if position == index {
+                    merge(entry, next.clone())
+                } else {
+                    entry.clone()
+                }
+            })
             .collect(),
     }
 }
@@ -127,26 +147,52 @@ fn merge_index(log: &[LogEntry], next: &LogEntry) -> Option<usize> {
     let index = log
         .iter()
         .take_while(|entry| entry.actor.is_some())
-        .position(|entry| entry.actor.as_ref() == Some(actor) && entry.kind.as_ref() == Some(kind))?;
+        .position(|entry| {
+            entry.actor.as_ref() == Some(actor) && entry.kind.as_ref() == Some(kind)
+        })?;
     let previous = log.get(index)?;
-    (0..=MERGE_WINDOW_MS).contains(&(next.at - previous.at)).then_some(index)
+    (0..=MERGE_WINDOW_MS)
+        .contains(&(next.at - previous.at))
+        .then_some(index)
 }
 
 fn merge(previous: &LogEntry, next: LogEntry) -> LogEntry {
-    let mut merged = LogEntry { id: previous.id, count: Some(previous.count.unwrap_or(1) + 1), ..next };
+    let mut merged = LogEntry {
+        id: previous.id,
+        count: Some(previous.count.unwrap_or(1) + 1),
+        ..next
+    };
     if let (Some(before), Some(after)) = (&previous.life, &merged.life) {
-        let life = LifeChange { from: before.from, ..after.clone() };
+        let life = LifeChange {
+            from: before.from,
+            ..after.clone()
+        };
         merged.text = life_text(&life);
         merged.life = Some(life);
     } else if let (Some(before), Some(after)) = (&previous.counter, &merged.counter) {
-        let counter = CounterChange { from: before.from, ..after.clone() };
+        let counter = CounterChange {
+            from: before.from,
+            ..after.clone()
+        };
         merged.text = counter_text(&counter);
         merged.counter = Some(counter);
     } else if let (Some(before), Some(after)) = (&previous.roll, &merged.roll) {
-        let results: Vec<RollResult> = before.results.iter().chain(&after.results).cloned().collect();
-        let joined = results.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
+        let results: Vec<RollResult> = before
+            .results
+            .iter()
+            .chain(&after.results)
+            .cloned()
+            .collect();
+        let joined = results
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
         merged.text = format!("{}{joined}", after.prefix);
-        merged.roll = Some(RollLine { prefix: after.prefix.clone(), results });
+        merged.roll = Some(RollLine {
+            prefix: after.prefix.clone(),
+            results,
+        });
     }
     merged
 }
@@ -171,7 +217,10 @@ pub fn monarch(holder: &Holder, actor: &Holder) -> LogEntry {
     if holder.peer_id == actor.peer_id {
         text(format!("{} took the monarch", holder.player_name))
     } else {
-        text(format!("{} gave {} the monarch", actor.player_name, holder.player_name))
+        text(format!(
+            "{} gave {} the monarch",
+            actor.player_name, holder.player_name
+        ))
     }
 }
 
@@ -187,9 +236,17 @@ pub fn seat_order(shuffled: bool, started: bool) -> LogEntry {
 /// A seat was eliminated or restored.
 pub fn elimination(seat: &Seat, eliminated: bool) -> LogEntry {
     if eliminated {
-        by(&seat.peer_id, "eliminated", format!("{} was eliminated", seat.player_name))
+        by(
+            &seat.peer_id,
+            "eliminated",
+            format!("{} was eliminated", seat.player_name),
+        )
     } else {
-        by(&seat.peer_id, "restored", format!("{} was restored to the game", seat.player_name))
+        by(
+            &seat.peer_id,
+            "restored",
+            format!("{} was restored to the game", seat.player_name),
+        )
     }
 }
 
@@ -205,11 +262,17 @@ pub enum RollKind {
 /// A die or coin roll by `player_name` (peer `actor`).
 pub fn roll(kind: RollKind, result: &RollResult, actor: &str, player_name: &str) -> LogEntry {
     let (kind, prefix) = match kind {
-        RollKind::Dice(sides) => (format!("dice:{sides}"), format!("{player_name} rolled a d{sides}: ")),
+        RollKind::Dice(sides) => (
+            format!("dice:{sides}"),
+            format!("{player_name} rolled a d{sides}: "),
+        ),
         RollKind::Coin => ("coin".to_owned(), format!("{player_name} flipped a coin: ")),
     };
     LogEntry {
-        roll: Some(RollLine { prefix: prefix.clone(), results: vec![result.clone()] }),
+        roll: Some(RollLine {
+            prefix: prefix.clone(),
+            results: vec![result.clone()],
+        }),
         ..by(actor, kind, format!("{prefix}{result}"))
     }
 }
@@ -222,15 +285,30 @@ pub fn seat_changes(previous: &Seat, next: &Seat, seats: &[Seat]) -> Vec<LogEntr
     if next.deck_id != previous.deck_id
         && let Some(deck_name) = &next.deck_name
     {
-        entries.push(by(&next.peer_id, "deck", format!("{name} chose {deck_name}")));
+        entries.push(by(
+            &next.peer_id,
+            "deck",
+            format!("{name} chose {deck_name}"),
+        ));
     }
     if next.life != previous.life {
-        let life = LifeChange { name: name.clone(), from: previous.life, to: next.life };
-        entries.push(LogEntry { life: Some(life.clone()), ..by(&next.peer_id, "life", life_text(&life)) });
+        let life = LifeChange {
+            name: name.clone(),
+            from: previous.life,
+            to: next.life,
+        };
+        entries.push(LogEntry {
+            life: Some(life.clone()),
+            ..by(&next.peer_id, "life", life_text(&life))
+        });
     }
     if next.camera_off != previous.camera_off {
         let state = if next.camera_off { "off" } else { "on" };
-        entries.push(by(&next.peer_id, "camera", format!("{name} turned their camera {state}")));
+        entries.push(by(
+            &next.peer_id,
+            "camera",
+            format!("{name} turned their camera {state}"),
+        ));
     }
     entries.extend(counter_changes(previous, next, seats));
     entries
@@ -259,7 +337,12 @@ fn counter_changes(previous: &Seat, next: &Seat, seats: &[Seat]) -> Vec<LogEntry
     for commander in keys(&previous.commander_casts, &next.commander_casts) {
         changes.push((
             format!("{commander} commander tax"),
-            previous.commander_casts.get(commander).copied().unwrap_or(0) * 2,
+            previous
+                .commander_casts
+                .get(commander)
+                .copied()
+                .unwrap_or(0)
+                * 2,
             next.commander_casts.get(commander).copied().unwrap_or(0) * 2,
         ));
     }
@@ -277,19 +360,34 @@ fn counter_changes(previous: &Seat, next: &Seat, seats: &[Seat]) -> Vec<LogEntry
     }
     // Shared custom counters are matched by id, so renaming one does not log a change and a
     // counter that stops being shared (or is removed) leaves nothing behind.
-    let before: BTreeMap<&str, i64> =
-        previous.custom_counters.iter().map(|counter| (counter.id.as_str(), counter.value)).collect();
+    let before: BTreeMap<&str, i64> = previous
+        .custom_counters
+        .iter()
+        .map(|counter| (counter.id.as_str(), counter.value))
+        .collect();
     for counter in &next.custom_counters {
-        changes.push((counter.label.clone(), before.get(counter.id.as_str()).copied().unwrap_or(0), counter.value));
+        changes.push((
+            counter.label.clone(),
+            before.get(counter.id.as_str()).copied().unwrap_or(0),
+            counter.value,
+        ));
     }
     changes
         .into_iter()
         .filter(|(_, from, to)| from != to)
         .map(|(label, from, to)| {
-            let counter = CounterChange { prefix: format!("{} {label}: ", next.player_name), from, to };
+            let counter = CounterChange {
+                prefix: format!("{} {label}: ", next.player_name),
+                from,
+                to,
+            };
             LogEntry {
                 counter: Some(counter.clone()),
-                ..by(&next.peer_id, format!("counter:{label}"), counter_text(&counter))
+                ..by(
+                    &next.peer_id,
+                    format!("counter:{label}"),
+                    counter_text(&counter),
+                )
             }
         })
         .collect()

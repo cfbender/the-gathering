@@ -25,9 +25,17 @@ impl Change {
     /// Parses the channel payload (`type` plus its fields).
     pub fn parse(payload: &Value) -> Option<Self> {
         match payload.get("type")?.as_str()? {
-            "card_identified" => payload.get("entry").map(|entry| Self::Identified(entry.clone())),
-            "card_removed" => payload.get("id")?.as_str().map(|id| Self::Removed(id.to_owned())),
-            "cards_cleared" => payload.get("ownerPeerId")?.as_str().map(|id| Self::Cleared(id.to_owned())),
+            "card_identified" => payload
+                .get("entry")
+                .map(|entry| Self::Identified(entry.clone())),
+            "card_removed" => payload
+                .get("id")?
+                .as_str()
+                .map(|id| Self::Removed(id.to_owned())),
+            "cards_cleared" => payload
+                .get("ownerPeerId")?
+                .as_str()
+                .map(|id| Self::Cleared(id.to_owned())),
             _ => None,
         }
     }
@@ -42,7 +50,11 @@ pub fn update(cards: &[Value], change: &Change, seats: &[Seat]) -> Option<Vec<Va
     match change {
         Change::Identified(entry) => {
             let owner = field(entry, "ownerPeerId")?;
-            if !valid(entry) || !seats.iter().any(|seat| seat.peer_id == owner && seat.reveal_to.is_none()) {
+            if !valid(entry)
+                || !seats
+                    .iter()
+                    .any(|seat| seat.peer_id == owner && seat.reveal_to.is_none())
+            {
                 return None;
             }
             let mut seen = std::collections::HashSet::new();
@@ -55,16 +67,29 @@ pub fn update(cards: &[Value], change: &Change, seats: &[Seat]) -> Option<Vec<Va
                 .collect();
             Some(cards)
         }
-        Change::Removed(id) => Some(cards.iter().filter(|card| field(card, "id") != Some(id)).cloned().collect()),
-        Change::Cleared(owner) => {
-            Some(cards.iter().filter(|card| field(card, "ownerPeerId") != Some(owner)).cloned().collect())
-        }
+        Change::Removed(id) => Some(
+            cards
+                .iter()
+                .filter(|card| field(card, "id") != Some(id))
+                .cloned()
+                .collect(),
+        ),
+        Change::Cleared(owner) => Some(
+            cards
+                .iter()
+                .filter(|card| field(card, "ownerPeerId") != Some(owner))
+                .cloned()
+                .collect(),
+        ),
     }
 }
 
 fn dedupe_key(card: &Value) -> (Option<String>, Option<String>) {
     let owner = field(card, "ownerPeerId").map(str::to_owned);
-    let name = card.get("card").and_then(|card| field(card, "name")).map(|name| name.trim().to_lowercase());
+    let name = card
+        .get("card")
+        .and_then(|card| field(card, "name"))
+        .map(|name| name.trim().to_lowercase());
     (owner, name)
 }
 
@@ -81,6 +106,8 @@ fn valid(entry: &Value) -> bool {
         field(card, "set"),
     ];
     entry.get("at").is_some_and(|at| at.is_i64() || at.is_u64())
-        && strings.iter().all(|value| value.is_some_and(|value| (1..=300).contains(&value.len())))
+        && strings
+            .iter()
+            .all(|value| value.is_some_and(|value| (1..=300).contains(&value.len())))
         && serde_json::to_vec(entry).is_ok_and(|encoded| encoded.len() <= MAX_ENTRY_BYTES)
 }

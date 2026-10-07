@@ -45,9 +45,12 @@ struct Snapshot {
 
 /// The saved table, unless missing, expired, or in another format.
 pub async fn load(pool: &Pool, id: &str) -> Result<Option<Entry>, sqlx::Error> {
-    let row = sqlx::query!(r#"SELECT snapshot, expires_at FROM webcam_table_sessions WHERE id = ?"#, id)
-        .fetch_optional(pool)
-        .await?;
+    let row = sqlx::query!(
+        r#"SELECT snapshot, expires_at FROM webcam_table_sessions WHERE id = ?"#,
+        id
+    )
+    .fetch_optional(pool)
+    .await?;
     let Some(row) = row else {
         return Ok(None);
     };
@@ -62,8 +65,11 @@ pub async fn load(pool: &Pool, id: &str) -> Result<Option<Entry>, sqlx::Error> {
 
 /// Saves the table, pushing its expiry a week out.
 pub async fn save(pool: &Pool, id: &str, entry: &Entry) -> Result<(), sqlx::Error> {
-    let snapshot = serde_json::to_vec(&SnapshotRef { version: VERSION, state: entry })
-        .map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
+    let snapshot = serde_json::to_vec(&SnapshotRef {
+        version: VERSION,
+        state: entry,
+    })
+    .map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
     let expires_at = usec(OffsetDateTime::now_utc() + Duration::days(RETENTION_DAYS));
     sqlx::query!(
         r#"INSERT INTO webcam_table_sessions (id, snapshot, expires_at) VALUES (?, ?, ?)
@@ -79,13 +85,20 @@ pub async fn save(pool: &Pool, id: &str, entry: &Entry) -> Result<(), sqlx::Erro
 
 /// Deletes the table's session.
 pub async fn delete(pool: &Pool, id: &str) -> Result<(), sqlx::Error> {
-    sqlx::query!("DELETE FROM webcam_table_sessions WHERE id = ?", id).execute(pool).await?;
+    sqlx::query!("DELETE FROM webcam_table_sessions WHERE id = ?", id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
 /// Deletes expired sessions; returns how many.
 pub async fn prune(pool: &Pool) -> Result<u64, sqlx::Error> {
     let now = usec(OffsetDateTime::now_utc());
-    let result = sqlx::query!("DELETE FROM webcam_table_sessions WHERE expires_at < ?", now).execute(pool).await?;
+    let result = sqlx::query!(
+        "DELETE FROM webcam_table_sessions WHERE expires_at < ?",
+        now
+    )
+    .execute(pool)
+    .await?;
     Ok(result.rows_affected())
 }

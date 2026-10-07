@@ -30,9 +30,20 @@ pub struct Frame {
 impl Frame {
     /// Decodes a text frame.
     pub fn decode(text: &str) -> Option<Self> {
-        let (join_ref, ref_, topic, event, payload): (Option<Value>, Option<Value>, String, String, Value) =
-            serde_json::from_str(text).ok()?;
-        Some(Self { join_ref: join_ref.and_then(ref_string), ref_: ref_.and_then(ref_string), topic, event, payload })
+        let (join_ref, ref_, topic, event, payload): (
+            Option<Value>,
+            Option<Value>,
+            String,
+            String,
+            Value,
+        ) = serde_json::from_str(text).ok()?;
+        Some(Self {
+            join_ref: join_ref.and_then(ref_string),
+            ref_: ref_.and_then(ref_string),
+            topic,
+            event,
+            payload,
+        })
     }
 }
 
@@ -46,7 +57,13 @@ fn ref_string(value: Value) -> Option<String> {
 }
 
 /// Encodes a server frame.
-pub fn encode(join_ref: Option<&str>, ref_: Option<&str>, topic: &str, event: &str, payload: &Value) -> String {
+pub fn encode(
+    join_ref: Option<&str>,
+    ref_: Option<&str>,
+    topic: &str,
+    event: &str,
+    payload: &Value,
+) -> String {
     json!([join_ref, ref_, topic, event, payload]).to_string()
 }
 

@@ -44,18 +44,33 @@ pub const WEBCAM_TABLE_PREFIX: &str = "webcam_table:";
 /// Encrypts the cookie session token for the browser to pass as the `token` connect param.
 /// Encrypted, not just signed, so page scripts cannot read the session token out of it.
 pub fn socket_token(state: &AppState, session_token: &[u8]) -> String {
-    crypto::encrypt(&state.config.secret_key_base, TOKEN_SALT, session_token, TOKEN_MAX_AGE_SECONDS)
+    crypto::encrypt(
+        &state.config.secret_key_base,
+        TOKEN_SALT,
+        session_token,
+        TOKEN_MAX_AGE_SECONDS,
+    )
 }
 
 /// `UserSocket.connect/3`: the session token is looked up rather than trusted, so logging
 /// out (which deletes it) also refuses new sockets.
-pub async fn authenticate(state: &AppState, token: &str) -> Result<Option<(User, Vec<u8>)>, sqlx::Error> {
-    let Some(session_token) =
-        crypto::decrypt(&state.config.secret_key_base, TOKEN_SALT, token, Some(TOKEN_MAX_AGE_SECONDS))
-    else {
+pub async fn authenticate(
+    state: &AppState,
+    token: &str,
+) -> Result<Option<(User, Vec<u8>)>, sqlx::Error> {
+    let Some(session_token) = crypto::decrypt(
+        &state.config.secret_key_base,
+        TOKEN_SALT,
+        token,
+        Some(TOKEN_MAX_AGE_SECONDS),
+    ) else {
         return Ok(None);
     };
-    Ok(state.accounts.get_user_by_session_token(&session_token).await?.map(|(user, _)| (user, session_token)))
+    Ok(state
+        .accounts
+        .get_user_by_session_token(&session_token)
+        .await?
+        .map(|(user, _)| (user, session_token)))
 }
 
 /// What the socket tells a channel task.
@@ -82,8 +97,17 @@ pub struct SocketCtx {
 
 impl SocketCtx {
     /// Queues a frame.
-    pub fn send(&self, join_ref: Option<&str>, ref_: Option<&str>, topic: &str, event: &str, payload: &serde_json::Value) {
-        let _ = self.out.send(Outbound::Text(encode(join_ref, ref_, topic, event, payload).into()));
+    pub fn send(
+        &self,
+        join_ref: Option<&str>,
+        ref_: Option<&str>,
+        topic: &str,
+        event: &str,
+        payload: &serde_json::Value,
+    ) {
+        let _ = self.out.send(Outbound::Text(
+            encode(join_ref, ref_, topic, event, payload).into(),
+        ));
     }
 }
 
@@ -111,7 +135,12 @@ pub async fn run_socket(state: AppState, socket: WebSocket, user: User, session_
     });
 
     let (exited, mut exits) = mpsc::unbounded_channel();
-    let ctx = SocketCtx { state: state.clone(), user, out: out.clone(), exited };
+    let ctx = SocketCtx {
+        state: state.clone(),
+        user,
+        out: out.clone(),
+        exited,
+    };
     let session_topic = user_session_topic(&session_token);
     let mut disconnects = state.session_disconnects.subscribe();
     let mut listening = true;
@@ -151,7 +180,13 @@ pub async fn run_socket(state: AppState, socket: WebSocket, user: User, session_
 
 fn route(ctx: &SocketCtx, channels: &mut HashMap<String, Joined>, frame: Frame) {
     let reply = |reply: Reply| {
-        ctx.send(frame.join_ref.as_deref(), frame.ref_.as_deref(), &frame.topic, "phx_reply", &reply.payload());
+        ctx.send(
+            frame.join_ref.as_deref(),
+            frame.ref_.as_deref(),
+            &frame.topic,
+            "phx_reply",
+            &reply.payload(),
+        );
     };
     match (frame.topic.as_str(), frame.event.as_str()) {
         ("phoenix", "heartbeat") => reply(Reply::ok()),
@@ -165,7 +200,13 @@ fn route(ctx: &SocketCtx, channels: &mut HashMap<String, Joined>, frame: Frame) 
                 let _ = previous.tx.send(ClientMsg::Shutdown);
             }
             let (tx, rx) = mpsc::unbounded_channel();
-            channels.insert(topic.to_owned(), Joined { join_ref: frame.join_ref.clone(), tx });
+            channels.insert(
+                topic.to_owned(),
+                Joined {
+                    join_ref: frame.join_ref.clone(),
+                    tx,
+                },
+            );
             tokio::spawn(webcam_table::run(ctx.clone(), frame, rx));
         }
         (topic, _) => match channels.get(topic) {

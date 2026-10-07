@@ -43,6 +43,10 @@ pub struct CombatEffect {
 }
 
 /// A seat (the channel's participant).
+///
+/// Elixir bug fixed: `Session.restore/1` listed seat fields explicitly and omitted
+/// `camera_height` and `shares_corrections`, so seats restored after a room restart lost them;
+/// every field round-trips here.
 #[allow(clippy::struct_excessive_bools)] // The wire format the frontend reads.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Seat {
@@ -130,7 +134,10 @@ impl Seat {
 
     /// Who this seat is, for attribution.
     pub fn holder(&self) -> Holder {
-        Holder { peer_id: self.peer_id.clone(), player_name: self.player_name.clone() }
+        Holder {
+            peer_id: self.peer_id.clone(),
+            player_name: self.player_name.clone(),
+        }
     }
 
     /// What a seat starts a game with (a rematch resets these).

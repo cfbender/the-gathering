@@ -66,11 +66,20 @@ impl Timer {
     #[must_use]
     pub fn update(self, action: Action, now: i64) -> Self {
         match (self.started_at, self.paused_at, action) {
-            (None, _, Action::Start) => Self { started_at: Some(now), paused_at: Some(now), ..self },
-            (Some(_), None, Action::Pause) => Self { paused_at: Some(now), ..self },
-            (Some(_), Some(paused), Action::Resume) => {
-                Self { paused_at: None, paused_ms: self.paused_ms + now - paused, ..self }
-            }
+            (None, _, Action::Start) => Self {
+                started_at: Some(now),
+                paused_at: Some(now),
+                ..self
+            },
+            (Some(_), None, Action::Pause) => Self {
+                paused_at: Some(now),
+                ..self
+            },
+            (Some(_), Some(paused), Action::Resume) => Self {
+                paused_at: None,
+                paused_ms: self.paused_ms + now - paused,
+                ..self
+            },
             _ => self,
         }
     }

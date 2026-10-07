@@ -82,7 +82,9 @@ impl Client {
         );
         let (stream, _) = match tokio_tungstenite::connect_async(url).await {
             Ok(connected) => connected,
-            Err(tokio_tungstenite::tungstenite::Error::Http(response)) => return Err(response.status().as_u16()),
+            Err(tokio_tungstenite::tungstenite::Error::Http(response)) => {
+                return Err(response.status().as_u16());
+            }
             Err(error) => panic!("websocket connect failed: {error}"),
         };
         let (sink, mut stream) = stream.split();
@@ -90,9 +92,23 @@ impl Client {
         tokio::spawn(async move {
             while let Some(Ok(message)) = stream.next().await {
                 if let Message::Text(text) = message {
-                    let (join_ref, ref_, topic, event, payload): (Option<String>, Option<String>, String, String, Value) =
-                        serde_json::from_str(text.as_str()).expect("server frame");
-                    if tx.send(Msg { join_ref, ref_, topic, event, payload }).is_err() {
+                    let (join_ref, ref_, topic, event, payload): (
+                        Option<String>,
+                        Option<String>,
+                        String,
+                        String,
+                        Value,
+                    ) = serde_json::from_str(text.as_str()).expect("server frame");
+                    if tx
+                        .send(Msg {
+                            join_ref,
+                            ref_,
+                            topic,
+                            event,
+                            payload,
+                        })
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -124,9 +140,19 @@ impl Client {
     }
 
     /// Sends a raw frame.
-    pub async fn send(&mut self, join_ref: Option<&str>, ref_: &str, topic: &str, event: &str, payload: Value) {
+    pub async fn send(
+        &mut self,
+        join_ref: Option<&str>,
+        ref_: &str,
+        topic: &str,
+        event: &str,
+        payload: Value,
+    ) {
         let frame = json!([join_ref, ref_, topic, event, payload]).to_string();
-        self.sink.send(Message::Text(frame.into())).await.expect("send frame");
+        self.sink
+            .send(Message::Text(frame.into()))
+            .await
+            .expect("send frame");
     }
 
     async fn receive(&mut self, timeout: Duration) -> Option<Msg> {
@@ -146,7 +172,8 @@ impl Client {
         let join_ref = self.make_ref();
         self.topic = topic.to_owned();
         self.join_ref = Some(join_ref.clone());
-        self.send(Some(&join_ref), &join_ref, topic, "phx_join", payload).await;
+        self.send(Some(&join_ref), &join_ref, topic, "phx_join", payload)
+            .await;
         let (status, response) = self.reply(&join_ref).await;
         if status == "ok" {
             self.participant = response["participant"].clone();
@@ -159,7 +186,8 @@ impl Client {
     pub async fn push(&mut self, event: &str, payload: Value) -> String {
         let ref_ = self.make_ref();
         let (join_ref, topic) = (self.join_ref.clone(), self.topic.clone());
-        self.send(join_ref.as_deref(), &ref_, &topic, event, payload).await;
+        self.send(join_ref.as_deref(), &ref_, &topic, event, payload)
+            .await;
         ref_
     }
 
@@ -167,12 +195,20 @@ impl Client {
     pub async fn reply(&mut self, ref_: &str) -> (String, Value) {
         let wanted = ref_.to_owned();
         let Some(message) = self
-            .take_where(move |message| message.event == "phx_reply" && message.ref_.as_deref() == Some(&wanted))
+            .take_where(move |message| {
+                message.event == "phx_reply" && message.ref_.as_deref() == Some(&wanted)
+            })
             .await
         else {
             panic!("no reply to {ref_}; buffered: {:?}", self.events());
         };
-        (message.payload["status"].as_str().unwrap_or_default().to_owned(), message.payload["response"].clone())
+        (
+            message.payload["status"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
+            message.payload["response"].clone(),
+        )
     }
 
     /// Pushes and waits for the reply.
@@ -220,7 +256,10 @@ impl Client {
     /// `assert_push`/`assert_broadcast`: the next `event` (buffered or arriving).
     pub async fn expect(&mut self, event: &str) -> Value {
         let wanted = event.to_owned();
-        match self.take_where(move |message| message.event == wanted).await {
+        match self
+            .take_where(move |message| message.event == wanted)
+            .await
+        {
             Some(message) => message.payload,
             None => panic!("no {event}; buffered: {:?}", self.events()),
         }
@@ -229,7 +268,10 @@ impl Client {
     /// The next `event` whose payload satisfies `predicate`.
     pub async fn expect_where(&mut self, event: &str, predicate: impl Fn(&Value) -> bool) -> Value {
         let wanted = event.to_owned();
-        match self.take_where(move |message| message.event == wanted && predicate(&message.payload)).await {
+        match self
+            .take_where(move |message| message.event == wanted && predicate(&message.payload))
+            .await
+        {
             Some(message) => message.payload,
             None => panic!("no matching {event}; buffered: {:?}", self.events()),
         }
@@ -238,8 +280,15 @@ impl Client {
     /// `refute_push`: no `event` matching `predicate` within a short wait.
     pub async fn refute_where(&mut self, event: &str, predicate: impl Fn(&Value) -> bool) {
         self.settle(Duration::from_millis(100)).await;
-        let found = self.buffer.iter().find(|message| message.event == event && predicate(&message.payload));
-        assert!(found.is_none(), "unexpected {event}: {:?}", found.map(|message| &message.payload));
+        let found = self
+            .buffer
+            .iter()
+            .find(|message| message.event == event && predicate(&message.payload));
+        assert!(
+            found.is_none(),
+            "unexpected {event}: {:?}",
+            found.map(|message| &message.payload)
+        );
     }
 
     /// `refute_push` for any payload.
@@ -261,7 +310,10 @@ impl Client {
 
     /// Buffered event names.
     pub fn events(&self) -> Vec<String> {
-        self.buffer.iter().map(|message| message.event.clone()).collect()
+        self.buffer
+            .iter()
+            .map(|message| message.event.clone())
+            .collect()
     }
 
     /// Leaves the channel: an ok reply, then `phx_close`.
@@ -278,7 +330,10 @@ impl Client {
 
     /// The joined participant's peer id.
     pub fn peer_id(&self) -> String {
-        self.participant["peer_id"].as_str().unwrap_or_default().to_owned()
+        self.participant["peer_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
     }
 
     /// The joined participant's player id.
@@ -302,11 +357,18 @@ impl Server {
     /// Serves a fresh app after adjusting its configuration.
     pub async fn with_config(adjust: impl FnOnce(&mut Config)) -> Self {
         let app = TestApp::with_config(adjust).await;
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
         let addr = listener.local_addr().expect("address");
         let router = app.router.clone();
         tokio::spawn(async move {
-            axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>()).await.expect("serve");
+            axum::serve(
+                listener,
+                router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+            .expect("serve");
         });
         Self { app, addr }
     }
@@ -363,20 +425,37 @@ impl Server {
 
     /// A fresh session for `user`, encrypted as a socket token.
     pub async fn token(&self, user: &User) -> String {
-        let session = self.state().accounts.generate_user_session_token(user).await.expect("session token");
+        let session = self
+            .state()
+            .accounts
+            .generate_user_session_token(user)
+            .await
+            .expect("session token");
         channels::socket_token(self.state(), &session)
     }
 
     /// A connected socket for `user`.
     pub async fn connect(&self, user: &User) -> Client {
-        Client::connect(self.addr, &self.token(user).await).await.expect("socket")
+        Client::connect(self.addr, &self.token(user).await)
+            .await
+            .expect("socket")
     }
 
     /// Joins `room` as `player_id` (owned by `user`); returns the reply and the client.
-    pub async fn try_join(&self, user: &User, player_id: i64, room: &str, peer: &str) -> (String, Value, Client) {
+    pub async fn try_join(
+        &self,
+        user: &User,
+        player_id: i64,
+        room: &str,
+        peer: &str,
+    ) -> (String, Value, Client) {
         let mut client = self.connect(user).await;
-        let (status, response) =
-            client.join(&format!("webcam_table:{room}"), json!({ "peer_id": peer, "player_id": player_id })).await;
+        let (status, response) = client
+            .join(
+                &format!("webcam_table:{room}"),
+                json!({ "peer_id": peer, "player_id": player_id }),
+            )
+            .await;
         (status, response, client)
     }
 
@@ -423,7 +502,10 @@ impl Server {
     pub async fn wait_departed(&self, room: &str, player_id: i64) {
         let tables = &self.state().webcam_tables;
         wait_until(|| async {
-            tables.debug(room).await.is_ok_and(|debug| !debug.connections.contains(&player_id))
+            tables
+                .debug(room)
+                .await
+                .is_ok_and(|debug| !debug.connections.contains(&player_id))
         })
         .await;
     }
@@ -437,7 +519,10 @@ where
 {
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     while !condition().await {
-        assert!(tokio::time::Instant::now() < deadline, "condition never held");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "condition never held"
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 }
@@ -466,7 +551,14 @@ impl Table {
         let deck = server.deck(player, "Birds", "Kangee").await;
         let room = room_id();
         let alice = server.join_as(&user, player, &room, PEER_A).await;
-        Self { server, room, alice, user, player, deck }
+        Self {
+            server,
+            room,
+            alice,
+            user,
+            player,
+            deck,
+        }
     }
 
     pub fn topic(&self) -> String {
@@ -475,17 +567,32 @@ impl Table {
 
     /// The room's snapshot.
     pub async fn snapshot(&self) -> the_gathering::webcam::room::Snapshot {
-        self.server.state().webcam_tables.snapshot(&self.room).await.expect("room running")
+        self.server
+            .state()
+            .webcam_tables
+            .snapshot(&self.room)
+            .await
+            .expect("room running")
     }
 
     /// The room's log.
     pub async fn log(&self) -> Vec<the_gathering::webcam::log::LogEntry> {
-        self.server.state().webcam_tables.log(&self.room).await.expect("room running")
+        self.server
+            .state()
+            .webcam_tables
+            .log(&self.room)
+            .await
+            .expect("room running")
     }
 
     /// `Presence.get_by_key(topic, peer)`'s single meta.
     pub fn meta(&self, peer: &str) -> Value {
-        let entry = self.server.state().presence.get_by_key(&self.topic(), peer).expect("present");
+        let entry = self
+            .server
+            .state()
+            .presence
+            .get_by_key(&self.topic(), peer)
+            .expect("present");
         let metas = entry["metas"].as_array().expect("metas");
         assert_eq!(metas.len(), 1, "metas: {metas:?}");
         metas[0].clone()
@@ -500,7 +607,12 @@ impl Table {
 
     /// The seat of `peer` in the snapshot.
     pub async fn seat(&self, peer: &str) -> the_gathering::webcam::seat::Seat {
-        self.snapshot().await.seats.into_iter().find(|seat| seat.peer_id == peer).expect("seat")
+        self.snapshot()
+            .await
+            .seats
+            .into_iter()
+            .find(|seat| seat.peer_id == peer)
+            .expect("seat")
     }
 
     pub async fn join_player(&self, peer: &str, name: &str) -> Client {
@@ -512,7 +624,9 @@ impl Table {
     }
 
     pub async fn rejoin(&self, peer: &str) -> Client {
-        self.server.rejoin(&self.room, &self.user, self.player, peer).await
+        self.server
+            .rejoin(&self.room, &self.user, self.player, peer)
+            .await
     }
 
     pub async fn disconnect(&self, client: &mut Client) {
