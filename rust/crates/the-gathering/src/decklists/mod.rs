@@ -68,7 +68,16 @@ pub enum DecklistError {
     /// The source failed or answered unexpectedly.
     #[error("deck-list source failed")]
     UpstreamError,
+    /// The ManaVault server predates the share query's fields (lotus
+    /// `FetchError::ServerTooOld`); it answers, but cannot share this deck until upgraded.
+    #[error("{SERVER_TOO_OLD}")]
+    ServerTooOld,
 }
+
+/// What members see when a linked ManaVault is older than the share query needs
+/// (`lotus::decklist::manavault::MIN_SERVER_VERSION`; a test keeps the two in step).
+pub const SERVER_TOO_OLD: &str =
+    "This ManaVault server is too old to share deck lists; it needs v1.3.0 or newer.";
 
 /// One entry of the playable list (commander zone and main deck; maybe-, side-, and
 /// considering boards are left out).
@@ -374,6 +383,7 @@ impl Decklists {
             Ok(list) => Decklist::from_lotus(list),
             Err(FetchError::NotFound) => return Err(DecklistError::NotFound),
             Err(FetchError::Forbidden) => return Err(DecklistError::Private),
+            Err(FetchError::ServerTooOld) => return Err(DecklistError::ServerTooOld),
             Err(error) => {
                 tracing::warn!("resolving {}: {error}", parsed.canonical_url);
                 return Err(DecklistError::UpstreamError);

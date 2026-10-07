@@ -811,7 +811,7 @@ mod decklist_handlers {
 
     use crate::catalog::{Card, Catalog, images};
     use crate::decklists::remote_decks::RemoteDeckList;
-    use crate::decklists::{DeckCard, DecklistError};
+    use crate::decklists::{DeckCard, DecklistError, SERVER_TOO_OLD};
     use crate::error::{ApiError, ApiResult, Errors};
     use crate::state::AppState;
     use crate::web::api::{data, parse_id};
@@ -881,6 +881,7 @@ mod decklist_handlers {
         let decklist = match state.decklists.resolve(&url).await {
             Ok(decklist) => decklist,
             Err(DecklistError::UpstreamError) => return Err(ApiError::BadGateway),
+            Err(DecklistError::ServerTooOld) => return Err(server_too_old_detail()),
             Err(_) => return Err(ApiError::NotFound),
         };
         let names: Vec<String> = decklist
@@ -918,7 +919,19 @@ mod decklist_handlers {
             Err(DecklistError::InvalidUrl | DecklistError::UnsupportedUrl) => Err(invalid_url()),
             Err(DecklistError::NotFound | DecklistError::Private) => Err(ApiError::NotFound),
             Err(DecklistError::UpstreamError) => Err(ApiError::BadGateway),
+            // The link is fine and the server answered; it needs an upgrade. The deck form
+            // shows `url` field errors verbatim, so this reaches the member as written.
+            Err(DecklistError::ServerTooOld) => Err(Errors::single("url", SERVER_TOO_OLD).into()),
         }
+    }
+
+    /// 422 with the too-old message as `errors.detail`, for the card-list endpoint, which
+    /// has no form field to attach it to.
+    fn server_too_old_detail() -> ApiError {
+        ApiError::Custom(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            json!({ "errors": { "detail": SERVER_TOO_OLD } }),
+        )
     }
 
     /// `RemoteDeckJSON.index/1`.

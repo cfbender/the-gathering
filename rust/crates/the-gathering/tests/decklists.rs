@@ -1703,3 +1703,97 @@ mod sync {
             .assert_json(400);
     }
 }
+
+// ---- ManaVault servers older than the share query (lotus `FetchError::ServerTooOld`) ----
+
+/// A pre-1.3.0 ManaVault rejects the share query's `commanderColorIdentity` field.
+fn too_old_manavault() -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_json(json!({
+        "data": null,
+        "errors": [{"message": "Cannot query field \"commanderColorIdentity\" on type \"Deck\"."}]
+    }))
+}
+
+#[test]
+fn server_too_old_message_names_lotus_minimum_version() {
+    assert!(the_gathering::decklists::SERVER_TOO_OLD.contains(&format!(
+        "v{}",
+        lotus::decklist::manavault::MIN_SERVER_VERSION
+    )));
+}
+
+#[tokio::test]
+async fn resolve_reports_a_manavault_server_too_old_as_a_url_error_not_a_502() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/share/graphql"))
+        .respond_with(too_old_manavault())
+        .mount(&server)
+        .await;
+    let (app, origin) = manavault_app(&server).await;
+    member(&app).await;
+    let url = format!("{origin}/share/decks/AbCdEfGhIjKlMnOpQrStUvWx");
+    assert!(matches!(
+        app.state.decklists.resolve(&url).await,
+        Err(the_gathering::decklists::DecklistError::ServerTooOld)
+    ));
+    let response = app
+        .post("/api/decklists/resolve", json!({"url": url}))
+        .await;
+    assert_eq!(
+        response.assert_json(422),
+        json!({"errors": {"url": [
+            "This ManaVault server is too old to share deck lists; it needs v1.3.0 or newer."
+        ]}})
+    );
+}
+
+#[tokio::test]
+async fn decklist_reports_a_manavault_server_too_old_with_its_message() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/share/graphql"))
+        .respond_with(too_old_manavault())
+        .mount(&server)
+        .await;
+    let (app, origin) = manavault_app(&server).await;
+    member(&app).await;
+    let player = app.sql_player("Brewer").await;
+    let deck = app
+        .sql_deck(
+            player,
+            "Shorikai",
+            "Shorikai, Genesis Engine",
+            json!({"decklist_url": format!("{origin}/share/decks/AbCdEfGhIjKlMnOpQrStUvWx")}),
+        )
+        .await;
+    let body = app
+        .get(&format!("/api/decks/{deck}/decklist"))
+        .await
+        .assert_json(422);
+    assert_eq!(
+        body,
+        json!({"errors": {"detail":
+            "This ManaVault server is too old to share deck lists; it needs v1.3.0 or newer."
+        }})
+    );
+}
+
+/// GraphQL errors unrelated to the versioned fields stay generic upstream failures.
+#[tokio::test]
+async fn unrelated_manavault_graphql_errors_stay_bad_gateway() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/share/graphql"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": null, "errors": [{"message": "rate limited"}]
+        })))
+        .mount(&server)
+        .await;
+    let (app, origin) = manavault_app(&server).await;
+    member(&app).await;
+    let url = format!("{origin}/share/decks/AbCdEfGhIjKlMnOpQrStUvWx");
+    app.post("/api/decklists/resolve", json!({"url": url}))
+        .await
+        .assert_json(502);
+}
