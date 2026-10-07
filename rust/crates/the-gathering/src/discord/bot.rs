@@ -187,8 +187,12 @@ pub fn start(state: &AppState) {
         }
     };
     let bot = Arc::new(Bot::new(state.clone(), api, Arc::new(GamesSink)));
-    bot.scheduler.spawn(INTERVAL);
-    tokio::spawn(run_gateway(bot, config.token));
+    let scheduler = bot.scheduler.spawn(INTERVAL);
+    tokio::spawn(async move {
+        run_gateway(bot, config.token).await;
+        // Like the Elixir supervisor, nothing keeps running without a gateway session.
+        scheduler.abort();
+    });
 }
 
 fn fatal(frame: &CloseFrame<'_>) -> bool {
