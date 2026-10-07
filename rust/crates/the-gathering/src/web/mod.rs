@@ -6,6 +6,7 @@
 pub mod api;
 pub mod auth;
 pub mod channels;
+pub mod extract;
 pub mod params;
 pub mod request_id;
 pub mod session;

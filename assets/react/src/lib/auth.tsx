@@ -109,7 +109,7 @@ export function useRegister() {
       (
         await api<Data<User>>("/api/users", {
           method: "POST",
-          body: JSON.stringify({ user }),
+          body: JSON.stringify(user),
         })
       ).data,
     onSuccess: (user) => {

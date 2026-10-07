@@ -58,9 +58,14 @@ async fn credential_endpoints_share_a_per_address_bucket_and_answer_429_when_exh
     let neighbour = "10.200.0.2";
 
     for _ in 0..3 {
-        from(&app, attacker, "/api/session", json!({}))
-            .await
-            .assert_json(401);
+        from(
+            &app,
+            attacker,
+            "/api/session",
+            json!({"username": "nobody", "password": "wrong"}),
+        )
+        .await
+        .assert_json(401);
     }
     let denied = from(
         &app,
@@ -77,15 +82,20 @@ async fn credential_endpoints_share_a_per_address_bucket_and_answer_429_when_exh
         &app,
         attacker,
         "/api/users",
-        json!({"user": {"username": "x", "password": "y"}}),
+        json!({"username": "x", "password": "y"}),
     )
     .await
     .assert_json(429);
 
     // Other clients are unaffected.
-    from(&app, neighbour, "/api/session", json!({}))
-        .await
-        .assert_json(401);
+    from(
+        &app,
+        neighbour,
+        "/api/session",
+        json!({"username": "nobody", "password": "wrong"}),
+    )
+    .await
+    .assert_json(401);
 }
 
 #[tokio::test]

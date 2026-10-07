@@ -24,10 +24,7 @@ async fn signed_in() -> (TestApp, the_gathering::accounts::User) {
 async fn creates_a_key_reveals_the_secret_once_and_stores_only_its_digest() {
     let (app, user) = signed_in().await;
     let response = app
-        .post(
-            "/api/session/api-keys",
-            json!({"api_key": {"name": "  Stats script  "}}),
-        )
+        .post("/api/session/api-keys", json!({"name": "  Stats script  "}))
         .await;
     let created = response.assert_json(201)["data"].clone();
     assert_eq!(response.header("cache-control"), Some("private, no-store"));
@@ -59,11 +56,16 @@ async fn creates_a_key_reveals_the_secret_once_and_stores_only_its_digest() {
 async fn requires_a_name() {
     let (app, _user) = signed_in().await;
     let body = app
-        .post("/api/session/api-keys", json!({"api_key": {"name": " "}}))
+        .post("/api/session/api-keys", json!({"name": " "}))
         .await
         .assert_json(422);
     assert!(!body["errors"]["name"].as_array().unwrap().is_empty());
-    app.post("/api/session/api-keys", json!({}))
+    let body = app
+        .post("/api/session/api-keys", json!({}))
+        .await
+        .assert_json(422);
+    assert_eq!(body["errors"]["name"], json!(["can't be blank"]));
+    app.post("/api/session/api-keys", json!({"name": 5}))
         .await
         .assert_json(400);
 }
@@ -74,11 +76,11 @@ async fn lists_and_revokes_only_the_signed_in_users_keys() {
     let other = app.unique_member().await;
     let accounts = &app.state.accounts;
     let (_token, own) = accounts
-        .create_api_key(user.id, &json!({"name": "mine"}))
+        .create_api_key(user.id, &support::input(json!({"name": "mine"})))
         .await
         .unwrap();
     let (other_token, other_key) = accounts
-        .create_api_key(other.id, &json!({"name": "theirs"}))
+        .create_api_key(other.id, &support::input(json!({"name": "theirs"})))
         .await
         .unwrap();
 

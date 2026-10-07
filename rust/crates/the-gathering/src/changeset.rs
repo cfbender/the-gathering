@@ -10,40 +10,8 @@ use serde_json::{Map, Value};
 use std::ops::{Deref, DerefMut};
 
 use crate::db::{IsoDate, UtcDateTime};
+use crate::patch::Patch;
 use crate::validation::{ValidationError, Validator};
-
-/// A cast param: absent (keep the stored value) or present (possibly `nil`).
-#[derive(Clone, Debug, Default, PartialEq)]
-pub enum Change<T> {
-    /// The key was not in the params, or failed to cast.
-    #[default]
-    Unchanged,
-    /// The key was present; `None` for `null` or blank strings.
-    Set(Option<T>),
-}
-
-impl<T> Change<T> {
-    /// The new value, falling back to `current` when unchanged.
-    pub fn or(self, current: Option<T>) -> Option<T> {
-        match self {
-            Self::Unchanged => current,
-            Self::Set(value) => value,
-        }
-    }
-
-    /// Whether the key was given.
-    pub fn is_set(&self) -> bool {
-        matches!(self, Self::Set(_))
-    }
-
-    /// Maps the value.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Change<U> {
-        match self {
-            Self::Unchanged => Change::Unchanged,
-            Self::Set(value) => Change::Set(value.map(f)),
-        }
-    }
-}
 
 /// `null` or a string that trims to `""`.
 fn blank(value: &Value) -> bool {
@@ -89,33 +57,33 @@ impl<'a> Changeset<'a> {
         self.params.and_then(|params| params.get(field))
     }
 
-    fn cast<T>(&mut self, field: &str, convert: impl FnOnce(&Value) -> Option<T>) -> Change<T> {
+    fn cast<T>(&mut self, field: &str, convert: impl FnOnce(&Value) -> Option<T>) -> Patch<T> {
         match self.raw(field) {
-            None => Change::Unchanged,
-            Some(value) if blank(value) => Change::Set(None),
+            None => Patch::Unchanged,
+            Some(value) if blank(value) => Patch::Set(None),
             Some(value) => {
                 if let Some(cast) = convert(value) {
-                    Change::Set(Some(cast))
+                    Patch::Set(Some(cast))
                 } else {
                     self.errors.add(field, "is invalid");
-                    Change::Unchanged
+                    Patch::Unchanged
                 }
             }
         }
     }
 
     /// A `:string` field.
-    pub fn string(&mut self, field: &str) -> Change<String> {
+    pub fn string(&mut self, field: &str) -> Patch<String> {
         self.cast(field, |value| value.as_str().map(str::to_owned))
     }
 
     /// An `:integer` field.
-    pub fn integer(&mut self, field: &str) -> Change<i64> {
+    pub fn integer(&mut self, field: &str) -> Patch<i64> {
         self.cast(field, cast_integer)
     }
 
     /// A `:boolean` field.
-    pub fn boolean(&mut self, field: &str) -> Change<bool> {
+    pub fn boolean(&mut self, field: &str) -> Patch<bool> {
         self.cast(field, |value| match value {
             Value::Bool(flag) => Some(*flag),
             Value::String(text) => match text.as_str() {
@@ -128,12 +96,12 @@ impl<'a> Changeset<'a> {
     }
 
     /// A `:utc_datetime` field.
-    pub fn datetime(&mut self, field: &str) -> Change<UtcDateTime> {
+    pub fn datetime(&mut self, field: &str) -> Patch<UtcDateTime> {
         self.cast(field, |value| value.as_str().and_then(UtcDateTime::parse))
     }
 
     /// A `:date` field.
-    pub fn date(&mut self, field: &str) -> Change<IsoDate> {
+    pub fn date(&mut self, field: &str) -> Patch<IsoDate> {
         self.cast(field, |value| value.as_str().and_then(IsoDate::parse))
     }
 
@@ -166,11 +134,11 @@ mod tests {
     fn casts_params() {
         let params = json!({"name": "  ", "count": "12", "flag": "0", "bad": "x", "when": "2026-01-02T03:04"});
         let mut cs = Changeset::new(&params);
-        assert_eq!(cs.string("name"), Change::Set(None));
-        assert_eq!(cs.string("missing"), Change::Unchanged);
-        assert_eq!(cs.integer("count"), Change::Set(Some(12)));
-        assert_eq!(cs.boolean("flag"), Change::Set(Some(false)));
-        assert_eq!(cs.integer("bad"), Change::Unchanged);
+        assert_eq!(cs.string("name"), Patch::Set(None));
+        assert_eq!(cs.string("missing"), Patch::Unchanged);
+        assert_eq!(cs.integer("count"), Patch::Set(Some(12)));
+        assert_eq!(cs.boolean("flag"), Patch::Set(Some(false)));
+        assert_eq!(cs.integer("bad"), Patch::Unchanged);
         assert_eq!(
             cs.datetime("when").or(None).unwrap().to_string(),
             "2026-01-02T03:04:00Z"

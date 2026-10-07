@@ -619,7 +619,7 @@ async fn profile_validation_rejects_credentials_paths_query_strings_and_fragment
         let error = app
             .state
             .accounts
-            .update_profile(&user, &attrs, |_| false)
+            .update_profile(&user, &support::input(attrs), |_| false)
             .await
             .unwrap_err();
         let the_gathering::error::ApiError::Validation(errors) = error else {
@@ -943,7 +943,7 @@ async fn set_profile(app: &TestApp, user: &User, attrs: Value) -> User {
     attrs["display_name"] = json!(user.display_name);
     app.state
         .accounts
-        .update_profile(user, &attrs, |_| true)
+        .update_profile(user, &support::input(attrs), |_| true)
         .await
         .unwrap()
 }

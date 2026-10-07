@@ -37,7 +37,7 @@ function SettingsPage() {
       (
         await api<Data<User>>("/api/session/user", {
           method: "PATCH",
-          body: JSON.stringify({ user: values }),
+          body: JSON.stringify(values),
         })
       ).data,
     onSuccess: (updated) => {

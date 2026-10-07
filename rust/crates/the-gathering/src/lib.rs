@@ -16,6 +16,7 @@ pub mod games;
 pub mod imports;
 pub mod legacy;
 pub mod local_time;
+pub mod patch;
 pub mod rate_limit;
 pub mod regex;
 pub mod seed;

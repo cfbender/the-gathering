@@ -1,6 +1,7 @@
 //! API errors and the JSON bodies the frontend expects for them.
 
 use axum::Json;
+use axum::extract::rejection::{JsonRejection, PathRejection, QueryRejection};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
@@ -60,6 +61,34 @@ impl From<sqlx::Error> for ApiError {
             sqlx::Error::RowNotFound => Self::NotFound,
             other => Self::Internal(other.into()),
         }
+    }
+}
+
+/// A rejected request: malformed or wrongly typed input is a 400; other statuses axum
+/// chose (413 too large, 415 not JSON) keep their status.
+fn rejected(status: StatusCode, reason: &str) -> ApiError {
+    tracing::debug!(status = status.as_u16(), "rejected request: {reason}");
+    match status {
+        StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => ApiError::BadRequest,
+        status => ApiError::Custom(status, detail(status)),
+    }
+}
+
+impl From<JsonRejection> for ApiError {
+    fn from(rejection: JsonRejection) -> Self {
+        rejected(rejection.status(), &rejection.body_text())
+    }
+}
+
+impl From<QueryRejection> for ApiError {
+    fn from(rejection: QueryRejection) -> Self {
+        rejected(rejection.status(), &rejection.body_text())
+    }
+}
+
+impl From<PathRejection> for ApiError {
+    fn from(rejection: PathRejection) -> Self {
+        rejected(rejection.status(), &rejection.body_text())
     }
 }
 

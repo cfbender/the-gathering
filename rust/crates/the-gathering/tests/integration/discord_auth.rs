@@ -519,12 +519,9 @@ async fn a_rejected_discord_account_is_created_once_the_administrator_opens_regi
     app.clear_cookies();
     app.log_in(&admin).await;
     assert_eq!(
-        app.patch(
-            "/api/admin/settings",
-            json!({"settings": {"registration_enabled": true}})
-        )
-        .await
-        .assert_json(200),
+        app.patch("/api/admin/settings", json!({"registration_enabled": true}))
+            .await
+            .assert_json(200),
         json!({"data": {"registration_enabled": true, "detailed_stats_from": null}})
     );
 
@@ -547,11 +544,11 @@ async fn username_and_player_name_clashes_get_a_short_numeric_suffix() {
     // "discord_user" and "Discord_User" are what the stubbed Discord profile yields.
     app.state
         .accounts
-        .create_user(&json!({
+        .create_user(&support::input(json!({
             "username": "discord_user",
             "display_name": "Discord_User",
             "password": PASSWORD
-        }))
+        })))
         .await
         .unwrap();
     app.player("discord_user").await;
@@ -592,13 +589,13 @@ async fn an_administrator_can_rename_a_members_username() {
 
     let path = format!("/api/admin/users/{}", user.id);
     let body = app
-        .patch(&path, json!({"user": {"username": " Wax.Poetik "}}))
+        .patch(&path, json!({"username": " Wax.Poetik "}))
         .await
         .assert_json(200);
     assert_eq!(body["data"]["username"], "wax.poetik");
 
     let body = app
-        .patch(&path, json!({"user": {"username": "owner"}}))
+        .patch(&path, json!({"username": "owner"}))
         .await
         .assert_json(422);
     assert_eq!(

@@ -252,12 +252,12 @@ impl TestApp {
     pub async fn user(&self, username: &str, role: &str) -> User {
         self.state
             .accounts
-            .create_user(&json!({
+            .create_user(&input(json!({
                 "username": username,
                 "display_name": "Test User",
                 "password": PASSWORD,
                 "role": role,
-            }))
+            })))
             .await
             .unwrap_or_else(|error| panic!("user fixture: {error:?}"))
     }
@@ -570,7 +570,11 @@ impl TestApp {
 
     /// Updates the server settings (`Accounts.update_settings/1`).
     pub async fn settings(&self, attrs: Value) {
-        self.state.accounts.update_settings(&attrs).await.unwrap();
+        self.state
+            .accounts
+            .update_settings(&input(attrs))
+            .await
+            .unwrap();
     }
 }
 
@@ -676,4 +680,9 @@ pub fn capture_logs() -> (CaptureGuard, LogBuffer) {
     let buffer = LogBuffer::default();
     CAPTURE.with_borrow_mut(|capture| *capture = Some(buffer.clone()));
     (CaptureGuard, buffer)
+}
+
+/// A typed request body or domain input built from JSON (panics on a mismatch).
+pub fn input<T: serde::de::DeserializeOwned>(value: Value) -> T {
+    serde_json::from_value(value).unwrap_or_else(|error| panic!("input: {error}"))
 }

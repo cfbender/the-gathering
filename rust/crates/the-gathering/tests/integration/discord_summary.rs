@@ -183,7 +183,7 @@ async fn active_discord_linked_members_only_guild_only_with_configured_guild_enf
 
     state
         .accounts
-        .update_user(&ctx.user, &json!({"disabled_at": "2026-01-01T00:00:00Z"}))
+        .update_user(&ctx.user, &support::input(json!({"disabled": true})))
         .await
         .unwrap();
     assert!(matches!(

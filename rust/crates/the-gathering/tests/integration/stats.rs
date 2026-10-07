@@ -909,7 +909,7 @@ async fn the_detailed_stats_cutoff_keeps_records_but_drops_earlier_seat_timing_a
     assert_eq!(deck["average_turns"], Value::Null);
     assert_eq!(f.player("Alice", json!({})).await["mvp_cards"], json!([]));
 
-    f.app.settings(json!({"detailed_stats_from": ""})).await;
+    f.app.settings(json!({"detailed_stats_from": null})).await;
     assert_eq!(
         f.overview(json!({})).await["detailed_stats_from"],
         Value::Null

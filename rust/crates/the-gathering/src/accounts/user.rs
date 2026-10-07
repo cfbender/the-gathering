@@ -2,13 +2,13 @@
 
 use std::sync::LazyLock;
 
-use crate::regex::{Regex, compile};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::changeset::{Change, Changeset};
-use crate::db::UtcDateTime;
-use crate::validation::Validator;
+use crate::db::{IsoDate, UtcDateTime};
+use crate::patch::Patch;
+use crate::regex::{Regex, compile};
+use crate::validation::{ValidationError, Validator};
 
 /// The purpose stored credentials (such as ManaVault API keys) are sealed for.
 const STORED_SECRET_PURPOSE: &str = "the-gathering.stored-secret";
@@ -179,25 +179,106 @@ struct UserJson<'a> {
     inserted_at: UtcDateTime,
 }
 
-/// Fields an account form submits.
-#[derive(Clone, Debug, Default)]
-pub struct AccountFields {
-    /// Normalized username.
+/// A new account: the bootstrap administrator, or one an administrator creates.
+#[derive(Clone, Default, Deserialize)]
+pub struct NewAccount {
+    /// Username (trimmed and lowercased before storage).
+    #[serde(default)]
     pub username: Option<String>,
     /// Display name, defaulting to the username.
+    #[serde(default)]
     pub display_name: Option<String>,
     /// Plain password (hashed before storage).
+    #[serde(default)]
     pub password: Option<String>,
-    /// Role.
+    /// Role; `member` unless given.
+    #[serde(default)]
     pub role: Option<String>,
 }
 
-/// `normalize_username/1`: trim and lowercase.
+/// `PATCH /api/session/user`: the signed-in member's profile.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct ProfileUpdate {
+    /// Display name.
+    #[serde(default)]
+    pub display_name: Patch<String>,
+    /// Moxfield username; blank clears it.
+    #[serde(default)]
+    pub moxfield_username: Patch<String>,
+    /// Archidekt username; blank clears it.
+    #[serde(default)]
+    pub archidekt_username: Patch<String>,
+    /// ManaVault origin; blank clears it.
+    #[serde(default)]
+    pub manavault_url: Patch<String>,
+    /// ManaVault API key: blank keeps the stored key, `null` clears it.
+    #[serde(default)]
+    pub manavault_api_key: Patch<String>,
+}
+
+/// `PATCH /api/session/appearance`.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct AppearanceUpdate {
+    /// Color palette id.
+    #[serde(default)]
+    pub palette: Patch<String>,
+    /// Surface style id.
+    #[serde(default)]
+    pub theme_style: Patch<String>,
+}
+
+/// `PATCH /api/session/password`.
+#[derive(Clone, Deserialize)]
+pub struct PasswordUpdate {
+    /// The new password.
+    pub password: String,
+    /// Must match `password` when given.
+    #[serde(default)]
+    pub password_confirmation: Patch<String>,
+}
+
+/// `PATCH /api/admin/users/:id`.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct AccountUpdate {
+    /// Username.
+    #[serde(default)]
+    pub username: Patch<String>,
+    /// Display name.
+    #[serde(default)]
+    pub display_name: Patch<String>,
+    /// Role.
+    #[serde(default)]
+    pub role: Patch<String>,
+    /// Disables (signing the account out everywhere) or re-enables the account.
+    #[serde(default)]
+    pub disabled: Option<bool>,
+}
+
+/// `PATCH /api/admin/settings`.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct SettingsUpdate {
+    /// Whether anyone may register.
+    #[serde(default)]
+    pub registration_enabled: Patch<bool>,
+    /// Games before this date leave out detailed statistics; `null` counts every game.
+    #[serde(default)]
+    pub detailed_stats_from: Patch<IsoDate>,
+}
+
+/// `POST /api/session/api-keys`.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct NewApiKey {
+    /// A label for the key.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// Trims and lowercases a username.
 pub fn normalize_username(value: Option<String>) -> Option<String> {
     value.map(|value| value.trim().to_lowercase())
 }
 
-/// `default_display_name/1`.
+/// The display name, or the username when it is missing or empty.
 pub fn default_display_name(
     display_name: Option<String>,
     username: Option<&String>,
@@ -209,7 +290,7 @@ pub fn default_display_name(
     }
 }
 
-/// `validate_account_fields/1`.
+/// Username, display name, and role rules.
 pub fn validate_account_fields(
     cs: &mut Validator,
     username: Option<&str>,
@@ -230,7 +311,7 @@ pub fn validate_account_fields(
     cs.inclusion("role", role, &ROLES);
 }
 
-/// `validate_password/1` without hashing: required, 12 to 72 characters, at most 72 bytes.
+/// Password rules: required, 12 to 72 characters, at most 72 bytes (bcrypt's limit).
 pub fn validate_password(cs: &mut Validator, password: Option<&str>) {
     cs.required("password", password);
     cs.length("password", password, Some(12), Some(72));
@@ -239,8 +320,8 @@ pub fn validate_password(cs: &mut Validator, password: Option<&str>) {
     }
 }
 
-/// Validates deck-host usernames (`profile_changeset/2`).
-pub fn validate_deck_host_username(cs: &mut Changeset<'_>, field: &str, value: Option<&str>) {
+/// Deck-host username rules.
+pub fn validate_deck_host_username(cs: &mut Validator, field: &str, value: Option<&str>) {
     cs.length(field, value, None, Some(80));
     cs.format(
         field,
@@ -250,40 +331,22 @@ pub fn validate_deck_host_username(cs: &mut Changeset<'_>, field: &str, value: O
     );
 }
 
-/// The profile form, cast from params.
-#[derive(Debug, Default)]
-pub struct ProfileChanges {
-    /// New display name.
-    pub display_name: Change<String>,
-    /// New Moxfield username.
-    pub moxfield_username: Change<String>,
-    /// New Archidekt username.
-    pub archidekt_username: Change<String>,
-    /// New ManaVault origin.
-    pub manavault_url: Change<String>,
-    /// New ManaVault key; a blank string keeps the stored key, `null` clears it.
-    pub manavault_api_key: Change<String>,
-}
-
-/// `profile_changeset/2`. Returns the changes to apply, or errors.
+/// Validates a profile update and normalizes it: names trimmed, blank deck-host fields
+/// cleared, a blank API key left unchanged, and the ManaVault URL reduced to its origin.
 pub fn profile_changes(
     user: &User,
-    params: &Value,
+    update: &ProfileUpdate,
     allow_insecure: impl Fn(&str) -> bool,
-) -> Result<ProfileChanges, crate::validation::ValidationError> {
-    let mut cs = Changeset::new(params);
-    // A blank key means "leave the stored key alone"; only an explicit nil clears it.
-    let manavault_api_key = match cs.raw("manavault_api_key") {
-        Some(Value::String(key)) if key.trim().is_empty() => Change::Unchanged,
-        _ => cs
-            .string("manavault_api_key")
-            .map(|key| key.trim().to_owned()),
+) -> Result<ProfileUpdate, ValidationError> {
+    let mut cs = Validator::new();
+    let manavault_api_key = match &update.manavault_api_key {
+        Patch::Set(Some(key)) if key.trim().is_empty() => Patch::Unchanged,
+        other => other.clone().trimmed(),
     };
-    let display_name = cs.string("display_name").map(|name| name.trim().to_owned());
-    let trimmed = |change: Change<String>| change.map(|value| value.trim().to_owned());
-    let moxfield_username = trimmed(cs.string("moxfield_username"));
-    let archidekt_username = trimmed(cs.string("archidekt_username"));
-    let mut manavault_url = trimmed(cs.string("manavault_url"));
+    let display_name = update.display_name.clone().trimmed();
+    let moxfield_username = update.moxfield_username.clone().trimmed();
+    let archidekt_username = update.archidekt_username.clone().trimmed();
+    let mut manavault_url = update.manavault_url.clone().trimmed();
 
     let display = display_name.clone().or(Some(user.display_name.clone()));
     cs.required("display_name", display.as_ref());
@@ -293,29 +356,28 @@ pub fn profile_changes(
         Some(1),
         Some(80),
     );
-    if let Change::Set(value) = &moxfield_username {
+    if let Patch::Set(value) = &moxfield_username {
         validate_deck_host_username(&mut cs, "moxfield_username", value.as_deref());
     }
-    if let Change::Set(value) = &archidekt_username {
+    if let Patch::Set(value) = &archidekt_username {
         validate_deck_host_username(&mut cs, "archidekt_username", value.as_deref());
     }
-    if let Change::Set(value) = &manavault_url {
+    if let Patch::Set(value) = &manavault_url {
         cs.length("manavault_url", value.as_deref(), None, Some(2048));
     }
-    if let Change::Set(value) = &manavault_api_key {
+    if let Patch::Set(value) = &manavault_api_key {
         cs.length("manavault_api_key", value.as_deref(), None, Some(512));
     }
-    if let Change::Set(Some(value)) = &manavault_url
-        && !value.is_empty()
+    if let Patch::Set(Some(value)) = &manavault_url
         && value.as_str() != user.manavault_url.as_deref().unwrap_or_default()
     {
         match crate::decklists::destination::normalize_origin(value, &allow_insecure) {
-            Ok(origin) => manavault_url = Change::Set(Some(origin)),
+            Ok(origin) => manavault_url = Patch::Set(Some(origin)),
             Err(message) => cs.add_error("manavault_url", message),
         }
     }
     cs.finish()?;
-    Ok(ProfileChanges {
+    Ok(ProfileUpdate {
         display_name,
         moxfield_username,
         archidekt_username,

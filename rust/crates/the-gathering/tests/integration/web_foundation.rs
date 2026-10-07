@@ -67,7 +67,7 @@ async fn signed_in_users_get_their_saved_appearance_on_html_for_the_first_paint(
         .accounts
         .update_appearance(
             &user,
-            &json!({"palette": "kanagawa", "theme_style": "classic"}),
+            &support::input(json!({"palette": "kanagawa", "theme_style": "classic"})),
         )
         .await
         .unwrap();
@@ -349,7 +349,7 @@ async fn malformed_json_bodies_and_non_integer_ids_are_bad_requests() {
 }
 
 #[tokio::test]
-async fn url_encoded_bodies_are_parsed_like_plug_parsers() {
+async fn json_endpoints_refuse_other_content_types() {
     let app = TestApp::new().await;
     app.admin("owner").await;
     let token = app.csrf_token();
@@ -371,7 +371,32 @@ async fn url_encoded_bodies_are_parsed_like_plug_parsers() {
     let response = tower::ServiceExt::oneshot(app.router.clone(), request)
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap(),
+        json!({"errors": {"detail": "Unsupported Media Type"}})
+    );
+}
+
+#[tokio::test]
+async fn oversized_bodies_and_bad_path_ids_are_json_errors() {
+    let app = TestApp::new().await;
+    let member = app.unique_member().await;
+    app.log_in(&member).await;
+    let huge = "x".repeat(the_gathering::web::BODY_LIMIT + 1);
+    assert_eq!(
+        app.post("/api/session/api-keys", json!({ "name": huge }))
+            .await
+            .assert_json(413),
+        json!({"errors": {"detail": "Payload Too Large"}})
+    );
+    assert_eq!(
+        app.delete("/api/session/api-keys/not-a-number")
+            .await
+            .assert_json(400),
+        json!({"errors": {"detail": "Bad Request"}})
+    );
 }
 
 // -- health controller -----------------------------------------------------------
@@ -423,7 +448,7 @@ async fn request_logging_never_shows_sensitive_parameters() {
     let (guard, logs) = capture_logs();
     app.patch(
         "/api/session/user",
-        json!({"user": {"manavault_api_key": "sentinel-manavault-key", "display_name": "Visible"}}),
+        json!({"manavault_api_key": "sentinel-manavault-key", "display_name": "Visible"}),
     )
     .await
     .assert_json(200);
@@ -452,7 +477,6 @@ async fn request_logging_never_shows_sensitive_parameters() {
     assert!(logs.contains("[FILTERED]"), "{logs}");
     assert!(logs.contains("PATCH /api/session/user"), "{logs}");
     assert!(logs.contains("Sent 200 in"), "{logs}");
-    assert!(logs.contains("Visible"), "{logs}");
 }
 
 // -- UserAuth -----------------------------------------------------------------------------

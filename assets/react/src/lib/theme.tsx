@@ -98,7 +98,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     mutationFn: (changes: Partial<Appearance>) =>
       api<{ data: User }>("/api/session/appearance", {
         method: "PATCH",
-        body: JSON.stringify({ user: changes }),
+        body: JSON.stringify(changes),
       }),
     // Restore the account's saved values if a save fails.
     onError: () => queryClient.invalidateQueries({ queryKey: sessionQueryOptions.queryKey }),

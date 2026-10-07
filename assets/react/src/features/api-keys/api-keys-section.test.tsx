@@ -62,7 +62,7 @@ it("creates a key, shows its secret once, and revokes only after confirmation", 
   expect(requests).toContainEqual({
     method: "POST",
     url: "/api/session/api-keys",
-    body: { api_key: { name: "Spreadsheet" } },
+    body: { name: "Spreadsheet" },
   })
   fireEvent.click(screen.getByRole("button", { name: "Copy key" }))
   await screen.findByText("Key copied.")

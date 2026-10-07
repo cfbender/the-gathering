@@ -31,18 +31,22 @@ fn valid() -> Value {
 async fn create_admin(app: &TestApp) -> User {
     let mut attrs = valid();
     attrs["role"] = json!("admin");
-    app.state.accounts.create_user(&attrs).await.unwrap()
+    app.state
+        .accounts
+        .create_user(&support::input(attrs))
+        .await
+        .unwrap()
 }
 
 async fn user_with_display_name(app: &TestApp, display_name: &str) -> User {
     app.state
         .accounts
-        .create_user(&json!({
+        .create_user(&support::input(json!({
             "username": format!("user{}", support::unique()),
             "display_name": display_name,
             "password": support::PASSWORD,
             "role": "member",
-        }))
+        })))
         .await
         .unwrap()
 }
@@ -77,7 +81,10 @@ async fn the_first_registration_becomes_admin_and_registration_then_closes() {
     let status = accounts.registration_status().await.unwrap();
     assert!(status.allowed && status.bootstrap);
 
-    let user = accounts.register_user(&valid()).await.unwrap();
+    let user = accounts
+        .register_user(&support::input(valid()))
+        .await
+        .unwrap();
     assert_eq!(user.role, "admin");
     assert_eq!(user.username, "player.one");
 
@@ -87,17 +94,21 @@ async fn the_first_registration_becomes_admin_and_registration_then_closes() {
     let mut another = valid();
     another["username"] = json!("another");
     assert!(matches!(
-        accounts.register_user(&another).await,
+        accounts
+            .register_user(&support::input(another.clone()))
+            .await,
         Err(RegisterError::Closed)
     ));
 
     accounts
-        .update_settings(&json!({"registration_enabled": true}))
+        .update_settings(&support::input(json!({"registration_enabled": true})))
         .await
         .unwrap();
     another["username"] = json!("password-member");
     assert!(matches!(
-        accounts.register_user(&another).await,
+        accounts
+            .register_user(&support::input(another.clone()))
+            .await,
         Err(RegisterError::Closed)
     ));
 }
@@ -109,12 +120,12 @@ async fn usernames_are_unique_after_case_normalization() {
     let result = app
         .state
         .accounts
-        .create_user(&json!({
+        .create_user(&support::input(json!({
             "username": "PLAYER.ONE",
             "display_name": "Someone Else",
             "password": "another-long-password",
             "role": "member"
-        }))
+        })))
         .await;
     let Err(RegisterError::Invalid(errors)) = result else {
         panic!("expected a validation error, got {result:?}");
@@ -132,12 +143,12 @@ async fn disabled_users_cannot_authenticate() {
     create_admin(&app).await;
     let accounts = &app.state.accounts;
     let user = accounts
-        .create_user(&json!({
+        .create_user(&support::input(json!({
             "username": "member",
             "display_name": "Member",
             "password": "member-long-password",
             "role": "member"
-        }))
+        })))
         .await
         .unwrap();
     accounts.disable_user(&user).await.unwrap();
@@ -156,12 +167,12 @@ async fn disabling_revokes_sessions_permanently_while_re_enabled_admins_can_sign
     create_admin(&app).await;
     let accounts = &app.state.accounts;
     let user = accounts
-        .create_user(&json!({
+        .create_user(&support::input(json!({
             "username": "second-admin",
             "display_name": "Second Admin",
             "password": "second-admin-password",
             "role": "admin"
-        }))
+        })))
         .await
         .unwrap();
 
@@ -184,7 +195,7 @@ async fn disabling_revokes_sessions_permanently_while_re_enabled_admins_can_sign
     );
 
     accounts
-        .update_user(&disabled, &json!({"disabled_at": null}))
+        .update_user(&disabled, &support::input(json!({"disabled": false})))
         .await
         .unwrap();
     assert!(
@@ -221,7 +232,11 @@ async fn a_profile_edit_renames_the_linked_player() {
     let updated = app
         .state
         .accounts
-        .update_profile(&user, &json!({"display_name": "  Cody  "}), |_| false)
+        .update_profile(
+            &user,
+            &support::input(json!({"display_name": "  Cody  "})),
+            |_| false,
+        )
         .await
         .unwrap();
     assert_eq!(updated.display_name, "Cody");
@@ -238,7 +253,10 @@ async fn an_admin_edit_renames_the_linked_player() {
 
     app.state
         .accounts
-        .update_user(&user, &json!({"display_name": "Member Name"}))
+        .update_user(
+            &user,
+            &support::input(json!({"display_name": "Member Name"})),
+        )
         .await
         .unwrap();
     assert_eq!(player_name(&app, player.id).await, "Member Name");
@@ -256,7 +274,11 @@ async fn a_name_held_by_another_player_is_rejected_without_saving_either_record(
     let error = app
         .state
         .accounts
-        .update_profile(&user, &json!({"display_name": "taken"}), |_| false)
+        .update_profile(
+            &user,
+            &support::input(json!({"display_name": "taken"})),
+            |_| false,
+        )
         .await
         .unwrap_err();
     assert!(
@@ -275,7 +297,11 @@ async fn users_without_a_linked_player_can_still_change_their_display_name() {
     let updated = app
         .state
         .accounts
-        .update_profile(&user, &json!({"display_name": "Solo"}), |_| false)
+        .update_profile(
+            &user,
+            &support::input(json!({"display_name": "Solo"})),
+            |_| false,
+        )
         .await
         .unwrap();
     assert_eq!(updated.display_name, "Solo");
@@ -348,16 +374,16 @@ async fn discord_sign_in_surfaces_a_player_ownership_conflict_and_rolls_back_the
     let accounts = &app.state.accounts;
     create_admin(&app).await;
     accounts
-        .update_settings(&json!({"registration_enabled": true}))
+        .update_settings(&support::input(json!({"registration_enabled": true})))
         .await
         .unwrap();
     let owner = accounts
-        .create_user(&json!({
+        .create_user(&support::input(json!({
             "username": "player-owner",
             "display_name": "Player Owner",
             "password": "another-long-password",
             "role": "member"
-        }))
+        })))
         .await
         .unwrap();
     app.player_with(
@@ -388,7 +414,7 @@ async fn discord_sign_in_derives_a_valid_username_from_handles_the_format_rule_r
     let accounts = &app.state.accounts;
     create_admin(&app).await;
     accounts
-        .update_settings(&json!({"registration_enabled": true}))
+        .update_settings(&support::input(json!({"registration_enabled": true})))
         .await
         .unwrap();
 

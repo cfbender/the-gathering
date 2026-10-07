@@ -6,13 +6,16 @@ pub mod user;
 use serde_json::{Value, json};
 use time::Duration;
 
-use crate::changeset::{Change, Changeset};
 use crate::crypto;
 use crate::db::{self, IsoDate, Pool, UtcDateTime};
 use crate::error::ApiError;
-use crate::validation::{TAKEN, ValidationError};
+use crate::patch::Patch;
+use crate::validation::{TAKEN, ValidationError, Validator};
 
-pub use self::user::User;
+pub use self::user::{
+    AccountUpdate, AppearanceUpdate, NewAccount, NewApiKey, PasswordUpdate, ProfileUpdate,
+    SettingsUpdate, User,
+};
 use self::user::{
     decrypt_secret, default_display_name, encrypt_secret, normalize_username,
     validate_account_fields, validate_password,
@@ -271,8 +274,9 @@ impl Accounts {
         bcrypt::hash(password, self.bcrypt_cost).map_err(|error| ApiError::Internal(error.into()))
     }
 
-    /// `register_user/1`: only the bootstrap administrator registers with a password.
-    pub async fn register_user(&self, attrs: &Value) -> Result<User, RegisterError> {
+    /// Registers the bootstrap administrator, the only account that registers with a
+    /// password.
+    pub async fn register_user(&self, account: &NewAccount) -> Result<User, RegisterError> {
         let mut tx = db::begin(&self.pool).await?;
         let count = sqlx::query_scalar!(r#"SELECT count(*) AS "count!: i64" FROM users"#)
             .fetch_one(&mut *tx)
@@ -280,48 +284,47 @@ impl Accounts {
         if count != 0 {
             return Err(RegisterError::Closed);
         }
-        let user = self.insert_account(&mut tx, attrs, Some("admin")).await?;
+        let user = self.insert_account(&mut tx, account, Some("admin")).await?;
         tx.commit().await?;
         Ok(user)
     }
 
-    /// `create_user/1` (`admin_changeset`): an account with a password and a role from `attrs`.
-    pub async fn create_user(&self, attrs: &Value) -> Result<User, RegisterError> {
+    /// Creates an account with a password and the given role.
+    pub async fn create_user(&self, account: &NewAccount) -> Result<User, RegisterError> {
         let mut tx = db::begin(&self.pool).await?;
-        let user = self.insert_account(&mut tx, attrs, None).await?;
+        let user = self.insert_account(&mut tx, account, None).await?;
         tx.commit().await?;
         Ok(user)
     }
 
-    /// `create_admin/1`.
+    /// Creates an administrator.
     pub async fn create_admin(
         &self,
         username: &str,
         password: &str,
     ) -> Result<User, RegisterError> {
-        self.create_user(&json!({
-            "username": username,
-            "display_name": username,
-            "password": password,
-            "role": "admin",
-        }))
+        self.create_user(&NewAccount {
+            username: Some(username.to_owned()),
+            display_name: Some(username.to_owned()),
+            password: Some(password.to_owned()),
+            role: Some("admin".to_owned()),
+        })
         .await
     }
 
     async fn insert_account(
         &self,
         tx: &mut db::Tx,
-        attrs: &Value,
+        account: &NewAccount,
         forced_role: Option<&str>,
     ) -> Result<User, RegisterError> {
-        let mut cs = Changeset::new(attrs);
-        let username = normalize_username(cs.string("username").or(None));
-        let display_name =
-            default_display_name(cs.string("display_name").or(None), username.as_ref());
-        let password = cs.string("password").or(None);
+        let mut cs = Validator::new();
+        let username = normalize_username(account.username.clone());
+        let display_name = default_display_name(account.display_name.clone(), username.as_ref());
+        let password = account.password.clone();
         let role = match forced_role {
             Some(role) => Some(role.to_owned()),
-            None => cs.string("role").or(Some("member".to_owned())),
+            None => Some(account.role.clone().unwrap_or_else(|| "member".to_owned())),
         };
         validate_account_fields(
             &mut cs,
@@ -427,14 +430,14 @@ impl Accounts {
         Ok(result)
     }
 
-    /// `update_profile/2`: also renames the linked player.
+    /// Updates the member's profile; a new display name also renames the linked player.
     pub async fn update_profile(
         &self,
         user: &User,
-        attrs: &Value,
+        update: &ProfileUpdate,
         allow_insecure: impl Fn(&str) -> bool,
     ) -> Result<User, ApiError> {
-        let changes = user::profile_changes(user, attrs, allow_insecure)?;
+        let changes = user::profile_changes(user, update, allow_insecure)?;
         let stored_key = self.stored_api_key(user.id).await?;
         let mut tx = db::begin(&self.pool).await?;
         let display_name = changes
@@ -448,9 +451,9 @@ impl Accounts {
             .or(user.archidekt_username.clone());
         let manavault_url = changes.manavault_url.or(user.manavault_url.clone());
         let api_key: Option<String> = match changes.manavault_api_key {
-            Change::Unchanged => stored_key,
-            Change::Set(None) => None,
-            Change::Set(Some(key)) => Some(encrypt_secret(&self.secret_key, &key)),
+            Patch::Unchanged => stored_key,
+            Patch::Set(None) => None,
+            Patch::Set(Some(key)) => Some(encrypt_secret(&self.secret_key, &key)),
         };
         let now = UtcDateTime::now();
         sqlx::query!(
@@ -515,11 +518,18 @@ impl Accounts {
         )
     }
 
-    /// `update_appearance/2`.
-    pub async fn update_appearance(&self, user: &User, attrs: &Value) -> Result<User, ApiError> {
-        let mut cs = Changeset::new(attrs);
-        let palette = cs.string("palette").or(Some(user.palette.clone()));
-        let theme_style = cs.string("theme_style").or(Some(user.theme_style.clone()));
+    /// Saves the member's palette and surface style.
+    pub async fn update_appearance(
+        &self,
+        user: &User,
+        update: &AppearanceUpdate,
+    ) -> Result<User, ApiError> {
+        let mut cs = Validator::new();
+        let palette = update.palette.clone().or(Some(user.palette.clone()));
+        let theme_style = update
+            .theme_style
+            .clone()
+            .or(Some(user.theme_style.clone()));
         cs.required("palette", palette.as_ref());
         cs.required("theme_style", theme_style.as_ref());
         cs.inclusion("palette", palette.as_deref(), &user::PALETTES);
@@ -538,15 +548,19 @@ impl Accounts {
         self.get_user(user.id).await?.ok_or(ApiError::NotFound)
     }
 
-    /// `update_user_password/2`: administrators with a password only. Deletes every token.
-    pub async fn update_user_password(&self, user: &User, attrs: &Value) -> Result<User, ApiError> {
+    /// Changes an administrator's password (only accounts with one). Deletes every session
+    /// token.
+    pub async fn update_user_password(
+        &self,
+        user: &User,
+        update: &PasswordUpdate,
+    ) -> Result<User, ApiError> {
         if !user.is_admin() || user.hashed_password.is_none() {
             return Err(ApiError::Forbidden);
         }
-        let mut cs = Changeset::new(attrs);
-        let password = cs.string("password").or(None);
-        let confirmation = cs.string("password_confirmation");
-        if let Change::Set(confirmation) = &confirmation
+        let mut cs = Validator::new();
+        let password = Some(update.password.clone()).filter(|password| !password.trim().is_empty());
+        if let Patch::Set(confirmation) = &update.password_confirmation
             && confirmation.as_deref() != password.as_deref()
         {
             cs.add_error("password_confirmation", "does not match password");
@@ -663,13 +677,10 @@ impl Accounts {
     pub async fn create_api_key(
         &self,
         user_id: i64,
-        attrs: &Value,
+        key: &NewApiKey,
     ) -> Result<(String, ApiKey), ApiError> {
-        let mut cs = Changeset::new(attrs);
-        let name = cs
-            .string("name")
-            .or(None)
-            .map(|name| name.trim().to_owned());
+        let mut cs = Validator::new();
+        let name = key.name.as_deref().map(|name| name.trim().to_owned());
         cs.required("name", name.as_ref());
         cs.length("name", name.as_deref(), None, Some(60));
         cs.finish()?;
@@ -745,19 +756,24 @@ impl Accounts {
         self.get_user(found.user_id).await
     }
 
-    /// `update_user/2` (admin): username, display name, role, and disabled state.
-    pub async fn update_user(&self, user: &User, attrs: &Value) -> Result<User, ApiError> {
-        let mut cs = Changeset::new(attrs);
-        let username = match cs.string("username") {
-            Change::Unchanged => Some(user.username.clone()),
-            Change::Set(value) => normalize_username(value),
+    /// An administrator's edit: username, display name, role, and disabled state.
+    pub async fn update_user(&self, user: &User, update: &AccountUpdate) -> Result<User, ApiError> {
+        let mut cs = Validator::new();
+        let username = match update.username.clone().trimmed() {
+            Patch::Unchanged => Some(user.username.clone()),
+            Patch::Set(value) => normalize_username(value),
         };
-        let display_name = cs
-            .string("display_name")
-            .map(|name| name.trim().to_owned())
+        let display_name = update
+            .display_name
+            .clone()
+            .trimmed()
             .or(Some(user.display_name.clone()));
-        let role = cs.string("role").or(Some(user.role.clone()));
-        let disabled_at = cs.datetime("disabled_at").or(user.disabled_at);
+        let role = update.role.clone().trimmed().or(Some(user.role.clone()));
+        let disabled_at = match update.disabled {
+            Some(true) => Some(user.disabled_at.unwrap_or_else(UtcDateTime::now)),
+            Some(false) => None,
+            None => user.disabled_at,
+        };
         validate_account_fields(
             &mut cs,
             username.as_deref(),
@@ -829,7 +845,10 @@ impl Accounts {
     pub async fn disable_user(&self, user: &User) -> Result<User, ApiError> {
         self.update_user(
             user,
-            &json!({ "disabled_at": UtcDateTime::now().to_string() }),
+            &AccountUpdate {
+                disabled: Some(true),
+                ..AccountUpdate::default()
+            },
         )
         .await
     }
@@ -910,15 +929,20 @@ impl Accounts {
         .await
     }
 
-    /// `update_settings/1`.
-    pub async fn update_settings(&self, attrs: &Value) -> Result<ServerSettings, ApiError> {
+    /// Updates the server settings.
+    pub async fn update_settings(
+        &self,
+        update: &SettingsUpdate,
+    ) -> Result<ServerSettings, ApiError> {
         let current = self.get_settings().await?;
-        let mut cs = Changeset::new(attrs);
-        let enabled = cs
-            .boolean("registration_enabled")
+        let mut cs = Validator::new();
+        let enabled = update
+            .registration_enabled
+            .clone()
             .or(Some(current.registration_enabled));
-        let from = cs
-            .date("detailed_stats_from")
+        let from = update
+            .detailed_stats_from
+            .clone()
             .or(current.detailed_stats_from);
         cs.required_value("registration_enabled", enabled.as_ref());
         cs.finish()?;

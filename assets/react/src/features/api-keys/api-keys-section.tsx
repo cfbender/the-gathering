@@ -37,7 +37,7 @@ export function ApiKeysSection() {
       (
         await api<{ data: CreatedApiKey }>("/api/session/api-keys", {
           method: "POST",
-          body: JSON.stringify({ api_key: { name } }),
+          body: JSON.stringify({ name }),
         })
       ).data,
     onSuccess: () => {

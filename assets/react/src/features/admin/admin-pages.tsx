@@ -113,7 +113,7 @@ export function AdminSettingsPage() {
     mutationFn: (registration_enabled: boolean) =>
       api<Data<AdminSettings>>("/api/admin/settings", {
         method: "PATCH",
-        body: JSON.stringify({ settings: { registration_enabled } }),
+        body: JSON.stringify({ registration_enabled }),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "settings"] })
@@ -415,7 +415,7 @@ function StatsCutoff({ settings }: { settings: AdminSettings | undefined }) {
     mutationFn: (detailed_stats_from: string | null) =>
       api<Data<AdminSettings>>("/api/admin/settings", {
         method: "PATCH",
-        body: JSON.stringify({ settings: { detailed_stats_from } }),
+        body: JSON.stringify({ detailed_stats_from }),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "settings"] })
@@ -487,7 +487,7 @@ function UserCard({ user, players }: { user: User; players: PlayerSummary[] }) {
     }) =>
       api<Data<User>>(`/api/admin/users/${user.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ user: attrs }),
+        body: JSON.stringify(attrs),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin"] })

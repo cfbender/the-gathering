@@ -218,8 +218,8 @@ describe("ThemeToggle", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     const saves = fetchMock.mock.calls.map(([path, init]) => [path, init?.method, init?.body])
     expect(saves).toEqual([
-      ["/api/session/appearance", "PATCH", JSON.stringify({ user: { palette: "catppuccin" } })],
-      ["/api/session/appearance", "PATCH", JSON.stringify({ user: { theme_style: "glass" } })],
+      ["/api/session/appearance", "PATCH", JSON.stringify({ palette: "catppuccin" })],
+      ["/api/session/appearance", "PATCH", JSON.stringify({ theme_style: "glass" })],
     ])
   })
 

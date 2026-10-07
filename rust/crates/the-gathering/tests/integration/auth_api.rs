@@ -8,7 +8,7 @@
 
 use crate::support;
 
-use serde_json::json;
+use serde_json::{Value, json};
 use support::{PASSWORD, TestApp};
 use the_gathering::db::UtcDateTime;
 
@@ -20,7 +20,7 @@ async fn create_user(app: &TestApp, username: &str, role: &str) -> the_gathering
         .unwrap_or_default();
     app.state
         .accounts
-        .create_user(&json!({"username": username, "display_name": display, "password": PASSWORD, "role": role}))
+        .create_user(&support::input(json!({"username": username, "display_name": display, "password": PASSWORD, "role": role})))
         .await
         .unwrap()
 }
@@ -39,7 +39,7 @@ async fn registration_signs_in_the_first_user_without_exposing_password_data() {
     let response = app
         .post(
             "/api/users",
-            json!({"user": {"username": "Owner", "display_name": "Server Owner", "password": PASSWORD}}),
+            json!({"username": "Owner", "display_name": "Server Owner", "password": PASSWORD}),
         )
         .await;
     let body = response.assert_json(201);
@@ -80,7 +80,7 @@ async fn registration_is_forbidden_after_the_first_user_by_default() {
     let response = app
         .post(
             "/api/users",
-            json!({"user": {"username": "member", "password": PASSWORD}}),
+            json!({"username": "member", "password": PASSWORD}),
         )
         .await;
     assert_eq!(
@@ -180,12 +180,12 @@ async fn updates_and_returns_the_signed_in_users_deck_sources() {
     let body = app
         .patch(
             "/api/session/user",
-            json!({"user": {
+            json!({
                 "display_name": "Deck Brewer",
                 "moxfield_username": " brewer ",
                 "archidekt_username": "arch-brewer",
                 "manavault_url": "https://vault.example.com/"
-            }}),
+            }),
         )
         .await
         .assert_json(200);
@@ -196,6 +196,40 @@ async fn updates_and_returns_the_signed_in_users_deck_sources() {
 }
 
 #[tokio::test]
+async fn profile_updates_keep_absent_fields_and_clear_null_or_blank_ones() {
+    let app = TestApp::new().await;
+    let user = create_user(&app, "owner", "admin").await;
+    app.log_in(&user).await;
+    app.patch(
+        "/api/session/user",
+        json!({"moxfield_username": "brewer", "archidekt_username": "arch"}),
+    )
+    .await
+    .assert_json(200);
+
+    // Absent fields keep their values; null and blank strings clear them.
+    let body = app
+        .patch(
+            "/api/session/user",
+            json!({"moxfield_username": null, "archidekt_username": "  "}),
+        )
+        .await
+        .assert_json(200);
+    assert_eq!(body["data"]["display_name"], "Owner");
+    assert_eq!(body["data"]["moxfield_username"], Value::Null);
+    assert_eq!(body["data"]["archidekt_username"], Value::Null);
+
+    let body = app
+        .patch("/api/session/user", json!({"display_name": null}))
+        .await
+        .assert_json(422);
+    assert_eq!(body["errors"]["display_name"], json!(["can't be blank"]));
+    app.patch("/api/session/user", json!({"display_name": 7}))
+        .await
+        .assert_json(400);
+}
+
+#[tokio::test]
 async fn stores_the_manavault_api_key_encrypted_and_never_returns_it() {
     let app = TestApp::new().await;
     let user = create_user(&app, "owner", "admin").await;
@@ -203,7 +237,7 @@ async fn stores_the_manavault_api_key_encrypted_and_never_returns_it() {
     let response = app
         .patch(
             "/api/session/user",
-            json!({"user": {"display_name": "Owner", "manavault_api_key": " mv_secret_key "}}),
+            json!({"display_name": "Owner", "manavault_api_key": " mv_secret_key "}),
         )
         .await;
     let body = response.assert_json(200);
@@ -229,7 +263,7 @@ async fn stores_the_manavault_api_key_encrypted_and_never_returns_it() {
     let body = app
         .patch(
             "/api/session/user",
-            json!({"user": {"display_name": "Owner", "manavault_api_key": ""}}),
+            json!({"display_name": "Owner", "manavault_api_key": ""}),
         )
         .await
         .assert_json(200);
@@ -237,7 +271,7 @@ async fn stores_the_manavault_api_key_encrypted_and_never_returns_it() {
     let body = app
         .patch(
             "/api/session/user",
-            json!({"user": {"display_name": "Owner", "manavault_api_key": null}}),
+            json!({"display_name": "Owner", "manavault_api_key": null}),
         )
         .await
         .assert_json(200);
@@ -261,7 +295,7 @@ async fn saves_the_palette_and_surface_style_on_the_account() {
     let body = app
         .patch(
             "/api/session/appearance",
-            json!({"user": {"palette": "gruvbox", "theme_style": "classic"}}),
+            json!({"palette": "gruvbox", "theme_style": "classic"}),
         )
         .await
         .assert_json(200);
@@ -278,10 +312,7 @@ async fn saves_the_palette_and_surface_style_on_the_account() {
         ("gruvbox", "classic")
     );
     let body = app
-        .patch(
-            "/api/session/appearance",
-            json!({"user": {"palette": "nord"}}),
-        )
+        .patch("/api/session/appearance", json!({"palette": "nord"}))
         .await
         .assert_json(200);
     assert_eq!(
@@ -296,18 +327,15 @@ async fn saves_the_palette_and_surface_style_on_the_account() {
 #[tokio::test]
 async fn rejects_unknown_appearance_values_and_anonymous_updates() {
     let app = TestApp::new().await;
-    app.patch(
-        "/api/session/appearance",
-        json!({"user": {"palette": "nord"}}),
-    )
-    .await
-    .assert_json(401);
+    app.patch("/api/session/appearance", json!({"palette": "nord"}))
+        .await
+        .assert_json(401);
     let user = create_user(&app, "owner", "admin").await;
     app.log_in(&user).await;
     let body = app
         .patch(
             "/api/session/appearance",
-            json!({"user": {"palette": "vaporwave", "theme_style": "frosted"}}),
+            json!({"palette": "vaporwave", "theme_style": "frosted"}),
         )
         .await
         .assert_json(422);
@@ -325,7 +353,7 @@ async fn rejects_invalid_deck_source_values() {
     let body = app
         .patch(
             "/api/session/user",
-            json!({"user": {"display_name": "Owner", "moxfield_username": "https://moxfield.com/users/owner", "manavault_url": "not a URL"}}),
+            json!({"display_name": "Owner", "moxfield_username": "https://moxfield.com/users/owner", "manavault_url": "not a URL"}),
         )
         .await
         .assert_json(422);

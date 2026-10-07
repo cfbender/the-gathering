@@ -3,24 +3,25 @@
 //! `ApiKeyController`, `AdminUserController`, `AdminSettingsController`,
 //! `AdminRegistrationInviteController`, `DiscordAuthController`).
 
-use std::collections::BTreeMap;
-
 use axum::Json;
-use axum::extract::{Path, Query, State};
+use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
 
 use crate::accounts::discord::{DiscordClaims, SignInError};
-use crate::accounts::{RegisterError, User};
+use crate::accounts::{
+    AccountUpdate, AppearanceUpdate, NewAccount, NewApiKey, PasswordUpdate, ProfileUpdate,
+    RegisterError, SettingsUpdate, User,
+};
 use crate::db::UtcDateTime;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 use crate::web::auth::{AuthUser, MaybeUser, log_in_user, log_out_user, put_fresh_csrf_token};
-use crate::web::params::Params;
+use crate::web::extract::{JsonBody, PathParam, QueryParams};
 use crate::web::session::{DiscordOAuthAttempt, Session};
 
-use super::{data, parse_id};
+use super::data;
 
 fn user_response(user: &User) -> Json<Value> {
     data(user.to_json())
@@ -64,10 +65,9 @@ pub async fn registration_create(
     State(state): State<AppState>,
     session: Session,
     MaybeUser(current): MaybeUser,
-    params: Params,
+    JsonBody(account): JsonBody<NewAccount>,
 ) -> ApiResult<Response> {
-    let attrs = params.object("user").ok_or(ApiError::BadRequest)?;
-    match state.accounts.register_user(attrs).await {
+    match state.accounts.register_user(&account).await {
         Ok(user) => {
             sign_in_response(
                 &state,
@@ -102,17 +102,19 @@ pub async fn invite_show(State(state): State<AppState>, session: Session) -> Api
     invite_response(&state, &session).await
 }
 
+/// The invitation secret from an invite link.
+#[derive(serde::Deserialize)]
+pub struct InviteToken {
+    token: String,
+}
+
 /// `POST /api/registration-invite`: remembers a valid invitation in the session.
 pub async fn invite_create(
     State(state): State<AppState>,
     session: Session,
-    params: Params,
+    JsonBody(InviteToken { token }): JsonBody<InviteToken>,
 ) -> ApiResult<Response> {
-    // Any `token` value is checked (non-strings are simply invalid); only a missing one is a 400.
-    let token = params.get("token").ok_or(ApiError::BadRequest)?;
-    let hash = token
-        .as_str()
-        .and_then(crate::accounts::registration_invite_hash);
+    let hash = crate::accounts::registration_invite_hash(&token);
     if state
         .accounts
         .valid_registration_invite_hash(hash.as_deref())
@@ -131,19 +133,23 @@ pub async fn session_show(MaybeUser(user): MaybeUser) -> ApiResult<Json<Value>> 
         .ok_or(ApiError::Unauthorized)
 }
 
+/// Username and password.
+#[derive(serde::Deserialize)]
+pub struct Credentials {
+    username: String,
+    password: String,
+}
+
 /// `POST /api/session`: administrator password sign-in.
 pub async fn session_create(
     State(state): State<AppState>,
     session: Session,
     MaybeUser(current): MaybeUser,
-    params: Params,
+    JsonBody(credentials): JsonBody<Credentials>,
 ) -> ApiResult<Response> {
-    let (Some(username), Some(password)) = (params.str("username"), params.str("password")) else {
-        return Err(ApiError::Unauthorized);
-    };
     match state
         .accounts
-        .get_user_by_username_and_password(username, password)
+        .get_user_by_username_and_password(&credentials.username, &credentials.password)
         .await?
     {
         Some(user) => {
@@ -164,17 +170,22 @@ pub async fn session_delete(
     Ok(response)
 }
 
+/// The current password, re-entered.
+#[derive(serde::Deserialize)]
+pub struct Reauthentication {
+    password: String,
+}
+
 /// `POST /api/session/sudo`: re-enter the password to unlock sensitive actions.
 pub async fn session_sudo(
     State(state): State<AppState>,
     session: Session,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(Reauthentication { password }): JsonBody<Reauthentication>,
 ) -> ApiResult<Response> {
-    let password = params.str("password").ok_or(ApiError::Unauthorized)?;
     match state
         .accounts
-        .get_user_by_username_and_password(&user.username, password)
+        .get_user_by_username_and_password(&user.username, &password)
         .await?
     {
         Some(reauthenticated) => {
@@ -195,9 +206,8 @@ pub async fn session_sudo(
 pub async fn update_profile(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(update): JsonBody<ProfileUpdate>,
 ) -> ApiResult<Json<Value>> {
-    let attrs = params.object("user").ok_or(ApiError::BadRequest)?;
     let config = &state.config;
     let allow_insecure = |host: &str| {
         config.manavault_allow_insecure_urls
@@ -208,7 +218,7 @@ pub async fn update_profile(
     };
     let user = state
         .accounts
-        .update_profile(&user, attrs, allow_insecure)
+        .update_profile(&user, &update, allow_insecure)
         .await?;
     Ok(user_response(&user))
 }
@@ -217,10 +227,9 @@ pub async fn update_profile(
 pub async fn update_appearance(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(update): JsonBody<AppearanceUpdate>,
 ) -> ApiResult<Json<Value>> {
-    let attrs = params.object("user").ok_or(ApiError::BadRequest)?;
-    let user = state.accounts.update_appearance(&user, attrs).await?;
+    let user = state.accounts.update_appearance(&user, &update).await?;
     Ok(user_response(&user))
 }
 
@@ -229,19 +238,13 @@ pub async fn update_password(
     State(state): State<AppState>,
     session: Session,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(update): JsonBody<PasswordUpdate>,
 ) -> ApiResult<Response> {
-    if params.get("password").is_none() {
-        return Err(ApiError::BadRequest);
-    }
     let tokens: Vec<Vec<u8>> =
         sqlx::query_scalar!("SELECT token FROM users_tokens WHERE user_id = ?", user.id)
             .fetch_all(&state.pool)
             .await?;
-    let updated = state
-        .accounts
-        .update_user_password(&user, &params.0)
-        .await?;
+    let updated = state.accounts.update_user_password(&user, &update).await?;
     for token in tokens {
         state.disconnect_session(&token);
     }
@@ -266,11 +269,9 @@ pub async fn api_keys_index(
 pub async fn api_keys_create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(key): JsonBody<NewApiKey>,
 ) -> ApiResult<Response> {
-    let attrs = params.object("api_key").ok_or(ApiError::BadRequest)?;
-    let name_only = json!({ "name": attrs.get("name").cloned().unwrap_or(Value::Null) });
-    let (token, key) = state.accounts.create_api_key(user.id, &name_only).await?;
+    let (token, key) = state.accounts.create_api_key(user.id, &key).await?;
     let mut body = key.to_json();
     if let Value::Object(object) = &mut body {
         object.insert("token".into(), Value::String(token));
@@ -287,12 +288,9 @@ pub async fn api_keys_create(
 pub async fn api_keys_delete(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<i64>,
 ) -> ApiResult<StatusCode> {
-    state
-        .accounts
-        .delete_api_key(user.id, parse_id(&id)?)
-        .await?;
+    state.accounts.delete_api_key(user.id, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -302,49 +300,27 @@ pub async fn admin_users_index(State(state): State<AppState>) -> ApiResult<Json<
     Ok(data(users.iter().map(User::to_json).collect::<Vec<_>>()))
 }
 
-async fn fetch_user(state: &AppState, id: &str) -> ApiResult<User> {
-    state
-        .accounts
-        .get_user(parse_id(id)?)
-        .await?
-        .ok_or(ApiError::NotFound)
+async fn fetch_user(state: &AppState, id: i64) -> ApiResult<User> {
+    state.accounts.get_user(id).await?.ok_or(ApiError::NotFound)
 }
 
-/// `PATCH /api/admin/users/:id`; `disabled: true/false` toggles `disabled_at`.
+/// `PATCH /api/admin/users/:id`.
 pub async fn admin_users_update(
     State(state): State<AppState>,
-    Path(id): Path<String>,
-    params: Params,
+    PathParam(id): PathParam<i64>,
+    JsonBody(update): JsonBody<AccountUpdate>,
 ) -> ApiResult<Json<Value>> {
-    let mut attrs = params.object("user").cloned().ok_or(ApiError::BadRequest)?;
-    if let Value::Object(object) = &mut attrs {
-        match object.remove("disabled") {
-            Some(Value::Bool(true)) => {
-                object.insert(
-                    "disabled_at".into(),
-                    Value::String(UtcDateTime::now().to_string()),
-                );
-            }
-            Some(Value::Bool(false)) => {
-                object.insert("disabled_at".into(), Value::Null);
-            }
-            Some(other) => {
-                object.insert("disabled".into(), other);
-            }
-            None => {}
-        }
-    }
-    let user = fetch_user(&state, &id).await?;
-    let updated = state.accounts.update_user(&user, &attrs).await?;
+    let user = fetch_user(&state, id).await?;
+    let updated = state.accounts.update_user(&user, &update).await?;
     Ok(user_response(&updated))
 }
 
 /// `DELETE /api/admin/users/:id/sessions`.
 pub async fn admin_users_revoke_sessions(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<i64>,
 ) -> ApiResult<Json<Value>> {
-    let user = fetch_user(&state, &id).await?;
+    let user = fetch_user(&state, id).await?;
     state.accounts.revoke_all_sessions(user.id).await?;
     Ok(user_response(&user))
 }
@@ -353,9 +329,9 @@ pub async fn admin_users_revoke_sessions(
 pub async fn admin_users_delete(
     State(state): State<AppState>,
     AuthUser(actor): AuthUser,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<i64>,
 ) -> ApiResult<StatusCode> {
-    let user = fetch_user(&state, &id).await?;
+    let user = fetch_user(&state, id).await?;
     state.accounts.delete_user(&user, &actor).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -375,10 +351,11 @@ pub async fn admin_settings_show(State(state): State<AppState>) -> ApiResult<Jso
 /// `PATCH /api/admin/settings`.
 pub async fn admin_settings_update(
     State(state): State<AppState>,
-    params: Params,
+    JsonBody(update): JsonBody<SettingsUpdate>,
 ) -> ApiResult<Json<Value>> {
-    let attrs = params.object("settings").ok_or(ApiError::BadRequest)?;
-    Ok(settings_json(&state.accounts.update_settings(attrs).await?))
+    Ok(settings_json(
+        &state.accounts.update_settings(&update).await?,
+    ))
 }
 
 fn no_store(body: Json<Value>) -> Response {
@@ -429,17 +406,27 @@ fn safe_return_to(path: Option<&str>) -> String {
     }
 }
 
+/// `GET /auth/discord` parameters.
+#[derive(serde::Deserialize)]
+pub struct DiscordRequest {
+    /// `1` re-verifies the signed-in member instead of signing in.
+    sudo: Option<String>,
+    /// Where to go afterwards.
+    #[serde(rename = "returnTo")]
+    return_to: Option<String>,
+}
+
 /// `GET /auth/discord`: starts Discord OAuth (`?sudo=1` re-verifies the signed-in member).
 pub async fn discord_request(
     State(state): State<AppState>,
     session: Session,
     MaybeUser(user): MaybeUser,
-    Query(params): Query<BTreeMap<String, String>>,
+    QueryParams(request): QueryParams<DiscordRequest>,
 ) -> Response {
     let Some(oauth) = &state.config.discord_oauth else {
         return login_error("discord_unavailable");
     };
-    let sudo_discord_id = if params.get("sudo").map(String::as_str) == Some("1") {
+    let sudo_discord_id = if request.sudo.as_deref() == Some("1") {
         match user.and_then(|user| user.discord_id) {
             Some(discord_id) => Some(discord_id),
             None => return login_error("discord_sudo_unavailable"),
@@ -457,7 +444,7 @@ pub async fn discord_request(
         .append_pair("scope", "identify email")
         .append_pair("state", &oauth_state)
         .finish();
-    let return_to = safe_return_to(params.get("returnTo").map(String::as_str));
+    let return_to = safe_return_to(request.return_to.as_deref());
     session.update(|data| {
         data.discord_oauth = Some(DiscordOAuthAttempt {
             state: oauth_state,
@@ -537,24 +524,33 @@ async fn discord_profile(state: &AppState, code: &str) -> Result<Value, OauthErr
     .await
 }
 
+/// What Discord sends back to the callback.
+#[derive(serde::Deserialize)]
+pub struct DiscordCallback {
+    state: Option<String>,
+    code: Option<String>,
+    error: Option<String>,
+}
+
 /// `GET /auth/discord/callback`.
 pub async fn discord_callback(
     State(state): State<AppState>,
     session: Session,
     MaybeUser(current): MaybeUser,
-    Query(params): Query<BTreeMap<String, String>>,
+    QueryParams(callback): QueryParams<DiscordCallback>,
 ) -> Response {
     let attempt = session.update(|data| data.discord_oauth.take());
     let Some(attempt) = attempt else {
         tracing::warn!("Discord sign-in failed: no OAuth attempt in the session");
         return login_error("discord_failed");
     };
-    let state_matches = params.get("state").is_some_and(|given| {
+    let state_matches = callback.state.as_ref().is_some_and(|given| {
         crate::crypto::secure_compare(given.as_bytes(), attempt.state.as_bytes())
     });
-    let code = params
-        .get("code")
-        .filter(|_| state_matches && !params.contains_key("error"));
+    let code = callback
+        .code
+        .as_deref()
+        .filter(|_| state_matches && callback.error.is_none());
     let Some(code) = code else {
         tracing::warn!(
             "Discord sign-in failed: the callback carried an error or a mismatched state"

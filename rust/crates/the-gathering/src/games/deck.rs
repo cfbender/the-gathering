@@ -5,8 +5,9 @@ use serde_json::Value;
 use sqlx::{Connection, SqliteConnection};
 
 use crate::catalog;
-use crate::changeset::{Change, Changeset};
+use crate::changeset::Changeset;
 use crate::db::{self, UtcDateTime};
+use crate::patch::Patch;
 use crate::validation::{TAKEN, ValidationError};
 
 use super::color_identity;
@@ -138,7 +139,7 @@ async fn changeset(
     fields.archived_at = cs.datetime("archived_at").or(base.archived_at);
     // `included_for_play: null` would insert NULL into a NOT NULL column (a raise in
     // Elixir); it keeps the current value instead.
-    if let Change::Set(Some(included)) = cs.boolean("included_for_play") {
+    if let Patch::Set(Some(included)) = cs.boolean("included_for_play") {
         fields.included_for_play = included;
     }
 

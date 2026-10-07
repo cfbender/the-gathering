@@ -122,13 +122,16 @@ async fn public_settings_and_logs_do_not_reveal_secrets_and_invalid_tokens_clear
         let _ = write!(hex, "{byte:02x}");
         hex
     });
+    for value in [Value::Null, json!({"token": token})] {
+        app.post("/api/registration-invite", json!({"token": value}))
+            .await
+            .assert_json(400);
+    }
     let invalid = [
-        Value::Null,
         json!(""),
         json!("invalid"),
         json!("x".repeat(43)),
         json!(hex),
-        json!({"token": token}),
     ];
     for value in invalid {
         let rejected = app
@@ -157,7 +160,6 @@ async fn public_settings_and_logs_do_not_reveal_secrets_and_invalid_tokens_clear
     drop(guard);
 
     let logs = logs.contents();
-    assert!(logs.contains("[FILTERED]"), "{logs}");
     assert!(!logs.contains(&token), "{logs}");
     assert!(!logs.contains(&hex));
     assert!(!logs.contains(&format!("{hash:?}")));
@@ -191,7 +193,7 @@ async fn invite_fields_cannot_be_assigned_through_settings_or_password_registrat
     assert_eq!(
         app.patch(
             "/api/admin/settings",
-            json!({"settings": {"registration_invite_hash": "attacker"}})
+            json!({"registration_invite_hash": "attacker"})
         )
         .await
         .assert_json(200),
@@ -212,7 +214,7 @@ async fn invite_fields_cannot_be_assigned_through_settings_or_password_registrat
         .assert_json(200);
     app.post(
         "/api/users",
-        json!({"user": {"username": "newcomer", "display_name": "Newcomer", "password": PASSWORD}}),
+        json!({"username": "newcomer", "display_name": "Newcomer", "password": PASSWORD}),
     )
     .await
     .assert_json(403);

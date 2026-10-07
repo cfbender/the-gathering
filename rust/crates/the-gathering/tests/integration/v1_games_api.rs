@@ -34,7 +34,7 @@ async fn setup() -> Ctx {
     let (token, key) = app
         .state
         .accounts
-        .create_api_key(user.id, &json!({"name": "script"}))
+        .create_api_key(user.id, &support::input(json!({"name": "script"})))
         .await
         .unwrap();
     let me = app.player_with(json!({"name": "Me"}), Some(user.id)).await;
@@ -152,7 +152,7 @@ async fn player_id_me_is_not_found_when_the_owner_has_no_linked_player() {
         .app
         .state
         .accounts
-        .create_api_key(unlinked.id, &json!({"name": "unlinked"}))
+        .create_api_key(unlinked.id, &support::input(json!({"name": "unlinked"})))
         .await
         .unwrap();
     ctx.app
