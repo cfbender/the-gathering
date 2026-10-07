@@ -570,3 +570,45 @@ pub fn fixture(relative: &str) -> Vec<u8> {
 pub fn json_fixture(relative: &str) -> Value {
     serde_json::from_slice(&fixture(relative)).expect("JSON fixture")
 }
+
+/// Log lines captured by [`capture_logs`].
+#[derive(Clone, Default)]
+pub struct LogBuffer(std::sync::Arc<Mutex<Vec<u8>>>);
+
+impl LogBuffer {
+    /// Everything logged so far.
+    pub fn contents(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().unwrap()).into_owned()
+    }
+}
+
+impl std::io::Write for LogBuffer {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogBuffer {
+    type Writer = LogBuffer;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+/// `ExUnit.CaptureLog` at debug level: captures this thread's logs until the guard drops.
+/// `#[tokio::test]` runs on one thread, so requests and spawned tasks log here too.
+pub fn capture_logs() -> (tracing::subscriber::DefaultGuard, LogBuffer) {
+    let buffer = LogBuffer::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_ansi(false)
+        .with_writer(buffer.clone())
+        .finish();
+    (tracing::subscriber::set_default(subscriber), buffer)
+}

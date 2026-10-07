@@ -15,6 +15,7 @@ pub mod games;
 pub mod local_time;
 pub mod rate_limit;
 pub mod regex;
+pub mod self_update;
 pub mod state;
 pub mod stats;
 pub mod web;

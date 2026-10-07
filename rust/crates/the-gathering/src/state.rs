@@ -16,6 +16,7 @@ use crate::db::Pool;
 use crate::decklists::Decklists;
 use crate::games::Games;
 use crate::rate_limit::RateLimiter;
+use crate::self_update::SelfUpdate;
 use crate::web::channels::presence::Presence;
 use crate::web::channels::pubsub::PubSub;
 use crate::webcam::WebcamTables;
@@ -58,6 +59,8 @@ pub struct Inner {
     pub presence: Presence,
     /// Running webcam table rooms.
     pub webcam_tables: WebcamTables,
+    /// Self-update from the admin UI.
+    pub self_update: SelfUpdate,
 }
 
 impl Deref for AppState {
@@ -102,6 +105,7 @@ impl AppState {
         let pubsub = PubSub::new();
         let presence = Presence::new(pubsub.clone());
         let webcam_tables = WebcamTables::new(pool.clone(), pubsub.clone());
+        let self_update = SelfUpdate::new(&config)?;
         Ok(Self(Arc::new(Inner {
             config,
             pool,
@@ -119,6 +123,7 @@ impl AppState {
             pubsub,
             presence,
             webcam_tables,
+            self_update,
         })))
     }
 }
