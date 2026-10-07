@@ -51,7 +51,7 @@ impl RestApi {
     /// A client against another API root (tests), with a request timeout.
     pub fn with_base(token: &str, base: &str, timeout: Duration) -> Result<Self, reqwest::Error> {
         let http = reqwest::Client::builder()
-            .user_agent("DiscordBot (https://github.com/cfbender/the-gathering, 0.1.0)")
+            .user_agent("DiscordBot (https://github.com/cfbender/the-gathering, 0.2.0)")
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(3).min(timeout))
             .timeout(timeout)

@@ -53,7 +53,7 @@ never replaces itself, it asks whatever runs it:
 - Docker: an optional [Watchtower](https://watchtower.nickfedor.com) sidecar. In `.env` set
   `COMPOSE_PROFILES=self-update` and `WATCHTOWER_HTTP_API_TOKEN` (`openssl rand -hex 32`), then
   `docker compose up -d`. The button then asks Watchtower to pull the image tag the container was
-  started from (`latest` follows `main`; pin `0.1` or a `v0.1.0` tag for releases) and recreate
+  started from (`latest` follows `main`; pin `0.2` or a `v0.2.0` tag for releases) and recreate
   the container. Watchtower does not poll on its own in this setup.
 
 When neither is configured the section only shows the version and says the server has to be
