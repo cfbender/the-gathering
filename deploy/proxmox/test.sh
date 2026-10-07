@@ -107,6 +107,18 @@ check "update rejects other names" "rejected" "$(run_update previewish)"
 check "update rejects branch names" "rejected" "$(run_update rust-backend)"
 check "update accepts release candidates" "v1.0.0-rc.1" "$(run_update v1.0.0-rc.1)"
 
+# --- PUBLIC_URL becomes THE_GATHERING_PUBLIC_URL (and the PHX_* parts for older releases) ---
+for case in "https://games.example.com|https://games.example.com|games.example.com|443" \
+  "https://games.example.com:8443/|https://games.example.com:8443|games.example.com|8443" \
+  "http://10.0.0.5:4000|http://10.0.0.5:4000|10.0.0.5|4000" \
+  "http://10.0.0.5|http://10.0.0.5|10.0.0.5|80"; do
+  IFS='|' read -r input origin host port <<<"$case"
+  PUBLIC_URL="$input" URL_HOST="" URL_PORT="" PUBLIC_ORIGIN=""
+  parse_public_url
+  check "parse_public_url $input" "$origin $host $port" "$PUBLIC_ORIGIN $URL_HOST $URL_PORT"
+done
+PUBLIC_URL=""
+
 if ((failures)); then
   echo "$failures check(s) failed"
   exit 1

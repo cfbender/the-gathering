@@ -965,7 +965,7 @@ async fn queue_rendering_suppresses_free_text_mentions() {
             ..NewQueue::default()
         })
         .await;
-    let payload = new_game_message::render(&ctx.app.state.config.public_url(), &game);
+    let payload = new_game_message::render(ctx.app.state.config.public_url(), &game);
     assert_eq!(mentions(&payload), json!({"parse": []}));
 }
 

@@ -84,7 +84,7 @@ async fn socket_tokens_are_encrypted_and_tampered_or_expired_tokens_are_rejected
     let mut flipped = chars.clone();
     flipped[middle] = if chars[middle] == 'A' { 'B' } else { 'A' };
     let expired = crypto::seal(
-        &server.state().config.secret_key_base,
+        &server.state().config.secret_key,
         channels::TOKEN_PURPOSE,
         json!({
             "session": crypto::url_encode64_unpadded(&session_token),

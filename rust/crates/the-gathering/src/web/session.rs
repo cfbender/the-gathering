@@ -251,9 +251,10 @@ pub async fn session_layer(
         Some(data) => Session::new(data),
         None => {
             let session = Session::default();
-            if let Some(token) = legacy_cookie.as_deref().and_then(|cookie| {
-                legacy::session_user_token(cookie, &state.config.secret_key_base)
-            }) {
+            if let Some(token) = legacy_cookie
+                .as_deref()
+                .and_then(|cookie| legacy::session_user_token(cookie, &state.config.secret_key))
+            {
                 session.update(|data| data.user_token = Some(token));
             }
             session

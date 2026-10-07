@@ -37,7 +37,7 @@
 # Inside the container:
 #   /opt/the-gathering/releases/<tag>   releases from GitHub (the Rust server and the built web app);
 #                                       `current` points at the live one
-#   /etc/the-gathering.env              settings (copied from .env.example, SECRET_KEY_BASE generated)
+#   /etc/the-gathering.env              settings (copied from .env.example, THE_GATHERING_SECRET_KEY generated)
 #   /var/lib/the-gathering              DATA_DIR: SQLite database, recognizer bundles, image cache
 #   the-gathering.service               systemd unit running bin/the_gathering as user the-gathering
 #   /usr/local/bin/update               `update [tag]` installs the latest (or given) release, like
@@ -101,7 +101,7 @@ PUBLIC_URL="${PUBLIC_URL:-}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 AUTO_UPDATE="${AUTO_UPDATE:-}"
-PHX_HOST="" PHX_SCHEME="" PHX_URL_PORT=""
+URL_HOST="" URL_SCHEME="" URL_PORT="" PUBLIC_ORIGIN=""
 
 info() { printf '\033[1;34m->\033[0m %s\n' "$*"; }
 ok() { printf '\033[1;32mok\033[0m %s\n' "$*"; }
@@ -173,26 +173,36 @@ resolve_version() {
   printf '%s\n' "$tag"
 }
 
-# Splits PUBLIC_URL into PHX_HOST/PHX_SCHEME/PHX_URL_PORT. Empty PUBLIC_URL leaves them
-# empty, and the .env.example defaults (http://localhost:4000) are patched with the
-# container IP after it is known.
+# Splits PUBLIC_URL into URL_SCHEME/URL_HOST/URL_PORT and sets PUBLIC_ORIGIN
+# (scheme://host, plus the port when it is not the scheme's default). Empty PUBLIC_URL
+# leaves them empty, and the container IP is used once it is known.
 parse_public_url() {
   [[ -n "$PUBLIC_URL" ]] || return 0
   local rest
   case "$PUBLIC_URL" in
-  https://*) PHX_SCHEME=https rest="${PUBLIC_URL#https://}" ;;
-  http://*) PHX_SCHEME=http rest="${PUBLIC_URL#http://}" ;;
+  https://*) URL_SCHEME=https rest="${PUBLIC_URL#https://}" ;;
+  http://*) URL_SCHEME=http rest="${PUBLIC_URL#http://}" ;;
   *) die "PUBLIC_URL must start with http:// or https:// (got '$PUBLIC_URL')" ;;
   esac
   rest="${rest%%/*}"
   if [[ "$rest" == *:* ]]; then
-    PHX_HOST="${rest%%:*}"
-    PHX_URL_PORT="${rest##*:}"
+    URL_HOST="${rest%%:*}"
+    URL_PORT="${rest##*:}"
   else
-    PHX_HOST="$rest"
-    [[ "$PHX_SCHEME" == https ]] && PHX_URL_PORT=443 || PHX_URL_PORT=80
+    URL_HOST="$rest"
+    [[ "$URL_SCHEME" == https ]] && URL_PORT=443 || URL_PORT=80
   fi
-  [[ -n "$PHX_HOST" && "$PHX_URL_PORT" =~ ^[0-9]+$ ]] || die "could not parse PUBLIC_URL '$PUBLIC_URL'"
+  [[ -n "$URL_HOST" && "$URL_PORT" =~ ^[0-9]+$ ]] || die "could not parse PUBLIC_URL '$PUBLIC_URL'"
+  set_public_origin
+}
+
+# PUBLIC_ORIGIN from URL_SCHEME/URL_HOST/URL_PORT.
+set_public_origin() {
+  PUBLIC_ORIGIN="${URL_SCHEME}://${URL_HOST}"
+  case "${URL_SCHEME}:${URL_PORT}" in
+  https:443 | http:80) ;;
+  *) PUBLIC_ORIGIN+=":${URL_PORT}" ;;
+  esac
 }
 
 # Asks for the settings the installer cannot discover, unless they came in as env vars
@@ -481,8 +491,9 @@ create() {
 
   local trust_proxy="" AUTOLOGIN=false
   [[ -z "$PASSWORD" ]] && AUTOLOGIN=true
-  if [[ -z "$PHX_HOST" ]]; then
-    PHX_HOST="$ip" PHX_SCHEME=http PHX_URL_PORT=4000
+  if [[ -z "$URL_HOST" ]]; then
+    URL_HOST="$ip" URL_SCHEME=http URL_PORT=4000
+    set_public_origin
   else
     # A public URL implies a reverse proxy in front of the container.
     trust_proxy=true
@@ -526,8 +537,9 @@ chmod 750 ${DATA_DIR}
 if [ ! -f ${ENV_FILE} ]; then
   curl -fsSL https://raw.githubusercontent.com/${REPO}/${tag}/.env.example -o ${ENV_FILE}
   secret="\$(openssl rand -base64 64 | tr -d '\n')"
-  sed -i "s|^SECRET_KEY_BASE=.*|SECRET_KEY_BASE=\${secret}|" ${ENV_FILE}
-  sed -i "s|^PHX_HOST=.*|PHX_HOST=${PHX_HOST}|; s|^PHX_SCHEME=.*|PHX_SCHEME=${PHX_SCHEME}|; s|^PHX_URL_PORT=.*|PHX_URL_PORT=${PHX_URL_PORT}|; s|^TRUST_PROXY_HEADERS=.*|TRUST_PROXY_HEADERS=${trust_proxy}|" ${ENV_FILE}
+  # Releases up to 0.2 shipped an .env.example with SECRET_KEY_BASE and PHX_* instead.
+  sed -i "s|^THE_GATHERING_SECRET_KEY=.*|THE_GATHERING_SECRET_KEY=\${secret}|; s|^SECRET_KEY_BASE=.*|SECRET_KEY_BASE=\${secret}|" ${ENV_FILE}
+  sed -i "s|^THE_GATHERING_PUBLIC_URL=.*|THE_GATHERING_PUBLIC_URL=${PUBLIC_ORIGIN}|; s|^PHX_HOST=.*|PHX_HOST=${URL_HOST}|; s|^PHX_SCHEME=.*|PHX_SCHEME=${URL_SCHEME}|; s|^PHX_URL_PORT=.*|PHX_URL_PORT=${URL_PORT}|; s|^TRUST_PROXY_HEADERS=.*|TRUST_PROXY_HEADERS=${trust_proxy}|" ${ENV_FILE}
   chown root:${APP_USER} ${ENV_FILE}
   chmod 640 ${ENV_FILE}
 fi
@@ -585,7 +597,7 @@ EOF
 
 ${APP} ${tag} is running in container ${ctid} at http://${ip}:4000
 EOF
-  [[ -n "$PUBLIC_URL" ]] && echo "Configured for ${PHX_SCHEME}://${PHX_HOST}:${PHX_URL_PORT}; point your reverse proxy at http://${ip}:4000."
+  [[ -n "$PUBLIC_URL" ]] && echo "Configured for ${PUBLIC_ORIGIN}; point your reverse proxy at http://${ip}:4000."
   if [[ "$IP" == dhcp && "$PIN_IP" == true ]]; then
     echo "${ip} came from DHCP and is now the container's static address: keep it out of the DHCP pool or reserve it."
   fi

@@ -59,8 +59,8 @@ impl std::fmt::Debug for UserRow {
 }
 
 impl UserRow {
-    /// Decrypts stored credentials with `secret_key_base`.
-    pub fn into_user(self, secret_key_base: &str) -> User {
+    /// Decrypts stored credentials with `secret_key`.
+    pub fn into_user(self, secret_key: &str) -> User {
         User {
             id: self.id,
             username: self.username,
@@ -75,7 +75,7 @@ impl UserRow {
             manavault_url: self.manavault_url,
             manavault_api_key: self
                 .manavault_api_key
-                .and_then(|stored| decrypt_secret(secret_key_base, &stored)),
+                .and_then(|stored| decrypt_secret(secret_key, &stored)),
             palette: self.palette,
             theme_style: self.theme_style,
             inserted_at: self.inserted_at,
@@ -107,8 +107,8 @@ pub(crate) use select_users;
 pub struct Accounts {
     /// Database.
     pub pool: Pool,
-    /// `secret_key_base`.
-    pub secret_key_base: String,
+    /// `secret_key`.
+    pub secret_key: String,
     /// bcrypt cost.
     pub bcrypt_cost: u32,
 }
@@ -220,7 +220,7 @@ impl Accounts {
         Ok(select_users!("WHERE id = ?", id)
             .fetch_optional(&self.pool)
             .await?
-            .map(|row| row.into_user(&self.secret_key_base)))
+            .map(|row| row.into_user(&self.secret_key)))
     }
 
     /// By Discord id.
@@ -231,7 +231,7 @@ impl Accounts {
         Ok(select_users!("WHERE discord_id = ?", discord_id)
             .fetch_optional(&self.pool)
             .await?
-            .map(|row| row.into_user(&self.secret_key_base)))
+            .map(|row| row.into_user(&self.secret_key)))
     }
 
     /// By username (lowercased).
@@ -240,7 +240,7 @@ impl Accounts {
         Ok(select_users!("WHERE username = ?", username)
             .fetch_optional(&self.pool)
             .await?
-            .map(|row| row.into_user(&self.secret_key_base)))
+            .map(|row| row.into_user(&self.secret_key)))
     }
 
     /// Every user by username.
@@ -249,7 +249,7 @@ impl Accounts {
             .fetch_all(&self.pool)
             .await?
             .into_iter()
-            .map(|row| row.into_user(&self.secret_key_base))
+            .map(|row| row.into_user(&self.secret_key))
             .collect())
     }
 
@@ -368,7 +368,7 @@ impl Accounts {
         let row = select_users!("WHERE id = ?", id)
             .fetch_one(&mut **tx)
             .await?;
-        Ok(row.into_user(&self.secret_key_base))
+        Ok(row.into_user(&self.secret_key))
     }
 
     /// The first enabled administrator, creating a passwordless `dev` one if none exists.
@@ -378,7 +378,7 @@ impl Accounts {
                 .fetch_optional(&self.pool)
                 .await?
         {
-            return Ok(row.into_user(&self.secret_key_base));
+            return Ok(row.into_user(&self.secret_key));
         }
         let now = UtcDateTime::now();
         let id = sqlx::query_scalar!(
@@ -402,7 +402,7 @@ impl Accounts {
         let user = select_users!("WHERE username = ?", username)
             .fetch_optional(&self.pool)
             .await?
-            .map(|row| row.into_user(&self.secret_key_base));
+            .map(|row| row.into_user(&self.secret_key));
         let cost = self.bcrypt_cost;
         let password = password.to_owned();
         let result = tokio::task::spawn_blocking(move || match user {
@@ -449,7 +449,7 @@ impl Accounts {
         let api_key: Option<String> = match changes.manavault_api_key {
             Change::Unchanged => stored_key,
             Change::Set(None) => None,
-            Change::Set(Some(key)) => Some(encrypt_secret(&self.secret_key_base, &key)),
+            Change::Set(Some(key)) => Some(encrypt_secret(&self.secret_key, &key)),
         };
         let now = UtcDateTime::now();
         sqlx::query!(
@@ -484,14 +484,14 @@ impl Accounts {
         .await?;
         let mut rewritten = 0;
         for row in rows {
-            let Some(plain) = decrypt_secret(&self.secret_key_base, &row.key) else {
+            let Some(plain) = decrypt_secret(&self.secret_key, &row.key) else {
                 tracing::warn!(
                     user_id = row.id,
                     "stored ManaVault API key does not decrypt with the configured secret"
                 );
                 continue;
             };
-            let key = encrypt_secret(&self.secret_key_base, &plain);
+            let key = encrypt_secret(&self.secret_key, &plain);
             sqlx::query!(
                 "UPDATE users SET manavault_api_key = ? WHERE id = ?",
                 key,

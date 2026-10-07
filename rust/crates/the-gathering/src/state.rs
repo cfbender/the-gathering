@@ -82,7 +82,7 @@ impl AppState {
         );
         let accounts = Accounts {
             pool: pool.clone(),
-            secret_key_base: config.secret_key_base.clone(),
+            secret_key: config.secret_key.clone(),
             bcrypt_cost: config.bcrypt_cost,
         };
         let http = reqwest::Client::builder()
@@ -91,7 +91,7 @@ impl AppState {
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             .build()?;
-        let session_key = crate::web::session::cookie_key(&config.secret_key_base)?;
+        let session_key = crate::web::session::cookie_key(&config.secret_key)?;
         let (session_disconnects, _) = broadcast::channel(64);
         let sfu = the_gathering_sfu::Sfu::new(the_gathering_sfu::Settings {
             port_min: config.sfu.port_min,

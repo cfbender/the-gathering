@@ -58,7 +58,7 @@ pub fn socket_token(state: &AppState, session_token: &[u8]) -> String {
         expires_at: time::OffsetDateTime::now_utc().unix_timestamp() + TOKEN_MAX_AGE_SECONDS,
     };
     crypto::seal(
-        &state.config.secret_key_base,
+        &state.config.secret_key,
         TOKEN_PURPOSE,
         &serde_json::to_vec(&token).unwrap_or_default(),
     )
@@ -70,7 +70,7 @@ pub async fn authenticate(
     state: &AppState,
     token: &str,
 ) -> Result<Option<(User, Vec<u8>)>, sqlx::Error> {
-    let session_token = crypto::open(&state.config.secret_key_base, TOKEN_PURPOSE, token)
+    let session_token = crypto::open(&state.config.secret_key, TOKEN_PURPOSE, token)
         .and_then(|plain| serde_json::from_slice::<SocketToken>(&plain).ok())
         .filter(|token| token.expires_at > time::OffsetDateTime::now_utc().unix_timestamp())
         .and_then(|token| crypto::url_decode64_unpadded(&token.session));

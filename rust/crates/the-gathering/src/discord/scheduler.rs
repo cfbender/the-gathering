@@ -141,7 +141,7 @@ impl NewGameScheduler {
         let public_url = self.state.config.public_url();
         let mut game = game.clone();
         if game.status == Status::Started && game.announcement_id.is_none() {
-            let payload = new_game_message::announcement(&public_url, &game);
+            let payload = new_game_message::announcement(public_url, &game);
             let sent = self
                 .api
                 .create_message(&game.channel_id, &payload)
@@ -168,7 +168,7 @@ impl NewGameScheduler {
                 .map_err(|_| DeliveryFailed)?;
             game.maybe_ping_id = Some(sent.id);
         }
-        let payload = new_game_message::render(&public_url, &game);
+        let payload = new_game_message::render(public_url, &game);
         self.api
             .edit_message(&game.channel_id, message_id, &payload)
             .await

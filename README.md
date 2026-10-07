@@ -20,13 +20,13 @@ A self-hosted tracker for Commander (Magic: The Gathering) games. Record who pla
 Requirements: Docker with Compose.
 
 1. Create a directory and download [`docker-compose.yml`](docker-compose.yml) and [`.env.example`](.env.example) into it.
-2. Copy `.env.example` to `.env` and set `SECRET_KEY_BASE`:
+2. Copy `.env.example` to `.env` and set `THE_GATHERING_SECRET_KEY`:
 
    ```sh
    openssl rand -base64 64 | tr -d '\n'
    ```
 
-   Set `PHX_HOST`, `PHX_SCHEME`, and `PHX_URL_PORT` to the public address users reach the app at (for example `games.example.com`, `https`, `443` behind a reverse proxy).
+   Set `THE_GATHERING_PUBLIC_URL` to the address users reach the app at (for example `https://games.example.com` behind a reverse proxy).
 3. Start it:
 
    ```sh
@@ -147,7 +147,7 @@ Each user can also save a Moxfield username, Archidekt username, and ManaVault
 instance URL plus personal API key under **Settings → Profile → Deck hosts**.
 `PATCH /api/session/user` accepts these as `moxfield_username`, `archidekt_username`,
 `manavault_url`, and `manavault_api_key`. The API key is write-only: it is stored
-encrypted with `SECRET_KEY_BASE` (keys stored by 0.2 and earlier are re-encrypted in the
+encrypted with `THE_GATHERING_SECRET_KEY` (keys stored by 0.2 and earlier are re-encrypted in the
 current format at startup), never returned (user JSON exposes only
 `has_manavault_api_key`), a blank value keeps the saved key, and `null` removes it.
 `GET /api/session/remote-decks` returns the signed-in user's normalized public decks
@@ -249,12 +249,10 @@ see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONT
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SECRET_KEY_BASE` | required | Signs sessions and cookies. |
+| `THE_GATHERING_SECRET_KEY` | required | Encrypts the session cookie, socket tokens, and stored ManaVault API keys. At least 64 bytes; keep it when upgrading, or stored keys stop decrypting. Releases up to 0.2 called it `SECRET_KEY_BASE`, which still works and logs a warning. |
 | `DATA_DIR` | `/data` | Where the database, uploaded files, and the `cardid/` recognizer bundles live. |
 | `DATABASE_PATH` | `$DATA_DIR/the_gathering.db` | SQLite database file. |
-| `PHX_HOST` | `localhost` | Public hostname used in generated URLs. |
-| `PHX_SCHEME` | `https` | Public scheme. |
-| `PHX_URL_PORT` | `443` for https, `80` for http | Public port. |
+| `THE_GATHERING_PUBLIC_URL` | `https://localhost` | Origin users reach the app at (scheme, host, and a non-default port), used for generated links and the Discord OAuth redirect. Replaces `PHX_SCHEME`, `PHX_HOST`, and `PHX_URL_PORT`, which still work and log a warning. |
 | `PORT` | `4000` | Port the server binds inside the container. |
 | `TRUST_PROXY_HEADERS` | unset | Set to `true` behind a reverse proxy so rate limiting identifies clients by `x-real-ip` / `x-forwarded-for` instead of the proxy address. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, or `error`. `debug` explains why the Discord bot ignored a message. |

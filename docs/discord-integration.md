@@ -19,10 +19,9 @@ Use the same Discord application for OAuth and the optional game-tracking bot:
    upload `priv/static/images/discord-app-icon.png`; it is the app logo on a
    full-bleed square because Discord applies its own circular crop.
 2. Under **OAuth2**, register
-   `<PHX_SCHEME>://<PHX_HOST>:<PHX_URL_PORT>/auth/discord/callback`. Omit the port
-   when it is the scheme default (for example,
+   `<THE_GATHERING_PUBLIC_URL>/auth/discord/callback` (for example,
    `https://games.example.com/auth/discord/callback`). The application derives
-   this URL from those settings.
+   this URL from that setting.
 3. Restart the app. The login page shows **Continue with Discord** when both
    credentials are present. Authorization requests the `identify email` scopes;
    email is not persisted.
@@ -296,7 +295,7 @@ Any member of the server can queue, without first linking an app account. To
 enter the actual table, players must sign in with Discord; normal registration
 and disabled-account restrictions still apply. The roster is coordination, not
 a seat reservation or room access list. The lobby URL uses the configured
-`PHX_HOST`, `PHX_SCHEME`, and `PHX_URL_PORT`; it identifies a UUID room without
+`THE_GATHERING_PUBLIC_URL`; it identifies a UUID room without
 creating presence. It appears in active tables only after someone enters.
 
 Bare clock times use `DISCORD_DEFAULT_TIMEZONE` (IANA, default
@@ -406,8 +405,8 @@ also subject to the render cap. No summary request modifies the game.
 
 Registration replaces `/won` with `/log` in the configured command scope while
 preserving unrelated commands. Existing modal drafts remain supported briefly
-for users who opened them before upgrading. Set `PHX_HOST`, `PHX_SCHEME`, and
-`PHX_URL_PORT` to the public app address so the generated links work externally.
+for users who opened them before upgrading. Set `THE_GATHERING_PUBLIC_URL` to the public app
+address so the generated links work externally.
 
 What the bot sees during a SpellBot game, per the [SpellBot source](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/actions/lfg_action.py):
 `/lfg` and `/game` are deferred, so the first `MESSAGE_CREATE` is an empty

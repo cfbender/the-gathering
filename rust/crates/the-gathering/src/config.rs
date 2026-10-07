@@ -1,9 +1,14 @@
 //! Runtime configuration read from the environment.
 //!
 //! `THE_GATHERING_ENV` picks the defaults (`prod` unless set): `dev` uses the repository's
-//! development database and the Vite dev server, `prod` requires `SECRET_KEY_BASE` and keeps
-//! data under `DATA_DIR`. Variable names are unchanged from earlier releases.
+//! development database and the Vite dev server, `prod` requires `THE_GATHERING_SECRET_KEY`
+//! and keeps data under `DATA_DIR`.
+//!
+//! Releases up to 0.2 named the secret `SECRET_KEY_BASE` and split the public URL into
+//! `PHX_SCHEME`, `PHX_HOST`, and `PHX_URL_PORT`. Those names still work, with a startup
+//! warning naming the replacement.
 
+use std::cell::RefCell;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -237,12 +242,9 @@ pub struct Config {
     pub bind: IpAddr,
     /// HTTP port.
     pub port: u16,
-    /// Public URL scheme, host, and port used for generated links.
-    pub url_scheme: String,
-    /// Public host.
-    pub url_host: String,
-    /// Public port.
-    pub url_port: u16,
+    /// The origin users reach the app at, such as `https://games.example.com`, used for
+    /// generated links. No trailing slash; default ports are omitted.
+    pub public_url: String,
     /// SQLite database file.
     pub database_path: PathBuf,
     /// Connection pool size.
@@ -251,8 +253,8 @@ pub struct Config {
     pub data_dir: PathBuf,
     /// `priv/` (static files, `VERSION`).
     pub priv_dir: PathBuf,
-    /// Signs and encrypts cookies and stored credentials.
-    pub secret_key_base: String,
+    /// Encrypts the session cookie, socket tokens, and stored credentials.
+    pub secret_key: String,
     /// SPA asset mode.
     pub vite: ViteMode,
     /// Sign anonymous requests in as an administrator (development only).
@@ -305,41 +307,133 @@ pub struct Config {
     pub archidekt_api_base: String,
 }
 
-fn var(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|value| !value.is_empty())
+/// Reads variables through a lookup, collecting deprecation warnings.
+struct Vars<'a> {
+    lookup: &'a dyn Fn(&str) -> Option<String>,
+    warnings: RefCell<Vec<String>>,
 }
 
-fn flag(name: &str) -> bool {
-    matches!(var(name).as_deref(), Some("true" | "1"))
-}
-
-fn split_urls(name: &str) -> Vec<String> {
-    var(name)
-        .unwrap_or_default()
-        .split(',')
-        .map(str::trim)
-        .filter(|url| !url.is_empty())
-        .map(str::to_owned)
-        .collect()
-}
-
-fn parse_var<T: std::str::FromStr>(name: &str, default: T) -> anyhow::Result<T> {
-    match var(name) {
-        None => Ok(default),
-        Some(value) => value
-            .trim()
-            .parse()
-            .ok()
-            .with_context(|| format!("{name} must be a number, got {value:?}")),
+impl Vars<'_> {
+    /// A non-empty variable.
+    fn get(&self, name: &str) -> Option<String> {
+        (self.lookup)(name).filter(|value| !value.is_empty())
     }
+
+    /// `name`, or its deprecated predecessor `old` with a warning.
+    fn renamed(&self, name: &str, old: &str) -> Option<String> {
+        self.get(name).or_else(|| {
+            let value = self.get(old)?;
+            self.warn(format!("{old} is deprecated; rename it to {name}"));
+            Some(value)
+        })
+    }
+
+    fn warn(&self, message: String) {
+        self.warnings.borrow_mut().push(message);
+    }
+
+    fn flag(&self, name: &str) -> bool {
+        matches!(self.get(name).as_deref(), Some("true" | "1"))
+    }
+
+    fn split(&self, name: &str) -> Vec<String> {
+        self.get(name)
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .map(str::to_owned)
+            .collect()
+    }
+
+    fn parse<T: std::str::FromStr>(&self, name: &str, default: T) -> anyhow::Result<T> {
+        match self.get(name) {
+            None => Ok(default),
+            Some(value) => value
+                .trim()
+                .parse()
+                .ok()
+                .with_context(|| format!("{name} must be a number, got {value:?}")),
+        }
+    }
+}
+
+/// The origin of `url`: `scheme://host[:port]`, default ports omitted.
+fn parse_public_url(name: &str, url: &str) -> anyhow::Result<String> {
+    let parsed = url::Url::parse(url.trim())
+        .with_context(|| format!("{name} must be a URL such as https://games.example.com"))?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        bail!("{name} must be an http:// or https:// URL with a host, got {url:?}");
+    }
+    if parsed.path() != "/" || parsed.query().is_some() {
+        bail!("{name} must not have a path or query (the app is served at the root), got {url:?}");
+    }
+    Ok(parsed.origin().ascii_serialization())
+}
+
+/// The secret's variable.
+const SECRET_KEY: &str = "THE_GATHERING_SECRET_KEY";
+/// The public URL's variable.
+const PUBLIC_URL: &str = "THE_GATHERING_PUBLIC_URL";
+const LEGACY_URL_PARTS: [&str; 3] = ["PHX_SCHEME", "PHX_HOST", "PHX_URL_PORT"];
+
+/// `THE_GATHERING_PUBLIC_URL`, else the deprecated `PHX_*` parts, else `localhost`.
+fn public_url(vars: &Vars<'_>, env: Env, port: u16) -> anyhow::Result<String> {
+    let legacy: Vec<&str> = LEGACY_URL_PARTS
+        .into_iter()
+        .filter(|name| vars.get(name).is_some())
+        .collect();
+    if let Some(url) = vars.get(PUBLIC_URL) {
+        if !legacy.is_empty() {
+            vars.warn(format!(
+                "{} ignored because {PUBLIC_URL} is set; remove them",
+                legacy.join(", ")
+            ));
+        }
+        return parse_public_url(PUBLIC_URL, &url);
+    }
+    let scheme = vars
+        .get("PHX_SCHEME")
+        .unwrap_or_else(|| if env == Env::Prod { "https" } else { "http" }.into());
+    let default_port = match (env, scheme.as_str()) {
+        (Env::Prod, "https") => 443,
+        (Env::Prod, _) => 80,
+        _ => port,
+    };
+    let host = vars.get("PHX_HOST").unwrap_or_else(|| "localhost".into());
+    let url_port: u16 = vars.parse("PHX_URL_PORT", default_port)?;
+    let url = parse_public_url(
+        "PHX_SCHEME/PHX_HOST/PHX_URL_PORT",
+        &format!("{scheme}://{host}:{url_port}"),
+    )?;
+    if !legacy.is_empty() {
+        vars.warn(format!(
+            "{} are deprecated; replace them with {PUBLIC_URL}={url}",
+            legacy.join(", ")
+        ));
+    }
+    Ok(url)
 }
 
 const DEV_SECRET: &str = "ZaS8tKZTnpfTRp5R8v1UFpZEDXq7CSdB0Y5T2QHXtV/LpOmiTf/6hyCLSp+HwuHD";
 
 impl Config {
-    /// Reads the environment.
+    /// Reads the process environment, logging deprecation warnings.
     pub fn from_env() -> anyhow::Result<Self> {
-        let env = match var("THE_GATHERING_ENV").as_deref() {
+        let (config, warnings) = Self::read(&|name| std::env::var(name).ok())?;
+        for warning in warnings {
+            tracing::warn!("{warning}");
+        }
+        Ok(config)
+    }
+
+    /// Reads configuration through `lookup`. Returns the deprecation warnings to log.
+    pub fn read(lookup: &dyn Fn(&str) -> Option<String>) -> anyhow::Result<(Self, Vec<String>)> {
+        let vars = Vars {
+            lookup,
+            warnings: RefCell::new(Vec::new()),
+        };
+        let env = match vars.get("THE_GATHERING_ENV").as_deref() {
             Some("dev") => Env::Dev,
             Some("test") => Env::Test,
             None | Some("prod") => Env::Prod,
@@ -348,45 +442,42 @@ impl Config {
         let repo_root = std::env::current_dir()?;
         let (data_dir, database_path, secret) = match env {
             Env::Prod => {
-                let data_dir = PathBuf::from(var("DATA_DIR").unwrap_or_else(|| "/data".into()));
-                let database_path = var("DATABASE_PATH")
+                let data_dir =
+                    PathBuf::from(vars.get("DATA_DIR").unwrap_or_else(|| "/data".into()));
+                let database_path = vars
+                    .get("DATABASE_PATH")
                     .map_or_else(|| data_dir.join("the_gathering.db"), PathBuf::from);
-                let secret = var("SECRET_KEY_BASE").context(
-                    "environment variable SECRET_KEY_BASE is missing; generate one with `openssl rand -base64 64`",
+                let secret = vars.renamed(SECRET_KEY, "SECRET_KEY_BASE").context(
+                    "environment variable THE_GATHERING_SECRET_KEY is missing; generate one with `openssl rand -base64 64`",
                 )?;
                 (data_dir, database_path, secret)
             }
             Env::Dev | Env::Test => {
-                let data_dir =
-                    var("DATA_DIR").map_or_else(|| repo_root.join("data"), PathBuf::from);
-                let database_path = var("DATABASE_PATH")
+                let data_dir = vars
+                    .get("DATA_DIR")
+                    .map_or_else(|| repo_root.join("data"), PathBuf::from);
+                let database_path = vars
+                    .get("DATABASE_PATH")
                     .map_or_else(|| repo_root.join("the_gathering_dev.db"), PathBuf::from);
                 (
                     data_dir,
                     database_path,
-                    var("SECRET_KEY_BASE").unwrap_or_else(|| DEV_SECRET.into()),
+                    vars.renamed(SECRET_KEY, "SECRET_KEY_BASE")
+                        .unwrap_or_else(|| DEV_SECRET.into()),
                 )
             }
         };
         if secret.len() < 64 {
-            bail!("SECRET_KEY_BASE must be at least 64 bytes");
+            bail!("{SECRET_KEY} must be at least 64 bytes");
         }
 
-        let scheme = var("PHX_SCHEME").unwrap_or_else(|| {
-            if env == Env::Prod {
-                "https".into()
-            } else {
-                "http".into()
-            }
-        });
-        let port: u16 = parse_var("PORT", 4000)?;
-        let default_url_port = match (env, scheme.as_str()) {
-            (Env::Prod, "https") => 443,
-            (Env::Prod, _) => 80,
-            _ => port,
-        };
+        let port: u16 = vars.parse("PORT", 4000)?;
+        let public_url = public_url(&vars, env, port)?;
 
-        let discord_oauth = match (var("DISCORD_CLIENT_ID"), var("DISCORD_CLIENT_SECRET")) {
+        let discord_oauth = match (
+            vars.get("DISCORD_CLIENT_ID"),
+            vars.get("DISCORD_CLIENT_SECRET"),
+        ) {
             (Some(client_id), Some(client_secret)) => Some(DiscordOAuthConfig {
                 client_id,
                 client_secret,
@@ -402,7 +493,7 @@ impl Config {
             }
         };
 
-        let stun_urls = match split_urls("WEBRTC_STUN_URLS").as_slice() {
+        let stun_urls = match vars.split("WEBRTC_STUN_URLS").as_slice() {
             [] => vec![
                 "stun:stun.l.google.com:19302".into(),
                 "stun:stun.cloudflare.com:3478".into(),
@@ -411,7 +502,9 @@ impl Config {
             urls => urls.to_vec(),
         };
 
-        let port_range = var("WEBRTC_SFU_PORT_RANGE").unwrap_or_else(|| "50000-50100".into());
+        let port_range = vars
+            .get("WEBRTC_SFU_PORT_RANGE")
+            .unwrap_or_else(|| "50000-50100".into());
         let (port_min, port_max) = match port_range.split_once('-') {
             Some((first, last)) => (first.trim().parse()?, last.trim().parse()?),
             None => {
@@ -420,7 +513,8 @@ impl Config {
             }
         };
 
-        let corrections_admin_id = var("CARDID_CORRECTIONS_ADMIN_ID")
+        let corrections_admin_id = vars
+            .get("CARDID_CORRECTIONS_ADMIN_ID")
             .and_then(|id| id.parse::<i64>().ok())
             .filter(|id| *id > 0);
 
@@ -429,11 +523,11 @@ impl Config {
         } else {
             RateLimits::defaults()
         };
-        rate_limits.trust_proxy_headers = flag("TRUST_PROXY_HEADERS");
+        rate_limits.trust_proxy_headers = vars.flag("TRUST_PROXY_HEADERS");
 
-        let catalog_sync_hours: u64 = parse_var("CATALOG_SYNC_INTERVAL_HOURS", 168)?;
+        let catalog_sync_hours: u64 = vars.parse("CATALOG_SYNC_INTERVAL_HOURS", 168)?;
 
-        Ok(Self {
+        let config = Self {
             env,
             bind: if env == Env::Prod {
                 IpAddr::V6(Ipv6Addr::UNSPECIFIED)
@@ -441,74 +535,78 @@ impl Config {
                 IpAddr::V4(Ipv4Addr::LOCALHOST)
             },
             port,
-            url_host: var("PHX_HOST").unwrap_or_else(|| "localhost".into()),
-            url_port: parse_var("PHX_URL_PORT", default_url_port)?,
-            url_scheme: scheme,
+            public_url,
             database_path,
-            pool_size: parse_var("POOL_SIZE", 5)?,
-            priv_dir: var("PRIV_DIR").map_or_else(|| repo_root.join("priv"), PathBuf::from),
+            pool_size: vars.parse("POOL_SIZE", 5)?,
+            priv_dir: vars
+                .get("PRIV_DIR")
+                .map_or_else(|| repo_root.join("priv"), PathBuf::from),
             data_dir,
-            secret_key_base: secret,
+            secret_key: secret,
             vite: if env == Env::Dev {
                 ViteMode::DevServer {
                     origin: format!(
                         "http://127.0.0.1:{}",
-                        var("VITE_PORT").unwrap_or_else(|| "5173".into())
+                        vars.get("VITE_PORT").unwrap_or_else(|| "5173".into())
                     ),
                 }
             } else {
                 ViteMode::Manifest
             },
-            dev_auto_login: env == Env::Dev && var("DEV_AUTO_LOGIN").as_deref() != Some("false"),
+            dev_auto_login: env == Env::Dev
+                && vars.get("DEV_AUTO_LOGIN").as_deref() != Some("false"),
             bcrypt_cost: if env == Env::Test { 4 } else { 12 },
             rate_limits,
             discord_oauth,
-            discord_bot: var("DISCORD_BOT_TOKEN").map(|token| DiscordBotConfig {
+            discord_bot: vars.get("DISCORD_BOT_TOKEN").map(|token| DiscordBotConfig {
                 token,
-                guild_id: var("DISCORD_GUILD_ID"),
-                spellbot_user_id: var("DISCORD_SPELLBOT_USER_ID")
+                guild_id: vars.get("DISCORD_GUILD_ID"),
+                spellbot_user_id: vars
+                    .get("DISCORD_SPELLBOT_USER_ID")
                     .unwrap_or_else(|| "725510263251402832".into()),
             }),
-            discord_default_timezone: var("DISCORD_DEFAULT_TIMEZONE")
+            discord_default_timezone: vars
+                .get("DISCORD_DEFAULT_TIMEZONE")
                 .unwrap_or_else(|| "America/New_York".into()),
-            cardid_corrections_token: var("CARDID_CORRECTIONS_TOKEN"),
+            cardid_corrections_token: vars.get("CARDID_CORRECTIONS_TOKEN"),
             cardid_corrections_admin_id: corrections_admin_id,
             catalog_sync_enabled: env != Env::Test
-                && var("CATALOG_SYNC_ENABLED").as_deref() != Some("false"),
+                && vars.get("CATALOG_SYNC_ENABLED").as_deref() != Some("false"),
             catalog_sync_interval: Duration::from_secs(catalog_sync_hours.saturating_mul(3600)),
             webcam_table_pruning_enabled: env != Env::Test,
             webcam_table: WebcamTableConfig {
                 stun_urls,
-                turn_urls: split_urls("WEBRTC_TURN_URLS"),
-                turn_username: var("WEBRTC_TURN_USERNAME"),
-                turn_credential: var("WEBRTC_TURN_CREDENTIAL"),
+                turn_urls: vars.split("WEBRTC_TURN_URLS"),
+                turn_username: vars.get("WEBRTC_TURN_USERNAME"),
+                turn_credential: vars.get("WEBRTC_TURN_CREDENTIAL"),
             },
             cloudflare_turn: CloudflareTurnConfig {
-                key_id: var("CLOUDFLARE_TURN_KEY_ID"),
-                api_token: var("CLOUDFLARE_TURN_API_TOKEN"),
-                ttl_seconds: parse_var("CLOUDFLARE_TURN_TTL_SECONDS", 21_600)?,
+                key_id: vars.get("CLOUDFLARE_TURN_KEY_ID"),
+                api_token: vars.get("CLOUDFLARE_TURN_API_TOKEN"),
+                ttl_seconds: vars.parse("CLOUDFLARE_TURN_TTL_SECONDS", 21_600)?,
                 api_base: "https://rtc.live.cloudflare.com".into(),
             },
             sfu: SfuConfig {
                 port_min,
                 port_max,
-                public_ip: var("WEBRTC_SFU_PUBLIC_IP"),
-                ipv6: flag("WEBRTC_SFU_IPV6"),
-                relay_only: flag("WEBRTC_SFU_RELAY_ONLY"),
+                public_ip: vars.get("WEBRTC_SFU_PUBLIC_IP"),
+                ipv6: vars.flag("WEBRTC_SFU_IPV6"),
+                relay_only: vars.flag("WEBRTC_SFU_RELAY_ONLY"),
             },
-            manavault_url: var("MANAVAULT_URL"),
-            manavault_allowed_hosts: var("MANAVAULT_ALLOWED_HOSTS")
+            manavault_url: vars.get("MANAVAULT_URL"),
+            manavault_allowed_hosts: vars
+                .get("MANAVAULT_ALLOWED_HOSTS")
                 .unwrap_or_default()
                 .split(',')
                 .map(|host| host.trim().to_lowercase())
                 .filter(|host| !host.is_empty())
                 .collect(),
-            manavault_allow_insecure_urls: flag("MANAVAULT_ALLOW_INSECURE_URLS"),
+            manavault_allow_insecure_urls: vars.flag("MANAVAULT_ALLOW_INSECURE_URLS"),
             self_update: SelfUpdateConfig {
-                request_file: var("SELF_UPDATE_REQUEST_FILE"),
-                watchtower_url: var("WATCHTOWER_URL"),
-                watchtower_token: var("WATCHTOWER_HTTP_API_TOKEN"),
-                watchtower_image: var("WATCHTOWER_IMAGE"),
+                request_file: vars.get("SELF_UPDATE_REQUEST_FILE"),
+                watchtower_url: vars.get("WATCHTOWER_URL"),
+                watchtower_token: vars.get("WATCHTOWER_HTTP_API_TOKEN"),
+                watchtower_image: vars.get("WATCHTOWER_IMAGE"),
                 github_api: "https://api.github.com/repos/cfbender/the-gathering".into(),
             },
             scryfall_api_base: "https://api.scryfall.com".into(),
@@ -516,7 +614,9 @@ impl Config {
             card_image_base: "https://cards.scryfall.io".into(),
             moxfield_api_base: "https://api2.moxfield.com".into(),
             archidekt_api_base: "https://archidekt.com".into(),
-        })
+        };
+        let warnings = vars.warnings.into_inner();
+        Ok((config, warnings))
     }
 
     /// A configuration for tests: a scratch database and data directory, no background jobs.
@@ -525,15 +625,12 @@ impl Config {
             env: Env::Test,
             bind: IpAddr::V4(Ipv4Addr::LOCALHOST),
             port: 4002,
-            url_scheme: "http".into(),
-            url_host: "localhost".into(),
-            url_port: 4002,
+            public_url: "http://localhost:4002".into(),
             database_path,
             pool_size: 1,
             data_dir,
             priv_dir: PathBuf::from("priv"),
-            secret_key_base: "BxVic2xATqUYX7g8UgEVQl/MU+DF57PUsRKqbop07yJKwjbf0bLH69WiPtbXtkHl"
-                .into(),
+            secret_key: "BxVic2xATqUYX7g8UgEVQl/MU+DF57PUsRKqbop07yJKwjbf0bLH69WiPtbXtkHl".into(),
             vite: ViteMode::DevServer {
                 origin: "http://127.0.0.1:5173".into(),
             },
@@ -582,20 +679,115 @@ impl Config {
     }
 
     /// The public base URL, such as `https://games.example.com`.
-    pub fn public_url(&self) -> String {
-        let default_port = matches!(
-            (self.url_scheme.as_str(), self.url_port),
-            ("https", 443) | ("http", 80)
-        );
-        if default_port {
-            format!("{}://{}", self.url_scheme, self.url_host)
-        } else {
-            format!("{}://{}:{}", self.url_scheme, self.url_host, self.url_port)
-        }
+    pub fn public_url(&self) -> &str {
+        &self.public_url
     }
 
     /// `priv/static`.
     pub fn static_dir(&self) -> PathBuf {
         self.priv_dir.join("static")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    const SECRET: &str = "BxVic2xATqUYX7g8UgEVQl/MU+DF57PUsRKqbop07yJKwjbf0bLH69WiPtbXtkHl";
+
+    fn read(vars: &[(&str, &str)]) -> anyhow::Result<(Config, Vec<String>)> {
+        let map: HashMap<String, String> = vars
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect();
+        Config::read(&|name| map.get(name).cloned())
+    }
+
+    #[test]
+    fn reads_the_current_names_without_warnings() {
+        let (config, warnings) = read(&[
+            ("THE_GATHERING_SECRET_KEY", SECRET),
+            ("THE_GATHERING_PUBLIC_URL", "https://games.example.com/"),
+        ])
+        .unwrap();
+        assert_eq!(config.secret_key, SECRET);
+        assert_eq!(config.public_url(), "https://games.example.com");
+        assert!(warnings.is_empty(), "{warnings:?}");
+
+        let (config, _) = read(&[
+            ("THE_GATHERING_SECRET_KEY", SECRET),
+            ("THE_GATHERING_PUBLIC_URL", "http://10.0.0.5:4000"),
+        ])
+        .unwrap();
+        assert_eq!(config.public_url(), "http://10.0.0.5:4000");
+    }
+
+    #[test]
+    fn accepts_the_deprecated_names_with_warnings() {
+        let (config, warnings) = read(&[
+            ("SECRET_KEY_BASE", SECRET),
+            ("PHX_HOST", "games.example.com"),
+            ("PHX_SCHEME", "https"),
+            ("PHX_URL_PORT", "443"),
+        ])
+        .unwrap();
+        assert_eq!(config.secret_key, SECRET);
+        assert_eq!(config.public_url(), "https://games.example.com");
+        assert_eq!(
+            warnings,
+            [
+                "SECRET_KEY_BASE is deprecated; rename it to THE_GATHERING_SECRET_KEY",
+                "PHX_SCHEME, PHX_HOST, PHX_URL_PORT are deprecated; replace them with THE_GATHERING_PUBLIC_URL=https://games.example.com",
+            ]
+        );
+    }
+
+    #[test]
+    fn current_names_win_over_deprecated_ones() {
+        let (config, warnings) = read(&[
+            ("THE_GATHERING_SECRET_KEY", SECRET),
+            ("SECRET_KEY_BASE", "ignored"),
+            ("THE_GATHERING_PUBLIC_URL", "https://new.example.com"),
+            ("PHX_HOST", "old.example.com"),
+        ])
+        .unwrap();
+        assert_eq!(config.secret_key, SECRET);
+        assert_eq!(config.public_url(), "https://new.example.com");
+        assert_eq!(
+            warnings,
+            ["PHX_HOST ignored because THE_GATHERING_PUBLIC_URL is set; remove them"]
+        );
+    }
+
+    #[test]
+    fn defaults_the_public_url_per_environment() {
+        let (config, _) = read(&[("THE_GATHERING_SECRET_KEY", SECRET)]).unwrap();
+        assert_eq!(config.public_url(), "https://localhost");
+        let (config, warnings) = read(&[("THE_GATHERING_ENV", "dev"), ("PORT", "4100")]).unwrap();
+        assert_eq!(config.public_url(), "http://localhost:4100");
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn rejects_missing_secrets_and_bad_urls() {
+        let missing = read(&[]).unwrap_err().to_string();
+        assert!(missing.contains("THE_GATHERING_SECRET_KEY"), "{missing}");
+        assert!(read(&[("THE_GATHERING_SECRET_KEY", "short")]).is_err());
+        for url in [
+            "games.example.com",
+            "ftp://games.example.com",
+            "https://games.example.com/app",
+        ] {
+            assert!(
+                read(&[
+                    ("THE_GATHERING_SECRET_KEY", SECRET),
+                    ("THE_GATHERING_PUBLIC_URL", url)
+                ])
+                .is_err(),
+                "{url}"
+            );
+        }
     }
 }

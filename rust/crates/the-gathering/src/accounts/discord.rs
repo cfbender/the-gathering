@@ -129,7 +129,7 @@ impl Accounts {
         let existing = select_users!("WHERE discord_id = ?", claims.sub)
             .fetch_optional(&mut *tx)
             .await?
-            .map(|row| row.into_user(&self.secret_key_base));
+            .map(|row| row.into_user(&self.secret_key));
         let user = match existing {
             Some(user) if user.disabled_at.is_some() => return Err(SignInError::Disabled),
             Some(user) => {
@@ -233,6 +233,6 @@ impl Accounts {
         let row: UserRow = select_users!("WHERE id = ?", id)
             .fetch_one(&mut **tx)
             .await?;
-        Ok(row.into_user(&self.secret_key_base))
+        Ok(row.into_user(&self.secret_key))
     }
 }
