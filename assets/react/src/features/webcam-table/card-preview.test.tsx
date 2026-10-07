@@ -222,6 +222,66 @@ it("retains the clicked card when the list fails and offers retry", async () => 
   await waitFor(() => expect(screen.getByText("2 / 2")).toBeTruthy())
 })
 
+it("flips a double-faced printing to its back face and resets on another printing", () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  })
+  const face = (id: string, name: string, oracle_text: string) => ({
+    id,
+    name,
+    layout: "transform",
+    set_code: "isd",
+    collector_number: "51",
+    type_line: "Creature",
+    oracle_text,
+    image_uris: { normal: `https://img.example/${id}.jpg` },
+  })
+  client.setQueryData(
+    ["card-printings", "preview", "Delver of Secrets"],
+    [
+      { id: "delver", name: "Delver of Secrets", set_code: "isd", image_uris: {} },
+      { id: "delver2", name: "Delver of Secrets", set_code: "mid", image_uris: {} },
+    ],
+  )
+  client.setQueryData(
+    ["card-printings", "delver", "details"],
+    face("delver", "Delver of Secrets", "Look at the top card."),
+  )
+  client.setQueryData(
+    ["card-printings", "delver-1", "details"],
+    face("delver-1", "Insectile Aberration", "Flying"),
+  )
+  client.setQueryData(
+    ["card-printings", "delver2", "details"],
+    face("delver2", "Delver of Secrets", "Look at the top card."),
+  )
+  render(
+    <QueryClientProvider client={client}>
+      <CardPreview
+        card={{ id: "delver", name: "Delver of Secrets", set: "isd" }}
+        onClose={vi.fn()}
+      />
+    </QueryClientProvider>,
+  )
+  fireEvent.click(screen.getByRole("button", { name: "Show back face of Delver of Secrets" }))
+  expect(screen.getByRole("heading", { name: "Insectile Aberration" })).toBeTruthy()
+  expect(screen.getByText("Flying")).toBeTruthy()
+  expect(screen.getByRole("img", { name: "Insectile Aberration" }).getAttribute("src")).toBe(
+    "https://img.example/delver-1.jpg",
+  )
+  fireEvent.click(screen.getByRole("button", { name: "Show front face of Delver of Secrets" }))
+  expect(screen.getByRole("heading", { name: "Delver of Secrets" })).toBeTruthy()
+  fireEvent.click(screen.getByRole("button", { name: "Show back face of Delver of Secrets" }))
+  fireEvent.click(screen.getByRole("button", { name: "Next printing" }))
+  expect(screen.getByRole("heading", { name: "Delver of Secrets" })).toBeTruthy()
+  expect(screen.getByRole("button", { name: "Show back face of Delver of Secrets" })).toBeTruthy()
+})
+
+it("offers no flip for a single-faced card", () => {
+  preview()
+  expect(screen.queryByRole("button", { name: /face of/ })).toBeNull()
+})
+
 it("formats foil-only and etched prices without inventing a nonfoil price", () => {
   expect(printingPrices({ usd: null, usd_foil: "1.10", usd_etched: "2.20" })).toBe(
     "Foil $1.10 · Etched $2.20",

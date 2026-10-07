@@ -1,4 +1,4 @@
-import { BookOpen, ChevronLeft, ChevronRight, Trash2, Undo2, X } from "lucide-react"
+import { BookOpen, ChevronLeft, ChevronRight, RefreshCw, Trash2, Undo2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { CardImage } from "@/components/card-image"
 import { GameChangerBadge } from "@/components/game-changer-badge"
@@ -6,6 +6,7 @@ import { ManaCost, ManaSymbol, parseManaCost } from "@/components/mana-symbols"
 import { cn } from "@/lib/cn"
 import {
   printingCaption,
+  preloadImage,
   printingPrices,
   usePrintingDetails,
   type PrintingDetails,
@@ -25,6 +26,14 @@ interface Props {
   /** Offered for a card on a board's list. */
   onRemove?: () => void
   onClose: () => void
+}
+
+/** Layouts whose second face has its own scan; split and flip halves share the front image. */
+const DOUBLE_FACED = new Set(["transform", "modal_dfc", "reversible_card", "double_faced_token"])
+
+/** The same printing's other face: the API addresses the second face with a `-1` suffix. */
+function otherFaceId(id: string) {
+  return id.endsWith("-1") ? id.slice(0, -2) : `${id}-1`
 }
 
 function stats(details: PrintingDetails) {
@@ -69,7 +78,16 @@ export function CardPreview(props: Props) {
 function PrintingPreview({ card: initial, ownerName, onWrongCard, onRemove, onClose }: Props) {
   const printings = usePreviewPrintings(initial)
   const card = printings.card
-  const details = usePrintingDetails(card.id)
+  const shown = usePrintingDetails(card.id)
+  const hasBackFace = DOUBLE_FACED.has(shown.data?.layout ?? "")
+  const other = usePrintingDetails(hasBackFace ? otherFaceId(card.id) : null)
+  // Remembers which printing was flipped, so moving to another printing shows its own face.
+  const [flippedId, setFlippedId] = useState<string | null>(null)
+  const flipped = hasBackFace && flippedId === card.id
+  const details = flipped ? other : shown
+  // A recognized card can already be the back face, so label by the face shown.
+  const showingBack = (flipped ? otherFaceId(card.id) : card.id).endsWith("-1")
+  const otherImage = other.data?.image_uris.normal
   const [rulingsOpen, setRulingsOpen] = useState(false)
   const dialog = useRef<HTMLDivElement>(null)
 
@@ -89,7 +107,11 @@ function PrintingPreview({ card: initial, ownerName, onWrongCard, onRemove, onCl
     return () => window.removeEventListener("keydown", close)
   }, [onClose, rulingsOpen])
 
+  useEffect(() => preloadImage(otherImage), [otherImage])
+
   const data = details.data
+  // A board entry names both faces ("A // B"); a double-faced card shows the visible face's.
+  const name = hasBackFace ? (data?.name ?? card.name) : card.name
   const caption = data ? printingCaption({ ...data, set: data.set_code }) : printingCaption(card)
 
   return (
@@ -178,7 +200,7 @@ function PrintingPreview({ card: initial, ownerName, onWrongCard, onRemove, onCl
               onClick={(event) => event.stopPropagation()}
             >
               {data?.mana_cost && <ManaCost cost={data.mana_cost} className="text-base" />}
-              <h2 className="mt-1 text-base font-bold">{card.name}</h2>
+              <h2 className="mt-1 text-base font-bold">{name}</h2>
               <p className="text-white/70">
                 {data ? data.type_line : "Loading…"}
                 {data && stats(data) && <> · {stats(data)}</>}
@@ -199,13 +221,25 @@ function PrintingPreview({ card: initial, ownerName, onWrongCard, onRemove, onCl
               className="pointer-events-auto relative flex min-h-0 flex-col items-center rounded-2xl border border-white/10 bg-base-300 p-3 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className={cn("w-[min(22rem,60vw,42dvh)]", !data && "animate-pulse")}>
+              <div className={cn("relative w-[min(22rem,60vw,42dvh)]", !data && "animate-pulse")}>
                 <CardImage
-                  imageUris={data?.image_uris ?? card.image_uris ?? {}}
-                  name={card.name}
+                  // The listed printing's image is the front, so a loading back face waits.
+                  imageUris={data?.image_uris ?? (flipped ? {} : (card.image_uris ?? {}))}
+                  name={name}
                   variant="card"
                   className="w-full"
                 />
+                {hasBackFace && (
+                  <button
+                    type="button"
+                    className="btn btn-sm absolute bottom-3 left-1/2 h-9 min-h-0 -translate-x-1/2 gap-2 rounded-lg border-white/20 bg-base-300/80 px-4 text-xs font-bold text-white backdrop-blur hover:bg-base-300"
+                    aria-label={`Show ${showingBack ? "front" : "back"} face of ${card.name}`}
+                    onClick={() => setFlippedId(flipped ? null : card.id)}
+                  >
+                    <RefreshCw className="size-3.5" />
+                    {showingBack ? "Show front" : "Show back"}
+                  </button>
+                )}
               </div>
               <figcaption className="mt-2 text-center text-xs text-white/70">
                 <GameChangerBadge gameChanger={data?.game_changer} />
