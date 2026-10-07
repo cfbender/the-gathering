@@ -10,6 +10,7 @@ pub mod config;
 pub mod crypto;
 pub mod db;
 pub mod decklists;
+pub mod discord;
 pub mod error;
 pub mod games;
 pub mod local_time;

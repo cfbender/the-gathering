@@ -250,8 +250,8 @@ async fn render_deck(state: &AppState, id: i64) -> ApiResult<Value> {
     Ok(json!({ "data": body }))
 }
 
-/// `GameJSON.show/1`.
-async fn render_game(state: &AppState, game: &Game) -> ApiResult<Value> {
+/// `GameJSON.show/1` (also rendered by the Discord result draft controller).
+pub async fn render_game(state: &AppState, game: &Game) -> ApiResult<Value> {
     let art = art_urls(state, &game_card_refs([game])).await?;
     Ok(json!({ "data": game_json(game, &art) }))
 }

@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use anyhow::Context;
 use the_gathering::config::Config;
 use the_gathering::state::AppState;
-use the_gathering::{catalog, db, decklists, web};
+use the_gathering::{catalog, db, decklists, discord, web};
 use tracing_subscriber::EnvFilter;
 
 fn usage() -> anyhow::Error {
@@ -114,6 +114,7 @@ async fn serve(state: AppState) -> anyhow::Result<()> {
     if state.config.webcam_table_pruning_enabled {
         state.webcam_tables.spawn_pruner();
     }
+    discord::start(&state);
     let app = web::router(state.clone());
     let listener = tokio::net::TcpListener::bind(address)
         .await

@@ -392,41 +392,14 @@ impl Catalog {
         commander: Option<bool>,
         partner: bool,
     ) -> Result<Vec<Card>, sqlx::Error> {
-        let normalized = strip_search_punctuation(&lotus::normalize_name(query.trim()));
-        if normalized.is_empty() {
-            return Ok(Vec::new());
-        }
-        let limit = limit.unwrap_or(20).clamp(1, 50);
-        let pattern = format!("%{}%", escape_like(&normalized));
-        let prefix = format!("{}%", escape_like(&normalized));
-        let whole_name_prefix = format!("{} %", escape_like(&normalized));
-        let commander_filter = commander.map(i64::from);
-        let partner_filter = i64::from(partner);
-        Ok(select_cards!(
-            r"WHERE replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\'
-                AND (? IS NULL OR can_be_commander = ?)
-                AND (? = 0 OR can_be_commander OR commander_pairing IS NOT NULL)
-              ORDER BY CASE
-                  WHEN replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') = ? THEN 0
-                  WHEN replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\' THEN 1
-                  WHEN replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\' THEN 2
-                  ELSE 3 END,
-                normalized_name, id
-              LIMIT ?",
-            pattern,
-            commander_filter,
-            commander_filter,
-            partner_filter,
-            normalized,
-            whole_name_prefix,
-            prefix,
-            limit
+        search_in(
+            &mut *self.pool.acquire().await?,
+            query,
+            limit,
+            commander,
+            partner,
         )
-        .fetch_all(&self.pool)
-        .await?
-        .into_iter()
-        .map(Card::from)
-        .collect())
+        .await
     }
 
     /// `card_summaries/1`: one lookup for many `(id, name)` references.
@@ -465,6 +438,53 @@ impl Catalog {
     pub async fn art_crop_urls(&self, refs: &[CardRef]) -> Result<ArtUrls, sqlx::Error> {
         art_crop_urls_in(&mut *self.pool.acquire().await?, refs).await
     }
+}
+
+/// [`Catalog::search`] on a connection (the Discord bot searches inside its transaction).
+/// `commander` filters to (non-)commanders; `partner` allows any card that can share
+/// the command zone.
+pub async fn search_in(
+    conn: &mut SqliteConnection,
+    query: &str,
+    limit: Option<i64>,
+    commander: Option<bool>,
+    partner: bool,
+) -> Result<Vec<Card>, sqlx::Error> {
+    let normalized = strip_search_punctuation(&lotus::normalize_name(query.trim()));
+    if normalized.is_empty() {
+        return Ok(Vec::new());
+    }
+    let limit = limit.unwrap_or(20).clamp(1, 50);
+    let pattern = format!("%{}%", escape_like(&normalized));
+    let prefix = format!("{}%", escape_like(&normalized));
+    let whole_name_prefix = format!("{} %", escape_like(&normalized));
+    let commander_filter = commander.map(i64::from);
+    let partner_filter = i64::from(partner);
+    Ok(select_cards!(
+        r"WHERE replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\'
+            AND (? IS NULL OR can_be_commander = ?)
+            AND (? = 0 OR can_be_commander OR commander_pairing IS NOT NULL)
+          ORDER BY CASE
+              WHEN replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') = ? THEN 0
+              WHEN replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\' THEN 1
+              WHEN replace(replace(replace(normalized_name, '''', ''), '’', ''), ',', '') LIKE ? ESCAPE '\' THEN 2
+              ELSE 3 END,
+            normalized_name, id
+          LIMIT ?",
+        pattern,
+        commander_filter,
+        commander_filter,
+        partner_filter,
+        normalized,
+        whole_name_prefix,
+        prefix,
+        limit
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .map(Card::from)
+    .collect())
 }
 
 /// [`Catalog::get_card`] on a connection (for callers inside a transaction).

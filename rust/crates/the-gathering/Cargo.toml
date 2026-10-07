@@ -44,6 +44,8 @@ tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "set-header", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+twilight-gateway = { version = "0.17", default-features = false, features = ["rustls-webpki-roots"] }
+twilight-model = "0.17"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 
