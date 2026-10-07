@@ -28,6 +28,10 @@ lives here.
   - `web/`: router (mirrors `TheGatheringWeb.Router` pipelines), session cookie, CSRF,
     auth guards, request ids and logging (parameters filtered like
     `filter_parameters`), SPA shell, static files, and `web/api/*` controllers.
+  - `discord/`: the optional Discord bot (started by `serve` when `DISCORD_BOT_TOKEN` is
+    set): `twilight-gateway` for events, a small `reqwest` REST client behind the
+    `DiscordApi` trait (tests use a recording fake), SpellBot staging, `/log`, `/summary`,
+    `/newgame` queues and their scheduler, and the legacy `/won` form.
   - `webcam/`: webcam table rooms (one tokio task per room), turns, timer, log, cards,
     and saved sessions; `web/channels/`: the Phoenix Channels server (V2 JSON over
     `/socket/websocket`), pubsub, presence, and the `webcam_table:*` channel.
