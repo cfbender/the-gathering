@@ -210,4 +210,128 @@ impl TestApp {
     pub async fn reload(&self, user: &User) -> Option<User> {
         self.state.accounts.get_user(user.id).await.unwrap()
     }
+
+    /// Inserts a catalog card from Scryfall-shaped JSON merged over the defaults the
+    /// Elixir tests used (`insert_card!/1`): English paper, `tst` set, common, Commander
+    /// legal, released 2024-01-01. `id`, `oracle_id`, and `name` are required.
+    pub async fn card(&self, overrides: Value) -> the_gathering::catalog::card_data::CardData {
+        let mut record = json!({
+            "lang": "en",
+            "games": ["paper"],
+            "released_at": "2024-01-01",
+            "set": "tst",
+            "collector_number": "1",
+            "layout": "normal",
+            "rarity": "common",
+            "legalities": {"commander": "legal"}
+        });
+        for (key, value) in overrides.as_object().expect("card overrides are an object") {
+            record[key] = value.clone();
+        }
+        let scryfall: lotus::scryfall::ScryfallCard =
+            serde_json::from_value(record).expect("Scryfall card");
+        let card =
+            the_gathering::catalog::card_data::from_scryfall(&scryfall).expect("describes a card");
+        let mut conn = self.pool().acquire().await.unwrap();
+        the_gathering::catalog::card_data::insert_card(&mut conn, &card)
+            .await
+            .unwrap();
+        card
+    }
+
+    /// Inserts a player row directly.
+    pub async fn player(&self, name: &str) -> i64 {
+        let now = db::UtcDateTime::now();
+        sqlx::query_scalar::<_, i64>(
+            "INSERT INTO players (name, inserted_at, updated_at) VALUES (?, ?, ?) RETURNING id",
+        )
+        .bind(name)
+        .bind(now)
+        .bind(now)
+        .fetch_one(self.pool())
+        .await
+        .unwrap()
+    }
+
+    /// Inserts a deck row directly; `extra` sets optional columns such as
+    /// `partner_name`, `color_identity`, `commander_card_id`, or `decklist_url`.
+    pub async fn deck(
+        &self,
+        player_id: i64,
+        name: &str,
+        commander_name: &str,
+        extra: Value,
+    ) -> i64 {
+        let now = db::UtcDateTime::now();
+        let text = |key: &str| extra.get(key).and_then(Value::as_str).map(str::to_owned);
+        sqlx::query_scalar::<_, i64>(
+            "INSERT INTO decks (player_id, name, commander_name, partner_name, commander_card_id, partner_card_id,
+               color_identity, decklist_url, inserted_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        )
+        .bind(player_id)
+        .bind(name)
+        .bind(commander_name)
+        .bind(text("partner_name"))
+        .bind(text("commander_card_id"))
+        .bind(text("partner_card_id"))
+        .bind(text("color_identity").unwrap_or_default())
+        .bind(text("decklist_url"))
+        .bind(now)
+        .bind(now)
+        .fetch_one(self.pool())
+        .await
+        .unwrap()
+    }
+
+    /// Inserts a game and its seats directly: `(player_id, deck_id, seat, result, mvp_card_name)`.
+    pub async fn game(&self, seats: &[(i64, Option<i64>, i64, &str, Option<&str>)]) -> i64 {
+        let now = db::UtcDateTime::now();
+        let game_id = sqlx::query_scalar::<_, i64>(
+            "INSERT INTO games (played_at, source, inserted_at, updated_at) VALUES (?, 'manual', ?, ?) RETURNING id",
+        )
+        .bind(now)
+        .bind(now)
+        .bind(now)
+        .fetch_one(self.pool())
+        .await
+        .unwrap();
+        for (player_id, deck_id, seat, result, mvp) in seats {
+            sqlx::query(
+                "INSERT INTO game_players (game_id, player_id, deck_id, seat, result, mvp_card_name, inserted_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(game_id)
+            .bind(player_id)
+            .bind(deck_id)
+            .bind(seat)
+            .bind(result)
+            .bind(mvp)
+            .bind(now)
+            .bind(now)
+            .execute(self.pool())
+            .await
+            .unwrap();
+        }
+        game_id
+    }
 }
+
+/// A file under the repository's `test/support/fixtures`.
+pub fn fixture_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../test/support/fixtures")
+        .join(relative)
+}
+
+/// A fixture's contents.
+pub fn fixture(relative: &str) -> Vec<u8> {
+    std::fs::read(fixture_path(relative))
+        .unwrap_or_else(|error| panic!("fixture {relative}: {error}"))
+}
+
+/// A JSON fixture.
+pub fn json_fixture(relative: &str) -> Value {
+    serde_json::from_slice(&fixture(relative)).expect("JSON fixture")
+}
+
