@@ -62,7 +62,7 @@ async fn socket_connection_uses_the_tracked_cookie_session() {
 }
 
 #[tokio::test]
-async fn socket_tokens_are_encrypted_and_tampered_or_merely_signed_tokens_are_rejected() {
+async fn socket_tokens_are_encrypted_and_tampered_or_expired_tokens_are_rejected() {
     let server = Server::start().await;
     let user = server.user().await;
     let session_token = server
@@ -83,17 +83,20 @@ async fn socket_tokens_are_encrypted_and_tampered_or_merely_signed_tokens_are_re
         .unwrap();
     let mut flipped = chars.clone();
     flipped[middle] = if chars[middle] == 'A' { 'B' } else { 'A' };
-    let signed = crypto::sign(
-        &session_token,
-        &crypto::derive_key(
-            &server.state().config.secret_key_base,
-            "webcam table socket",
-        ),
+    let expired = crypto::seal(
+        &server.state().config.secret_key_base,
+        channels::TOKEN_PURPOSE,
+        json!({
+            "session": crypto::url_encode64_unpadded(&session_token),
+            "expires_at": time::OffsetDateTime::now_utc().unix_timestamp() - 1,
+        })
+        .to_string()
+        .as_bytes(),
     );
     for tampered in [
         flipped.iter().collect::<String>(),
         chars[..middle].iter().collect(),
-        signed,
+        expired,
     ] {
         assert!(
             channels::authenticate(server.state(), &tampered)

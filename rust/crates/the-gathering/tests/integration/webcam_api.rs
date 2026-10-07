@@ -60,7 +60,7 @@ async fn issues_an_encrypted_socket_token_that_connects_as_the_signed_in_user() 
     let (app, user) = signed_in(|_| {}).await;
     let body = app.get("/api/webcam-table/config").await.assert_json(200);
     let socket_token = body["data"]["socket_token"].as_str().unwrap().to_owned();
-    let session_token = app.session().get_bytes("user_token").unwrap();
+    let session_token = app.session().user_token.unwrap();
     assert!(!socket_token.contains(&crypto::url_encode64_unpadded(&session_token)));
     let (connected, token) = channels::authenticate(&app.state, &socket_token)
         .await

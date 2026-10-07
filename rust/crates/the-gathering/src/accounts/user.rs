@@ -9,8 +9,27 @@ use serde_json::Value;
 use crate::changeset::{Change, Changeset};
 use crate::db::UtcDateTime;
 
-/// Salt for encrypted stored credentials (such as ManaVault API keys).
-pub const ENCRYPTED_STRING_SALT: &str = "the_gathering.accounts.encrypted_string";
+/// The purpose stored credentials (such as ManaVault API keys) are sealed for.
+const STORED_SECRET_PURPOSE: &str = "the-gathering.stored-secret";
+/// Marks the current stored-credential format.
+const STORED_SECRET_PREFIX: &str = "enc.v1.";
+
+/// Encrypts a credential for storage.
+pub fn encrypt_secret(secret_key: &str, plain: &str) -> String {
+    format!(
+        "{STORED_SECRET_PREFIX}{}",
+        crate::crypto::seal(secret_key, STORED_SECRET_PURPOSE, plain.as_bytes())
+    )
+}
+
+/// Decrypts a stored credential, in the current format or the one earlier releases wrote.
+pub fn decrypt_secret(secret_key: &str, stored: &str) -> Option<String> {
+    let plain = match stored.strip_prefix(STORED_SECRET_PREFIX) {
+        Some(sealed) => crate::crypto::open(secret_key, STORED_SECRET_PURPOSE, sealed),
+        None => crate::legacy::decrypt_secret(stored, secret_key),
+    }?;
+    String::from_utf8(plain).ok()
+}
 
 /// Palette ids; keep in sync with `PALETTES` in `assets/react/src/lib/theme.tsx` and
 /// `assets/react/src/palettes.css`.

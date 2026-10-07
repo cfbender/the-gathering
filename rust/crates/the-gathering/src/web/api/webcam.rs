@@ -41,7 +41,7 @@ pub async fn config_show(
         user.id,
         state.config.rate_limits.turn_credentials,
     )?;
-    let session_token = session.get_bytes("user_token").unwrap_or_default();
+    let session_token = session.user_token().unwrap_or_default();
     let body = json!({
         "data": {
             "ice_servers": ice_servers(&state).await,

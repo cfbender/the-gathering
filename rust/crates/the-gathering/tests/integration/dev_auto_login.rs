@@ -22,7 +22,7 @@ async fn anonymous_requests_are_signed_in_as_a_newly_created_dev_admin() {
     assert_eq!(body["data"]["role"], "admin");
     assert_eq!(body["data"]["has_password"], false);
 
-    assert!(app.session().get_bytes("user_token").is_some());
+    assert!(app.session().user_token.is_some());
     let users = app.state.accounts.list_users().await.unwrap();
     assert_eq!(
         users
@@ -33,9 +33,9 @@ async fn anonymous_requests_are_signed_in_as_a_newly_created_dev_admin() {
     );
 
     // The issued session is reused afterwards rather than signing in again.
-    let token = app.session().get_bytes("user_token");
+    let token = app.session().user_token;
     app.get("/api/session").await.assert_json(200);
-    assert_eq!(app.session().get_bytes("user_token"), token);
+    assert_eq!(app.session().user_token, token);
 }
 
 #[tokio::test]

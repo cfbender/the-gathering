@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE users SET manavault_api_key = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "a4309547fe1d76d0def157461c5ffc0cf4458326a044f7f6b9a2ad9a553d8539"
+}

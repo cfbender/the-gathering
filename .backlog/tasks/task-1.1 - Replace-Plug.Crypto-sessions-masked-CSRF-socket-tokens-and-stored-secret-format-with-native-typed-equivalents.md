@@ -3,11 +3,11 @@ id: TASK-1.1
 title: >-
   Replace Plug.Crypto sessions, masked CSRF, socket tokens, and stored-secret
   format with native typed equivalents
-status: To Do
+status: Done
 assignee:
   - '@cfbender'
 created_date: '2026-10-07 21:48'
-updated_date: '2026-10-07 21:48'
+updated_date: '2026-10-07 22:11'
 labels: []
 dependencies: []
 parent_task_id: TASK-1
@@ -24,24 +24,38 @@ ordinal: 2000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Sessions are a typed struct in an axum-extra private cookie; Plug MessageVerifier/KeyGenerator signing, CSRF masking, and string-keyed eetf session maps are gone from the request path
-- [ ] #2 A browser holding a valid legacy _the_gathering_key cookie stays signed in after the upgrade: it gets the new cookie and the legacy cookie is expired (integration test)
-- [ ] #3 Login, logout, 7-day token reissue, admin session revocation (including socket disconnect), return-to, registration invite, Discord OAuth state and sudo keep working, covered by tests
-- [ ] #4 State-changing /api requests without a valid x-csrf-token get the JSON 403
-- [ ] #5 Webcam table socket tokens use a native format with the same one-day expiry; invalid, expired, or revoked tokens are refused with 403
-- [ ] #6 Stored ManaVault API keys written by earlier releases still decrypt (fixture test) and are re-encrypted to the native format at boot; new writes use the native format
-- [ ] #7 mise run precommit passes
+- [x] #1 Sessions are a typed struct in an axum-extra private cookie; Plug MessageVerifier/KeyGenerator signing, CSRF masking, and string-keyed eetf session maps are gone from the request path
+- [x] #2 A browser holding a valid legacy _the_gathering_key cookie stays signed in after the upgrade: it gets the new cookie and the legacy cookie is expired (integration test)
+- [x] #3 Login, logout, 7-day token reissue, admin session revocation (including socket disconnect), return-to, registration invite, Discord OAuth state and sudo keep working, covered by tests
+- [x] #4 State-changing /api requests without a valid x-csrf-token get the JSON 403
+- [x] #5 Webcam table socket tokens use a native format with the same one-day expiry; invalid, expired, or revoked tokens are refused with 403
+- [x] #6 Stored ManaVault API keys written by earlier releases still decrypt (fixture test) and are re-encrypted to the native format at boot; new writes use the native format
+- [x] #7 mise run precommit passes
 <!-- AC:END -->
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add `axum-extra` (cookie-private). `web/session.rs` becomes a typed `SessionData { csrf_token, user_token: Option<Token>, return_to, registration_invite_hash, discord_oauth: Option<DiscordOAuthAttempt { state, return_to, sudo_discord_id, registration_invite_hash }> }` serialized as JSON into a `PrivateCookieJar` cookie `the_gathering_session` (14-day max-age, HttpOnly, SameSite=Lax). The `Key` is derived with SHA-512 over a domain-separated prefix and the secret. Keep the request-extension handle and write-back middleware pattern: handlers mutate typed fields instead of string keys. Drop `live_socket_id`.
-2. Add a legacy upgrade module (`web/session/legacy.rs`, the only `eetf` user besides stored-secret decryption): when the new cookie is absent and `_the_gathering_key` verifies (PBKDF2 key, salt `sQwWhYdP`, `SFMyNTY.` HMAC), take `user_token` (and `user_return_to`), start a typed session, set the new cookie, and expire the legacy cookie. Everything else in the old session is dropped. Its removal is tracked in a deferred draft.
-3. CSRF: the token is 32 random bytes (base64url) in `SessionData`, compared in constant time with `x-csrf-token`, with no masking. The SPA shell meta tag and the post-login and post-logout `x-csrf-token` header keep working as is. Tabs left open across the upgrade get a 403 on their next mutation and need a reload; this is noted in the changelog.
-4. Socket tokens: XChaCha20-Poly1305 over `{session_token, expires_at}` serialized as JSON (or raw bytes plus an expiry) with a key derived from the secret. Same one-day expiry, same `token` connect param. The client already refetches the config token when the socket errors.
-5. Stored secrets: write `users.manavault_api_key` as `enc.v1.<base64url(nonce || ciphertext)>` (XChaCha20-Poly1305 with a SHA-256-derived key). Reads accept `enc.v1.` and legacy `XCP.` values. At boot, after migrations, re-encrypt every `XCP.` value in one transaction, logging the count. Keep a fixture test with an Elixir-written `XCP.` value.
-6. Shrink `crypto.rs` to native primitives (random bytes, constant-time compare, sha256, base64 helpers, `seal`/`open` for secrets and socket tokens). Move Plug-format code (PBKDF2 KeyGenerator, MessageVerifier verify, `XCP.` decrypt, ETF decode) into the legacy module, read-only. The `pbkdf2` crate stays only for legacy reads.
-7. Rewrite the test harness (`tests/integration/support`) for the new cookie. Add tests: cookie round trip and tampering; legacy cookie upgrade keeps the user signed in and expires the old cookie; CSRF 403 when missing or wrong; Discord OAuth state round trip; socket token expiry and revocation; legacy `XCP.` decryption and boot re-encryption.
-8. Update docs (rust/README layout, README security notes) and run `mise run precommit`. In the portal, check login, logout, the Discord-less sudo flow, a webcam-table socket connect, and a session created with the old cookie format surviving the switch.
+1. Add axum-extra (cookie-private). web/session.rs: typed SessionData { csrf_token, user_token, registration_invite_hash, discord_oauth: DiscordOAuthAttempt { state, return_to, sudo_discord_id, registration_invite_hash } } as JSON in the PrivateCookieJar cookie the_gathering_session (14 days, HttpOnly, SameSite=Lax, Path=/); Key = SHA-512("the-gathering.session.v1\0" || secret), held in AppState. The Session request handle keeps the write-back pattern with typed update/renew/csrf_token methods. Drop live_socket_id and user_return_to: neither was ever read.
+2. legacy.rs (read-only): verify the _the_gathering_key cookie (PBKDF2 key, salt sQwWhYdP, SFMyNTY. HMAC, ETF map) and carry user_token into a new session; every request carrying the legacy cookie gets a Max-Age=0 removal. Also decrypts XCP. credentials.
+3. CSRF: 32 random bytes (base64url) in SessionData, compared in constant time with x-csrf-token, with no masking.
+4. Socket tokens: crypto::seal (XChaCha20-Poly1305, purpose-derived key) over JSON {session, expires_at}, valid for one day.
+5. Stored secrets: enc.v1.<sealed>. Reads accept enc.v1. and legacy XCP.; Accounts::reencrypt_legacy_secrets runs at boot after migrations.
+6. crypto.rs: native primitives only (random, secure_compare, sha256, base64, seal/open).
+7. Tests: harness decrypts and encrypts the cookie, plus legacy cookie upgrade (Elixir-signed vector), expired legacy token, legacy credential decrypt and re-encrypt, expired and tampered socket tokens, and the session unit tests.
+8. Docs: README sessions and upgrade note, rust/README layout, docs/webcam-table socket token.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decisions: cookie the_gathering_session holds JSON SessionData encrypted by axum-extra PrivateCookieJar (AES-GCM, key = SHA-512 of a purpose label and the secret). Legacy _the_gathering_key cookies are upgraded on first request (user_token carried over, legacy cookie expired); the rest of the old session is dropped. user_return_to and live_socket_id were written but never read, so they are gone. The SPA return path is client-side and the OAuth returnTo lives in DiscordOAuthAttempt. Socket tokens and stored credentials share crypto::seal with distinct purpose labels. Stored credentials are now enc.v1.; XCP. values still decrypt and are rewritten by Accounts::reencrypt_legacy_secrets at every boot (a no-op once converted). eetf, pbkdf2, and hmac are now used only in legacy.rs (DRAFT-2 removes them). Lotus gaps: none.
+
+Validation: mise run precommit exit 0 (fmt, clippy -D warnings, 50 unit + 606 integration tests, vp check, vitest, build). The untracked Elixir-era deps/ and _build/ directories in the orb broke vp fmt; they were moved to /home/user/workspace/stale-elixir-build, not deleted. Live server (review service): a legacy cookie signed with the dev secret for a legacy-member token returned that member from /api/session, set the_gathering_session, and expired _the_gathering_key, and the new cookie alone stayed signed in. PATCH /api/session/appearance returned 403 without or with a wrong x-csrf-token and 200 with the shell meta token. In the browser (portal stack), the Settings palette changed to nord and saving a ManaVault key stored enc.v1.…; /table/<uuid> connected the socket and seated the player (artifacts task-1.1-*.png).
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Replaced the Plug.Crypto emulation with native typed equivalents. Sessions are a typed SessionData in an axum-extra private cookie (the_gathering_session), CSRF tokens are plain constant-time-compared tokens, and socket tokens and stored credentials use XChaCha20-Poly1305 seal/open with purpose keys. A read-only legacy module keeps upgrades seamless: old session cookies are converted on first request, and XCP. ManaVault keys decrypt and are re-encrypted at boot. Verified with mise run precommit, new integration tests (Elixir-signed cookie and credential vectors), and live checks on the review service and portal stack.
+<!-- SECTION:FINAL_SUMMARY:END -->

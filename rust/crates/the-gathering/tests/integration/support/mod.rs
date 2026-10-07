@@ -1,5 +1,5 @@
 //! Test harness: a fresh migrated SQLite database per test, the real router, a cookie jar,
-//! and automatic CSRF tokens (Phoenix's `ConnTest` skipped CSRF; this sends valid tokens).
+//! and automatic CSRF tokens on state-changing requests.
 #![allow(
     dead_code,
     clippy::unwrap_used,
@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use the_gathering::accounts::User;
 use the_gathering::config::Config;
 use the_gathering::state::AppState;
-use the_gathering::web::session::{COOKIE, Session};
+use the_gathering::web::session::{COOKIE, SessionData, decode_cookie, encode_cookie};
 use the_gathering::{db, web};
 use tower::ServiceExt;
 
@@ -120,14 +120,35 @@ impl TestApp {
         &self.state.pool
     }
 
-    /// The current session (decoded from the jar).
-    pub fn session(&self) -> Session {
-        let cookie = self.cookie.lock().unwrap().clone().unwrap_or_default();
-        Session::from_cookie(&cookie, &self.state.config.secret_key_base)
+    /// The current session (decrypted from the jar).
+    pub fn session(&self) -> SessionData {
+        self.cookie
+            .lock()
+            .unwrap()
+            .as_deref()
+            .and_then(|cookie| decode_cookie(&self.state.session_key, cookie))
+            .unwrap_or_default()
     }
 
-    fn store_session(&self, session: &Session) {
-        *self.cookie.lock().unwrap() = Some(session.to_cookie(&self.state.config.secret_key_base));
+    fn store_session(&self, data: &SessionData) {
+        *self.cookie.lock().unwrap() = Some(encode_cookie(&self.state.session_key, data));
+    }
+
+    /// The session's CSRF token, adding one to the jar's session if it has none.
+    pub fn csrf_token(&self) -> String {
+        let mut data = self.session();
+        if let Some(token) = &data.csrf_token {
+            return token.clone();
+        }
+        let token = "test-csrf-token".to_owned();
+        data.csrf_token = Some(token.clone());
+        self.store_session(&data);
+        token
+    }
+
+    /// The raw cookie value in the jar.
+    pub fn cookie_value(&self) -> Option<String> {
+        self.cookie.lock().unwrap().clone()
     }
 
     /// Forgets the cookie (a new browser).
@@ -151,10 +172,7 @@ impl TestApp {
     ) -> TestResponse {
         let mut builder = Request::builder().method(method.clone()).uri(path);
         if !matches!(method, Method::GET | Method::HEAD) && !headers.contains_key("x-csrf-token") {
-            let session = self.session();
-            let token = session.csrf_token();
-            self.store_session(&session);
-            builder = builder.header("x-csrf-token", token);
+            builder = builder.header("x-csrf-token", self.csrf_token());
         }
         if let Some(cookie) = self.cookie.lock().unwrap().clone() {
             builder = builder.header(header::COOKIE, format!("{COOKIE}={cookie}"));
@@ -215,9 +233,10 @@ impl TestApp {
             .generate_user_session_token(user)
             .await
             .unwrap();
-        let session = Session::default();
-        session.put_bytes("user_token", &token);
-        self.store_session(&session);
+        self.store_session(&SessionData {
+            user_token: Some(token),
+            ..SessionData::default()
+        });
     }
 
     /// Logs in with a password authentication just now (sudo mode).
@@ -528,7 +547,7 @@ impl TestApp {
 
     /// Moves the current session's password authentication `seconds_ago` into the past.
     pub async fn expire_sudo(&self, seconds_ago: i64) {
-        let token = self.session().get_bytes("user_token").expect("signed in");
+        let token = self.session().user_token.expect("signed in");
         let at = db::UtcDateTime::now().plus(time::Duration::seconds(-seconds_ago));
         sqlx::query("UPDATE users_tokens SET authenticated_at = ? WHERE token = ?")
             .bind(at)

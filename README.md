@@ -147,7 +147,8 @@ Each user can also save a Moxfield username, Archidekt username, and ManaVault
 instance URL plus personal API key under **Settings → Profile → Deck hosts**.
 `PATCH /api/session/user` accepts these as `moxfield_username`, `archidekt_username`,
 `manavault_url`, and `manavault_api_key`. The API key is write-only: it is stored
-encrypted with `SECRET_KEY_BASE`, never returned (user JSON exposes only
+encrypted with `SECRET_KEY_BASE` (keys stored by 0.2 and earlier are re-encrypted in the
+current format at startup), never returned (user JSON exposes only
 `has_manavault_api_key`), a blank value keeps the saved key, and `null` removes it.
 `GET /api/session/remote-decks` returns the signed-in user's normalized public decks
 (`name`, commanders, color identity, URL, source, and upstream update time) plus a
@@ -322,7 +323,11 @@ preserving the player's games and decks. It does not delete the account or chang
 a future sign-in or import may create a separate player. Use **Admin → Users** to link the account
 to the correct player. Identity management requires recent administrator authentication.
 
-Sessions use random tokens stored in the `users_tokens` table. The session cookie and its token last 14 days and are reissued after 7, so members who
+Sessions use random tokens stored in the `users_tokens` table, carried in an encrypted
+`the_gathering_session` cookie. Upgrading from 0.2 or earlier keeps everyone signed in: the
+first request with the old `_the_gathering_key` cookie moves its session into the new cookie.
+Browser tabs left open across that upgrade need one reload before saving changes (their page
+holds an old-format CSRF token). The session cookie and its token last 14 days and are reissued after 7, so members who
 visit at least every two weeks stay signed in; Discord sign-in skips the consent screen once a
 member has authorized the app. Signing out ends only the current device's session. Changing the
 administrator password expires every session for that account, and expired session rows are pruned

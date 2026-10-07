@@ -33,6 +33,8 @@ pub struct Inner {
     pub pool: Pool,
     /// Accounts and sessions.
     pub accounts: Accounts,
+    /// Encrypts the session cookie.
+    pub session_key: axum_extra::extract::cookie::Key,
     /// Players, decks, and games.
     pub games: Games,
     /// Fixed-window rate limiter (Hammer).
@@ -89,6 +91,7 @@ impl AppState {
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             .build()?;
+        let session_key = crate::web::session::cookie_key(&config.secret_key_base)?;
         let (session_disconnects, _) = broadcast::channel(64);
         let sfu = the_gathering_sfu::Sfu::new(the_gathering_sfu::Settings {
             port_min: config.sfu.port_min,
@@ -113,6 +116,7 @@ impl AppState {
             config,
             pool,
             accounts,
+            session_key,
             games,
             rate_limiter: RateLimiter::new(),
             http,

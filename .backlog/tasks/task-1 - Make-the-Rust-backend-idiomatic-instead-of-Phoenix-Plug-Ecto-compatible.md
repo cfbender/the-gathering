@@ -5,6 +5,7 @@ status: To Do
 assignee:
   - '@cfbender'
 created_date: '2026-10-07 21:47'
+updated_date: '2026-10-07 21:55'
 labels: []
 dependencies: []
 priority: medium
@@ -61,3 +62,9 @@ None found during the audit. Gaps found during implementation will be recorded i
 - [ ] #1 Every subtask is Done
 - [ ] #2 rust/README.md and module docs describe the architecture without framing it as an Elixir port; remaining Elixir references only record on-disk compatibility (stored identities, legacy cookie/secret readers)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Owner decision 2026-10-07: replace the Phoenix Channels protocol within TASK-1 (TASK-1.8, socketioxide + socket.io-client preferred); DRAFT-1 archived. Other audit decisions approved as proposed.
+<!-- SECTION:NOTES:END -->

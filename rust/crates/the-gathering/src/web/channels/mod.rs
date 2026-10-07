@@ -32,8 +32,8 @@ use crate::web::auth::user_session_topic;
 
 use self::protocol::{Frame, Outbound, Reply, encode};
 
-/// Salt for socket tokens (`UserSocket.token/2`).
-pub const TOKEN_SALT: &str = "webcam table socket";
+/// The purpose socket tokens are sealed for.
+pub const TOKEN_PURPOSE: &str = "webcam-table-socket";
 /// Socket tokens expire after a day.
 pub const TOKEN_MAX_AGE_SECONDS: i64 = 86_400;
 /// Inbound frames are capped above the largest legitimate signal (SDP offers, card crops).
@@ -41,29 +41,40 @@ pub const MAX_FRAME_SIZE: usize = 393_216;
 /// The topic prefix the webcam table channel serves.
 pub const WEBCAM_TABLE_PREFIX: &str = "webcam_table:";
 
-/// Encrypts the cookie session token for the browser to pass as the `token` connect param.
+/// What a socket token carries.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SocketToken {
+    /// The cookie session's token, base64url.
+    session: String,
+    /// Unix seconds after which the token is refused.
+    expires_at: i64,
+}
+
+/// Seals the cookie session token for the browser to pass as the `token` connect param.
 /// Encrypted, not just signed, so page scripts cannot read the session token out of it.
 pub fn socket_token(state: &AppState, session_token: &[u8]) -> String {
-    crypto::encrypt(
+    let token = SocketToken {
+        session: crypto::url_encode64_unpadded(session_token),
+        expires_at: time::OffsetDateTime::now_utc().unix_timestamp() + TOKEN_MAX_AGE_SECONDS,
+    };
+    crypto::seal(
         &state.config.secret_key_base,
-        TOKEN_SALT,
-        session_token,
-        TOKEN_MAX_AGE_SECONDS,
+        TOKEN_PURPOSE,
+        &serde_json::to_vec(&token).unwrap_or_default(),
     )
 }
 
-/// `UserSocket.connect/3`: the session token is looked up rather than trusted, so logging
-/// out (which deletes it) also refuses new sockets.
+/// Authenticates a socket token. The session token is looked up rather than trusted, so
+/// logging out (which deletes it) also refuses new sockets.
 pub async fn authenticate(
     state: &AppState,
     token: &str,
 ) -> Result<Option<(User, Vec<u8>)>, sqlx::Error> {
-    let Some(session_token) = crypto::decrypt(
-        &state.config.secret_key_base,
-        TOKEN_SALT,
-        token,
-        Some(TOKEN_MAX_AGE_SECONDS),
-    ) else {
+    let session_token = crypto::open(&state.config.secret_key_base, TOKEN_PURPOSE, token)
+        .and_then(|plain| serde_json::from_slice::<SocketToken>(&plain).ok())
+        .filter(|token| token.expires_at > time::OffsetDateTime::now_utc().unix_timestamp())
+        .and_then(|token| crypto::url_decode64_unpadded(&token.session));
+    let Some(session_token) = session_token else {
         return Ok(None);
     };
     Ok(state

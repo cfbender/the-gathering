@@ -10,7 +10,6 @@ use crate::support;
 
 use serde_json::json;
 use support::{PASSWORD, TestApp};
-use the_gathering::crypto;
 use the_gathering::db::UtcDateTime;
 
 async fn create_user(app: &TestApp, username: &str, role: &str) -> the_gathering::accounts::User {
@@ -59,12 +58,7 @@ async fn registration_signs_in_the_first_user_without_exposing_password_data() {
             .text()
             .contains(owner.hashed_password.as_deref().unwrap())
     );
-    let token = app.session().get_bytes("user_token").expect("token");
-    assert!(app.session().get("user_id").is_none());
-    assert_eq!(
-        app.session().get_string("live_socket_id").unwrap(),
-        format!("users_sessions:{}", crypto::url_encode64(&token))
-    );
+    let token = app.session().user_token.expect("token");
     assert!(
         app.state
             .accounts
@@ -112,7 +106,7 @@ async fn logout_clears_the_session() {
     create_user(&app, "owner", "admin").await;
     let body = log_in(&app, "OWNER").await.assert_json(200);
     assert_eq!(body["data"]["username"], "owner");
-    let token = app.session().get_bytes("user_token").unwrap();
+    let token = app.session().user_token.unwrap();
 
     let response = app.delete("/api/session").await;
     assert_eq!(response.status.as_u16(), 204);
@@ -141,7 +135,7 @@ async fn session_renewal_revokes_only_the_superseded_current_device_token() {
         .await
         .unwrap();
     log_in(&app, "owner").await.assert_json(200);
-    let old_token = app.session().get_bytes("user_token").unwrap();
+    let old_token = app.session().user_token.unwrap();
     let eight_days_ago = UtcDateTime::now().plus(time::Duration::days(-8));
     sqlx::query("UPDATE users_tokens SET inserted_at = ? WHERE token = ?")
         .bind(eight_days_ago)
@@ -152,7 +146,7 @@ async fn session_renewal_revokes_only_the_superseded_current_device_token() {
 
     let body = app.get("/api/session").await.assert_json(200);
     assert_eq!(body["data"]["username"], "owner");
-    let new_token = app.session().get_bytes("user_token").unwrap();
+    let new_token = app.session().user_token.unwrap();
     assert_ne!(new_token, old_token);
     let accounts = &app.state.accounts;
     assert!(
@@ -373,7 +367,7 @@ async fn password_change_invalidates_every_old_session_and_issues_a_new_one() {
         .await
         .unwrap();
     log_in(&app, "owner").await.assert_json(200);
-    let old = app.session().get_bytes("user_token").unwrap();
+    let old = app.session().user_token.unwrap();
     let body = app
         .patch(
             "/api/session/password",
@@ -397,7 +391,7 @@ async fn password_change_invalidates_every_old_session_and_issues_a_new_one() {
             .unwrap()
             .is_none()
     );
-    let new = app.session().get_bytes("user_token").unwrap();
+    let new = app.session().user_token.unwrap();
     assert_ne!(new, old);
     assert!(
         accounts
@@ -413,7 +407,7 @@ async fn stale_authentication_requires_sudo_mode_and_password_reauthentication_r
     let app = TestApp::new().await;
     create_user(&app, "owner", "admin").await;
     log_in(&app, "owner").await.assert_json(200);
-    let token = app.session().get_bytes("user_token").unwrap();
+    let token = app.session().user_token.unwrap();
     sqlx::query("UPDATE users_tokens SET authenticated_at = ? WHERE token = ?")
         .bind(UtcDateTime::now().plus(time::Duration::minutes(-11)))
         .bind(&token)
@@ -450,4 +444,121 @@ async fn mutating_requests_need_the_csrf_token() {
         response.assert_json(403),
         json!({"errors": {"detail": "Forbidden"}})
     );
+}
+
+/// A session cookie an earlier release signed under the test secret: its `user_token` is
+/// 32 bytes of 7.
+const LEGACY_COOKIE: &str = "SFMyNTY.g3QAAAADbQAAAAtfY3NyZl90b2tlbm0AAAAYQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBbQAAAA1kaXNjb3JkX29hdXRodAAAAAN3CXJldHVybl90b20AAAABL3cPc3Vkb19kaXNjb3JkX2lkdwNuaWx3DnNlc3Npb25fcGFyYW1zdAAAAAF3BXN0YXRlbQAAAAJzdG0AAAAKdXNlcl90b2tlbm0AAAAgBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc.pUDs6sz-57hgvqOMKePxBo6BZ9Sax-r67oGkDY7iRP4";
+
+#[tokio::test]
+async fn a_session_cookie_from_an_earlier_release_stays_signed_in() {
+    let app = TestApp::new().await;
+    let member = app.unique_member().await;
+    let now = UtcDateTime::now();
+    sqlx::query(
+        "INSERT INTO users_tokens (user_id, token, context, authenticated_at, inserted_at)
+         VALUES (?, ?, 'session', ?, ?)",
+    )
+    .bind(member.id)
+    .bind(vec![7u8; 32])
+    .bind(now)
+    .bind(now)
+    .execute(app.pool())
+    .await
+    .unwrap();
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        "cookie",
+        format!("_the_gathering_key={LEGACY_COOKIE}")
+            .parse()
+            .unwrap(),
+    );
+    let response = app
+        .request_with(axum::http::Method::GET, "/api/session", None, headers)
+        .await;
+    assert_eq!(
+        response.assert_json(200)["data"]["username"],
+        json!(member.username)
+    );
+    let cookies: Vec<&str> = response
+        .headers
+        .get_all("set-cookie")
+        .iter()
+        .map(|value| value.to_str().unwrap())
+        .collect();
+    assert!(
+        cookies.iter().any(
+            |cookie| cookie.starts_with("_the_gathering_key=;") && cookie.contains("Max-Age=0")
+        ),
+        "{cookies:?}"
+    );
+    assert_eq!(app.session().user_token, Some(vec![7; 32]));
+
+    // The new cookie alone keeps the member signed in.
+    app.get("/api/session").await.assert_json(200);
+}
+
+#[tokio::test]
+async fn a_legacy_cookie_without_a_live_token_is_anonymous_and_still_expired() {
+    let app = TestApp::new().await;
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        "cookie",
+        format!("_the_gathering_key={LEGACY_COOKIE}")
+            .parse()
+            .unwrap(),
+    );
+    let response = app
+        .request_with(axum::http::Method::GET, "/api/session", None, headers)
+        .await;
+    response.assert_json(401);
+    assert!(
+        response
+            .headers
+            .get_all("set-cookie")
+            .iter()
+            .any(|value| value.to_str().unwrap().starts_with("_the_gathering_key=;"))
+    );
+}
+
+#[tokio::test]
+async fn credentials_stored_by_earlier_releases_decrypt_and_are_reencrypted() {
+    let app = TestApp::new().await;
+    let member = app.unique_member().await;
+    // Written by the Elixir server with the test secret.
+    let legacy = "XCP.AMB52kLujURW-VRD3fCoZ-IaLvueQYDiiEVPAKF_dWuq7QCoKbEj8syhxNrdBVZE5BxgIxr1ekz1vZuRihpd6tyyQPg";
+    sqlx::query("UPDATE users SET manavault_api_key = ? WHERE id = ?")
+        .bind(legacy)
+        .bind(member.id)
+        .execute(app.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        app.reload(&member)
+            .await
+            .unwrap()
+            .manavault_api_key
+            .as_deref(),
+        Some("mv-key")
+    );
+
+    let accounts = &app.state.accounts;
+    assert_eq!(accounts.reencrypt_legacy_secrets().await.unwrap(), 1);
+    let stored: String = sqlx::query_scalar("SELECT manavault_api_key FROM users WHERE id = ?")
+        .bind(member.id)
+        .fetch_one(app.pool())
+        .await
+        .unwrap();
+    assert!(stored.starts_with("enc.v1."), "{stored}");
+    assert!(!stored.contains("mv-key"));
+    assert_eq!(
+        app.reload(&member)
+            .await
+            .unwrap()
+            .manavault_api_key
+            .as_deref(),
+        Some("mv-key")
+    );
+    assert_eq!(accounts.reencrypt_legacy_secrets().await.unwrap(), 0);
 }

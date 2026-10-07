@@ -157,7 +157,7 @@ async fn create_discord_user(app: &TestApp, discord_id: &str) -> User {
 }
 
 async fn signed_in_user(app: &TestApp) -> Option<User> {
-    let token = app.session().get_bytes("user_token")?;
+    let token = app.session().user_token?;
     app.state
         .accounts
         .get_user_by_session_token(&token)
@@ -215,7 +215,7 @@ async fn callback_rejects_an_unknown_discord_account_when_registration_is_closed
     let response = callback(&app, "100000000000000002").await;
     assert_eq!(response.redirected_to(), "/login?error=registration_closed");
     assert!(discord_user(&app, "100000000000000002").await.is_none());
-    assert!(app.session().get("user_token").is_none());
+    assert!(app.session().user_token.is_none());
 }
 
 #[tokio::test]
@@ -237,8 +237,8 @@ async fn one_invitation_admits_multiple_passwordless_members_without_opening_reg
         assert_eq!(user.role, "member");
         assert!(user.hashed_password.is_none());
         assert_eq!(discord_player(&app, id).await.0, Some(user.id));
-        assert!(app.session().get("discord_oauth").is_none());
-        assert!(app.session().get("registration_invite_hash").is_none());
+        assert!(app.session().discord_oauth.is_none());
+        assert!(app.session().registration_invite_hash.is_none());
     }
 
     let status = app.state.accounts.registration_status().await.unwrap();
@@ -263,8 +263,8 @@ async fn an_invitation_survives_restarting_oauth_before_completing_registration(
         "/"
     );
     assert!(discord_user(&app, "200000000000000010").await.is_some());
-    assert!(app.session().get("registration_invite_hash").is_none());
-    assert!(app.session().get("discord_oauth").is_none());
+    assert!(app.session().registration_invite_hash.is_none());
+    assert!(app.session().discord_oauth.is_none());
 }
 
 #[tokio::test]
@@ -287,15 +287,15 @@ async fn an_invitation_survives_a_canceled_oauth_attempt_and_can_be_retried() {
         ))
         .await;
     assert_eq!(response.redirected_to(), "/login?error=discord_failed");
-    assert!(app.session().get("discord_oauth").is_none());
-    assert!(app.session().get("user_token").is_none());
+    assert!(app.session().discord_oauth.is_none());
+    assert!(app.session().user_token.is_none());
 
     assert_eq!(
         callback(&app, "200000000000000011").await.redirected_to(),
         "/"
     );
     assert!(discord_user(&app, "200000000000000011").await.is_some());
-    assert!(app.session().get("registration_invite_hash").is_none());
+    assert!(app.session().registration_invite_hash.is_none());
 }
 
 #[tokio::test]
@@ -318,7 +318,7 @@ async fn invalid_invitations_cannot_register_a_new_discord_member() {
         "/login?error=registration_closed"
     );
     assert!(discord_user(&app, "200000000000000009").await.is_none());
-    assert!(app.session().get("user_token").is_none());
+    assert!(app.session().user_token.is_none());
 }
 
 #[tokio::test]
@@ -332,32 +332,32 @@ async fn rotation_revokes_an_invitation_after_oauth_starts_not_just_at_landing()
     assert!(!location.contains(&token));
     let state = query_param(&location, "state").unwrap();
     assert_eq!(
-        app.session().get_bytes("registration_invite_hash"),
+        app.session().registration_invite_hash,
         registration_invite_hash(&token)
     );
-    let Some(eetf::Term::Map(attempt)) = app.session().get("discord_oauth") else {
-        panic!("no OAuth attempt in the session");
-    };
-    assert!(matches!(
-        attempt.map.get(&eetf::Term::Atom(eetf::Atom::from(
-            "registration_invite_hash"
-        ))),
-        Some(eetf::Term::Binary(_))
-    ));
+    let attempt = app
+        .session()
+        .discord_oauth
+        .expect("an OAuth attempt in the session");
+    assert_eq!(attempt.state, state);
+    assert_eq!(
+        attempt.registration_invite_hash,
+        registration_invite_hash(&token)
+    );
 
     let new_token = accounts.rotate_registration_invite().await.unwrap();
     let response = finish(&app, "200000000000000003", &state).await;
     assert_eq!(response.redirected_to(), "/login?error=registration_closed");
     assert!(discord_user(&app, "200000000000000003").await.is_none());
-    assert!(app.session().get("discord_oauth").is_none());
-    assert!(app.session().get("user_token").is_none());
+    assert!(app.session().discord_oauth.is_none());
+    assert!(app.session().user_token.is_none());
 
     assert_eq!(
         callback(&app, "200000000000000003").await.redirected_to(),
         "/login?error=registration_closed"
     );
     assert!(discord_user(&app, "200000000000000003").await.is_none());
-    assert!(app.session().get("user_token").is_none());
+    assert!(app.session().user_token.is_none());
 
     app.clear_cookies();
     accept_invite(&app, &new_token).await;
@@ -406,7 +406,7 @@ async fn an_invitation_cannot_bypass_oauth_state_verification_or_be_supplied_at_
     let response = finish(&app, "200000000000000005", "wrong-state").await;
     drop(guard);
     assert_eq!(response.redirected_to(), "/login?error=discord_failed");
-    assert!(app.session().get("discord_oauth").is_none());
+    assert!(app.session().discord_oauth.is_none());
     assert!(discord_user(&app, "200000000000000005").await.is_none());
 
     app.clear_cookies();
@@ -448,7 +448,7 @@ async fn valid_invitations_cannot_bypass_disabled_accounts_or_password_bootstrap
         callback(&app, "200000000000000006").await.redirected_to(),
         "/login?error=account_disabled"
     );
-    assert!(app.session().get("user_token").is_none());
+    assert!(app.session().user_token.is_none());
 }
 
 #[tokio::test]
@@ -649,11 +649,11 @@ async fn signing_in_issues_a_persistent_cookie_matching_the_session_token_validi
     let response = callback(&app, "100000000000000003").await;
     assert_eq!(response.redirected_to(), "/");
     let cookie = response.header("set-cookie").unwrap();
-    assert!(cookie.starts_with("_the_gathering_key="), "{cookie}");
-    assert!(cookie.contains("; max-age=1209600"), "{cookie}");
+    assert!(cookie.starts_with("the_gathering_session="), "{cookie}");
+    assert!(cookie.contains("; Max-Age=1209600"), "{cookie}");
     assert!(cookie.contains("; HttpOnly"), "{cookie}");
     assert!(cookie.contains("; SameSite=Lax"), "{cookie}");
-    assert!(cookie.contains("; path=/"), "{cookie}");
+    assert!(cookie.contains("; Path=/"), "{cookie}");
 }
 
 #[tokio::test]
@@ -668,7 +668,7 @@ async fn callback_rejects_a_disabled_linked_member() {
         callback(&app, "100000000000000004").await.redirected_to(),
         "/login?error=account_disabled"
     );
-    assert!(app.session().get("user_token").is_none());
+    assert!(app.session().user_token.is_none());
 }
 
 #[tokio::test]
@@ -695,12 +695,12 @@ async fn sudo_oauth_refreshes_authentication_for_the_currently_linked_discord_id
     open_registration(&app).await;
     let user = create_discord_user(&app, "100000000000000006").await;
     app.log_in(&user).await;
-    let old_token = app.session().get_bytes("user_token").unwrap();
+    let old_token = app.session().user_token.unwrap();
     app.expire_sudo(11 * 60).await;
 
     let response = callback_to(&app, "100000000000000006", "/admin/users", &[("sudo", "1")]).await;
     assert_eq!(response.redirected_to(), "/admin/users");
-    let new_token = app.session().get_bytes("user_token").unwrap();
+    let new_token = app.session().user_token.unwrap();
     assert_ne!(new_token, old_token);
     let (reauthenticated, _) = app
         .state

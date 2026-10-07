@@ -13,8 +13,8 @@ use crate::error::{ApiError, Errors};
 
 pub use self::user::User;
 use self::user::{
-    ENCRYPTED_STRING_SALT, default_display_name, normalize_username, validate_account_fields,
-    validate_password,
+    decrypt_secret, default_display_name, encrypt_secret, normalize_username,
+    validate_account_fields, validate_password,
 };
 
 /// Days a cookie session stays valid.
@@ -73,15 +73,9 @@ impl UserRow {
             moxfield_username: self.moxfield_username,
             archidekt_username: self.archidekt_username,
             manavault_url: self.manavault_url,
-            manavault_api_key: self.manavault_api_key.and_then(|stored| {
-                crypto::decrypt(
-                    secret_key_base,
-                    ENCRYPTED_STRING_SALT,
-                    &stored,
-                    Some(i64::MAX),
-                )
-                .and_then(|plain| String::from_utf8(plain).ok())
-            }),
+            manavault_api_key: self
+                .manavault_api_key
+                .and_then(|stored| decrypt_secret(secret_key_base, &stored)),
             palette: self.palette,
             theme_style: self.theme_style,
             inserted_at: self.inserted_at,
@@ -455,12 +449,7 @@ impl Accounts {
         let api_key: Option<String> = match changes.manavault_api_key {
             Change::Unchanged => stored_key,
             Change::Set(None) => None,
-            Change::Set(Some(key)) => Some(crypto::encrypt(
-                &self.secret_key_base,
-                ENCRYPTED_STRING_SALT,
-                key.as_bytes(),
-                86_400,
-            )),
+            Change::Set(Some(key)) => Some(encrypt_secret(&self.secret_key_base, &key)),
         };
         let now = UtcDateTime::now();
         sqlx::query!(
@@ -481,6 +470,39 @@ impl Accounts {
         }
         tx.commit().await?;
         self.get_user(user.id).await?.ok_or(ApiError::NotFound)
+    }
+
+    /// Re-encrypts credentials stored in the format of earlier releases. Returns how many
+    /// were rewritten; ones that do not decrypt (another secret) are left alone and logged.
+    pub async fn reencrypt_legacy_secrets(&self) -> Result<u64, sqlx::Error> {
+        let mut tx = db::begin(&self.pool).await?;
+        let rows = sqlx::query!(
+            r#"SELECT id AS "id!", manavault_api_key AS "key!" FROM users
+               WHERE manavault_api_key LIKE 'XCP.%'"#
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut rewritten = 0;
+        for row in rows {
+            let Some(plain) = decrypt_secret(&self.secret_key_base, &row.key) else {
+                tracing::warn!(
+                    user_id = row.id,
+                    "stored ManaVault API key does not decrypt with the configured secret"
+                );
+                continue;
+            };
+            let key = encrypt_secret(&self.secret_key_base, &plain);
+            sqlx::query!(
+                "UPDATE users SET manavault_api_key = ? WHERE id = ?",
+                key,
+                row.id
+            )
+            .execute(&mut *tx)
+            .await?;
+            rewritten += 1;
+        }
+        tx.commit().await?;
+        Ok(rewritten)
     }
 
     async fn stored_api_key(&self, user_id: i64) -> Result<Option<String>, sqlx::Error> {

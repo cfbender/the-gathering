@@ -14,6 +14,7 @@ pub mod discord;
 pub mod error;
 pub mod games;
 pub mod imports;
+pub mod legacy;
 pub mod local_time;
 pub mod rate_limit;
 pub mod regex;

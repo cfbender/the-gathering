@@ -112,7 +112,8 @@ at the cost of every byte crossing the relay. `GET /api/webcam-table/config` tel
 which (`sfu.transport`).
 
 Signaling is application-defined, and the socket authenticates on connect: the authenticated
-config endpoint signs the existing tracked session token for the socket handshake. MDN documents
+config endpoint encrypts the existing tracked session token, with a one-day expiry, into a token
+for the socket handshake. MDN documents
 SDP and ICE exchange through such a signaling service. References:
 
 - <https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling>

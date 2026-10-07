@@ -47,6 +47,10 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("applied {} migration(s)", applied.len());
     }
     let state = AppState::new(config, pool)?;
+    let reencrypted = state.accounts.reencrypt_legacy_secrets().await?;
+    if reencrypted > 0 {
+        tracing::info!("re-encrypted {reencrypted} stored credential(s) in the current format");
+    }
 
     match args
         .iter()

@@ -9,7 +9,6 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use eetf::{Atom, Binary, Map, Term};
 use serde_json::{Value, json};
 
 use crate::accounts::discord::{DiscordClaims, SignInError};
@@ -19,7 +18,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 use crate::web::auth::{AuthUser, MaybeUser, log_in_user, log_out_user, put_fresh_csrf_token};
 use crate::web::params::Params;
-use crate::web::session::{Session, term_string};
+use crate::web::session::{DiscordOAuthAttempt, Session};
 
 use super::{data, parse_id};
 
@@ -86,7 +85,7 @@ pub async fn registration_create(
 }
 
 async fn invite_response(state: &AppState, session: &Session) -> ApiResult<Response> {
-    let hash = session.get_bytes("registration_invite_hash");
+    let hash = session.data().registration_invite_hash;
     let valid = state
         .accounts
         .valid_registration_invite_hash(hash.as_deref())
@@ -119,9 +118,9 @@ pub async fn invite_create(
         .valid_registration_invite_hash(hash.as_deref())
         .await?
     {
-        session.put_bytes("registration_invite_hash", &hash.unwrap_or_default());
+        session.update(|data| data.registration_invite_hash = hash);
     } else {
-        session.delete("registration_invite_hash");
+        session.update(|data| data.registration_invite_hash = None);
     }
     invite_response(&state, &session).await
 }
@@ -407,16 +406,6 @@ pub async fn admin_invite_create(State(state): State<AppState>) -> ApiResult<Res
     Ok(no_store(data(json!({ "token": token }))))
 }
 
-const OAUTH_SESSION: &str = "discord_oauth";
-
-fn atom(name: &str) -> Term {
-    Term::Atom(Atom::from(name))
-}
-
-fn nil_or_binary(bytes: Option<&[u8]>) -> Term {
-    bytes.map_or_else(|| atom("nil"), |bytes| Term::Binary(Binary::from(bytes)))
-}
-
 /// Phoenix's `redirect/2`: a 302 with a `location` header.
 pub fn found(location: &str) -> Response {
     let mut response = StatusCode::FOUND.into_response();
@@ -438,39 +427,6 @@ fn safe_return_to(path: Option<&str>) -> String {
         Some(path) if path.starts_with('/') && !path.starts_with("//") => path.to_owned(),
         _ => "/".to_owned(),
     }
-}
-
-/// The parts of the stored OAuth attempt.
-struct OauthAttempt {
-    state: String,
-    return_to: String,
-    sudo_discord_id: Option<String>,
-    registration_invite_hash: Option<Vec<u8>>,
-}
-
-fn map_get<'a>(map: &'a Map, key: &str) -> Option<&'a Term> {
-    map.map
-        .get(&atom(key))
-        .or_else(|| map.map.get(&Term::Binary(Binary::from(key.as_bytes()))))
-}
-
-fn read_attempt(term: &Term) -> Option<OauthAttempt> {
-    let Term::Map(map) = term else { return None };
-    let Term::Map(session_params) = map_get(map, "session_params")? else {
-        return None;
-    };
-    let state = term_string(map_get(session_params, "state")?)?;
-    let nil_string =
-        |term: Option<&Term>| term.and_then(term_string).filter(|value| value != "nil");
-    Some(OauthAttempt {
-        state,
-        return_to: nil_string(map_get(map, "return_to")).unwrap_or_else(|| "/".into()),
-        sudo_discord_id: nil_string(map_get(map, "sudo_discord_id")),
-        registration_invite_hash: match map_get(map, "registration_invite_hash") {
-            Some(Term::Binary(binary)) => Some(binary.bytes.clone()),
-            _ => None,
-        },
-    })
 }
 
 /// `GET /auth/discord`: starts Discord OAuth (`?sudo=1` re-verifies the signed-in member).
@@ -501,33 +457,15 @@ pub async fn discord_request(
         .append_pair("scope", "identify email")
         .append_pair("state", &oauth_state)
         .finish();
-    let invite = session.get_bytes("registration_invite_hash");
-    let attempt: std::collections::HashMap<Term, Term> = [
-        (
-            atom("session_params"),
-            Term::Map(Map::from([(
-                atom("state"),
-                Term::Binary(Binary::from(oauth_state.as_bytes())),
-            )])),
-        ),
-        (
-            atom("return_to"),
-            Term::Binary(Binary::from(
-                safe_return_to(params.get("returnTo").map(String::as_str)).as_bytes(),
-            )),
-        ),
-        (
-            atom("sudo_discord_id"),
-            nil_or_binary(sudo_discord_id.as_deref().map(str::as_bytes)),
-        ),
-        (
-            atom("registration_invite_hash"),
-            nil_or_binary(invite.as_deref()),
-        ),
-    ]
-    .into_iter()
-    .collect();
-    session.put(OAUTH_SESSION, Term::Map(Map::from(attempt)));
+    let return_to = safe_return_to(params.get("returnTo").map(String::as_str));
+    session.update(|data| {
+        data.discord_oauth = Some(DiscordOAuthAttempt {
+            state: oauth_state,
+            return_to,
+            sudo_discord_id,
+            registration_invite_hash: data.registration_invite_hash.clone(),
+        });
+    });
     found(&format!("{}?{query}", oauth.authorize_url))
 }
 
@@ -606,8 +544,7 @@ pub async fn discord_callback(
     MaybeUser(current): MaybeUser,
     Query(params): Query<BTreeMap<String, String>>,
 ) -> Response {
-    let attempt = session.get(OAUTH_SESSION).as_ref().and_then(read_attempt);
-    session.delete(OAUTH_SESSION);
+    let attempt = session.update(|data| data.discord_oauth.take());
     let Some(attempt) = attempt else {
         tracing::warn!("Discord sign-in failed: no OAuth attempt in the session");
         return login_error("discord_failed");
@@ -649,7 +586,7 @@ pub async fn discord_callback(
         .await
     {
         Ok(user) => {
-            session.delete("registration_invite_hash");
+            session.update(|data| data.registration_invite_hash = None);
             let user = User {
                 authenticated_at: Some(UtcDateTime::now()),
                 ..user

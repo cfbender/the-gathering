@@ -13,8 +13,10 @@ lives here.
 - `crates/the-gathering/`: the server (library plus the `the-gathering` binary).
   - `config.rs`: environment variables.
   - `db/`: pool, migrator, `UtcDateTime`/`IsoDate` column types.
-  - `crypto.rs`: cookie/token signing and encryption, byte-compatible with sessions and
-    stored keys written by earlier releases.
+  - `crypto.rs`: random tokens, constant-time comparison, and sealed (XChaCha20-Poly1305)
+    values for socket tokens and stored credentials.
+  - `legacy.rs`: read-only decoders for the session cookie and encrypted credentials that
+    releases up to 0.2 wrote, so upgrades keep sessions and stored keys.
   - `changeset.rs`, `error.rs`: param casting, validation messages, and API error bodies.
   - `accounts/`, `catalog/`, `decklists/`, `games/`, ...: domain modules. `catalog/` also
     holds the Scryfall sync (`the-gathering catalog-sync`, plus a scheduled run started at
@@ -25,7 +27,7 @@ lives here.
   - `self_update.rs`: admin-triggered updates (a systemd request file or Watchtower's
     HTTP API) and the newest-build check against GitHub.
   - `seed.rs`: development demo data (`the-gathering seed`, dev only).
-  - `web/`: router, session cookie, CSRF, auth guards, request ids and logging (with
+  - `web/`: router, the typed session in an encrypted cookie (`session.rs`), CSRF, auth guards, request ids and logging (with
     sensitive parameters filtered), SPA shell, static files, and `web/api/*` controllers.
   - `discord/`: the optional Discord bot (started by `serve` when `DISCORD_BOT_TOKEN` is
     set): `twilight-gateway` for events, a small `reqwest` REST client behind the

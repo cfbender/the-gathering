@@ -2,10 +2,9 @@
 
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::request::Parts;
-use axum::http::{HeaderValue, Method, header};
+use axum::http::{HeaderValue, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use eetf::Term;
 use time::Duration;
 
 use crate::accounts::{self, User};
@@ -29,9 +28,7 @@ pub async fn log_in_user(
     current: Option<&User>,
     user: &User,
 ) -> Result<(), ApiError> {
-    create_or_extend_session(state, session, current, user).await?;
-    session.delete("user_return_to");
-    Ok(())
+    create_or_extend_session(state, session, current, user).await
 }
 
 async fn create_or_extend_session(
@@ -43,11 +40,9 @@ async fn create_or_extend_session(
     let token = state.accounts.generate_user_session_token(user).await?;
     // Renewing for the same user keeps the session's other values.
     if current.map(|current| current.id) != Some(user.id) {
-        session.delete_csrf_token();
-        session.clear();
+        session.renew();
     }
-    session.put_bytes("user_token", &token);
-    session.put_bytes("live_socket_id", user_session_topic(&token).as_bytes());
+    session.update(|data| data.user_token = Some(token));
     Ok(())
 }
 
@@ -58,12 +53,11 @@ pub fn user_session_topic(token: &[u8]) -> String {
 
 /// Deletes the session token and clears the session (`UserAuth.log_out_user/1`).
 pub async fn log_out_user(state: &AppState, session: &Session) -> Result<(), ApiError> {
-    if let Some(token) = session.get_bytes("user_token") {
+    if let Some(token) = session.user_token() {
         state.accounts.delete_user_session_token(&token).await?;
         state.disconnect_session(&token);
     }
-    session.delete_csrf_token();
-    session.clear();
+    session.renew();
     Ok(())
 }
 
@@ -93,7 +87,7 @@ pub async fn current_user_layer(
 }
 
 async fn load_user(state: &AppState, session: &Session) -> Result<Option<User>, ApiError> {
-    if let Some(token) = session.get_bytes("user_token")
+    if let Some(token) = session.user_token()
         && let Some((user, inserted_at)) = state.accounts.get_user_by_session_token(&token).await?
     {
         // `DateTime.diff(now, inserted_at, :day) >= 7`.
@@ -114,27 +108,17 @@ async fn load_user(state: &AppState, session: &Session) -> Result<Option<User>, 
     Ok(None)
 }
 
-/// `require_authenticated_user`: the API's 401 for anonymous requests. GET requests remember
-/// where the visitor was going.
+/// `require_authenticated_user`: the API's 401 for anonymous requests.
 pub async fn require_authenticated_user(request: Request, next: Next) -> Response {
     let signed_in = request
         .extensions()
         .get::<CurrentUser>()
         .is_some_and(|current| current.0.is_some());
     if signed_in {
-        return next.run(request).await;
+        next.run(request).await
+    } else {
+        ApiError::Unauthorized.into_response()
     }
-    if request.method() == Method::GET
-        && let Some(session) = request.extensions().get::<Session>()
-    {
-        // Phoenix's `current_path/1`: the path plus any query string.
-        let path = request
-            .uri()
-            .path_and_query()
-            .map_or_else(|| request.uri().path(), |path| path.as_str());
-        session.put("user_return_to", Term::Binary(path.as_bytes().into()));
-    }
-    ApiError::Unauthorized.into_response()
 }
 
 /// `require_admin`.

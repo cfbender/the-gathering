@@ -111,10 +111,7 @@ async fn public_settings_and_logs_do_not_reveal_secrets_and_invalid_tokens_clear
         .post("/api/registration-invite", json!({"token": token}))
         .await;
     assert_eq!(response.assert_json(200), json!({"data": {"valid": true}}));
-    assert_eq!(
-        app.session().get_bytes("registration_invite_hash"),
-        Some(hash.clone())
-    );
+    assert_eq!(app.session().registration_invite_hash, Some(hash.clone()));
     assert_eq!(
         app.get("/api/registration-invite").await.assert_json(200),
         json!({"data": {"valid": true}})
@@ -142,7 +139,7 @@ async fn public_settings_and_logs_do_not_reveal_secrets_and_invalid_tokens_clear
             json!({"data": {"valid": false}}),
             "{value}"
         );
-        assert!(app.session().get("registration_invite_hash").is_none());
+        assert!(app.session().registration_invite_hash.is_none());
     }
 
     accounts.rotate_registration_invite().await.unwrap();
