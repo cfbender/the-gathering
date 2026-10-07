@@ -216,6 +216,8 @@ struct IceLog {
     destination_changes: u64,
     local: Vec<Candidate>,
     remote: Vec<Candidate>,
+    /// mDNS host candidates the browser trickled (name and port), which str0m cannot use.
+    mdns: Vec<(String, u16)>,
     heard: BTreeMap<SocketAddr, (SocketAddr, Instant)>,
 }
 
@@ -481,6 +483,7 @@ impl Room {
                 destination_changes: 0,
                 local,
                 remote: Vec::new(),
+                mdns: Vec::new(),
                 heard: BTreeMap::new(),
             },
         };
@@ -605,6 +608,13 @@ impl Room {
                 // Browsers hide host addresses behind mDNS names str0m cannot resolve; the
                 // browser's checks from that address still arrive as a peer-reflexive pair.
                 tracing::debug!("SFU ignored an mDNS candidate from {id}: {error}");
+                let mut fields = line.split_whitespace().skip(4);
+                if let (Some(name), Some(port)) = (
+                    fields.next(),
+                    fields.next().and_then(|port| port.parse().ok()),
+                ) {
+                    peer.ice.mdns.push((name.to_owned(), port));
+                }
                 return Ok(());
             }
             Err(error) => {
@@ -1511,6 +1521,28 @@ impl Room {
                 non_symmetric_responses_received: 0,
             }));
         }
+        for (index, (name, port)) in ice.mdns.iter().enumerate() {
+            entries.push(Entry::Remote(CandidateStats {
+                id: format!("m{index}"),
+                candidate_type: "host".to_owned(),
+                address: Address::Name(name.clone()),
+                port: *port,
+            }));
+            entries.push(Entry::Pair(PairStats {
+                id: format!("pm{index}"),
+                local_candidate_id: String::new(),
+                remote_candidate_id: format!("m{index}"),
+                priority: None,
+                state: "unresolved".to_owned(),
+                valid: false,
+                nominated: false,
+                last_seen: None,
+                requests_sent: 0,
+                requests_received: 0,
+                responses_received: 0,
+                non_symmetric_responses_received: 0,
+            }));
+        }
         let stats = IceStats {
             transport: Some(TransportStats {
                 ice_role: Some("controlled".to_owned()),
@@ -1671,4 +1703,56 @@ fn candidate_json(candidate: &Candidate, peer: &Peer) -> Value {
         "sdpMLineIndex": 0,
         "usernameFragment": Value::Null,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn room() -> (Room, mpsc::UnboundedReceiver<Command>) {
+        let (commands, receiver) = mpsc::unbounded_channel();
+        let (datagrams, _) = mpsc::channel(1);
+        let transport = Transport::Direct {
+            sockets: Vec::new(),
+            candidates: Vec::new(),
+        };
+        (
+            Room::new(
+                RoomId::from("t"),
+                transport,
+                commands.downgrade(),
+                datagrams,
+            ),
+            receiver,
+        )
+    }
+
+    #[tokio::test]
+    async fn a_failed_connection_without_an_answer_is_sent_down_with_its_ice_report() {
+        let (mut room, _commands) = room();
+        let (events, mut receiver) = mpsc::unbounded_channel();
+        let id = PeerId::from("p");
+        room.join(&id, false, events, None).unwrap();
+        let mdns = json!({ "candidate": "candidate:1 1 udp 2122260223 abc.local 9 typ host" });
+        assert_eq!(room.candidate(&id, &mdns), Ok(()));
+        assert_eq!(room.candidate(&id, &json!({ "candidate": "" })), Ok(()));
+        assert!(
+            room.candidate(&id, &json!({ "candidate": "garbage" }))
+                .is_err()
+        );
+
+        let report = room.describe_ice(&id, Instant::now());
+        assert!(
+            report.starts_with("controlled new, dtls new, rx 0pkt tx 0pkt"),
+            "{report}"
+        );
+        assert!(
+            report.contains("host abc.local:9 unresolved seen never"),
+            "{report}"
+        );
+
+        room.connection_failed(&id, Instant::now());
+        assert_eq!(receiver.try_recv(), Ok(SfuEvent::Down("failed".into())));
+        assert!(room.peers.is_empty());
+    }
 }

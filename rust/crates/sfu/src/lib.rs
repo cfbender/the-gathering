@@ -22,15 +22,15 @@ use serde_json::{Value, json};
 use str0m::Candidate;
 use tokio::sync::{mpsc, oneshot};
 
-pub mod browser_sdp;
+mod browser_sdp;
 mod codec;
-pub mod ice_report;
+mod ice_report;
 mod ids;
 mod layer;
 mod munger;
 mod net;
 mod room;
-pub mod simulcast_sdp;
+mod simulcast_sdp;
 mod stun;
 mod subscription;
 mod turn;
