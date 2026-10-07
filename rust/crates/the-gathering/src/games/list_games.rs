@@ -6,7 +6,7 @@
 //! describe one winning seat. Date, weekday, and hour filters read `played_at` in the `tz`
 //! IANA zone, defaulting to UTC.
 
-use serde_json::Value;
+use serde::Deserialize;
 use sqlx::{QueryBuilder, Sqlite, SqliteConnection};
 
 use crate::db::UtcDateTime;
@@ -15,6 +15,60 @@ use crate::local_time::{Zone, parse_date};
 use super::Pagination;
 use super::color_identity;
 use super::model::{Game, load_games};
+
+/// `GET /api/games` filters. Out-of-range numbers (such as `page=0` or `hour=25`) are
+/// ignored.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct GameFilters {
+    /// Page number, from 1.
+    pub page: Option<i64>,
+    /// Games per page (default 20, at most 100).
+    pub per_page: Option<i64>,
+    /// IANA zone dates, weekdays, and hours are read in (UTC by default).
+    pub tz: Option<String>,
+    /// A player who sat in the game.
+    pub player_id: Option<i64>,
+    /// That player's result: `win`, `loss`, or `draw`.
+    pub player_result: Option<String>,
+    /// Commander name (of the player's seat when `player_id` is given).
+    pub commander: Option<String>,
+    /// Exact color identity (`WUBRG` letters or `C`).
+    pub colors: Option<String>,
+    /// A color the identity includes.
+    pub color: Option<String>,
+    /// The winner.
+    pub winner_id: Option<i64>,
+    /// The winner's exact color identity.
+    pub winner_colors: Option<String>,
+    /// A color the winner's identity includes.
+    pub winner_color: Option<String>,
+    /// The winner's seat number.
+    pub winner_seat: Option<i64>,
+    /// Another player at the table.
+    pub opponent_id: Option<i64>,
+    /// A deck played in the game.
+    pub deck_id: Option<i64>,
+    /// How the game was won.
+    pub win_condition: Option<String>,
+    /// Number of seats.
+    pub player_count: Option<i64>,
+    /// At least this many turns.
+    pub min_turns: Option<i64>,
+    /// At most this many turns.
+    pub max_turns: Option<i64>,
+    /// At least this many minutes.
+    pub min_duration: Option<i64>,
+    /// At most this many minutes.
+    pub max_duration: Option<i64>,
+    /// First day (`YYYY-MM-DD`, inclusive).
+    pub date_from: Option<String>,
+    /// Last day (`YYYY-MM-DD`, inclusive).
+    pub date_to: Option<String>,
+    /// Local weekday, 0 (Monday) to 6.
+    pub weekday: Option<i64>,
+    /// Local hour, 0 to 23.
+    pub hour: Option<i64>,
+}
 
 /// A condition one seat must meet.
 #[derive(Clone, Debug)]
@@ -99,24 +153,12 @@ fn all(mut conds: Vec<Cond>) -> Option<Cond> {
     }
 }
 
-fn integer(value: Option<&Value>) -> Option<i64> {
-    match value? {
-        Value::Number(number) => number.as_i64(),
-        Value::String(text) => text.parse().ok(),
-        _ => None,
-    }
+fn positive(value: Option<i64>) -> Option<i64> {
+    value.filter(|value| *value > 0)
 }
 
-fn positive(value: Option<&Value>) -> Option<i64> {
-    integer(value).filter(|value| *value > 0)
-}
-
-fn in_range(value: Option<&Value>, range: std::ops::RangeInclusive<i64>) -> Option<i64> {
-    integer(value).filter(|value| range.contains(value))
-}
-
-fn text<'a>(opts: &'a Value, key: &str) -> Option<&'a str> {
-    opts.get(key).and_then(Value::as_str)
+fn in_range(value: Option<i64>, range: std::ops::RangeInclusive<i64>) -> Option<i64> {
+    value.filter(|value| range.contains(value))
 }
 
 fn commander(name: Option<&str>) -> Option<Cond> {
@@ -152,36 +194,36 @@ fn result(value: Option<&str>) -> Option<&'static str> {
 }
 
 /// Each condition must hold for one seat of the game.
-fn seat_conditions(opts: &Value) -> Vec<Cond> {
+fn seat_conditions(opts: &GameFilters) -> Vec<Cond> {
     let deck_filters: Vec<Cond> = [
-        commander(text(opts, "commander")),
-        identity(text(opts, "colors")),
-        includes_color(text(opts, "color")),
+        commander(opts.commander.as_deref()),
+        identity(opts.colors.as_deref()),
+        includes_color(opts.color.as_deref()),
     ]
     .into_iter()
     .flatten()
     .collect();
-    let player_seat = match positive(opts.get("player_id")) {
+    let player_seat = match positive(opts.player_id) {
         Some(id) => {
-            let mut conds = vec![Cond::Player(id, result(text(opts, "player_result")))];
+            let mut conds = vec![Cond::Player(id, result(opts.player_result.as_deref()))];
             conds.extend(deck_filters);
             all(conds).into_iter().collect()
         }
         None => deck_filters,
     };
     let winner_seat: Vec<Cond> = [
-        positive(opts.get("winner_id")).map(|id| Cond::Player(id, None)),
-        identity(text(opts, "winner_colors")),
-        includes_color(text(opts, "winner_color")),
-        positive(opts.get("winner_seat")).map(Cond::SeatNumber),
+        positive(opts.winner_id).map(|id| Cond::Player(id, None)),
+        identity(opts.winner_colors.as_deref()),
+        includes_color(opts.winner_color.as_deref()),
+        positive(opts.winner_seat).map(Cond::SeatNumber),
     ]
     .into_iter()
     .flatten()
     .collect();
     let mut conds: Vec<Cond> = [
         all(winner_seat).map(|cond| Cond::Winning(Box::new(cond))),
-        positive(opts.get("opponent_id")).map(|id| Cond::Player(id, None)),
-        positive(opts.get("deck_id")).map(Cond::Deck),
+        positive(opts.opponent_id).map(|id| Cond::Player(id, None)),
+        positive(opts.deck_id).map(Cond::Deck),
     ]
     .into_iter()
     .flatten()
@@ -190,15 +232,14 @@ fn seat_conditions(opts: &Value) -> Vec<Cond> {
     conds
 }
 
-/// `ListGames.call/1`: games matching `opts` (string params as the controller passes them,
-/// or JSON numbers), newest first, with pagination.
+/// Games matching `opts`, newest first, with pagination.
 pub async fn list_games(
     conn: &mut SqliteConnection,
-    opts: &Value,
+    opts: &GameFilters,
 ) -> Result<(Vec<Game>, Pagination), sqlx::Error> {
-    let page = positive(opts.get("page")).unwrap_or(1);
-    let per_page = positive(opts.get("per_page")).unwrap_or(20).min(100);
-    let zone = Zone::parse(text(opts, "tz"));
+    let page = positive(opts.page).unwrap_or(1);
+    let per_page = positive(opts.per_page).unwrap_or(20).min(100);
+    let zone = Zone::parse(opts.tz.as_deref());
 
     let mut qb: QueryBuilder<Sqlite> =
         QueryBuilder::new("SELECT g.id, g.played_at FROM games g WHERE 1 = 1");
@@ -207,34 +248,42 @@ pub async fn list_games(
         push(&mut qb, &cond);
         qb.push(")");
     }
-    if let Some(condition) = text(opts, "win_condition").filter(|value| !value.is_empty()) {
+    if let Some(condition) = opts
+        .win_condition
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
         qb.push(" AND g.win_condition = ")
             .push_bind(condition.to_owned());
     }
-    if let Some(count) = positive(opts.get("player_count")) {
+    if let Some(count) = positive(opts.player_count) {
         qb.push(
             " AND g.id IN (SELECT game_id FROM game_players GROUP BY game_id HAVING count(id) = ",
         )
         .push_bind(count)
         .push(")");
     }
-    for (key, column, op) in [
-        ("min_turns", "g.turns", " >= "),
-        ("max_turns", "g.turns", " <= "),
-        ("min_duration", "g.duration_minutes", " >= "),
-        ("max_duration", "g.duration_minutes", " <= "),
+    for (bound, column, op) in [
+        (opts.min_turns, "g.turns", " >= "),
+        (opts.max_turns, "g.turns", " <= "),
+        (opts.min_duration, "g.duration_minutes", " >= "),
+        (opts.max_duration, "g.duration_minutes", " <= "),
     ] {
-        if let Some(bound) = positive(opts.get(key)) {
+        if let Some(bound) = positive(bound) {
             qb.push(" AND ").push(column).push(op).push_bind(bound);
         }
     }
-    if let Some(start) = text(opts, "date_from")
+    if let Some(start) = opts
+        .date_from
+        .as_deref()
         .and_then(parse_date)
         .and_then(|date| zone.start_of_day(date))
     {
         qb.push(" AND g.played_at >= ").push_bind(start);
     }
-    if let Some(end) = text(opts, "date_to")
+    if let Some(end) = opts
+        .date_to
+        .as_deref()
         .and_then(parse_date)
         .and_then(time::Date::next_day)
         .and_then(|date| zone.start_of_day(date))
@@ -245,8 +294,8 @@ pub async fn list_games(
     let rows: Vec<(i64, UtcDateTime)> = qb.build_query_as().fetch_all(&mut *conn).await?;
 
     // SQLite has no time zone data, so weekday and hour are matched here.
-    let weekday = in_range(opts.get("weekday"), 0..=6);
-    let hour = in_range(opts.get("hour"), 0..=23);
+    let weekday = in_range(opts.weekday, 0..=6);
+    let hour = in_range(opts.hour, 0..=23);
     let ids: Vec<i64> = rows
         .into_iter()
         .filter(|(_, played_at)| {

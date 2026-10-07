@@ -11,6 +11,7 @@ use crate::discord::{self, GamesSink, PendingGame, ResolveError, web_draft};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 use crate::web::auth::AuthUser;
+use crate::web::extract::JsonBody;
 use crate::web::params::Params;
 
 use super::{data, parse_id};
@@ -29,17 +30,14 @@ pub async fn result_draft_show(
     ))
 }
 
-/// `POST /api/discord/result-drafts/:id` with `{"game": {...}}`: 201 with the game.
+/// `POST /api/discord/result-drafts/:id` with the finished result: 201 with the game.
 pub async fn result_draft_create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-    params: Params,
+    JsonBody(result): JsonBody<web_draft::DraftResult>,
 ) -> ApiResult<Response> {
-    let Some(Value::Object(attrs)) = params.object("game") else {
-        return Err(ApiError::BadRequest);
-    };
-    let game = web_draft::save(&state, &id, &user, attrs).await?;
+    let game = web_draft::save(&state, &id, &user, &result).await?;
     let body = super::games::render_game(&state, &game).await?;
     Ok((StatusCode::CREATED, Json(body)).into_response())
 }

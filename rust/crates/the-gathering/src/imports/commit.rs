@@ -1,17 +1,16 @@
 //! Committing a CSV or Mythic Track import.
 
-use serde_json::{Map, Value, json};
 use sqlx::SqliteConnection;
 
 use crate::db;
-use crate::games::DeckLinks;
+use crate::games::{DeckInput, DeckLinks, GameInput, SeatInput};
 use crate::games::{deck, record_game, resolve_player};
 use crate::state::AppState;
 
 use super::preview::{self, Source};
 use super::{ImportError, ImportGame, ImportResult, ImportSeat};
 
-/// A committed seat's `GamePlayer` attributes.
+/// A committed seat.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SeatAttrs {
     /// Resolved player.
@@ -31,22 +30,23 @@ pub struct SeatAttrs {
 }
 
 impl SeatAttrs {
-    /// The seat params for `Games.create_game/2`.
-    pub fn to_json(&self) -> Value {
-        json!({
-            "player_id": self.player_id,
-            "deck_id": self.deck_id,
-            "seat": self.seat,
-            "result": self.result,
-            "kills": self.kills,
-            "mvp_card_name": self.mvp_card_name,
-            "mvp_card_id": self.mvp_card_id,
-        })
+    /// The seat as a game input row.
+    pub fn to_input(&self) -> SeatInput {
+        SeatInput {
+            player_id: Some(self.player_id).into(),
+            deck_id: Some(self.deck_id).into(),
+            seat: Some(self.seat).into(),
+            result: Some(self.result.clone()).into(),
+            kills: self.kills.into(),
+            mvp_card_name: self.mvp_card_name.clone().into(),
+            mvp_card_id: self.mvp_card_id.clone().into(),
+            ..SeatInput::default()
+        }
     }
 }
 
-/// `Commit.run/4`: previews, then commits every game in one transaction and links the
-/// games' cards to the catalog.
+/// Previews, then commits every game in one transaction and links the games' cards to the
+/// catalog.
 pub async fn run(
     state: &AppState,
     source: Source,
@@ -99,52 +99,48 @@ async fn commit_games(
         }
         let mut seats = Vec::with_capacity(game.seats.len());
         for seat in &game.seats {
-            seats.push(commit_seat(conn, links, seat).await?.to_json());
+            seats.push(commit_seat(conn, links, seat).await?.to_input());
         }
-        let attrs = json!({
-            "played_at": game.played_at,
-            "duration_minutes": game.duration_minutes,
-            "turns": game.turns,
-            "win_condition": game.win_condition,
-            "notes": game.notes,
-            "source": source,
-            "external_id": game.external_id,
-            "seats": seats,
-        });
-        let created = record_game::create(conn, &attrs, user_id).await?;
+        let input = GameInput {
+            played_at: Some(game.played_at).into(),
+            duration_minutes: game.duration_minutes.into(),
+            turns: game.turns.into(),
+            win_condition: game.win_condition.clone().into(),
+            notes: game.notes.clone().into(),
+            seats: Some(seats).into(),
+            source: Some(source.to_owned()),
+            external_id: Some(game.external_id.clone()),
+            ..GameInput::default()
+        };
+        let created = record_game::create(conn, &input, user_id).await?;
         result.created += 1;
         result.game_ids.push(created.id);
     }
     Ok(result)
 }
 
-/// `Commit.commit_seat/1`: resolves the player (Discord identity first) and finds or
-/// creates the deck by name or commander pairing.
+/// Resolves the player (Discord identity first) and finds or creates the deck by name or
+/// commander pairing.
 pub async fn commit_seat(
     conn: &mut SqliteConnection,
     links: &DeckLinks,
     seat: &ImportSeat,
 ) -> Result<SeatAttrs, ImportError> {
     let player = resolve_player::run(conn, &seat.player, seat.discord_id.as_deref(), None).await?;
-    let mut attrs = Map::new();
-    for (key, value) in [
-        ("commander_card_id", &seat.commander_card_id),
-        ("partner_name", &seat.partner_name),
-        ("partner_card_id", &seat.partner_card_id),
-        ("color_identity", &seat.color_identity),
-        ("decklist_url", &seat.decklist_url),
-    ] {
-        if let Some(value) = value.as_deref().filter(|value| !value.is_empty()) {
-            attrs.insert(key.to_owned(), Value::String(value.to_owned()));
-        }
-    }
-    attrs.insert(
-        "commander_name".to_owned(),
-        Value::String(seat.commander.clone()),
-    );
-    let found =
-        deck::find_or_create_deck(conn, links, player.id, &seat.deck, &Value::Object(attrs))
-            .await?;
+    let given = |value: &Option<String>| match value.as_deref() {
+        Some(value) if !value.is_empty() => Some(value.to_owned()).into(),
+        _ => crate::patch::Patch::Unchanged,
+    };
+    let input = DeckInput {
+        commander_card_id: given(&seat.commander_card_id),
+        partner_name: given(&seat.partner_name),
+        partner_card_id: given(&seat.partner_card_id),
+        color_identity: given(&seat.color_identity),
+        decklist_url: given(&seat.decklist_url),
+        commander_name: Some(seat.commander.clone()).into(),
+        ..DeckInput::default()
+    };
+    let found = deck::find_or_create_deck(conn, links, player.id, &seat.deck, &input).await?;
     Ok(SeatAttrs {
         player_id: player.id,
         deck_id: found.id,

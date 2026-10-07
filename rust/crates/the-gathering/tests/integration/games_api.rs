@@ -77,7 +77,7 @@ async fn accepts_and_exposes_format_for_a_two_winner_game() {
         .collect();
     let created = ctx
         .app
-        .post("/api/games", json!({"game": {"played_at": "2026-09-19T18:30:00Z", "format": "two_headed_giant", "seats": seats}}))
+        .post("/api/games", json!({"played_at": "2026-09-19T18:30:00Z", "format": "two_headed_giant", "seats": seats}))
         .await
         .assert_json(201);
     assert_eq!(created["data"]["format"], "two_headed_giant");
@@ -95,7 +95,7 @@ async fn accepts_and_exposes_format_for_a_two_winner_game() {
 #[tokio::test]
 async fn post_api_games_creates_nested_seats_and_returns_the_documented_shape() {
     let ctx = setup().await;
-    let payload = json!({"game": {
+    let payload = json!({
         "created_by_user_id": ctx.user.id + 1000,
         "played_at": "2026-09-19T18:30:00Z",
         "duration_minutes": 57,
@@ -109,7 +109,7 @@ async fn post_api_games_creates_nested_seats_and_returns_the_documented_shape() 
              "mvp_card_id": "swan-song", "mvp_card_name": "Swan Song"},
             {"player_id": ctx.bob.id, "seat": 2, "result": "loss"},
         ],
-    }});
+    });
     let response = ctx.app.post("/api/games", payload).await.assert_json(201);
     let data = &response["data"];
     assert!(data["id"].is_i64());
@@ -159,7 +159,7 @@ async fn unrelated_members_cannot_update_or_delete_a_game() {
     let path = format!("/api/games/{}", game.id);
     assert_eq!(
         ctx.app
-            .patch(&path, json!({"game": {"notes": "tampered"}}))
+            .patch(&path, json!({"notes": "tampered"}))
             .await
             .assert_json(403),
         json!({"errors": {"detail": "Forbidden"}})
@@ -188,7 +188,7 @@ async fn records_ten_participants_through_record_game_and_rejects_eleven() {
         .app
         .post(
             "/api/games",
-            json!({"game": {"played_at": "2026-09-23T18:30:00Z", "seats": seats[..10]}}),
+            json!({"played_at": "2026-09-23T18:30:00Z", "seats": seats[..10]}),
         )
         .await
         .assert_json(201);
@@ -205,7 +205,7 @@ async fn records_ten_participants_through_record_game_and_rejects_eleven() {
         .app
         .post(
             "/api/games",
-            json!({"game": {"played_at": "2026-09-23T18:30:00Z", "seats": seats}}),
+            json!({"played_at": "2026-09-23T18:30:00Z", "seats": seats}),
         )
         .await;
     let body = response.assert_json(422);
@@ -227,7 +227,7 @@ async fn the_creator_can_update_and_delete_a_game_without_changing_its_provenanc
         .app
         .patch(
             &format!("/api/games/{}", game.id),
-            json!({"game": {"notes": "creator edit", "win_condition": "alternate_win_con", "source": "discord", "external_id": "forged"}}),
+            json!({"notes": "creator edit", "win_condition": "alternate_win_con", "source": "discord", "external_id": "forged"}),
         )
         .await
         .assert_json(200);
@@ -292,10 +292,7 @@ async fn editing_keeps_seat_ids_while_swapping_seat_numbers_and_changing_format(
     let path = format!("/api/games/{}", game.id);
     let response = ctx
         .app
-        .patch(
-            &path,
-            json!({"game": {"format": "two_headed_giant", "seats": seats}}),
-        )
+        .patch(&path, json!({"format": "two_headed_giant", "seats": seats}))
         .await
         .assert_json(200);
     assert_eq!(response["data"]["format"], "two_headed_giant");
@@ -326,7 +323,7 @@ async fn editing_keeps_seat_ids_while_swapping_seat_numbers_and_changing_format(
         seat["result"] = json!("win");
     }
     ctx.app
-        .patch(&path, json!({"game": {"seats": invalid}}))
+        .patch(&path, json!({"seats": invalid}))
         .await
         .assert_json(422);
     let mut numbers: Vec<i64> = ctx
@@ -352,7 +349,7 @@ async fn rejects_a_win_condition_outside_the_canonical_enum() {
     attrs["win_condition"] = json!("combo");
     let response = ctx
         .app
-        .post("/api/games", json!({"game": attrs}))
+        .post("/api/games", json!(attrs))
         .await
         .assert_json(422);
     assert_eq!(response["errors"]["win_condition"], json!(["is invalid"]));
@@ -377,7 +374,7 @@ async fn a_seated_linked_player_can_update_and_delete_a_game() {
         .app
         .patch(
             &format!("/api/games/{}", game.id),
-            json!({"game": {"notes": "participant edit"}}),
+            json!({"notes": "participant edit"}),
         )
         .await
         .assert_json(200);
@@ -419,7 +416,7 @@ async fn an_administrator_can_update_and_delete_any_game() {
         .app
         .patch(
             &format!("/api/games/{}", game.id),
-            json!({"game": {"notes": "admin edit"}}),
+            json!({"notes": "admin edit"}),
         )
         .await
         .assert_json(200);
@@ -453,16 +450,19 @@ async fn post_api_games_requires_a_signed_in_user() {
     ctx.app.clear_cookies();
     let response = ctx
         .app
-        .post(
-            "/api/games",
-            json!({"game": game_attrs(&ctx.alice, &ctx.bob)}),
-        )
+        .post("/api/games", json!(game_attrs(&ctx.alice, &ctx.bob)))
         .await;
     assert_eq!(
         response.assert_json(401),
         json!({"errors": {"detail": "Unauthorized"}})
     );
-    let (games, pagination) = ctx.app.state.games.list_games(&json!({})).await.unwrap();
+    let (games, pagination) = ctx
+        .app
+        .state
+        .games
+        .list_games(&support::input(json!({})))
+        .await
+        .unwrap();
     assert!(games.is_empty());
     assert_eq!(
         serde_json::to_value(pagination).unwrap(),
@@ -498,11 +498,11 @@ async fn get_api_games_id_returns_the_same_nested_resource_shape() {
     assert_eq!(names, [json!("Alice"), json!("Bob")]);
     assert_eq!(response["data"]["seats"][0]["deck"]["name"], "Birds");
 
-    let index = ctx
-        .app
+    ctx.app
         .get("/api/games?player_id=abc")
         .await
-        .assert_json(200);
+        .assert_json(400);
+    let index = ctx.app.get("/api/games").await.assert_json(200);
     assert_eq!(index["pagination"]["total"], 1);
     assert_eq!(index["data"][0]["id"], game.id);
     ctx.app.get("/api/games/abc").await.assert_json(400);
@@ -551,7 +551,7 @@ async fn summary_cards_find_spellbot_games_and_the_latest_game() {
         .upsert_game_by_external_id(
             "discord",
             "spellbot:SB42",
-            &game_attrs(&ctx.alice, &ctx.bob),
+            &support::input(game_attrs(&ctx.alice, &ctx.bob)),
         )
         .await
         .unwrap();

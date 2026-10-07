@@ -2,10 +2,8 @@
 //! signed-in member's playable decks that favors never-played, older, skipped, and
 //! less-played decks.
 
-use serde_json::Value;
 use sqlx::SqliteConnection;
 
-use crate::changeset::cast_integer;
 use crate::db::UtcDateTime;
 
 use super::GamesError;
@@ -155,12 +153,13 @@ async fn playable_decks(
         .collect())
 }
 
-/// `DeckPicker.random_deck/2`. `exclude_id` (cast like an Ecto `:id`) is dropped when
-/// other candidates remain; `random` is a uniform draw in `[0, 1]`.
+/// Picks one of the player's playable decks, weighted toward ones played less. The deck
+/// `exclude_id` is skipped when other candidates remain; `random` is a uniform draw in
+/// `[0, 1]`.
 pub async fn random_deck(
     conn: &mut SqliteConnection,
     user_id: i64,
-    exclude_id: Option<&Value>,
+    exclude_id: Option<i64>,
     now: UtcDateTime,
     random: f64,
 ) -> Result<DeckPick, sqlx::Error> {
@@ -169,7 +168,7 @@ pub async fn random_deck(
     };
     let mut candidates = playable_decks(conn, player.id).await?;
     if candidates.len() > 1
-        && let Some(id) = exclude_id.and_then(cast_integer)
+        && let Some(id) = exclude_id
     {
         candidates.retain(|candidate| candidate.deck.id != id);
     }

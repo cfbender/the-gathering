@@ -5,13 +5,13 @@
 //! affected tables. Updates only commit against an unchanged revision.
 
 use serde::Serialize;
-use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::SqliteConnection;
 
 use crate::db;
-use crate::games::DeckLinks;
+use crate::games::{DeckLinks, GameInput, SeatInput};
 use crate::games::{Game, deck, fold_name, load_game, model, player, record_game};
+use crate::patch::Patch;
 use crate::state::AppState;
 
 use super::commit::{self, SeatAttrs};
@@ -262,22 +262,19 @@ async fn transfer(
     for seat in &game.seats {
         seats.push(seat_attrs(conn, links, seat).await?);
     }
-    let mut attrs = Map::new();
-    attrs.insert("played_at".into(), json!(game.played_at));
-    for (key, value) in [
-        ("duration_minutes", json!(game.duration_minutes)),
-        ("turns", json!(game.turns)),
-        ("win_condition", json!(game.win_condition)),
-        ("notes", json!(game.notes)),
-    ] {
-        if !value.is_null() {
-            attrs.insert(key.into(), value);
-        }
-    }
+    // Blank file fields keep the game's values.
+    let mut input = GameInput {
+        played_at: Some(game.played_at).into(),
+        duration_minutes: given(game.duration_minutes),
+        turns: given(game.turns),
+        win_condition: given(game.win_condition.clone()),
+        notes: given(game.notes.clone()),
+        ..GameInput::default()
+    };
     match target {
         Some(target) => {
             let merged = update_seats(&seats, &target);
-            let projected = project(conn, &target, &attrs, &merged).await?;
+            let projected = project(conn, &target, &input, &merged).await?;
             let changes = csv_changes::diff(&GameView::of(&target), &projected);
             if changes.is_empty() {
                 return Ok(review(game, Some(target.id), "skip", Vec::new()));
@@ -286,31 +283,23 @@ async fn transfer(
             let current = load_game(conn, target.id)
                 .await?
                 .ok_or(ImportError::Database(sqlx::Error::RowNotFound))?;
-            attrs.insert(
-                "seats".into(),
-                Value::Array(merged.into_iter().map(Value::Object).collect()),
-            );
-            let saved = record_game::update(conn, &current, &Value::Object(attrs)).await?;
+            input.seats = Some(merged).into();
+            let saved = record_game::update(conn, &current, &input).await?;
             Ok(review(game, Some(saved.id), "update", changes))
         }
         None => {
-            attrs.insert(
-                "seats".into(),
-                Value::Array(seats.iter().map(SeatAttrs::to_json).collect()),
+            input.seats = Some(seats.iter().map(SeatAttrs::to_input).collect()).into();
+            input.source = Some(
+                game.target_source
+                    .clone()
+                    .unwrap_or_else(|| "csv".to_owned()),
             );
-            attrs.insert(
-                "source".into(),
-                json!(game.target_source.as_deref().unwrap_or("csv")),
+            input.external_id = Some(
+                game.target_external_id
+                    .clone()
+                    .unwrap_or_else(|| game.external_id.clone()),
             );
-            attrs.insert(
-                "external_id".into(),
-                json!(
-                    game.target_external_id
-                        .as_deref()
-                        .unwrap_or(&game.external_id)
-                ),
-            );
-            let saved = record_game::create(conn, &Value::Object(attrs), user_id).await?;
+            let saved = record_game::create(conn, &input, user_id).await?;
             Ok(review(game, Some(saved.id), "create", Vec::new()))
         }
     }
@@ -348,76 +337,81 @@ fn pair(commander: Option<&str>, partner: Option<&str>) -> Vec<String> {
     names
 }
 
-/// The `seats` params for updating `target`: retained players keep their row (and every
-/// field the file leaves blank); an eliminator who left the game is cleared.
-fn update_seats(seats: &[SeatAttrs], target: &Game) -> Vec<Map<String, Value>> {
+/// A value from the file, or [`Patch::Unchanged`] when the file leaves it blank.
+fn given<T>(value: Option<T>) -> Patch<T> {
+    value.map_or(Patch::Unchanged, |value| Patch::Set(Some(value)))
+}
+
+/// Keeps a given value; a blank one (`None`) leaves the stored value alone.
+fn keep_given<T>(patch: Patch<T>) -> Patch<T> {
+    match patch {
+        Patch::Set(None) => Patch::Unchanged,
+        other => other,
+    }
+}
+
+/// The seats for updating `target`: retained players keep their row (and every field the
+/// file leaves blank); an eliminator who left the game is cleared.
+fn update_seats(seats: &[SeatAttrs], target: &Game) -> Vec<SeatInput> {
     let ids: Vec<i64> = seats.iter().map(|seat| seat.player_id).collect();
     seats
         .iter()
         .map(|seat| {
-            let Value::Object(mut params) = seat.to_json() else {
-                return Map::new();
+            let input = seat.to_input();
+            let Some(existing) = target.seats.iter().find(|s| s.player_id == seat.player_id) else {
+                return input;
             };
-            if let Some(existing) = target.seats.iter().find(|s| s.player_id == seat.player_id) {
-                params.retain(|_, value| !value.is_null());
-                params.insert("id".into(), json!(existing.id));
-                if existing
-                    .eliminated_by_player_id
-                    .is_some_and(|eliminator| !ids.contains(&eliminator))
-                {
-                    params.insert("eliminated_by_player_id".into(), Value::Null);
-                }
+            let eliminator_left = existing
+                .eliminated_by_player_id
+                .is_some_and(|eliminator| !ids.contains(&eliminator));
+            SeatInput {
+                id: Some(existing.id),
+                kills: keep_given(input.kills),
+                mvp_card_name: keep_given(input.mvp_card_name),
+                mvp_card_id: keep_given(input.mvp_card_id),
+                eliminated_by_player_id: if eliminator_left {
+                    Patch::Set(None)
+                } else {
+                    Patch::Unchanged
+                },
+                ..input
             }
-            params
         })
         .collect()
 }
 
-/// The param when given (a cast change), else the current value.
-fn int_or(params: &Map<String, Value>, key: &str, current: Option<i64>) -> Option<i64> {
-    match params.get(key) {
-        Some(value) => value.as_i64(),
-        None => current,
-    }
-}
-
-/// The param when given (a cast change), else the current value.
-fn str_or(params: &Map<String, Value>, key: &str, current: Option<String>) -> Option<String> {
-    match params.get(key) {
-        Some(value) => value.as_str().map(str::to_owned),
-        None => current,
-    }
-}
-
-/// `target` with `attrs` and `seats` applied, as `Ecto.Changeset.apply_action/2` would
-/// build it, with each seat's player and deck loaded.
+/// `target` with `input` and `seats` applied, with each seat's player and deck loaded.
 async fn project(
     conn: &mut SqliteConnection,
     target: &Game,
-    attrs: &Map<String, Value>,
-    seats: &[Map<String, Value>],
+    input: &GameInput,
+    seats: &[SeatInput],
 ) -> Result<GameView, ImportError> {
     let current = GameView::of(target);
     let mut view = GameView {
-        played_at: attrs
-            .get("played_at")
-            .and_then(Value::as_str)
-            .and_then(db::UtcDateTime::parse)
-            .unwrap_or(current.played_at),
-        duration_minutes: int_or(attrs, "duration_minutes", current.duration_minutes),
-        turns: int_or(attrs, "turns", current.turns),
-        win_condition: str_or(attrs, "win_condition", current.win_condition),
-        notes: str_or(attrs, "notes", current.notes),
+        played_at: match &input.played_at {
+            Patch::Set(Some(played_at)) => *played_at,
+            _ => current.played_at,
+        },
+        duration_minutes: input.duration_minutes.clone().or(current.duration_minutes),
+        turns: input.turns.clone().or(current.turns),
+        win_condition: input.win_condition.clone().or(current.win_condition),
+        notes: input.notes.clone().or(current.notes),
         seats: Vec::with_capacity(seats.len()),
     };
-    for params in seats {
-        let existing = params
-            .get("id")
-            .and_then(Value::as_i64)
-            .and_then(|id| target.seats.iter().find(|seat| seat.id == id));
-        let player_id =
-            int_or(params, "player_id", existing.map(|seat| seat.player_id)).unwrap_or_default();
-        let deck_id = int_or(params, "deck_id", existing.and_then(|seat| seat.deck_id));
+    for seat in seats {
+        let existing = seat
+            .id
+            .and_then(|id| target.seats.iter().find(|held| held.id == id));
+        let player_id = seat
+            .player_id
+            .clone()
+            .or(existing.map(|held| held.player_id))
+            .unwrap_or_default();
+        let deck_id = seat
+            .deck_id
+            .clone()
+            .or(existing.and_then(|held| held.deck_id));
         let player_name = model::get_player(conn, player_id)
             .await?
             .map(|player| player.name)
@@ -430,24 +424,25 @@ async fn project(
             player_id,
             player_name,
             deck,
-            seat: int_or(params, "seat", existing.map(|seat| seat.seat)).unwrap_or_default(),
-            result: str_or(
-                params,
-                "result",
-                existing.map(|seat| seat.result.as_str().to_owned()),
-            )
-            .unwrap_or_default(),
-            kills: int_or(params, "kills", existing.and_then(|seat| seat.kills)),
-            mvp_card_name: str_or(
-                params,
-                "mvp_card_name",
-                existing.and_then(|seat| seat.mvp_card_name.clone()),
-            ),
-            eliminated_by_player_id: int_or(
-                params,
-                "eliminated_by_player_id",
-                existing.and_then(|seat| seat.eliminated_by_player_id),
-            ),
+            seat: seat
+                .seat
+                .clone()
+                .or(existing.map(|held| held.seat))
+                .unwrap_or_default(),
+            result: seat
+                .result
+                .clone()
+                .or(existing.map(|held| held.result.as_str().to_owned()))
+                .unwrap_or_default(),
+            kills: seat.kills.clone().or(existing.and_then(|held| held.kills)),
+            mvp_card_name: seat
+                .mvp_card_name
+                .clone()
+                .or(existing.and_then(|held| held.mvp_card_name.clone())),
+            eliminated_by_player_id: seat
+                .eliminated_by_player_id
+                .clone()
+                .or(existing.and_then(|held| held.eliminated_by_player_id)),
         });
     }
     Ok(view)

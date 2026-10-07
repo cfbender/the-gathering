@@ -1,13 +1,15 @@
 //! Committing a reviewed Google Sheet reconciliation.
 
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use sqlx::SqliteConnection;
 
 use crate::db;
-use crate::games::DeckLinks;
+use crate::games::{DeckInput, DeckLinks, GameInput, PlayerInput, SeatInput};
 use crate::games::{deck, load_game, player, record_game};
+use crate::patch::Patch;
 use crate::state::AppState;
+use crate::validation::ValidationError;
 
 use super::ImportError;
 use super::csv::noon;
@@ -71,14 +73,15 @@ async fn commit_row(
             for (seat, index) in row.seats.iter().zip(1_i64..) {
                 seats.push(create_seat(conn, links, seat, index).await?);
             }
-            let attrs = json!({
-                "played_at": row.date.map(|date| noon(date.0)),
-                "notes": row.notes,
-                "source": "csv",
-                "external_id": format!("sheet:{}", row.key),
-                "seats": seats,
-            });
-            let game = record_game::create(conn, &attrs, user_id).await?;
+            let input = GameInput {
+                played_at: row.date.map(|date| noon(date.0)).into(),
+                notes: Some(row.notes.clone()).into(),
+                source: Some("csv".to_owned()),
+                external_id: Some(format!("sheet:{}", row.key)),
+                seats: Some(seats).into(),
+                ..GameInput::default()
+            };
+            let game = record_game::create(conn, &input, user_id).await?;
             result.created += 1;
             game.id
         }
@@ -93,22 +96,27 @@ async fn commit_row(
                     .iter()
                     .find(|seat| seat.player_id == Some(SeatPlayer::Id(existing.player_id)))
                     .ok_or(ImportError::Message(STALE.to_owned()))?;
-                seats.push(json!({
-                    "id": existing.id,
-                    "player_id": existing.player_id,
-                    "seat": existing.seat,
-                    "deck_id": deck_id(conn, links, seat, existing.player_id).await?,
-                    "result": seat.result,
-                    "kills": seat.kills,
-                }));
+                seats.push(SeatInput {
+                    id: Some(existing.id),
+                    player_id: Some(existing.player_id).into(),
+                    seat: Some(existing.seat).into(),
+                    deck_id: deck_id(conn, links, seat, existing.player_id).await?,
+                    result: Some(seat.result.clone()).into(),
+                    kills: Some(seat.kills).into(),
+                    ..SeatInput::default()
+                });
             }
             let notes = if row.notes.is_empty() {
-                json!(game.notes)
+                game.notes.clone()
             } else {
-                json!(row.notes)
+                Some(row.notes.clone())
             };
-            let attrs = json!({"seats": seats, "notes": notes});
-            let saved = record_game::update(conn, &game, &attrs).await?;
+            let input = GameInput {
+                seats: Some(seats).into(),
+                notes: notes.into(),
+                ..GameInput::default()
+            };
+            let saved = record_game::update(conn, &game, &input).await?;
             result.updated += 1;
             saved.id
         }
@@ -129,22 +137,23 @@ async fn create_seat(
     links: &DeckLinks,
     seat: &ResolvedSeat,
     index: i64,
-) -> Result<Value, ImportError> {
+) -> Result<SeatInput, ImportError> {
     let player_id = match &seat.player_id {
         Some(SeatPlayer::Id(id)) => *id,
         _ => {
-            player::find_or_create_player_by_name(conn, &seat.player, &json!({}))
+            player::find_or_create_player_by_name(conn, &seat.player, &PlayerInput::default())
                 .await?
                 .id
         }
     };
-    Ok(json!({
-        "player_id": player_id,
-        "deck_id": deck_id(conn, links, seat, player_id).await?,
-        "seat": index,
-        "result": seat.result,
-        "kills": seat.kills,
-    }))
+    Ok(SeatInput {
+        player_id: Some(player_id).into(),
+        deck_id: deck_id(conn, links, seat, player_id).await?,
+        seat: Some(index).into(),
+        result: Some(seat.result.clone()).into(),
+        kills: Some(seat.kills).into(),
+        ..SeatInput::default()
+    })
 }
 
 async fn deck_id(
@@ -152,18 +161,30 @@ async fn deck_id(
     links: &DeckLinks,
     seat: &ResolvedSeat,
     player_id: i64,
-) -> Result<Value, ImportError> {
+) -> Result<Patch<i64>, ImportError> {
     Ok(match &seat.deck_id {
         Some(Choice::Text(text)) if text == "new" => {
-            let attrs = json!({"commander_name": seat.deck});
-            json!(
-                deck::find_or_create_deck(conn, links, player_id, &seat.deck, &attrs)
+            let input = DeckInput {
+                commander_name: Some(seat.deck.clone()).into(),
+                ..DeckInput::default()
+            };
+            Some(
+                deck::find_or_create_deck(conn, links, player_id, &seat.deck, &input)
                     .await?
-                    .id
+                    .id,
             )
+            .into()
         }
-        Some(Choice::Id(id)) => json!(id),
-        Some(Choice::Text(text)) => json!(text),
-        None => Value::Null,
+        Some(Choice::Id(id)) => Some(*id).into(),
+        Some(Choice::Text(text)) => match text.trim().parse::<i64>() {
+            Ok(id) => Some(id).into(),
+            Err(_) => {
+                return Err(ImportError::Invalid(ValidationError::single(
+                    "deck_id",
+                    "is invalid",
+                )));
+            }
+        },
+        None => Patch::Set(None),
     })
 }

@@ -152,7 +152,7 @@ describe("table commander details", () => {
     const write = fetch.mock.calls.find(([url]) => url === "/api/decks")
     const body = write?.[1]?.body
     if (typeof body !== "string") throw new Error("Expected a JSON deck payload")
-    expect(JSON.parse(body).deck).toMatchObject({
+    expect(JSON.parse(body)).toMatchObject({
       player_id: 3,
       name: "My custom pair",
       commander_card_id: "thrasios",

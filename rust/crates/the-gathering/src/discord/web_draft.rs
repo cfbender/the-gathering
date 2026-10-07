@@ -5,13 +5,15 @@
 
 use std::collections::HashMap;
 
-use serde::Serialize;
-use serde_json::{Map, Value, json};
+use serde::{Deserialize, Serialize};
 use sqlx::SqliteConnection;
 
 use crate::accounts::User;
 use crate::db::{self, UtcDateTime};
-use crate::games::{self, Game, GamesError, Resolution, ResolveError};
+use crate::games::{
+    self, DeckInput, Game, GameInput, GamesError, Resolution, ResolveError, SeatInput,
+};
+use crate::patch::Patch;
 use crate::state::AppState;
 
 use super::draft::{self, ResultDraft, WebDraftData};
@@ -190,32 +192,76 @@ pub async fn preview(
     }))
 }
 
-const GAME_FIELDS: [&str; 5] = [
-    "played_at",
-    "turns",
-    "duration_minutes",
-    "win_condition",
-    "notes",
-];
-const SEAT_FIELDS: [&str; 4] = ["result", "kills", "mvp_card_id", "mvp_card_name"];
-const DECK_FIELDS: [&str; 7] = [
-    "name",
-    "commander_card_id",
-    "commander_name",
-    "partner_card_id",
-    "partner_name",
-    "color_identity",
-    "decklist_url",
-];
+/// The finished result a member submits for a staged game.
+#[derive(Clone, Debug, Deserialize)]
+pub struct DraftResult {
+    /// When it was played.
+    #[serde(default)]
+    pub played_at: Patch<UtcDateTime>,
+    /// Number of turns.
+    #[serde(default)]
+    pub turns: Patch<i64>,
+    /// Length in minutes.
+    #[serde(default)]
+    pub duration_minutes: Patch<i64>,
+    /// How it was won.
+    #[serde(default)]
+    pub win_condition: Patch<String>,
+    /// Notes.
+    #[serde(default)]
+    pub notes: Patch<String>,
+    /// One seat per staged player, in turn order.
+    pub seats: Vec<DraftSeat>,
+}
 
-fn take(attrs: &Map<String, Value>, keys: &[&str]) -> Map<String, Value> {
-    keys.iter()
-        .filter_map(|key| {
-            attrs
-                .get(*key)
-                .map(|value| ((*key).to_owned(), value.clone()))
-        })
-        .collect()
+/// A staged player's seat.
+#[derive(Clone, Debug, Deserialize)]
+pub struct DraftSeat {
+    /// The staged player.
+    pub discord_id: String,
+    /// One of their existing decks.
+    #[serde(default)]
+    pub deck_id: Option<i64>,
+    /// A deck to find or create for them, when `deck_id` is not given.
+    #[serde(default)]
+    pub deck: Option<DraftDeck>,
+    /// `win`, `loss`, or `draw`.
+    #[serde(default)]
+    pub result: Patch<String>,
+    /// Kills.
+    #[serde(default)]
+    pub kills: Patch<i64>,
+    /// Most valuable card.
+    #[serde(default)]
+    pub mvp_card_id: Patch<String>,
+    /// Its name.
+    #[serde(default)]
+    pub mvp_card_name: Patch<String>,
+}
+
+/// A deck named in a draft seat.
+#[derive(Clone, Debug, Deserialize)]
+pub struct DraftDeck {
+    /// Deck name.
+    pub name: String,
+    /// Commander card id.
+    #[serde(default)]
+    pub commander_card_id: Option<String>,
+    /// Commander name.
+    #[serde(default)]
+    pub commander_name: Option<String>,
+    /// Partner card id.
+    #[serde(default)]
+    pub partner_card_id: Option<String>,
+    /// Partner name.
+    #[serde(default)]
+    pub partner_name: Option<String>,
+    /// Color identity.
+    #[serde(default)]
+    pub color_identity: Option<String>,
+    /// Deck-list link.
+    #[serde(default)]
+    pub decklist_url: Option<String>,
 }
 
 /// `SaveWebGame.run/3`: the recorded game.
@@ -223,10 +269,10 @@ pub async fn save(
     state: &AppState,
     id: &str,
     user: &User,
-    attrs: &Map<String, Value>,
+    result: &DraftResult,
 ) -> Result<Game, GamesError> {
     let mut tx = db::begin(&state.pool).await?;
-    let result = save_in(&mut tx, state.games.deck_links(), id, user, attrs).await;
+    let result = save_in(&mut tx, state.games.deck_links(), id, user, result).await;
     match result {
         Ok(game) => {
             tx.commit().await?;
@@ -244,15 +290,22 @@ async fn save_in(
     links: &games::DeckLinks,
     id: &str,
     user: &User,
-    attrs: &Map<String, Value>,
+    result: &DraftResult,
 ) -> Result<Game, GamesError> {
     let (_draft, pending) = load(conn, id, user).await?.ok_or(GamesError::NotFound)?;
-    let seats = seats(conn, links, &pending.players(), attrs.get("seats")).await?;
-    let mut game_attrs = take(attrs, &GAME_FIELDS);
-    game_attrs.insert("source".into(), json!("discord"));
-    game_attrs.insert("external_id".into(), json!(pending.external_id));
-    game_attrs.insert("seats".into(), Value::Array(seats));
-    let game = games::record_game::create(conn, &Value::Object(game_attrs), Some(user.id)).await?;
+    let seats = seats(conn, links, &pending.players(), &result.seats).await?;
+    let input = GameInput {
+        played_at: result.played_at.clone(),
+        turns: result.turns.clone(),
+        duration_minutes: result.duration_minutes.clone(),
+        win_condition: result.win_condition.clone(),
+        notes: result.notes.clone(),
+        seats: Some(seats).into(),
+        source: Some("discord".to_owned()),
+        external_id: Some(pending.external_id.clone()),
+        ..GameInput::default()
+    };
+    let game = games::record_game::create(conn, &input, Some(user.id)).await?;
     pending::delete(conn, pending.id).await?;
     Ok(game)
 }
@@ -261,20 +314,14 @@ async fn seats(
     conn: &mut SqliteConnection,
     links: &games::DeckLinks,
     roster: &[ReportPlayer],
-    seats: Option<&Value>,
-) -> Result<Vec<Value>, GamesError> {
-    let seats = seats
-        .and_then(Value::as_array)
-        .ok_or(GamesError::BadRequest)?;
+    seats: &[DraftSeat],
+) -> Result<Vec<SeatInput>, GamesError> {
     let by_id: HashMap<&str, &ReportPlayer> = roster
         .iter()
         .map(|player| (player.discord_id.as_str(), player))
         .collect();
-    let mut given: Vec<Option<&str>> = seats
-        .iter()
-        .map(|seat| seat.get("discord_id").and_then(Value::as_str))
-        .collect();
-    let mut expected: Vec<Option<&str>> = by_id.keys().copied().map(Some).collect();
+    let mut given: Vec<&str> = seats.iter().map(|seat| seat.discord_id.as_str()).collect();
+    let mut expected: Vec<&str> = by_id.keys().copied().collect();
     given.sort_unstable();
     expected.sort_unstable();
     if given != expected {
@@ -282,11 +329,8 @@ async fn seats(
     }
     let mut resolved = Vec::with_capacity(seats.len());
     for (index, seat) in seats.iter().enumerate() {
-        let seat = seat.as_object().ok_or(GamesError::BadRequest)?;
-        let identity = seat
-            .get("discord_id")
-            .and_then(Value::as_str)
-            .and_then(|id| by_id.get(id))
+        let identity = by_id
+            .get(seat.discord_id.as_str())
             .ok_or(GamesError::BadRequest)?;
         let player = games::resolve_player::run(
             conn,
@@ -301,64 +345,45 @@ async fn seats(
             ResolveError::DiscordIdentityConflict => GamesError::BadRequest,
         })?;
         let deck_id = deck(conn, links, player.id, seat).await?;
-        let mut attrs = take(seat, &SEAT_FIELDS);
-        attrs.insert("player_id".into(), json!(player.id));
-        attrs.insert("deck_id".into(), json!(deck_id));
-        attrs.insert("seat".into(), json!(index + 1));
-        resolved.push(Value::Object(attrs));
+        resolved.push(SeatInput {
+            player_id: Some(player.id).into(),
+            deck_id: deck_id.into(),
+            seat: i64::try_from(index + 1).ok().into(),
+            result: seat.result.clone(),
+            kills: seat.kills.clone(),
+            mvp_card_id: seat.mvp_card_id.clone(),
+            mvp_card_name: seat.mvp_card_name.clone(),
+            ..SeatInput::default()
+        });
     }
     Ok(resolved)
-}
-
-/// `Ecto.Type.cast(:id, value)`.
-fn cast_id(value: &Value) -> Option<i64> {
-    match value {
-        Value::Number(number) => number.as_i64(),
-        Value::String(text) => text.trim().parse().ok(),
-        _ => None,
-    }
 }
 
 async fn deck(
     conn: &mut SqliteConnection,
     links: &games::DeckLinks,
     player_id: i64,
-    seat: &Map<String, Value>,
+    seat: &DraftSeat,
 ) -> Result<Option<i64>, GamesError> {
-    if let Some(id) = seat.get("deck_id").filter(|value| !value.is_null()) {
-        let id = cast_id(id).ok_or(GamesError::BadRequest)?;
+    if let Some(id) = seat.deck_id {
         return match games::get_deck(conn, id).await? {
             Some(deck) if deck.player_id == player_id => Ok(Some(id)),
             _ => Err(GamesError::BadRequest),
         };
     }
-    match seat.get("deck") {
-        Some(Value::Object(attrs)) if attrs.get("name").is_some_and(Value::is_string) => {
-            let name = attrs
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            let fields: Map<String, Value> = DECK_FIELDS
-                .iter()
-                .map(|key| {
-                    (
-                        (*key).to_owned(),
-                        attrs.get(*key).cloned().unwrap_or(Value::Null),
-                    )
-                })
-                .collect();
-            let deck = games::deck::find_or_create_deck(
-                conn,
-                links,
-                player_id,
-                name,
-                &Value::Object(fields),
-            )
-            .await?;
-            Ok(Some(deck.id))
-        }
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(text)) if text.is_empty() => Ok(None),
-        Some(_) => Err(GamesError::BadRequest),
-    }
+    let Some(deck) = &seat.deck else {
+        return Ok(None);
+    };
+    let input = DeckInput {
+        name: Some(deck.name.clone()).into(),
+        commander_card_id: deck.commander_card_id.clone().into(),
+        commander_name: deck.commander_name.clone().into(),
+        partner_card_id: deck.partner_card_id.clone().into(),
+        partner_name: deck.partner_name.clone().into(),
+        color_identity: deck.color_identity.clone().into(),
+        decklist_url: deck.decklist_url.clone().into(),
+        ..DeckInput::default()
+    };
+    let deck = games::deck::find_or_create_deck(conn, links, player_id, &deck.name, &input).await?;
+    Ok(Some(deck.id))
 }

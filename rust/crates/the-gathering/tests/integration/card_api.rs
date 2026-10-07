@@ -1035,10 +1035,7 @@ async fn deck_ctx(server: &MockServer) -> DeckCtx {
 
 async fn save(ctx: &DeckCtx, attrs: Value) -> Value {
     ctx.app
-        .patch(
-            &format!("/api/decks/{}", ctx.deck.id),
-            json!({"deck": attrs}),
-        )
+        .patch(&format!("/api/decks/{}", ctx.deck.id), json!(attrs))
         .await
         .assert_json(200)["data"]
         .clone()
@@ -1144,7 +1141,7 @@ async fn saves_independent_commander_and_partner_printings_and_resolves_them_on_
         .find_or_create_deck(
             ctx.player.id,
             "Imported partners",
-            &json!({"commander_name": "Thrasios, Triton Hero", "partner_name": "Tymna the Weaver"}),
+            &support::input(json!({"commander_name": "Thrasios, Triton Hero", "partner_name": "Tymna the Weaver"})),
         )
         .await
         .unwrap();
@@ -1163,7 +1160,7 @@ async fn deck_create_list_and_edit_expose_independent_full_card_printing_images(
         .app
         .post(
             "/api/decks",
-            json!({"deck": {
+            json!({
                 "player_id": ctx.player.id,
                 "name": "Table partners",
                 "commander_card_id": "commander",
@@ -1172,7 +1169,7 @@ async fn deck_create_list_and_edit_expose_independent_full_card_printing_images(
                 "partner_card_id": "partner",
                 "partner_name": "Thrasios, Triton Hero",
                 "partner_printing_id": "partner-alternate"
-            }}),
+            }),
         )
         .await
         .assert_json(201)["data"]
@@ -1224,10 +1221,7 @@ async fn rejects_unknown_and_mismatched_printings_atomically_including_on_create
         let mut attrs = attrs;
         attrs["name"] = json!("Must not change");
         ctx.app
-            .patch(
-                &format!("/api/decks/{}", ctx.deck.id),
-                json!({"deck": attrs}),
-            )
+            .patch(&format!("/api/decks/{}", ctx.deck.id), json!(attrs))
             .await
             .assert_json(422);
     }
@@ -1244,12 +1238,12 @@ async fn rejects_unknown_and_mismatched_printings_atomically_including_on_create
         .app
         .state
         .games
-        .create_deck(&json!({
+        .create_deck(&support::input(json!({
             "player_id": ctx.player.id,
             "name": "Invalid",
             "commander_name": "Tymna the Weaver",
             "commander_printing_id": "partner-alternate"
-        }))
+        })))
         .await
     {
         Err(the_gathering::games::GamesError::Invalid(errors)) => {

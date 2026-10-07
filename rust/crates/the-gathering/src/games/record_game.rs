@@ -3,18 +3,14 @@
 //! Every function runs on a connection and opens a savepoint (or transaction) of its own,
 //! so it can run inside a caller's transaction (imports) or on its own.
 
-use serde_json::{Map, Value};
 use sqlx::{Connection, SqliteConnection};
 
 use crate::db::{self, UtcDateTime};
 
 use super::GamesError;
-use super::game::{Extra, ValidGame, ValidSeat, changeset};
+use super::game::{Extra, ValidGame, ValidSeat, validate_game};
+use super::input::GameInput;
 use super::model::{Game, load_game};
-
-fn attr_str<'a>(attrs: &'a Value, key: &str) -> Option<&'a str> {
-    attrs.get(key).and_then(Value::as_str)
-}
 
 async fn game_by_external_id(
     conn: &mut SqliteConnection,
@@ -34,62 +30,55 @@ async fn reload(conn: &mut SqliteConnection, id: i64) -> Result<Game, GamesError
     load_game(conn, id).await?.ok_or(GamesError::NotFound)
 }
 
-/// `RecordGame.create/2`: with a non-empty `external_id`, an existing game from the same
+/// Records a game. With a non-empty `external_id`, an existing game from the same
 /// `source` (default `manual`) is returned unchanged instead of recording a duplicate.
 pub async fn create(
     conn: &mut SqliteConnection,
-    attrs: &Value,
+    input: &GameInput,
     created_by_user_id: Option<i64>,
 ) -> Result<Game, GamesError> {
-    let source = match attrs.get("source") {
-        None => Some("manual"),
-        Some(value) => value.as_str(),
-    };
-    match (
-        source,
-        attr_str(attrs, "external_id").filter(|id| !id.is_empty()),
-    ) {
-        (Some(source), Some(external_id)) => {
-            match game_by_external_id(conn, source, external_id).await? {
-                Some(id) => reload(conn, id).await,
-                None => insert(conn, attrs, created_by_user_id, Some((source, external_id))).await,
-            }
-        }
-        _ => insert(conn, attrs, created_by_user_id, None).await,
+    let source = input.source.as_deref().unwrap_or("manual");
+    match input.external_id.as_deref().filter(|id| !id.is_empty()) {
+        Some(external_id) => match game_by_external_id(conn, source, external_id).await? {
+            Some(id) => reload(conn, id).await,
+            None => insert(conn, input, created_by_user_id, Some((source, external_id))).await,
+        },
+        None => insert(conn, input, created_by_user_id, None).await,
     }
 }
 
-fn with_identity(attrs: &Value, source: &str, external_id: &str) -> Value {
-    let mut merged: Map<String, Value> = attrs.as_object().cloned().unwrap_or_default();
-    merged.insert("source".into(), Value::String(source.to_owned()));
-    merged.insert("external_id".into(), Value::String(external_id.to_owned()));
-    Value::Object(merged)
+fn with_identity(input: &GameInput, source: &str, external_id: &str) -> GameInput {
+    GameInput {
+        source: Some(source.to_owned()),
+        external_id: Some(external_id.to_owned()),
+        ..input.clone()
+    }
 }
 
-/// `RecordGame.find_or_create_by_external_id/3`.
+/// Records a game unless one with this source identity exists, which is returned.
 pub async fn find_or_create_by_external_id(
     conn: &mut SqliteConnection,
     source: &str,
     external_id: &str,
-    attrs: &Value,
+    input: &GameInput,
 ) -> Result<Game, GamesError> {
-    create(conn, &with_identity(attrs, source, external_id), None).await
+    create(conn, &with_identity(input, source, external_id), None).await
 }
 
-/// `RecordGame.upsert_by_external_id/3`: updates the game with this identity, or records it.
+/// Updates the game with this source identity, or records it.
 pub async fn upsert_by_external_id(
     conn: &mut SqliteConnection,
     source: &str,
     external_id: &str,
-    attrs: &Value,
+    input: &GameInput,
 ) -> Result<Game, GamesError> {
-    let attrs = with_identity(attrs, source, external_id);
+    let input = with_identity(input, source, external_id);
     match game_by_external_id(conn, source, external_id).await? {
         Some(id) => {
             let game = reload(conn, id).await?;
-            update(conn, &game, &attrs).await
+            update(conn, &game, &input).await
         }
-        None => insert(conn, &attrs, None, Some((source, external_id))).await,
+        None => insert(conn, &input, None, Some((source, external_id))).await,
     }
 }
 
@@ -100,14 +89,14 @@ pub async fn upsert_by_external_id(
 /// `source`, so the recovery never ran; this returns the existing game as intended.
 async fn insert(
     conn: &mut SqliteConnection,
-    attrs: &Value,
+    input: &GameInput,
     created_by_user_id: Option<i64>,
     identity: Option<(&str, &str)>,
 ) -> Result<Game, GamesError> {
-    let game = changeset(
+    let game = validate_game(
         conn,
         None,
-        attrs,
+        input,
         Extra {
             created_by_user_id,
             identity,
@@ -133,18 +122,18 @@ async fn insert(
     }
 }
 
-/// Validates a game a portable import would insert (`Game.changeset/2` with the export's
+/// Validates a game a portable import would insert (with the export's
 /// `portable_id`, `source`, and `external_id`, plus `put_created_by/2`), without writing.
 pub async fn validate_portable(
     conn: &mut SqliteConnection,
-    attrs: &Value,
+    input: &GameInput,
     created_by_user_id: Option<i64>,
     identity: (&str, &str, Option<&str>),
 ) -> Result<(), GamesError> {
-    changeset(
+    validate_game(
         conn,
         None,
-        attrs,
+        input,
         Extra {
             created_by_user_id,
             identity: None,
@@ -160,14 +149,14 @@ pub async fn validate_portable(
 /// are validation errors, as `unique_constraint/2` reports them.
 pub async fn insert_portable(
     conn: &mut SqliteConnection,
-    attrs: &Value,
+    input: &GameInput,
     created_by_user_id: Option<i64>,
     identity: (&str, &str, Option<&str>),
 ) -> Result<Game, GamesError> {
-    let game = changeset(
+    let game = validate_game(
         conn,
         None,
-        attrs,
+        input,
         Extra {
             created_by_user_id,
             identity: None,
@@ -292,9 +281,9 @@ fn seats_collide(current: &Game, requested: &[ValidSeat]) -> bool {
 pub async fn update(
     conn: &mut SqliteConnection,
     game: &Game,
-    attrs: &Value,
+    input: &GameInput,
 ) -> Result<Game, GamesError> {
-    let valid = changeset(conn, Some(game), attrs, Extra::default()).await?;
+    let valid = validate_game(conn, Some(game), input, Extra::default()).await?;
     let mut tx = conn.begin().await?;
     let now = UtcDateTime::now();
     let header_changed = valid.played_at != game.played_at

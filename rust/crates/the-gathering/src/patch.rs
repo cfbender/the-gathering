@@ -36,7 +36,23 @@ impl<T> Patch<T> {
     }
 }
 
+impl<T> From<Option<T>> for Patch<T> {
+    /// A given value (`None` clears).
+    fn from(value: Option<T>) -> Self {
+        Self::Set(value)
+    }
+}
+
 impl Patch<String> {
+    /// A blank string clears the value; other strings are kept as given.
+    #[must_use]
+    pub fn nonblank(self) -> Self {
+        match self {
+            Self::Set(Some(value)) if value.trim().is_empty() => Self::Set(None),
+            other => other,
+        }
+    }
+
     /// Trims the value; a blank string clears it (forms submit `""` for an emptied field).
     #[must_use]
     pub fn trimmed(self) -> Self {

@@ -15,13 +15,16 @@ use serde_json::{Map, Value, json};
 use sqlx::SqliteConnection;
 
 use crate::catalog;
-use crate::changeset::Changeset;
 use crate::db::{self, IsoDate, UtcDateTime};
 use crate::games::DeckLinks;
 use crate::games::model::select_decks;
-use crate::games::{Deck, Player, deck, fold_name, load_games, player, record_game};
+use crate::games::{
+    Deck, DeckInput, GameInput, Player, PlayerInput, SeatInput, deck, fold_name, load_games,
+    player, record_game,
+};
+use crate::patch::Patch;
 use crate::state::AppState;
-use crate::validation::ValidationError;
+use crate::validation::{ValidationError, Validator};
 
 use super::ImportError;
 
@@ -329,7 +332,7 @@ pub fn decode(json: &str) -> Result<Map<String, Value>, String> {
     if valid { Ok(data) } else { Err(invalid()) }
 }
 
-/// `PortableFile.attrs/2`: only the listed fields.
+/// Only the listed fields of an exported row.
 fn attrs(row: &Value, fields: &[&str]) -> Map<String, Value> {
     fields
         .iter()
@@ -338,6 +341,15 @@ fn attrs(row: &Value, fields: &[&str]) -> Map<String, Value> {
                 .map(|value| ((*field).to_owned(), value.clone()))
         })
         .collect()
+}
+
+/// An exported record's fields as a typed input; a wrongly typed field names the record.
+fn typed<T: serde::de::DeserializeOwned>(
+    label: &str,
+    fields: Map<String, Value>,
+) -> Result<T, ImportError> {
+    serde_json::from_value(Value::Object(fields))
+        .map_err(|error| ImportError::Message(format!("{label}: {error}")))
 }
 
 // Catalog
@@ -580,10 +592,9 @@ async fn restore_player(
     conn: &mut SqliteConnection,
     row: &Value,
 ) -> Result<(Player, bool), ImportError> {
-    let attrs = Value::Object(attrs(row, &PLAYER_FIELDS));
-    let mut cs = Changeset::new(&attrs);
-    let name = crate::changeset::trim(cs.string("name").or(None));
-    let _ = cs.datetime("archived_at");
+    let input: PlayerInput = typed("Player", attrs(row, &PLAYER_FIELDS))?;
+    let mut cs = Validator::new();
+    let name = input.name.clone().trimmed().or(None);
     cs.required("name", name.as_ref());
     cs.length("name", name.as_deref(), Some(1), Some(100));
     cs.finish().map_err(|errors| invalid("Player", &errors))?;
@@ -591,7 +602,7 @@ async fn restore_player(
     if let Some(existing) = player::find_player_by_name(conn, &name).await? {
         return Ok((existing, false));
     }
-    let created = player::create_player(conn, &attrs, None)
+    let created = player::create_player(conn, &input, None)
         .await
         .map_err(|error| labeled(&format!("Player {name}"), error))?;
     Ok((created, true))
@@ -616,14 +627,15 @@ async fn restore_deck(
     let owner = reference(players, row.get("player_id"), "deck owner")?;
     let mut fields = attrs(row, &DECK_FIELDS);
     fields.insert("player_id".into(), json!(owner.id));
-    let attrs = Value::Object(fields);
-    let mut errors = match deck::validate_new_deck(conn, &attrs).await {
+    let skip_count = fields.remove("skip_count");
+    let input: DeckInput = typed("Deck", fields)?;
+    let mut errors = match deck::validate_new_deck(conn, &input).await {
         Ok(()) => ValidationError::new(),
         Err(crate::games::GamesError::Invalid(errors)) => errors,
         Err(other) => return Err(other.into()),
     };
-    // `cast(attrs, [:skip_count])`, `validate_required/2`, and `validate_number/3`.
-    let skip_count = match attrs.get("skip_count") {
+    // The skip count is required (0 when the export has none) and not negative.
+    let skip_count = match skip_count {
         None => Some(0),
         Some(value)
             if value.is_null() || value.as_str().is_some_and(|text| text.trim().is_empty()) =>
@@ -631,7 +643,10 @@ async fn restore_deck(
             errors.add("skip_count", "can't be blank");
             None
         }
-        Some(value) => match crate::changeset::cast_integer(value) {
+        Some(value) => match value
+            .as_i64()
+            .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+        {
             Some(count) if count < 0 => {
                 errors.add("skip_count", "must be greater than or equal to 0");
                 None
@@ -643,32 +658,26 @@ async fn restore_deck(
             }
         },
     };
-    if attrs.get("included_for_play").is_some_and(Value::is_null) {
+    if input.included_for_play == Patch::Set(None) {
         errors.add("included_for_play", "can't be blank");
     }
     if !errors.is_empty() {
         return Err(invalid("Deck", &errors));
     }
-    let name = attrs
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .trim()
-        .to_owned();
+    let given = |patch: &Patch<String>| match patch {
+        Patch::Set(Some(value)) => Some(value.clone()),
+        _ => None,
+    };
+    let name = given(&input.name).unwrap_or_default().trim().to_owned();
     if let Some(existing) = deck::find_deck(conn, owner.id, &name, None, None).await? {
-        let commander = attrs
-            .get("commander_name")
-            .and_then(Value::as_str)
-            .map(str::trim)
+        let commander = given(&input.commander_name)
+            .map(|name| name.trim().to_owned())
             .filter(|name| !name.is_empty());
-        let partner = attrs
-            .get("partner_name")
-            .and_then(Value::as_str)
-            .filter(|name| !name.trim().is_empty());
+        let partner = given(&input.partner_name).filter(|name| !name.trim().is_empty());
         if commander_pair(
             Some(&existing.commander_name),
             existing.partner_name.as_deref(),
-        ) != commander_pair(commander, partner)
+        ) != commander_pair(commander.as_deref(), partner.as_deref())
         {
             return Err(ImportError::Message(format!(
                 "{} already has a deck named {name} with different commanders. Rename one before importing.",
@@ -677,7 +686,7 @@ async fn restore_deck(
         }
         return Ok((existing, false));
     }
-    let created = deck::create_deck(conn, links, &attrs)
+    let created = deck::create_deck(conn, links, &input)
         .await
         .map_err(|error| labeled(&format!("Deck {name}"), error))?;
     let skip_count = skip_count.unwrap_or_default();
@@ -732,11 +741,10 @@ async fn restore_game(
             "eliminated_by_player_id".into(),
             json!(eliminated_by.map(|player| player.id)),
         );
-        seats.push(Value::Object(fields));
+        seats.push(typed::<SeatInput>("Game seat", fields)?);
     }
-    let mut fields = attrs(row, &GAME_FIELDS);
-    fields.insert("seats".into(), Value::Array(seats));
-    let attrs = Value::Object(fields);
+    let mut input: GameInput = typed("Game", attrs(row, &GAME_FIELDS))?;
+    input.seats = Some(seats).into();
     let portable_id = row
         .get("portable_id")
         .and_then(Value::as_str)
@@ -748,7 +756,7 @@ async fn restore_game(
     let external_id = row.get("external_id").and_then(Value::as_str);
     let identity = (portable_id, source, external_id);
     let label = format!("Game {portable_id}");
-    record_game::validate_portable(conn, &attrs, user_id, identity)
+    record_game::validate_portable(conn, &input, user_id, identity)
         .await
         .map_err(|error| labeled(&label, error))?;
     let portable = sqlx::query_scalar!(
@@ -779,7 +787,7 @@ async fn restore_game(
     if let Some(existing) = portable.or(external) {
         return Ok((existing, false));
     }
-    let game = record_game::insert_portable(conn, &attrs, user_id, identity)
+    let game = record_game::insert_portable(conn, &input, user_id, identity)
         .await
         .map_err(|error| labeled("Game", error))?;
     Ok((game.id, true))

@@ -6,11 +6,10 @@
 use std::collections::HashMap;
 
 use anyhow::Context;
-use serde_json::{Value, json};
 use time::macros::datetime;
 
 use crate::db::UtcDateTime;
-use crate::games::{Deck, Games};
+use crate::games::{Deck, DeckInput, GameInput, Games, PlayerInput, SeatInput};
 
 const PLAYERS: [&str; 5] = ["Cody", "Mara", "Theo", "Jules", "Ren"];
 
@@ -56,7 +55,7 @@ pub async fn run(games: &Games) -> anyhow::Result<String> {
     let mut player_ids = HashMap::new();
     for name in PLAYERS {
         let player = games
-            .find_or_create_player_by_name(name, &json!({}))
+            .find_or_create_player_by_name(name, &PlayerInput::default())
             .await
             .map_err(|error| anyhow::anyhow!("player {name}: {error:?}"))?;
         player_ids.insert(name, player.id);
@@ -69,7 +68,11 @@ pub async fn run(games: &Games) -> anyhow::Result<String> {
             .find_or_create_deck(
                 owner_id,
                 name,
-                &json!({"commander_name": commander, "color_identity": colors}),
+                &DeckInput {
+                    commander_name: Some(commander.to_owned()).into(),
+                    color_identity: Some(colors.to_owned()).into(),
+                    ..DeckInput::default()
+                },
             )
             .await
             .map_err(|error| anyhow::anyhow!("deck {name}: {error:?}"))?;
@@ -81,10 +84,10 @@ pub async fn run(games: &Games) -> anyhow::Result<String> {
 
     let base = UtcDateTime::from_offset(datetime!(2025-11-01 19:00:00 UTC));
     for index in 0..GAMES {
-        let attrs = game(index, base, &player_ids, &decks_by_player)?;
+        let input = game(index, base, &player_ids, &decks_by_player)?;
         let external_id = format!("demo-stats-{}", index + 1);
         games
-            .find_or_create_game_by_external_id("csv", &external_id, &attrs)
+            .find_or_create_game_by_external_id("csv", &external_id, &input)
             .await
             .map_err(|error| anyhow::anyhow!("game {external_id}: {error:?}"))?;
     }
@@ -96,13 +99,13 @@ pub async fn run(games: &Games) -> anyhow::Result<String> {
     ))
 }
 
-/// The attributes of demo game `index`: four of the five players, rotating seats, two draws.
+/// Demo game `index`: four of the five players, rotating seats, two draws.
 fn game(
     index: usize,
     base: UtcDateTime,
     player_ids: &HashMap<&str, i64>,
     decks_by_player: &HashMap<&str, Vec<Deck>>,
-) -> anyhow::Result<Value> {
+) -> anyhow::Result<GameInput> {
     let absent = PLAYERS
         .get(index % PLAYERS.len())
         .context("absent player")?;
@@ -132,20 +135,22 @@ fn game(
         } else {
             None
         };
-        seats.push(json!({
-            "player_id": player_ids.get(name).context("player id")?,
-            "deck_id": deck.id,
-            "seat": seat,
-            "result": result,
-            "mvp_card_name": mvp,
-        }));
+        seats.push(SeatInput {
+            player_id: Some(*player_ids.get(name).context("player id")?).into(),
+            deck_id: Some(deck.id).into(),
+            seat: Some(i64::try_from(seat)?).into(),
+            result: Some(result.to_owned()).into(),
+            mvp_card_name: mvp.map(str::to_owned).into(),
+            ..SeatInput::default()
+        });
     }
 
     let days = i64::try_from(index * 7)?;
-    Ok(json!({
-        "played_at": base.plus(time::Duration::days(days)).to_db_string(),
-        "duration_minutes": 52 + (index * 17) % 71,
-        "turns": 7 + (index * 5) % 9,
-        "seats": seats,
-    }))
+    Ok(GameInput {
+        played_at: Some(base.plus(time::Duration::days(days))).into(),
+        duration_minutes: Some(i64::try_from(52 + (index * 17) % 71)?).into(),
+        turns: Some(i64::try_from(7 + (index * 5) % 9)?).into(),
+        seats: Some(seats).into(),
+        ..GameInput::default()
+    })
 }

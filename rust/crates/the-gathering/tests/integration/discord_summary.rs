@@ -113,12 +113,16 @@ async fn spellbot_ids_are_explicit_source_scoped_and_case_insensitive() {
         .find_or_create_game_by_external_id(
             "discord",
             &format!("spellbot:SB{}", local.id),
-            &ctx.attrs,
+            &support::input(ctx.attrs.clone()),
         )
         .await
         .unwrap();
     games
-        .find_or_create_game_by_external_id("csv", "spellbot:SB7654", &ctx.attrs)
+        .find_or_create_game_by_external_id(
+            "csv",
+            "spellbot:SB7654",
+            &support::input(ctx.attrs.clone()),
+        )
         .await
         .unwrap();
     assert_eq!(

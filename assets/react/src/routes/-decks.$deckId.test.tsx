@@ -83,7 +83,7 @@ describe("deck editor", () => {
     await waitFor(() => expect(patchRequest).toBeDefined())
     expect(typeof patchRequest?.body).toBe("string")
     const payload = JSON.parse(patchRequest!.body as string)
-    expect(payload.deck).toMatchObject({
+    expect(payload).toMatchObject({
       partner_card_id: null,
       partner_name: null,
       partner_printing_id: null,
@@ -125,7 +125,7 @@ describe("deck editor", () => {
           )
         }
         if (input === "/api/decks/42" && init?.method === "PATCH") {
-          const attrs = JSON.parse(init.body as string).deck
+          const attrs = JSON.parse(init.body as string)
           requests.push(attrs)
           saved = { ...saved, ...attrs }
           return response(saved)
@@ -207,7 +207,7 @@ describe("deck editor", () => {
             status: 502,
           })
         if (init?.method === "PATCH") {
-          patch = JSON.parse(init.body as string).deck
+          patch = JSON.parse(init.body as string)
           return response(deck)
         }
         return response([])

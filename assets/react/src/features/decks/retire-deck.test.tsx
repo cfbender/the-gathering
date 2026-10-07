@@ -38,9 +38,9 @@ function renderCard(initial: DeckDetail) {
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
       if (url === "/api/decks/42" && init?.method === "PATCH") {
-        const payload = JSON.parse(init.body as string) as { deck: { archived_at: string | null } }
-        patches.push(payload.deck)
-        return response({ ...initial, archived_at: payload.deck.archived_at })
+        const payload = JSON.parse(init.body as string) as { archived_at: string | null }
+        patches.push(payload)
+        return response({ ...initial, archived_at: payload.archived_at })
       }
       throw new Error(`unexpected request ${url}`)
     }),

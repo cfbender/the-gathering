@@ -46,7 +46,7 @@ async function ensurePlayer(draft: DraftSeat, players: PlayerSummary[]) {
   if (existing) return existing.id
   const created = await api<{ data: PlayerSummary }>("/api/players", {
     method: "POST",
-    body: JSON.stringify({ player: { name: draft.playerName.trim() } }),
+    body: JSON.stringify({ name: draft.playerName.trim() }),
   }).then((body) => body.data)
   players.push(created)
   return created.id
@@ -64,16 +64,14 @@ async function ensureDeck(draft: DraftSeat, playerId: number, decks: DeckSummary
   const created = await api<{ data: DeckSummary }>("/api/decks", {
     method: "POST",
     body: JSON.stringify({
-      deck: {
-        player_id: playerId,
-        name: draft.deckName.trim(),
-        commander_card_id: draft.commander?.catalog_id,
-        commander_name: draft.commander?.name,
-        partner_card_id: draft.partner?.catalog_id,
-        partner_name: draft.partner?.name,
-        color_identity: draft.colorIdentity,
-        decklist_url: draft.decklistUrl.trim() || null,
-      },
+      player_id: playerId,
+      name: draft.deckName.trim(),
+      commander_card_id: draft.commander?.catalog_id,
+      commander_name: draft.commander?.name,
+      partner_card_id: draft.partner?.catalog_id,
+      partner_name: draft.partner?.name,
+      color_identity: draft.colorIdentity,
+      decklist_url: draft.decklistUrl.trim() || null,
     }),
   }).then((body) => body.data)
   decks.push(created)
@@ -161,15 +159,13 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
       }
 
       const payload = {
-        game: {
-          format,
-          played_at: new Date(playedAt).toISOString(),
-          turns: turns ? Number(turns) : null,
-          duration_minutes: duration ? Number(duration) : null,
-          win_condition: winCondition || null,
-          notes: notes.trim() || null,
-          seats: payloadSeats,
-        },
+        format,
+        played_at: new Date(playedAt).toISOString(),
+        turns: turns ? Number(turns) : null,
+        duration_minutes: duration ? Number(duration) : null,
+        win_condition: winCondition || null,
+        notes: notes.trim() || null,
+        seats: payloadSeats,
       }
       const path = discordDraft
         ? `/api/discord/result-drafts/${discordDraft.id}`

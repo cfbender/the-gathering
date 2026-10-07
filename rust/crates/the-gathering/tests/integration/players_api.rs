@@ -47,7 +47,7 @@ async fn members_cannot_claim_an_account_or_discord_identity_through_patch() {
         .app
         .patch(
             &format!("/api/players/{}", ctx.drew.id),
-            json!({"player": {"name": "Drew!", "user_id": ctx.member.id, "discord_id": "1"}}),
+            json!({"name": "Drew!", "user_id": ctx.member.id, "discord_id": "1"}),
         )
         .await
         .assert_json(200);
@@ -72,7 +72,10 @@ async fn members_cannot_claim_an_account_or_discord_identity_through_post() {
     ctx.app.log_in(&ctx.member).await;
     let body = ctx
         .app
-        .post("/api/players", json!({"player": {"name": "Injected", "user_id": ctx.member.id, "discord_id": "victim-id"}}))
+        .post(
+            "/api/players",
+            json!({"name": "Injected", "user_id": ctx.member.id, "discord_id": "victim-id"}),
+        )
         .await
         .assert_json(201);
     let player = ctx
@@ -102,7 +105,7 @@ async fn members_cannot_rename_another_members_linked_player() {
     let path = format!("/api/players/{}", ctx.drew.id);
     assert_eq!(
         ctx.app
-            .patch(&path, json!({"player": {"name": "Nope"}}))
+            .patch(&path, json!({"name": "Nope"}))
             .await
             .assert_json(403),
         json!({"errors": {"detail": "Forbidden"}})
@@ -204,12 +207,12 @@ async fn player_paths_reject_non_integer_ids_and_players_with_history_cannot_be_
     ctx.app
         .patch(
             &format!("/api/players/{}", ctx.drew.id),
-            json!({"name": "no wrapper"}),
+            json!({"name": ["not", "a", "string"]}),
         )
         .await
         .assert_json(400);
     ctx.app
-        .post("/api/players", json!({"name": "no wrapper"}))
+        .post("/api/players", json!({"name": 5}))
         .await
         .assert_json(400);
 
@@ -238,4 +241,38 @@ async fn player_paths_reject_non_integer_ids_and_players_with_history_cannot_be_
     assert_eq!(detail["data"]["recent_games"][0]["format"], "commander");
     assert_eq!(detail["data"]["avatar_url"], serde_json::Value::Null);
     assert_eq!(detail["data"]["discord_id"], serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn archived_players_are_listed_only_on_request() {
+    let ctx = setup().await;
+    ctx.app.log_in(&ctx.member).await;
+    ctx.app
+        .patch(
+            &format!("/api/players/{}", ctx.wax.id),
+            json!({"archived_at": "2026-09-20T12:00:00Z"}),
+        )
+        .await
+        .assert_json(200);
+    let names = |body: serde_json::Value| -> Vec<String> {
+        body["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|player| player["name"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let active = names(ctx.app.get("/api/players").await.assert_json(200));
+    assert!(!active.contains(&"waxpoetik".to_owned()), "{active:?}");
+    let all = names(
+        ctx.app
+            .get("/api/players?include_archived=true")
+            .await
+            .assert_json(200),
+    );
+    assert!(all.contains(&"waxpoetik".to_owned()), "{all:?}");
+    ctx.app
+        .get("/api/players?include_archived=maybe")
+        .await
+        .assert_json(400);
 }

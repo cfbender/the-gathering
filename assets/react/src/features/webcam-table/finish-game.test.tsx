@@ -106,7 +106,7 @@ describe("FinishGame", () => {
     fireEvent.click(screen.getByRole("button", { name: "Record result" }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce())
-    expect(JSON.parse(fetch.mock.calls[0]![1].body as string).game.turns).toBe(9)
+    expect(JSON.parse(fetch.mock.calls[0]![1].body as string).turns).toBe(9)
   })
 
   it("records the result, then resets the room for a rematch without navigating", async () => {

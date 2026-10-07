@@ -1,12 +1,12 @@
-//! `Game.changeset/2` and `GamePlayer.changeset/2`: casting a game and its seats
-//! (`cast_assoc(:seats, required: true)`) with Ecto's rules and messages.
+//! Validating a game and its seats before they are stored.
 
-use serde_json::Value;
 use sqlx::SqliteConnection;
 
-use crate::changeset::{Changeset, cast_integer};
 use crate::db::UtcDateTime;
-use crate::validation::ValidationError;
+use crate::patch::Patch;
+use crate::validation::{ValidationError, Validator};
+
+use super::input::{GameInput, SeatInput};
 
 use super::GamesError;
 use super::model::{Game, GameFormat, GameResult, GameSource, Seat};
@@ -111,39 +111,35 @@ pub(crate) struct Extra<'a> {
     pub portable: Option<(&'a str, &'a str, Option<&'a str>)>,
 }
 
-fn seat_rows(value: &Value) -> Option<Vec<&Value>> {
-    match value {
-        Value::Array(rows) => Some(rows.iter().collect()),
-        // Phoenix form params: `%{"0" => ..., "1" => ...}`, in key order.
-        Value::Object(map) => {
-            let mut keyed: Vec<(&String, &Value)> = map.iter().collect();
-            keyed.sort_by_key(|(key, _)| (key.parse::<i64>().unwrap_or(i64::MAX), (*key).clone()));
-            Some(keyed.into_iter().map(|(_, row)| row).collect())
-        }
-        _ => None,
-    }
-}
-
-/// `GamePlayer.changeset/2` over `base`.
-fn cast_seat(base: &SeatFields, params: &Value) -> (SeatFields, ValidationError) {
-    let mut cs = Changeset::new(params);
+/// Applies `input` to `base` and validates the seat on its own.
+fn cast_seat(base: &SeatFields, input: &SeatInput) -> (SeatFields, ValidationError) {
+    let mut cs = Validator::new();
     let mut seat = base.clone();
-    seat.player_id = cs.integer("player_id").or(base.player_id);
-    seat.deck_id = cs.integer("deck_id").or(base.deck_id);
-    seat.seat = cs.integer("seat").or(base.seat);
-    seat.result = cs.string("result").or(base.result.clone());
-    seat.kills = cs.integer("kills").or(base.kills);
-    seat.eliminated_turn = cs.integer("eliminated_turn").or(base.eliminated_turn);
-    seat.eliminated_by_player_id = cs
-        .integer("eliminated_by_player_id")
+    seat.player_id = input.player_id.clone().or(base.player_id);
+    seat.deck_id = input.deck_id.clone().or(base.deck_id);
+    seat.seat = input.seat.clone().or(base.seat);
+    seat.result = input.result.clone().nonblank().or(base.result.clone());
+    seat.kills = input.kills.clone().or(base.kills);
+    seat.eliminated_turn = input.eliminated_turn.clone().or(base.eliminated_turn);
+    seat.eliminated_by_player_id = input
+        .eliminated_by_player_id
+        .clone()
         .or(base.eliminated_by_player_id);
-    seat.mvp_card_id = cs.string("mvp_card_id").or(base.mvp_card_id.clone());
-    seat.mvp_card_name = cs.string("mvp_card_name").or(base.mvp_card_name.clone());
-    seat.notes = cs.string("notes").or(base.notes.clone());
+    seat.mvp_card_id = input
+        .mvp_card_id
+        .clone()
+        .nonblank()
+        .or(base.mvp_card_id.clone());
+    seat.mvp_card_name = input
+        .mvp_card_name
+        .clone()
+        .nonblank()
+        .or(base.mvp_card_name.clone());
+    seat.notes = input.notes.clone().nonblank().or(base.notes.clone());
     cs.required_value("player_id", seat.player_id.as_ref());
     cs.required_value("seat", seat.seat.as_ref());
     cs.required("result", seat.result.as_ref());
-    // validate_number checks its options in order and reports only the first failure.
+    // Report only the first failing bound per number.
     if seat.seat.is_some_and(|number| number < 1) {
         cs.at_least("seat", seat.seat, 1);
     } else {
@@ -159,7 +155,7 @@ fn cast_seat(base: &SeatFields, params: &Value) -> (SeatFields, ValidationError)
     (seat, cs.finish().err().unwrap_or_default())
 }
 
-/// `Game.validate_seats/1`.
+/// Rules across the seats: count, distinct players, consecutive seat numbers, and results.
 fn validate_seats(errors: &mut ValidationError, seats: &[SeatFields], format: Option<&str>) {
     let count = seats.len();
     let mut player_ids: Vec<Option<i64>> = Vec::new();
@@ -229,39 +225,41 @@ async fn exists(conn: &mut SqliteConnection, table: &str, id: i64) -> Result<boo
     }
 }
 
-/// Casts and validates `attrs` onto `current` (or a new game), then applies the checks
-/// `RecordGame` adds: the creator exists and every deck belongs to its seat's player.
+/// Applies `input` to `current` (or a new game) and validates it, including the checks
+/// that need the database: the creator exists, every deck belongs to its seat's player, and
+/// seated players exist (reported per seat as `player: does not exist`).
 ///
-/// Seat params whose `id` matches none of the game's seats insert new rows; Ecto would also
-/// cast that foreign `id` onto the new row, which could collide with another game's seat,
-/// so it is ignored. Seats naming a player that does not exist get Ecto's
-/// `assoc_constraint` error (`player: does not exist`) instead of the raise SQLite's unnamed
-/// foreign-key errors caused in Elixir.
-pub(crate) async fn changeset(
+/// Seats whose `id` matches none of the game's seats insert new rows; the foreign `id` is
+/// ignored so it cannot collide with another game's seat.
+pub(crate) async fn validate_game(
     conn: &mut SqliteConnection,
     current: Option<&Game>,
-    attrs: &Value,
+    input: &GameInput,
     extra: Extra<'_>,
 ) -> Result<ValidGame, GamesError> {
-    let mut cs = Changeset::new(attrs);
-    let played_at = cs
-        .datetime("played_at")
+    let mut cs = Validator::new();
+    let played_at = input
+        .played_at
+        .clone()
         .or(current.map(|game| game.played_at));
-    let duration_minutes = cs
-        .integer("duration_minutes")
+    let duration_minutes = input
+        .duration_minutes
+        .clone()
         .or(current.and_then(|game| game.duration_minutes));
-    let turns = cs.integer("turns").or(current.and_then(|game| game.turns));
-    let win_condition = cs.string("win_condition").or(current
+    let turns = input.turns.clone().or(current.and_then(|game| game.turns));
+    let win_condition = input.win_condition.clone().nonblank().or(current
         .and_then(|game| game.win_condition)
         .map(|condition| condition.as_str().to_owned()));
-    let format = cs.string("format").or(Some(
+    let format = input.format.clone().nonblank().or(Some(
         current
             .map_or(GameFormat::Commander, |game| game.format)
             .as_str()
             .to_owned(),
     ));
-    let notes = cs
-        .string("notes")
+    let notes = input
+        .notes
+        .clone()
+        .nonblank()
         .or(current.and_then(|game| game.notes.clone()));
     let (mut source, mut external_id) = match current {
         Some(game) => (
@@ -301,37 +299,28 @@ pub(crate) async fn changeset(
     cs.greater_than("duration_minutes", duration_minutes, 0);
     cs.greater_than("turns", turns, 0);
 
-    // cast_assoc(:seats, required: true)
+    // Given seats replace the game's seats; each row updates the seat with its id.
     let existing: Vec<SeatFields> = current
         .map(|game| game.seats.iter().map(SeatFields::of).collect())
         .unwrap_or_default();
-    let (seats, seats_given) = match cs.raw("seats") {
-        None => (existing.clone(), false),
-        Some(Value::Null) => (Vec::new(), true),
-        Some(value) => {
-            if let Some(rows) = seat_rows(value) {
-                let mut seats = Vec::with_capacity(rows.len());
-                let mut row_errors = Vec::with_capacity(rows.len());
-                for row in rows {
-                    if !row.is_object() {
-                        cs.add_error("seats", "is invalid");
-                        continue;
-                    }
-                    let id = row.get("id").and_then(cast_integer);
-                    let base = id
-                        .and_then(|id| existing.iter().find(|seat| seat.existing_id == Some(id)))
-                        .cloned()
-                        .unwrap_or_else(SeatFields::new);
-                    let (seat, errors) = cast_seat(&base, row);
-                    seats.push(seat);
-                    row_errors.push(errors);
-                }
-                cs.errors.set_rows("seats", row_errors);
-                (seats, true)
-            } else {
-                cs.add_error("seats", "is invalid");
-                (existing.clone(), false)
+    let (seats, seats_given) = match &input.seats {
+        Patch::Unchanged => (existing.clone(), false),
+        Patch::Set(None) => (Vec::new(), true),
+        Patch::Set(Some(rows)) => {
+            let mut seats = Vec::with_capacity(rows.len());
+            let mut row_errors = Vec::with_capacity(rows.len());
+            for row in rows {
+                let base = row
+                    .id
+                    .and_then(|id| existing.iter().find(|seat| seat.existing_id == Some(id)))
+                    .cloned()
+                    .unwrap_or_else(SeatFields::new);
+                let (seat, errors) = cast_seat(&base, row);
+                seats.push(seat);
+                row_errors.push(errors);
             }
+            cs.errors.set_rows("seats", row_errors);
+            (seats, true)
         }
     };
     if seats.is_empty() && !cs.errors.has("seats") {
@@ -339,7 +328,7 @@ pub(crate) async fn changeset(
     }
     validate_seats(&mut cs.errors, &seats, format.as_deref());
 
-    // RecordGame: validate_user_exists(:created_by_user_id) and validate_deck_ownership/1.
+    // The creator exists and every deck belongs to its seat's player.
     let created_by_user_id = if current.is_none() {
         extra.created_by_user_id
     } else {
@@ -374,7 +363,7 @@ pub(crate) async fn changeset(
         );
     }
 
-    // Constraint errors only surface once everything else is valid, as with Repo.insert.
+    // Missing players are reported per seat once everything else is valid.
     if cs.is_valid() {
         let mut rows = Vec::with_capacity(seats.len());
         for seat in &seats {
@@ -482,13 +471,19 @@ mod tests {
         );
         let (_, errors) = cast_seat(
             &SeatFields::new(),
-            &serde_json::json!({"player_id": "1", "seat": 0, "result": "x", "kills": 1.5}),
+            &serde_json::from_value(
+                serde_json::json!({"player_id": 1, "seat": 0, "result": "x", "kills": 12}),
+            )
+            .unwrap(),
         );
         assert_eq!(
             errors.messages("seat"),
             ["must be greater than or equal to 1"]
         );
         assert_eq!(errors.messages("result"), ["is invalid"]);
-        assert_eq!(errors.messages("kills"), ["is invalid"]);
+        assert_eq!(
+            errors.messages("kills"),
+            ["must be less than or equal to 9"]
+        );
     }
 }

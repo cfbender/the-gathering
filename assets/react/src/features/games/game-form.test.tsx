@@ -145,7 +145,7 @@ async function submitPayload(fetch: ReturnType<typeof vi.fn>) {
     ([input, init]) => input === "/api/games/44" && init?.method === "PATCH",
   )
   expect(call).toBeTruthy()
-  return JSON.parse(String(call?.[1]?.body)).game as {
+  return JSON.parse(String(call?.[1]?.body)) as {
     format: Game["format"]
     notes: string | null
     win_condition: string | null
@@ -388,7 +388,7 @@ describe("GameForm Discord handoff", () => {
     expect(atomicCalls).toHaveLength(1)
     const [, init] = atomicCalls[0]!
     expect(typeof init?.body).toBe("string")
-    const payload = JSON.parse(init?.body as string).game
+    const payload = JSON.parse(init?.body as string)
     expect(
       payload.seats.map((seat: { discord_id: string; result: string }) => [
         seat.discord_id,

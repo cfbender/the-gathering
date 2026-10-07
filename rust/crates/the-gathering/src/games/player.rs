@@ -1,13 +1,11 @@
 //! Players: listing, detail, identity administration, and `Player.changeset/2`.
 
-use serde_json::Value;
 use sqlx::SqliteConnection;
 
-use crate::changeset::{Changeset, trim};
 use crate::db::{self, UtcDateTime};
-use crate::validation::TAKEN;
-use crate::validation::ValidationError;
+use crate::validation::{TAKEN, ValidationError, Validator};
 
+use super::input::PlayerInput;
 use super::model::{Deck, GameFormat, GameResult, Player, select_decks, select_players};
 use super::{GamesError, Pagination, fold_name, user_exists};
 
@@ -139,31 +137,31 @@ pub async fn get_player_for_user(
         .await
 }
 
-fn positive(value: Option<&Value>, default: i64) -> i64 {
-    match value {
-        Some(Value::Number(number)) => number
-            .as_i64()
-            .filter(|value| *value > 0)
-            .unwrap_or(default),
-        Some(Value::String(text)) => text
-            .parse::<i64>()
-            .ok()
-            .filter(|value| *value > 0)
-            .unwrap_or(default),
-        _ => default,
-    }
+/// `GET /api/admin/players` parameters.
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+pub struct IdentityQuery {
+    /// Page number, from 1.
+    pub page: Option<i64>,
+    /// Rows per page (at most 100).
+    pub per_page: Option<i64>,
+    /// Matches player names, Discord ids, and usernames.
+    pub search: Option<String>,
 }
 
-/// `Games.list_player_identities/1`: search by name, Discord id, or username; paginated.
+/// Players with their linked account, searched by name, Discord id, or username; paginated.
 pub async fn list_player_identities(
     conn: &mut SqliteConnection,
-    params: &Value,
+    query: &IdentityQuery,
 ) -> Result<(Vec<PlayerIdentityRow>, Pagination), sqlx::Error> {
-    let page = positive(params.get("page"), 1);
-    let per_page = positive(params.get("per_page"), 50).min(100);
-    let search = params
-        .get("search")
-        .and_then(Value::as_str)
+    let page = query.page.filter(|page| *page > 0).unwrap_or(1);
+    let per_page = query
+        .per_page
+        .filter(|per_page| *per_page > 0)
+        .unwrap_or(50)
+        .min(100);
+    let search = query
+        .search
+        .as_deref()
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
@@ -241,22 +239,18 @@ fn unique_error(error: sqlx::Error) -> GamesError {
     }
 }
 
-/// `Games.create_player/2`: `name` and `archived_at` are cast; `discord_id` is taken as given
-/// and `user_id` comes from trusted callers.
+/// Creates a player; `discord_id` and `user_id` come from trusted callers.
 pub async fn create_player(
     conn: &mut SqliteConnection,
-    attrs: &Value,
+    input: &PlayerInput,
     user_id: Option<i64>,
 ) -> Result<Player, GamesError> {
-    let mut cs = Changeset::new(attrs);
-    let name = trim(cs.string("name").or(None));
-    let archived_at = cs.datetime("archived_at").or(None);
+    let mut cs = Validator::new();
+    let name = input.name.clone().trimmed().or(None);
+    let archived_at = input.archived_at.clone().or(None);
     cs.required("name", name.as_ref());
     cs.length("name", name.as_deref(), Some(1), Some(100));
-    let discord_id = attrs
-        .get("discord_id")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
+    let discord_id = input.discord_id.clone();
     if let Some(user_id) = user_id
         && !user_exists(conn, user_id).await?
     {
@@ -290,18 +284,15 @@ pub async fn create_player(
     })
 }
 
-/// `Games.update_player/2`: renames or (un)archives.
+/// Renames or (un)archives a player.
 pub async fn update_player(
     conn: &mut SqliteConnection,
     player: &Player,
-    attrs: &Value,
+    input: &PlayerInput,
 ) -> Result<Player, GamesError> {
-    let mut cs = Changeset::new(attrs);
-    let name = cs
-        .string("name")
-        .map(|name| name.trim().to_owned())
-        .or(Some(player.name.clone()));
-    let archived_at = cs.datetime("archived_at").or(player.archived_at);
+    let mut cs = Validator::new();
+    let name = input.name.clone().trimmed().or(Some(player.name.clone()));
+    let archived_at = input.archived_at.clone().or(player.archived_at);
     cs.required("name", name.as_ref());
     cs.length("name", name.as_deref(), Some(1), Some(100));
     cs.finish()?;
@@ -370,19 +361,21 @@ pub async fn find_player_by_name(
         .await
 }
 
-/// `Games.find_or_create_player_by_name/2`: `attrs` may carry `discord_id` or
-/// `archived_at`. A concurrent insert of the same name returns that player.
+/// Finds the player named `name`, or creates them from `input` (which may carry
+/// `discord_id` or `archived_at`). A concurrent insert of the same name returns that player.
 pub async fn find_or_create_player_by_name(
     conn: &mut SqliteConnection,
     name: &str,
-    attrs: &Value,
+    input: &PlayerInput,
 ) -> Result<Player, GamesError> {
     if let Some(player) = find_player_by_name(conn, name).await? {
         return Ok(player);
     }
-    let mut attrs = attrs.as_object().cloned().unwrap_or_default();
-    attrs.insert("name".into(), Value::String(name.to_owned()));
-    match create_player(conn, &Value::Object(attrs), None).await {
+    let input = PlayerInput {
+        name: crate::patch::Patch::Set(Some(name.to_owned())),
+        ..input.clone()
+    };
+    match create_player(conn, &input, None).await {
         Err(GamesError::Invalid(errors)) => match find_player_by_name(conn, name).await? {
             Some(player) => Ok(player),
             None => Err(GamesError::Invalid(errors)),

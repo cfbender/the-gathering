@@ -165,14 +165,12 @@ function CommanderForm({
       api<{ data: DeckSummary }>(deck ? `/api/decks/${deck.id}` : "/api/decks", {
         method: deck ? "PATCH" : "POST",
         body: JSON.stringify({
-          deck: {
-            ...commanderPayload(name, commander, partner, deck?.color_identity),
-            // Artwork-only edits must not replace a manually maintained color identity.
-            ...(deck && commander?.id === initialCommander?.id && partner?.id === initialPartner?.id
-              ? { color_identity: deck.color_identity }
-              : {}),
-            ...(!deck ? { player_id: playerId } : {}),
-          },
+          ...commanderPayload(name, commander, partner, deck?.color_identity),
+          // Artwork-only edits must not replace a manually maintained color identity.
+          ...(deck && commander?.id === initialCommander?.id && partner?.id === initialPartner?.id
+            ? { color_identity: deck.color_identity }
+            : {}),
+          ...(!deck ? { player_id: playerId } : {}),
         }),
       }).then((body) => body.data),
     onSuccess: async (saved) => {

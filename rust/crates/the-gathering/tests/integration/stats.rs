@@ -281,7 +281,7 @@ async fn recent_games_include_one_winner_first_portrait_per_seat_carrying_partne
         .games
         .update_deck(
             &f.decks["Bob"],
-            &json!({"partner_name": "Kangee, Sky Warden"}),
+            &support::input(json!({"partner_name": "Kangee, Sky Warden"})),
         )
         .await
         .unwrap();
@@ -597,7 +597,10 @@ async fn player_color_records_count_only_that_players_seats_and_merge_decks_by_c
     f.app
         .state
         .games
-        .update_deck(&rats, &json!({"archived_at": "2026-05-01T00:00:00Z"}))
+        .update_deck(
+            &rats,
+            &support::input(json!({"archived_at": "2026-05-01T00:00:00Z"})),
+        )
         .await
         .unwrap();
     let retired = f.player("Alice", json!({})).await;
@@ -1102,7 +1105,7 @@ async fn commander_art_comes_from_the_commanders_most_played_deck() {
         .games
         .update_deck(
             &f.decks["Alice"],
-            &json!({"commander_printing_id": "kangee-alt"}),
+            &support::input(json!({"commander_printing_id": "kangee-alt"})),
         )
         .await
         .unwrap();

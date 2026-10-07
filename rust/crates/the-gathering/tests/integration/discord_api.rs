@@ -366,7 +366,7 @@ async fn saving_creates_the_discord_identities_and_game_atomically_ignores_forge
         .app
         .post(
             &format!("/api/discord/result-drafts/{draft}"),
-            json!({"game": forged}),
+            json!(forged),
         )
         .await
         .assert_json(201);
@@ -410,7 +410,7 @@ async fn saving_creates_the_discord_identities_and_game_atomically_ignores_forge
     ctx.app
         .post(
             &format!("/api/discord/result-drafts/{second}"),
-            json!({"game": payload()}),
+            json!(payload()),
         )
         .await
         .assert_json(404);
@@ -428,7 +428,7 @@ async fn invalid_game_data_rolls_back_new_players_and_decks_and_preserves_pendin
     ctx.app
         .post(
             &format!("/api/discord/result-drafts/{draft}"),
-            json!({"game": invalid}),
+            json!(invalid),
         )
         .await
         .assert_json(422);
@@ -447,7 +447,7 @@ async fn invalid_game_data_rolls_back_new_players_and_decks_and_preserves_pendin
     ctx.app
         .post(
             &format!("/api/discord/result-drafts/{draft}"),
-            json!({"game": payload()}),
+            json!(payload()),
         )
         .await
         .assert_json(201);
@@ -470,10 +470,7 @@ async fn rejects_changed_duplicate_or_missing_roster_identities_and_another_play
         let mut attrs = payload();
         attrs["seats"] = seats;
         ctx.app
-            .post(
-                &format!("/api/discord/result-drafts/{draft}"),
-                json!({"game": attrs}),
-            )
+            .post(&format!("/api/discord/result-drafts/{draft}"), json!(attrs))
             .await
             .assert_json(400);
     }
@@ -495,10 +492,7 @@ async fn rejects_changed_duplicate_or_missing_roster_identities_and_another_play
     let mut attrs = payload();
     attrs["seats"] = json!([with_deck, last]);
     ctx.app
-        .post(
-            &format!("/api/discord/result-drafts/{draft}"),
-            json!({"game": attrs}),
-        )
+        .post(&format!("/api/discord/result-drafts/{draft}"), json!(attrs))
         .await
         .assert_json(400);
     ctx.app
@@ -522,10 +516,7 @@ async fn links_require_authentication_and_owner_identity_and_expire_or_invalidat
     let other = ctx.app.unique_member().await;
     ctx.app.log_in(&other).await;
     ctx.app.get(&path).await.assert_json(404);
-    ctx.app
-        .post(&path, json!({"game": payload()}))
-        .await
-        .assert_json(404);
+    ctx.app.post(&path, json!(payload())).await.assert_json(404);
     let disabled = User {
         disabled_at: Some(UtcDateTime::now()),
         ..ctx.user.clone()
@@ -554,7 +545,7 @@ async fn links_require_authentication_and_owner_identity_and_expire_or_invalidat
     ctx.app
         .post(
             &format!("/api/discord/result-drafts/{draft}"),
-            json!({"game": payload()}),
+            json!(payload()),
         )
         .await
         .assert_json(404);

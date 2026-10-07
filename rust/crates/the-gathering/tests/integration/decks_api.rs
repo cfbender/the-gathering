@@ -65,7 +65,7 @@ async fn another_member_cannot_edit_delete_or_create_decks_for_a_linked_player()
     let path = format!("/api/decks/{}", ctx.deck.id);
     assert_eq!(
         ctx.app
-            .patch(&path, json!({"deck": {"name": "Stolen"}}))
+            .patch(&path, json!({"name": "Stolen"}))
             .await
             .assert_json(403),
         json!({"errors": {"detail": "Forbidden"}})
@@ -74,7 +74,10 @@ async fn another_member_cannot_edit_delete_or_create_decks_for_a_linked_player()
     ctx.app.delete(&path).await.assert_json(403);
     assert!(deck(&ctx, ctx.deck.id).await.is_some());
     ctx.app
-        .post("/api/decks", json!({"deck": {"player_id": ctx.owner_player.id, "name": "Planted", "commander_name": "X"}}))
+        .post(
+            "/api/decks",
+            json!({"player_id": ctx.owner_player.id, "name": "Planted", "commander_name": "X"}),
+        )
         .await
         .assert_json(403);
 }
@@ -142,7 +145,7 @@ async fn the_linked_member_and_administrators_can_edit_the_deck() {
     ctx.app.log_in(&ctx.owner).await;
     let body = ctx
         .app
-        .patch(&path, json!({"deck": {"name": "Krenko, Mob Boss"}}))
+        .patch(&path, json!({"name": "Krenko, Mob Boss"}))
         .await
         .assert_json(200);
     assert_eq!(body["data"]["name"], "Krenko, Mob Boss");
@@ -150,7 +153,7 @@ async fn the_linked_member_and_administrators_can_edit_the_deck() {
     ctx.app.log_in(&ctx.admin).await;
     let body = ctx
         .app
-        .patch(&path, json!({"deck": {"name": "Krenko!"}}))
+        .patch(&path, json!({"name": "Krenko!"}))
         .await
         .assert_json(200);
     assert_eq!(body["data"]["name"], "Krenko!");
@@ -164,7 +167,7 @@ async fn the_owner_can_exclude_a_deck_from_the_chooser_but_cannot_edit_its_skip_
         .app
         .patch(
             &format!("/api/decks/{}", ctx.deck.id),
-            json!({"deck": {"included_for_play": false, "skip_count": 9}}),
+            json!({"included_for_play": false, "skip_count": 9}),
         )
         .await
         .assert_json(200);
@@ -182,10 +185,7 @@ async fn the_owner_retires_a_deck_which_hides_it_from_the_list_but_keeps_it_on_t
     let path = format!("/api/decks/{}", ctx.deck.id);
     let body = ctx
         .app
-        .patch(
-            &path,
-            json!({"deck": {"archived_at": "2026-09-21T03:00:00.123Z"}}),
-        )
+        .patch(&path, json!({"archived_at": "2026-09-21T03:00:00.123Z"}))
         .await
         .assert_json(200);
     assert_eq!(body["data"]["archived_at"], "2026-09-21T03:00:00Z");
@@ -204,7 +204,7 @@ async fn the_owner_retires_a_deck_which_hides_it_from_the_list_but_keeps_it_on_t
 
     let body = ctx
         .app
-        .patch(&path, json!({"deck": {"archived_at": null}}))
+        .patch(&path, json!({"archived_at": null}))
         .await
         .assert_json(200);
     assert_eq!(body["data"]["archived_at"], Value::Null);
@@ -222,7 +222,7 @@ async fn members_cannot_edit_decks_of_unclaimed_guest_players() {
         ctx.app
             .patch(
                 &format!("/api/decks/{}", ctx.guest_deck.id),
-                json!({"deck": {"name": "Tyvar Kell"}})
+                json!({"name": "Tyvar Kell"})
             )
             .await
             .assert_json(403),
@@ -248,7 +248,7 @@ async fn patch_cannot_transfer_an_owned_or_guest_deck_and_historical_stats_remai
         .app
         .patch(
             &format!("/api/decks/{}", ctx.deck.id),
-            json!({"deck": {"player_id": ctx.guest.id}}),
+            json!({"player_id": ctx.guest.id}),
         )
         .await
         .assert_json(200);
@@ -269,7 +269,7 @@ async fn patch_cannot_transfer_an_owned_or_guest_deck_and_historical_stats_remai
         ctx.app
             .patch(
                 &format!("/api/decks/{}", ctx.guest_deck.id),
-                json!({"deck": {"player_id": ctx.owner_player.id}})
+                json!({"player_id": ctx.owner_player.id})
             )
             .await
             .assert_json(403),
@@ -289,8 +289,8 @@ async fn creating_a_deck_validates_like_the_changeset() {
         .app
         .post(
             "/api/decks",
-            json!({"deck": {"player_id": ctx.owner_player.id.to_string(), "name": " Goblins ", "commander_name": "Krenko",
-                            "decklist_url": "https://www.moxfield.com/decks/abc"}}),
+            json!({"player_id": ctx.owner_player.id, "name": " Goblins ", "commander_name": "Krenko",
+                            "decklist_url": "https://www.moxfield.com/decks/abc"}),
         )
         .await
         .assert_json(201);
@@ -301,10 +301,7 @@ async fn creating_a_deck_validates_like_the_changeset() {
 
     let errors = ctx
         .app
-        .post(
-            "/api/decks",
-            json!({"deck": {"name": "", "color_identity": "WW"}}),
-        )
+        .post("/api/decks", json!({"name": "", "color_identity": "WW"}))
         .await
         .assert_json(422);
     assert_eq!(
@@ -320,14 +317,25 @@ async fn creating_a_deck_validates_like_the_changeset() {
         .app
         .post(
             "/api/decks",
-            json!({"deck": {"player_id": 999_999, "name": "x", "commander_name": "x"}}),
+            json!({"player_id": 999_999, "name": "x", "commander_name": "x"}),
         )
         .await;
     assert_eq!(
         errors.assert_json(422),
         json!({"errors": {"player": ["does not exist"]}})
     );
-    ctx.app.post("/api/decks", json!({})).await.assert_json(400);
+    assert_eq!(
+        ctx.app.post("/api/decks", json!({})).await.assert_json(422),
+        json!({"errors": {
+            "player_id": ["can't be blank"],
+            "name": ["can't be blank"],
+            "commander_name": ["can't be blank"],
+        }})
+    );
+    ctx.app
+        .post("/api/decks", json!({"player_id": "abc"}))
+        .await
+        .assert_json(400);
     ctx.app
         .get("/api/decks?player_id=abc")
         .await
@@ -363,7 +371,7 @@ async fn labels_links_to_the_configured_manavault_as_manavault() {
     ] {
         let body = ctx
             .app
-            .patch(&path, json!({"deck": {"decklist_url": url}}))
+            .patch(&path, json!({"decklist_url": url}))
             .await
             .assert_json(200);
         assert_eq!(body["data"]["decklist_source"], source, "{url}");
@@ -373,10 +381,10 @@ async fn labels_links_to_the_configured_manavault_as_manavault() {
         .app
         .post(
             "/api/decks",
-            json!({"deck": {
+            json!({
                 "player_id": ctx.owner_player.id, "name": "Vaulted", "commander_name": "Krenko",
                 "decklist_url": "https://manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"
-            }}),
+            }),
         )
         .await
         .assert_json(201);
@@ -392,10 +400,10 @@ async fn without_a_configured_manavault_only_manavault_app_is_manavault() {
     let body = app
         .post(
             "/api/decks",
-            json!({"deck": {
+            json!({
                 "player_id": player.id, "name": "Vaulted", "commander_name": "Krenko",
                 "decklist_url": "https://manavault.example.com/share/decks/AbCdEfGhIjKlMnOpQrStUvWx"
-            }}),
+            }),
         )
         .await
         .assert_json(201);

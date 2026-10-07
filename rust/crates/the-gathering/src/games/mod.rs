@@ -9,6 +9,7 @@ pub mod color_identity;
 pub mod deck;
 pub mod deck_picker;
 pub mod game;
+pub mod input;
 pub mod link_catalog_cards;
 pub mod list_games;
 pub mod merge_players;
@@ -27,7 +28,6 @@ use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
 
 use serde::Serialize;
-use serde_json::Value;
 use sqlx::SqliteConnection;
 
 use crate::accounts::User;
@@ -36,12 +36,14 @@ use crate::error::ApiError;
 use crate::validation::ValidationError;
 
 pub use self::deck_picker::{Candidate, DeckPick, Outcome};
+pub use self::input::{DeckInput, GameInput, PlayerInput, SeatInput};
+pub use self::list_games::GameFilters;
 pub use self::merge_players::LinkPlan;
 pub use self::model::{
     Deck, DeckLinks, DecklistSource, Game, GameFormat, GameResult, GameSource, Player, Seat,
     get_deck, get_player, load_game, load_games,
 };
-pub use self::player::{PlayerDetail, PlayerIdentityRow, SeatGame};
+pub use self::player::{IdentityQuery, PlayerDetail, PlayerIdentityRow, SeatGame};
 pub use self::resolve_player::{PlayerIdentity, Resolution, ResolveError};
 pub use self::summary_image::{ArtFetcher, RenderError};
 pub use self::win_condition::WinCondition;
@@ -221,9 +223,9 @@ impl Games {
     /// `Games.list_player_identities/1` (`page`, `per_page`, `search`).
     pub async fn list_player_identities(
         &self,
-        params: &Value,
+        query: &IdentityQuery,
     ) -> Result<(Vec<PlayerIdentityRow>, Pagination), sqlx::Error> {
-        player::list_player_identities(&mut *self.pool.acquire().await?, params).await
+        player::list_player_identities(&mut *self.pool.acquire().await?, query).await
     }
 
     /// `Games.unlink_player_identity/1`.
@@ -234,10 +236,10 @@ impl Games {
     /// `Games.create_player/2`.
     pub async fn create_player(
         &self,
-        attrs: &Value,
+        input: &PlayerInput,
         user_id: Option<i64>,
     ) -> Result<Player, GamesError> {
-        write_tx!(self, |conn| player::create_player(conn, attrs, user_id)
+        write_tx!(self, |conn| player::create_player(conn, input, user_id)
             .await)
     }
 
@@ -245,9 +247,9 @@ impl Games {
     pub async fn update_player(
         &self,
         player: &Player,
-        attrs: &Value,
+        input: &PlayerInput,
     ) -> Result<Player, GamesError> {
-        write_tx!(self, |conn| player::update_player(conn, player, attrs)
+        write_tx!(self, |conn| player::update_player(conn, player, input)
             .await)
     }
 
@@ -283,10 +285,10 @@ impl Games {
     pub async fn find_or_create_player_by_name(
         &self,
         name: &str,
-        attrs: &Value,
+        input: &PlayerInput,
     ) -> Result<Player, GamesError> {
         write_tx!(self, |conn| player::find_or_create_player_by_name(
-            conn, name, attrs
+            conn, name, input
         )
         .await)
     }
@@ -346,18 +348,18 @@ impl Games {
     }
 
     /// `Games.create_deck/1`.
-    pub async fn create_deck(&self, attrs: &Value) -> Result<Deck, GamesError> {
-        write_tx!(self, |conn| deck::create_deck(conn, &self.links, attrs)
+    pub async fn create_deck(&self, input: &DeckInput) -> Result<Deck, GamesError> {
+        write_tx!(self, |conn| deck::create_deck(conn, &self.links, input)
             .await)
     }
 
     /// `Games.update_deck/2`.
-    pub async fn update_deck(&self, deck: &Deck, attrs: &Value) -> Result<Deck, GamesError> {
+    pub async fn update_deck(&self, deck: &Deck, input: &DeckInput) -> Result<Deck, GamesError> {
         write_tx!(self, |conn| deck::update_deck(
             conn,
             &self.links,
             deck,
-            attrs
+            input
         )
         .await)
     }
@@ -395,14 +397,14 @@ impl Games {
         &self,
         player_id: i64,
         name: &str,
-        attrs: &Value,
+        input: &DeckInput,
     ) -> Result<Deck, GamesError> {
         write_tx!(self, |conn| deck::find_or_create_deck(
             conn,
             &self.links,
             player_id,
             name,
-            attrs
+            input
         )
         .await)
     }
@@ -425,7 +427,7 @@ impl Games {
     pub async fn pick_deck(
         &self,
         user: &User,
-        exclude_id: Option<&Value>,
+        exclude_id: Option<i64>,
         random: f64,
     ) -> Result<DeckPick, sqlx::Error> {
         deck_picker::random_deck(
@@ -454,7 +456,10 @@ impl Games {
     // Games
 
     /// `Games.list_games/1`.
-    pub async fn list_games(&self, opts: &Value) -> Result<(Vec<Game>, Pagination), sqlx::Error> {
+    pub async fn list_games(
+        &self,
+        opts: &GameFilters,
+    ) -> Result<(Vec<Game>, Pagination), sqlx::Error> {
         list_games::list_games(&mut *self.pool.acquire().await?, opts).await
     }
 
@@ -487,12 +492,12 @@ impl Games {
     /// `Games.create_game/2`.
     pub async fn create_game(
         &self,
-        attrs: &Value,
+        input: &GameInput,
         created_by_user_id: Option<i64>,
     ) -> Result<Game, GamesError> {
         write_tx!(self, |conn| record_game::create(
             conn,
-            attrs,
+            input,
             created_by_user_id
         )
         .await)
@@ -503,13 +508,13 @@ impl Games {
         &self,
         source: &str,
         external_id: &str,
-        attrs: &Value,
+        input: &GameInput,
     ) -> Result<Game, GamesError> {
         write_tx!(self, |conn| record_game::find_or_create_by_external_id(
             conn,
             source,
             external_id,
-            attrs
+            input
         )
         .await)
     }
@@ -519,20 +524,20 @@ impl Games {
         &self,
         source: &str,
         external_id: &str,
-        attrs: &Value,
+        input: &GameInput,
     ) -> Result<Game, GamesError> {
         write_tx!(self, |conn| record_game::upsert_by_external_id(
             conn,
             source,
             external_id,
-            attrs
+            input
         )
         .await)
     }
 
     /// `Games.update_game/2`.
-    pub async fn update_game(&self, game: &Game, attrs: &Value) -> Result<Game, GamesError> {
-        write_tx!(self, |conn| record_game::update(conn, game, attrs).await)
+    pub async fn update_game(&self, game: &Game, input: &GameInput) -> Result<Game, GamesError> {
+        write_tx!(self, |conn| record_game::update(conn, game, input).await)
     }
 
     /// `Games.delete_game/1`.

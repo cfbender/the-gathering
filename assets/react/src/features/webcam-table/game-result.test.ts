@@ -30,11 +30,11 @@ describe("buildGamePayload", () => {
       winCondition: "",
       notes: "",
     })
-    expect(payload.game.seats.map((seat) => seat.player_id)).toEqual([
+    expect(payload.seats.map((seat) => seat.player_id)).toEqual([
       100, 99, 98, 97, 96, 95, 94, 93, 92, 91,
     ])
-    expect(payload.game.seats.map((seat) => seat.seat)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-    expect(payload.game.seats.map((seat) => seat.result)).toEqual([
+    expect(payload.seats.map((seat) => seat.seat)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    expect(payload.seats.map((seat) => seat.result)).toEqual([
       "loss",
       "loss",
       "loss",
@@ -62,7 +62,7 @@ describe("buildGamePayload", () => {
       winCondition: "",
       notes: "",
     })
-    expect(payload.game.seats).toEqual([
+    expect(payload.seats).toEqual([
       { player_id: 12, deck_id: 41, seat: 1, result: "win" },
       { player_id: 27, deck_id: null, seat: 2, result: "loss" },
     ])
@@ -79,18 +79,16 @@ describe("buildGamePayload", () => {
     })
 
     expect(payload).toEqual({
-      game: {
-        format: "commander",
-        played_at: "2026-09-22T19:30:00.000Z",
-        duration_minutes: 73,
-        turns: 11,
-        win_condition: "commander_damage",
-        notes: "webcam table",
-        seats: [
-          { player_id: 12, deck_id: 41, seat: 1, result: "loss" },
-          { player_id: 27, deck_id: null, seat: 2, result: "win" },
-        ],
-      },
+      format: "commander",
+      played_at: "2026-09-22T19:30:00.000Z",
+      duration_minutes: 73,
+      turns: 11,
+      win_condition: "commander_damage",
+      notes: "webcam table",
+      seats: [
+        { player_id: 12, deck_id: 41, seat: 1, result: "loss" },
+        { player_id: 27, deck_id: null, seat: 2, result: "win" },
+      ],
     })
   })
 
@@ -104,6 +102,6 @@ describe("buildGamePayload", () => {
       notes: "",
     })
 
-    expect(payload.game.seats.map((seat) => seat.result)).toEqual(["draw", "draw"])
+    expect(payload.seats.map((seat) => seat.result)).toEqual(["draw", "draw"])
   })
 })

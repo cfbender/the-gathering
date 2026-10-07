@@ -60,7 +60,7 @@ export const isRetired = (deck: Pick<DeckSummary, "archived_at">) => deck.archiv
 export const setDeckRetired = (id: number, retired: boolean) =>
   api<{ data: DeckDetail }>(`/api/decks/${id}`, {
     method: "PATCH",
-    body: JSON.stringify({ deck: { archived_at: retired ? new Date().toISOString() : null } }),
+    body: JSON.stringify({ archived_at: retired ? new Date().toISOString() : null }),
   }).then((body) => body.data)
 
 /** Deletes a deck; its games move to `replacementDeckId` or, without one, keep no deck. */

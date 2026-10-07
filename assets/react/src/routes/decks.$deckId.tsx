@@ -190,18 +190,16 @@ function DeckEditFormReady({
       api<{ data: DeckDetail }>(`/api/decks/${deck.id}`, {
         method: "PATCH",
         body: JSON.stringify({
-          deck: {
-            name: name.trim(),
-            commander_card_id: details.commander?.catalog_id ?? null,
-            commander_name: details.commander?.name ?? null,
-            commander_printing_id: details.commander?.printing_id ?? null,
-            partner_card_id: details.partner?.catalog_id ?? null,
-            partner_name: details.partner?.name ?? null,
-            partner_printing_id: details.partner?.printing_id ?? null,
-            color_identity: details.colorIdentity,
-            decklist_url: details.decklistUrl.trim() || null,
-            included_for_play: includedForPlay,
-          },
+          name: name.trim(),
+          commander_card_id: details.commander?.catalog_id ?? null,
+          commander_name: details.commander?.name ?? null,
+          commander_printing_id: details.commander?.printing_id ?? null,
+          partner_card_id: details.partner?.catalog_id ?? null,
+          partner_name: details.partner?.name ?? null,
+          partner_printing_id: details.partner?.printing_id ?? null,
+          color_identity: details.colorIdentity,
+          decklist_url: details.decklistUrl.trim() || null,
+          included_for_play: includedForPlay,
         }),
       }).then((body) => body.data),
     onSuccess: (saved) => {

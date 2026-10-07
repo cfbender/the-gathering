@@ -3,7 +3,7 @@
 use std::sync::LazyLock;
 
 use serde::Serialize;
-use serde_json::{Value, json};
+
 use sqlx::{Connection, SqliteConnection};
 
 use crate::catalog::{self, Card};
@@ -12,6 +12,7 @@ use crate::validation::ValidationError;
 
 use super::GamesError;
 use super::deck::update_deck;
+use super::input::DeckInput;
 use super::model::{Deck, DeckLinks, select_decks};
 
 const DEFAULT_BATCH_SIZE: i64 = 100;
@@ -174,30 +175,30 @@ async fn link_deck(
     } else {
         deck.color_identity.clone()
     };
-    let mut attrs = json!({
-        "commander_name": commander_name,
-        "partner_name": partner_name,
-        "commander_card_id": commander.as_ref().map(|card| card.id.clone()),
-        "partner_card_id": deck.partner_card_id.clone().or_else(|| partner.as_ref().map(|card| card.id.clone())),
-        "color_identity": color_identity,
-    });
-    if split
-        && deck.name == deck.commander_name
-        && let Value::Object(map) = &mut attrs
-    {
-        map.insert(
-            "name".into(),
-            Value::String(format!(
-                "{commander_name} / {}",
-                partner_name.clone().unwrap_or_default()
-            )),
-        );
+    let mut input = DeckInput {
+        commander_name: Some(commander_name.clone()).into(),
+        partner_name: partner_name.clone().into(),
+        commander_card_id: commander.as_ref().map(|card| card.id.clone()).into(),
+        partner_card_id: deck
+            .partner_card_id
+            .clone()
+            .or_else(|| partner.as_ref().map(|card| card.id.clone()))
+            .into(),
+        color_identity: Some(color_identity.clone()).into(),
+        ..DeckInput::default()
+    };
+    if split && deck.name == deck.commander_name {
+        input.name = Some(format!(
+            "{commander_name} / {}",
+            partner_name.clone().unwrap_or_default()
+        ))
+        .into();
     }
     let names = unmatched(&[
         (Some(commander_name.as_str()), commander.as_ref()),
         (partner_name.as_deref(), partner.as_ref()),
     ]);
-    match update_deck(conn, links, deck, &attrs).await {
+    match update_deck(conn, links, deck, &input).await {
         Ok(_) => Ok(ItemResult {
             split,
             linked: commander.is_some(),

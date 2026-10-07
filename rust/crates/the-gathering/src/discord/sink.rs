@@ -7,10 +7,12 @@
 use std::collections::HashSet;
 
 use futures_util::future::BoxFuture;
-use serde_json::{Map, Value, json};
+
 use sqlx::{Connection, SqliteConnection};
 
-use crate::games::{self, GamesError, ResolveError as PlayerError};
+use crate::games::{
+    self, DeckInput, GameInput, GamesError, ResolveError as PlayerError, SeatInput,
+};
 
 use super::report::{GameReport, ReportDetails, ReportPlayer};
 
@@ -142,29 +144,27 @@ impl Sink for GamesSink {
 
 async fn persist(conn: &mut SqliteConnection, report: &GameReport) -> Result<i64, SinkError> {
     let seats = build_seats(conn, report).await?;
-    let mut attrs = Map::new();
+    let mut input = GameInput {
+        played_at: Some(report.played_at).into(),
+        seats: Some(seats).into(),
+        ..GameInput::default()
+    };
     if let Some(details) = &report.details {
-        attrs.insert("win_condition".into(), json!(details.win_condition));
-        attrs.insert("turns".into(), json!(details.turns));
-        attrs.insert("duration_minutes".into(), json!(details.duration_minutes));
-        attrs.insert("notes".into(), json!(details.notes));
+        input.win_condition = details.win_condition.clone().into();
+        input.turns = details.turns.into();
+        input.duration_minutes = details.duration_minutes.into();
+        input.notes = details.notes.clone().into();
     }
-    attrs.insert("played_at".into(), json!(report.played_at));
-    attrs.insert("seats".into(), Value::Array(seats));
-    let game = games::record_game::upsert_by_external_id(
-        conn,
-        "discord",
-        &report.external_id,
-        &Value::Object(attrs),
-    )
-    .await?;
+    let game =
+        games::record_game::upsert_by_external_id(conn, "discord", &report.external_id, &input)
+            .await?;
     Ok(game.id)
 }
 
 async fn build_seats(
     conn: &mut SqliteConnection,
     report: &GameReport,
-) -> Result<Vec<Value>, SinkError> {
+) -> Result<Vec<SeatInput>, SinkError> {
     let winners: HashSet<&str> = report
         .winner_discord_ids
         .iter()
@@ -186,17 +186,19 @@ async fn build_seats(
             .details
             .as_ref()
             .and_then(|details| details.kills.get(&reported.discord_id).copied().flatten());
-        let mut seat = Map::new();
-        seat.insert("player_id".into(), json!(player.id));
-        seat.insert("deck_id".into(), json!(deck_id));
-        seat.insert("seat".into(), json!(index + 1));
-        seat.insert("kills".into(), json!(kills));
-        seat.insert("result".into(), json!(if won { "win" } else { "loss" }));
+        let mut seat = SeatInput {
+            player_id: Some(player.id).into(),
+            deck_id: deck_id.into(),
+            seat: i64::try_from(index + 1).ok().into(),
+            kills: kills.into(),
+            result: Some(if won { "win" } else { "loss" }.to_owned()).into(),
+            ..SeatInput::default()
+        };
         if won && let Some(details) = &report.details {
-            seat.insert("mvp_card_id".into(), json!(details.mvp_card_id));
-            seat.insert("mvp_card_name".into(), json!(details.mvp_card_name));
+            seat.mvp_card_id = details.mvp_card_id.clone().into();
+            seat.mvp_card_name = details.mvp_card_name.clone().into();
         }
-        seats.push(Value::Object(seat));
+        seats.push(seat);
     }
     Ok(seats)
 }
@@ -222,9 +224,16 @@ async fn find_or_create_deck(
                 .chars()
                 .take(100)
                 .collect();
-            let attrs = serde_json::to_value(attrs).map_err(|_| SinkError::InvalidPlayer)?;
+            let input = DeckInput {
+                commander_card_id: Some(attrs.commander_card_id.clone()).into(),
+                commander_name: Some(attrs.commander_name.clone()).into(),
+                partner_card_id: attrs.partner_card_id.clone().into(),
+                partner_name: attrs.partner_name.clone().into(),
+                color_identity: Some(attrs.color_identity.clone()).into(),
+                ..DeckInput::default()
+            };
             let deck =
-                games::deck::find_or_create_deck(conn, NO_URLS, player_id, &name, &attrs).await?;
+                games::deck::find_or_create_deck(conn, NO_URLS, player_id, &name, &input).await?;
             Ok(Some(deck.id))
         }
         None => match reported.commander_name.as_deref() {
@@ -235,7 +244,10 @@ async fn find_or_create_deck(
                     NO_URLS,
                     player_id,
                     commander,
-                    &json!({ "commander_name": commander }),
+                    &DeckInput {
+                        commander_name: Some(commander.to_owned()).into(),
+                        ..DeckInput::default()
+                    },
                 )
                 .await?;
                 Ok(Some(deck.id))

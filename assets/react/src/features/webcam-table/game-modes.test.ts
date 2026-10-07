@@ -72,13 +72,11 @@ describe("2HG turns and results", () => {
       winCondition: "",
       notes: "",
     }
-    const result = buildGamePayload(four, details, mode).game
+    const result = buildGamePayload(four, details, mode)
     expect(result.format).toBe(mode)
     expect(result.seats.map((seat) => seat.result)).toEqual(["loss", "loss", "win", "win"])
     expect(
-      buildGamePayload(four, { ...details, winner: "draw" }, mode).game.seats.map(
-        (seat) => seat.result,
-      ),
+      buildGamePayload(four, { ...details, winner: "draw" }, mode).seats.map((seat) => seat.result),
     ).toEqual(["draw", "draw", "draw", "draw"])
   })
 })

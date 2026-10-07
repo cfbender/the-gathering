@@ -248,10 +248,10 @@ async fn keys_do_not_authenticate_session_only_api_routes() {
         "authorization",
         format!("Bearer {}", ctx.token).parse().unwrap(),
     );
-    let body = json!({"game": {"played_at": "2026-09-20T18:00:00Z", "seats": [
+    let body = json!({"played_at": "2026-09-20T18:00:00Z", "seats": [
         {"player_id": ctx.me.id, "seat": 1, "result": "win"},
         {"player_id": ctx.alice.id, "seat": 2, "result": "loss"},
-    ]}});
+    ]});
     ctx.app
         .request_with(axum::http::Method::POST, "/api/games", Some(body), headers)
         .await

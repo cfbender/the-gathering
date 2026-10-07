@@ -1,14 +1,14 @@
-//! Decks: `Deck.changeset/2`, `Deck.update_changeset/2` (with `DeckPrintings.validate/1`),
-//! lookups by name or commander pairing, and `DeleteDeck`.
+//! Decks: validation (including chosen printings), lookups by name or commander pairing,
+//! and deletion.
 
-use serde_json::Value;
 use sqlx::{Connection, SqliteConnection};
 
 use crate::catalog;
-use crate::changeset::Changeset;
 use crate::db::{self, UtcDateTime};
 use crate::patch::Patch;
-use crate::validation::{TAKEN, ValidationError};
+use crate::validation::{TAKEN, ValidationError, Validator};
+
+use super::input::DeckInput;
 
 use super::color_identity;
 use super::model::{Deck, DeckLinks, DecklistSource, GameFormat, GameResult, Player, select_decks};
@@ -101,49 +101,66 @@ async fn printing_matches(
         .is_some_and(|printing| printing.oracle_id == card.oracle_id))
 }
 
-/// Casts and validates `attrs` onto `current` (or a new deck when `None`).
-async fn changeset(
+/// Applies `input` to `current` (or a new deck when `None`) and validates it.
+async fn validate_deck(
     conn: &mut SqliteConnection,
     current: Option<&Deck>,
-    attrs: &Value,
+    input: &DeckInput,
 ) -> Result<Fields, GamesError> {
     let base = current.map_or_else(Fields::new, Fields::of);
-    let mut cs = Changeset::new(attrs);
+    let mut cs = Validator::new();
     let mut fields = base.clone();
     if current.is_none() {
-        fields.player_id = cs.integer("player_id").or(base.player_id);
+        fields.player_id = input.player_id.clone().or(base.player_id);
     }
-    fields.name = cs
-        .string("name")
-        .map(|name| name.trim().to_owned())
-        .or(base.name.clone());
-    fields.commander_card_id = cs
-        .string("commander_card_id")
+    fields.name = input.name.clone().trimmed().or(base.name.clone());
+    fields.commander_card_id = input
+        .commander_card_id
+        .clone()
+        .nonblank()
         .or(base.commander_card_id.clone());
-    fields.commander_name = cs
-        .string("commander_name")
-        .map(|name| name.trim().to_owned())
+    fields.commander_name = input
+        .commander_name
+        .clone()
+        .trimmed()
         .or(base.commander_name.clone());
-    fields.commander_printing_id = cs
-        .string("commander_printing_id")
+    fields.commander_printing_id = input
+        .commander_printing_id
+        .clone()
+        .nonblank()
         .or(base.commander_printing_id.clone());
-    fields.partner_card_id = cs
-        .string("partner_card_id")
+    fields.partner_card_id = input
+        .partner_card_id
+        .clone()
+        .nonblank()
         .or(base.partner_card_id.clone());
-    fields.partner_name = cs.string("partner_name").or(base.partner_name.clone());
-    fields.partner_printing_id = cs
-        .string("partner_printing_id")
+    fields.partner_name = input
+        .partner_name
+        .clone()
+        .nonblank()
+        .or(base.partner_name.clone());
+    fields.partner_printing_id = input
+        .partner_printing_id
+        .clone()
+        .nonblank()
         .or(base.partner_printing_id.clone());
-    fields.color_identity = cs.string("color_identity").or(base.color_identity.clone());
-    fields.decklist_url = cs.string("decklist_url").or(base.decklist_url.clone());
-    fields.archived_at = cs.datetime("archived_at").or(base.archived_at);
-    // `included_for_play: null` would insert NULL into a NOT NULL column (a raise in
-    // Elixir); it keeps the current value instead.
-    if let Patch::Set(Some(included)) = cs.boolean("included_for_play") {
+    fields.color_identity = input
+        .color_identity
+        .clone()
+        .nonblank()
+        .or(base.color_identity.clone());
+    fields.decklist_url = input
+        .decklist_url
+        .clone()
+        .nonblank()
+        .or(base.decklist_url.clone());
+    fields.archived_at = input.archived_at.clone().or(base.archived_at);
+    // The column is NOT NULL, so `included_for_play: null` keeps the current value.
+    if let Patch::Set(Some(included)) = input.included_for_play {
         fields.included_for_play = included;
     }
 
-    // DeckPrintings.validate/1
+    // A chosen printing must be a printing of the chosen card.
     for commander in [true, false] {
         let printing_field = if commander {
             "commander_printing_id"
@@ -170,7 +187,11 @@ async fn changeset(
             )
         };
         let identity_changed = &id != base_id || &name != base_name;
-        let supplied = cs.raw(printing_field).is_some();
+        let supplied = if commander {
+            input.commander_printing_id.is_set()
+        } else {
+            input.partner_printing_id.is_set()
+        };
         if identity_changed && !supplied {
             if commander {
                 fields.commander_printing_id = None;
@@ -251,14 +272,13 @@ fn unique_error(error: sqlx::Error) -> GamesError {
     }
 }
 
-/// `Games.create_deck/1`: casts `player_id`, names, commander/partner cards and printings,
-/// `color_identity`, `decklist_url`, `archived_at`, and `included_for_play`.
+/// Creates a deck.
 pub async fn create_deck(
     conn: &mut SqliteConnection,
     links: &DeckLinks,
-    attrs: &Value,
+    input: &DeckInput,
 ) -> Result<Deck, GamesError> {
-    let fields = changeset(conn, None, attrs).await?;
+    let fields = validate_deck(conn, None, input).await?;
     let source = decklist_source(links, &fields);
     let now = UtcDateTime::now();
     let id = sqlx::query_scalar!(
@@ -290,24 +310,23 @@ pub async fn create_deck(
         .ok_or(GamesError::NotFound)
 }
 
-/// Validates `attrs` for a new deck without inserting it (`Deck.changeset(%Deck{}, attrs)`
-/// and its `valid?`), for callers that must validate before looking for an existing deck
-/// (portable imports).
+/// Validates a new deck without inserting it, for callers that must validate before
+/// looking for an existing deck (portable imports).
 pub async fn validate_new_deck(
     conn: &mut SqliteConnection,
-    attrs: &Value,
+    input: &DeckInput,
 ) -> Result<(), GamesError> {
-    changeset(conn, None, attrs).await.map(|_| ())
+    validate_deck(conn, None, input).await.map(|_| ())
 }
 
-/// `Games.update_deck/2`: the same fields as [`create_deck`] except the owner.
+/// Updates a deck: the same fields as [`create_deck`] except the owner.
 pub async fn update_deck(
     conn: &mut SqliteConnection,
     links: &DeckLinks,
     deck: &Deck,
-    attrs: &Value,
+    input: &DeckInput,
 ) -> Result<Deck, GamesError> {
-    let fields = changeset(conn, Some(deck), attrs).await?;
+    let fields = validate_deck(conn, Some(deck), input).await?;
     let source = decklist_source(links, &fields);
     if fields == Fields::of(deck) && source == deck.decklist_source {
         return Ok(deck.clone());
@@ -441,25 +460,38 @@ fn commander_key(commander_name: Option<&str>, partner_name: Option<&str>) -> Ve
     key
 }
 
-/// `Games.find_or_create_deck/3`: `attrs` (an object) is merged with `player_id` and `name`
-/// when creating; its `commander_name`/`partner_name` drive the pairing fallback. A
-/// concurrent insert of the same name returns that deck.
+/// Finds the player's deck by name (or commander pairing), or creates it from `input` with
+/// this owner and name. A concurrent insert of the same name returns that deck.
 pub async fn find_or_create_deck(
     conn: &mut SqliteConnection,
     links: &DeckLinks,
     player_id: i64,
     name: &str,
-    attrs: &Value,
+    input: &DeckInput,
 ) -> Result<Deck, GamesError> {
-    let commander = attrs.get("commander_name").and_then(Value::as_str);
-    let partner = attrs.get("partner_name").and_then(Value::as_str);
-    if let Some(deck) = find_deck(conn, player_id, name, commander, partner).await? {
+    let given = |patch: &Patch<String>| match patch {
+        Patch::Set(Some(value)) => Some(value.clone()),
+        _ => None,
+    };
+    let commander = given(&input.commander_name);
+    let partner = given(&input.partner_name);
+    if let Some(deck) = find_deck(
+        conn,
+        player_id,
+        name,
+        commander.as_deref(),
+        partner.as_deref(),
+    )
+    .await?
+    {
         return Ok(deck);
     }
-    let mut merged = attrs.as_object().cloned().unwrap_or_default();
-    merged.insert("player_id".into(), Value::from(player_id));
-    merged.insert("name".into(), Value::String(name.to_owned()));
-    match create_deck(conn, links, &Value::Object(merged)).await {
+    let input = DeckInput {
+        player_id: Patch::Set(Some(player_id)),
+        name: Patch::Set(Some(name.to_owned())),
+        ..input.clone()
+    };
+    match create_deck(conn, links, &input).await {
         Err(GamesError::Invalid(errors)) => match deck_by_name(conn, player_id, name).await? {
             Some(deck) => Ok(deck),
             None => Err(GamesError::Invalid(errors)),

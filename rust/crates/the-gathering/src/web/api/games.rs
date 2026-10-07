@@ -1,28 +1,26 @@
 //! Players, decks, games, the deck chooser, player administration, and the API-key game
-//! history (`PlayerController`, `DeckController`, `GameController`,
-//! `DeckChooserController`, `AdminPlayerController`, `AdminUserController.link_player`,
-//! `V1.GameController`) with their JSON views.
+//! history, with their JSON views.
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use serde_json::{Map, Value, json};
+use serde::Deserialize;
+use serde_json::{Value, json};
 
 use crate::accounts::User;
 use crate::catalog::{ArtUrls, CardRef};
-use crate::changeset::cast_integer;
 use crate::error::{ApiError, ApiResult};
 use crate::games::{
-    self, Deck, DeckPick, Game, Outcome, Player, PlayerDetail, RenderError, Seat, SeatGame,
-    can_manage_player,
+    self, Deck, DeckInput, DeckPick, Game, GameFilters, GameInput, IdentityQuery, Outcome, Player,
+    PlayerDetail, PlayerInput, RenderError, Seat, SeatGame, can_manage_player,
 };
 use crate::local_time::{Zone, parse_date};
 use crate::state::AppState;
 use crate::web::auth::AuthUser;
-use crate::web::params::Params;
+use crate::web::extract::{JsonBody, PathParam, QueryParams};
 
-use super::{data, parse_id};
+use super::data;
 
 // JSON views
 
@@ -256,8 +254,8 @@ pub async fn render_game(state: &AppState, game: &Game) -> ApiResult<Value> {
     Ok(json!({ "data": game_json(game, &art) }))
 }
 
-async fn render_games(state: &AppState, params: &Value) -> ApiResult<Json<Value>> {
-    let (games, pagination) = state.games.list_games(params).await?;
+async fn render_games(state: &AppState, filters: &GameFilters) -> ApiResult<Json<Value>> {
+    let (games, pagination) = state.games.list_games(filters).await?;
     let art = art_urls(state, &game_card_refs(&games)).await?;
     Ok(Json(json!({
         "data": games.iter().map(|game| game_json(game, &art)).collect::<Vec<_>>(),
@@ -265,49 +263,41 @@ async fn render_games(state: &AppState, params: &Value) -> ApiResult<Json<Value>
     })))
 }
 
-fn take(attrs: &Value, keys: &[&str]) -> Value {
-    let object = attrs.as_object();
-    Value::Object(
-        keys.iter()
-            .filter_map(|key| {
-                object
-                    .and_then(|object| object.get(*key))
-                    .map(|value| ((*key).to_owned(), value.clone()))
-            })
-            .collect::<Map<String, Value>>(),
-    )
-}
-
-/// Ecto's `:id` cast of a path or body value: integers or numeric strings, else a 400.
-fn cast_id(value: &Value) -> ApiResult<i64> {
-    cast_integer(value).ok_or(ApiError::BadRequest)
-}
-
-fn include_archived(params: &Params) -> bool {
-    // `maybe_active/2` only skips the filter for a literal `true`, never a query string.
-    params.get("include_archived") == Some(&Value::Bool(true))
+/// `?include_archived=true` also lists archived players or decks.
+#[derive(Debug, Default, Deserialize)]
+pub struct ArchivedQuery {
+    #[serde(default)]
+    include_archived: bool,
 }
 
 // PlayerController
 
-/// Account and Discord identity are linked by trusted OAuth/import/admin paths only.
-const PLAYER_MEMBER_ATTRS: &[&str] = &["name", "archived_at"];
+/// A player as members create or edit it. Account and Discord identity are linked by
+/// trusted OAuth, import, and admin paths only.
+fn member_player(input: PlayerInput) -> PlayerInput {
+    PlayerInput {
+        discord_id: None,
+        ..input
+    }
+}
 
 /// `GET /api/players`.
 pub async fn players_index(
     State(state): State<AppState>,
-    params: Params,
+    QueryParams(query): QueryParams<ArchivedQuery>,
 ) -> ApiResult<Json<Value>> {
-    let players = state.games.list_players(include_archived(&params)).await?;
+    let players = state.games.list_players(query.include_archived).await?;
     Ok(data(players.iter().map(player_summary).collect::<Vec<_>>()))
 }
 
 /// `POST /api/players`.
-pub async fn players_create(State(state): State<AppState>, params: Params) -> ApiResult<Response> {
-    let attrs = params.object("player").ok_or(ApiError::BadRequest)?;
+pub async fn players_create(
+    State(state): State<AppState>,
+    JsonBody(input): JsonBody<PlayerInput>,
+) -> ApiResult<Response> {
     let player = state
         .games
-        .create_player(&take(attrs, PLAYER_MEMBER_ATTRS), None)
+        .create_player(&member_player(input), None)
         .await?;
     Ok((
         StatusCode::CREATED,
@@ -319,15 +309,15 @@ pub async fn players_create(State(state): State<AppState>, params: Params) -> Ap
 /// `GET /api/players/:id`.
 pub async fn players_show(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<i64>,
 ) -> ApiResult<Json<Value>> {
-    Ok(Json(render_player(&state, parse_id(&id)?).await?))
+    Ok(Json(render_player(&state, id).await?))
 }
 
-async fn manageable_player(state: &AppState, user: &User, id: &str) -> ApiResult<Player> {
+async fn manageable_player(state: &AppState, user: &User, id: i64) -> ApiResult<Player> {
     let player = state
         .games
-        .get_player(parse_id(id)?)
+        .get_player(id)
         .await?
         .ok_or(ApiError::NotFound)?;
     if can_manage_player(user, &player) {
@@ -341,33 +331,37 @@ async fn manageable_player(state: &AppState, user: &User, id: &str) -> ApiResult
 pub async fn players_update(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    params: Params,
+    PathParam(id): PathParam<i64>,
+    JsonBody(input): JsonBody<PlayerInput>,
 ) -> ApiResult<Json<Value>> {
-    let attrs = params.object("player").ok_or(ApiError::BadRequest)?;
-    let player = manageable_player(&state, &user, &id).await?;
+    let player = manageable_player(&state, &user, id).await?;
     let player = state
         .games
-        .update_player(&player, &take(attrs, PLAYER_MEMBER_ATTRS))
+        .update_player(&player, &member_player(input))
         .await?;
     Ok(Json(render_player(&state, player.id).await?))
+}
+
+/// The player to merge into.
+#[derive(Debug, Deserialize)]
+pub struct MergeTarget {
+    target_id: i64,
 }
 
 /// `POST /api/players/:id/merge`: folds the player into `target_id`.
 pub async fn players_merge(
     State(state): State<AppState>,
-    Path(id): Path<String>,
-    params: Params,
+    PathParam(id): PathParam<i64>,
+    JsonBody(MergeTarget { target_id }): JsonBody<MergeTarget>,
 ) -> ApiResult<Json<Value>> {
-    let target_id = params.get("target_id").ok_or(ApiError::BadRequest)?;
     let source = state
         .games
-        .get_player(parse_id(&id)?)
+        .get_player(id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let target = state
         .games
-        .get_player(cast_id(target_id)?)
+        .get_player(target_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let merged = state.games.merge_players(&source, &target).await?;
@@ -378,24 +372,32 @@ pub async fn players_merge(
 pub async fn players_delete(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<i64>,
 ) -> ApiResult<StatusCode> {
-    let player = manageable_player(&state, &user, &id).await?;
+    let player = manageable_player(&state, &user, id).await?;
     state.games.delete_player(&player).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 // DeckController
 
+/// `GET /api/decks` parameters.
+#[derive(Debug, Default, Deserialize)]
+pub struct DeckListQuery {
+    /// Only this player's decks.
+    player_id: Option<i64>,
+    #[serde(default)]
+    include_archived: bool,
+}
+
 /// `GET /api/decks` (`player_id` filters by owner).
-pub async fn decks_index(State(state): State<AppState>, params: Params) -> ApiResult<Json<Value>> {
-    let player_id = match params.get("player_id") {
-        None | Some(Value::Null) => None,
-        Some(value) => Some(cast_id(value)?),
-    };
+pub async fn decks_index(
+    State(state): State<AppState>,
+    QueryParams(query): QueryParams<DeckListQuery>,
+) -> ApiResult<Json<Value>> {
     let decks = state
         .games
-        .list_decks(include_archived(&params), player_id)
+        .list_decks(query.include_archived, query.player_id)
         .await?;
     let refs: Vec<CardRef> = decks
         .iter()
@@ -411,15 +413,16 @@ pub async fn decks_index(State(state): State<AppState>, params: Params) -> ApiRe
 }
 
 /// Creating a deck for another member's player is refused; an unknown player id falls
-/// through to the changeset's error.
-async fn authorize_owner(state: &AppState, user: &User, attrs: &Value) -> ApiResult<()> {
-    let Some(player_id) = attrs
-        .get("player_id")
-        .filter(|value| !value.is_null())
-        .and_then(cast_integer)
+/// through to validation.
+async fn authorize_owner(state: &AppState, user: &User, input: &DeckInput) -> ApiResult<()> {
+    let games::input::DeckInput {
+        player_id: crate::patch::Patch::Set(Some(player_id)),
+        ..
+    } = input
     else {
         return Ok(());
     };
+    let player_id = *player_id;
     match state.games.get_player(player_id).await? {
         Some(player) if !can_manage_player(user, &player) => Err(ApiError::Forbidden),
         _ => Ok(()),
@@ -430,11 +433,10 @@ async fn authorize_owner(state: &AppState, user: &User, attrs: &Value) -> ApiRes
 pub async fn decks_create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(input): JsonBody<DeckInput>,
 ) -> ApiResult<Response> {
-    let attrs = params.object("deck").ok_or(ApiError::BadRequest)?;
-    authorize_owner(&state, &user, attrs).await?;
-    let deck = state.games.create_deck(attrs).await?;
+    authorize_owner(&state, &user, &input).await?;
+    let deck = state.games.create_deck(&input).await?;
     Ok((
         StatusCode::CREATED,
         Json(render_deck(&state, deck.id).await?),
@@ -445,17 +447,13 @@ pub async fn decks_create(
 /// `GET /api/decks/:id`.
 pub async fn decks_show(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<i64>,
 ) -> ApiResult<Json<Value>> {
-    Ok(Json(render_deck(&state, parse_id(&id)?).await?))
+    Ok(Json(render_deck(&state, id).await?))
 }
 
-async fn manageable_deck(state: &AppState, user: &User, id: &str) -> ApiResult<Deck> {
-    let deck = state
-        .games
-        .get_deck(parse_id(id)?)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+async fn manageable_deck(state: &AppState, user: &User, id: i64) -> ApiResult<Deck> {
+    let deck = state.games.get_deck(id).await?.ok_or(ApiError::NotFound)?;
     if state.games.can_manage_deck(user, &deck).await? {
         Ok(deck)
     } else {
@@ -467,13 +465,19 @@ async fn manageable_deck(state: &AppState, user: &User, id: &str) -> ApiResult<D
 pub async fn decks_update(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    params: Params,
+    PathParam(id): PathParam<i64>,
+    JsonBody(input): JsonBody<DeckInput>,
 ) -> ApiResult<Json<Value>> {
-    let attrs = params.object("deck").ok_or(ApiError::BadRequest)?;
-    let deck = manageable_deck(&state, &user, &id).await?;
-    let deck = state.games.update_deck(&deck, attrs).await?;
+    let deck = manageable_deck(&state, &user, id).await?;
+    let deck = state.games.update_deck(&deck, &input).await?;
     Ok(Json(render_deck(&state, deck.id).await?))
+}
+
+/// `DELETE /api/decks/:id` parameters.
+#[derive(Debug, Default, Deserialize)]
+pub struct DeckDeleteQuery {
+    /// Another of the player's decks to move the deck's games to.
+    replacement_deck_id: Option<i64>,
 }
 
 /// `DELETE /api/decks/:id`: `replacement_deck_id` moves the deck's games to another of the
@@ -481,17 +485,16 @@ pub async fn decks_update(
 pub async fn decks_delete(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    params: Params,
+    PathParam(id): PathParam<i64>,
+    QueryParams(query): QueryParams<DeckDeleteQuery>,
 ) -> ApiResult<StatusCode> {
-    let deck = manageable_deck(&state, &user, &id).await?;
-    let replacement = match params.get("replacement_deck_id") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(text)) if text.is_empty() => None,
-        Some(value) => Some(
+    let deck = manageable_deck(&state, &user, id).await?;
+    let replacement = match query.replacement_deck_id {
+        None => None,
+        Some(id) => Some(
             state
                 .games
-                .get_deck(cast_id(value)?)
+                .get_deck(id)
                 .await?
                 .ok_or(ApiError::BadRequest)?,
         ),
@@ -500,33 +503,25 @@ pub async fn decks_delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// GameController
+// Games
 
-const GAME_MEMBER_ATTRS: &[&str] = &[
-    "played_at",
-    "duration_minutes",
-    "turns",
-    "win_condition",
-    "notes",
-    "seats",
-    "format",
-];
-
-/// `GET /api/games`: filtered and paginated (`ListGames`).
-pub async fn games_index(State(state): State<AppState>, params: Params) -> ApiResult<Json<Value>> {
-    render_games(&state, &params.0).await
+/// `GET /api/games`: filtered and paginated.
+pub async fn games_index(
+    State(state): State<AppState>,
+    QueryParams(filters): QueryParams<GameFilters>,
+) -> ApiResult<Json<Value>> {
+    render_games(&state, &filters).await
 }
 
 /// `POST /api/games`: the creator comes from the session; provenance cannot be set.
 pub async fn games_create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    JsonBody(input): JsonBody<GameInput>,
 ) -> ApiResult<Response> {
-    let attrs = params.object("game").ok_or(ApiError::BadRequest)?;
     let game = state
         .games
-        .create_game(&take(attrs, GAME_MEMBER_ATTRS), Some(user.id))
+        .create_game(&input.without_provenance(), Some(user.id))
         .await?;
     Ok((StatusCode::CREATED, Json(render_game(&state, &game).await?)).into_response())
 }
@@ -534,20 +529,16 @@ pub async fn games_create(
 /// `GET /api/games/:id`.
 pub async fn games_show(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<i64>,
 ) -> ApiResult<Json<Value>> {
-    let game = state
-        .games
-        .get_game(parse_id(&id)?)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    let game = state.games.get_game(id).await?.ok_or(ApiError::NotFound)?;
     Ok(Json(render_game(&state, &game).await?))
 }
 
 /// `GET /api/games/:id/summary`: the summary card PNG (by id, `SB…` SpellBot id).
 pub async fn games_summary(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<String>,
 ) -> ApiResult<Response> {
     let game = state.games.find_summary_game(&id).await?;
     let png = match games::render_summary(&state, &game).await {
@@ -569,12 +560,8 @@ pub async fn games_summary(
     Ok(response)
 }
 
-async fn manageable_game(state: &AppState, user: &User, id: &str) -> ApiResult<Game> {
-    let game = state
-        .games
-        .get_game(parse_id(id)?)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+async fn manageable_game(state: &AppState, user: &User, id: i64) -> ApiResult<Game> {
+    let game = state.games.get_game(id).await?.ok_or(ApiError::NotFound)?;
     if state.games.can_manage_game(user, &game).await? {
         Ok(game)
     } else {
@@ -586,14 +573,13 @@ async fn manageable_game(state: &AppState, user: &User, id: &str) -> ApiResult<G
 pub async fn games_update(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    params: Params,
+    PathParam(id): PathParam<i64>,
+    JsonBody(input): JsonBody<GameInput>,
 ) -> ApiResult<Json<Value>> {
-    let attrs = params.object("game").ok_or(ApiError::BadRequest)?;
-    let game = manageable_game(&state, &user, &id).await?;
+    let game = manageable_game(&state, &user, id).await?;
     let game = state
         .games
-        .update_game(&game, &take(attrs, GAME_MEMBER_ATTRS))
+        .update_game(&game, &input.without_provenance())
         .await?;
     Ok(Json(render_game(&state, &game).await?))
 }
@@ -602,25 +588,32 @@ pub async fn games_update(
 pub async fn games_delete(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<i64>,
 ) -> ApiResult<StatusCode> {
-    let game = manageable_game(&state, &user, &id).await?;
+    let game = manageable_game(&state, &user, id).await?;
     state.games.delete_game(&game).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-// DeckChooserController
+// Deck chooser
+
+/// `GET /api/deck-chooser` parameters.
+#[derive(Debug, Default, Deserialize)]
+pub struct ChooserQuery {
+    /// The previous suggestion, skipped when another deck is available.
+    exclude_id: Option<i64>,
+}
 
 /// `GET /api/deck-chooser` (`exclude_id` skips the previous suggestion).
 pub async fn deck_chooser_show(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    QueryParams(query): QueryParams<ChooserQuery>,
 ) -> ApiResult<Json<Value>> {
     let random: f64 = rand::random();
     let pick = state
         .games
-        .pick_deck(&user, params.get("exclude_id"), random)
+        .pick_deck(&user, query.exclude_id, random)
         .await?;
     Ok(match pick {
         DeckPick::PlayerNotLinked => data(json!({ "deck": null, "reason": "player_not_linked" })),
@@ -638,34 +631,35 @@ pub async fn deck_chooser_show(
     })
 }
 
+/// What the member did with a suggestion.
+#[derive(Debug, Deserialize)]
+pub struct OutcomeBody {
+    /// `played` or `skipped`.
+    outcome: String,
+}
+
 /// `POST /api/deck-chooser/:id/outcomes` (`outcome`: `played` or `skipped`).
 pub async fn deck_chooser_outcome(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    params: Params,
+    PathParam(id): PathParam<i64>,
+    JsonBody(body): JsonBody<OutcomeBody>,
 ) -> ApiResult<Json<Value>> {
-    let outcome = params
-        .str("outcome")
-        .and_then(Outcome::parse)
-        .ok_or(ApiError::BadRequest)?;
-    let deck = state
-        .games
-        .record_deck_outcome(&user, parse_id(&id)?, outcome)
-        .await?;
+    let outcome = Outcome::parse(&body.outcome).ok_or(ApiError::BadRequest)?;
+    let deck = state.games.record_deck_outcome(&user, id, outcome).await?;
     Ok(data(
         json!({ "deck_id": deck.id, "outcome": outcome.as_str(), "skip_count": deck.skip_count }),
     ))
 }
 
-// AdminPlayerController
+// Player administration
 
 /// `GET /api/admin/players` (`page`, `per_page`, `search`).
 pub async fn admin_players_index(
     State(state): State<AppState>,
-    params: Params,
+    QueryParams(query): QueryParams<IdentityQuery>,
 ) -> ApiResult<Json<Value>> {
-    let (players, meta) = state.games.list_player_identities(&params.0).await?;
+    let (players, meta) = state.games.list_player_identities(&query).await?;
     let rows: Vec<Value> = players
         .iter()
         .map(|row| {
@@ -684,63 +678,69 @@ pub async fn admin_players_index(
 /// `DELETE /api/admin/players/:id/identity`: detaches the account and Discord identity.
 pub async fn admin_players_unlink(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    PathParam(id): PathParam<i64>,
 ) -> ApiResult<StatusCode> {
     let player = state
         .games
-        .get_player(parse_id(&id)?)
+        .get_player(id)
         .await?
         .ok_or(ApiError::NotFound)?;
     state.games.unlink_player_identity(&player).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `PUT /api/admin/users/:id/player` (`AdminUserController.link_player`): makes `player_id`
-/// the account's player.
+/// The player to link an account to.
+#[derive(Debug, Deserialize)]
+pub struct LinkPlayer {
+    player_id: i64,
+}
+
+/// `PUT /api/admin/users/:id/player`: makes `player_id` the account's player.
 pub async fn admin_link_player(
     State(state): State<AppState>,
-    Path(id): Path<String>,
-    params: Params,
+    PathParam(id): PathParam<i64>,
+    JsonBody(LinkPlayer { player_id }): JsonBody<LinkPlayer>,
 ) -> ApiResult<Json<Value>> {
-    let player_id = params.get("player_id").ok_or(ApiError::BadRequest)?;
     let user = state
         .accounts
-        .get_user(parse_id(&id)?)
+        .get_user(id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let player = state
         .games
-        .get_player(cast_id(player_id)?)
+        .get_player(player_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let linked = state.games.link_player_to_user(&player, &user).await?;
     Ok(Json(render_player(&state, linked.id).await?))
 }
 
-// V1.GameController
+// API-key game history
 
-const V1_FILTERS: &[&str] = &[
-    "player_id",
-    "date_from",
-    "date_to",
-    "tz",
-    "page",
-    "per_page",
-];
-
-fn valid_positive(params: &Value, key: &str) -> ApiResult<()> {
-    match params.get(key) {
-        None => Ok(()),
-        Some(Value::String(text)) if text.parse::<i64>().is_ok_and(|value| value > 0) => Ok(()),
-        Some(_) => Err(ApiError::BadRequest),
-    }
+/// `GET /api/v1/games` parameters, kept as text so every invalid value is a 400.
+#[derive(Debug, Default, Deserialize)]
+pub struct V1Query {
+    player_id: Option<String>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    tz: Option<String>,
+    page: Option<String>,
+    per_page: Option<String>,
 }
 
-fn valid_date(params: &Value, key: &str) -> ApiResult<()> {
-    match params.get(key) {
-        None => Ok(()),
-        Some(Value::String(text)) if parse_date(text).is_some() => Ok(()),
-        Some(_) => Err(ApiError::BadRequest),
+fn positive(value: Option<&str>) -> ApiResult<Option<i64>> {
+    value
+        .map(|text| match text.parse::<i64>() {
+            Ok(number) if number > 0 => Ok(number),
+            _ => Err(ApiError::BadRequest),
+        })
+        .transpose()
+}
+
+fn valid_date(value: Option<String>) -> ApiResult<Option<String>> {
+    match value {
+        Some(text) if parse_date(&text).is_none() => Err(ApiError::BadRequest),
+        other => Ok(other),
     }
 }
 
@@ -751,33 +751,34 @@ fn valid_date(params: &Value, key: &str) -> ApiResult<()> {
 pub async fn v1_games_index(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    params: Params,
+    QueryParams(query): QueryParams<V1Query>,
 ) -> ApiResult<Json<Value>> {
-    let mut filters = take(&params.0, V1_FILTERS);
-    if filters.get("player_id").and_then(Value::as_str) == Some("me") {
-        let player = state
-            .games
-            .get_player_for_user(user.id)
-            .await?
-            .ok_or(ApiError::NotFound)?;
-        if let Value::Object(object) = &mut filters {
-            object.insert("player_id".into(), Value::String(player.id.to_string()));
-        }
+    let player_id = match query.player_id.as_deref() {
+        Some("me") => Some(
+            state
+                .games
+                .get_player_for_user(user.id)
+                .await?
+                .ok_or(ApiError::NotFound)?
+                .id,
+        ),
+        other => positive(other)?,
+    };
+    // An unknown zone would fall back to UTC and quietly shift the date window.
+    if let Some(zone) = &query.tz
+        && Zone::parse(Some(zone)).name() != zone
+    {
+        return Err(ApiError::BadRequest);
     }
-    for key in ["player_id", "page", "per_page"] {
-        valid_positive(&filters, key)?;
-    }
-    valid_date(&filters, "date_from")?;
-    valid_date(&filters, "date_to")?;
-    // `LocalTime.zone/1` falls back to UTC, which would quietly shift the date window.
-    if let Some(zone) = filters.get("tz") {
-        let valid = zone
-            .as_str()
-            .is_some_and(|zone| Zone::parse(Some(zone)).name() == zone);
-        if !valid {
-            return Err(ApiError::BadRequest);
-        }
-    }
+    let filters = GameFilters {
+        player_id,
+        page: positive(query.page.as_deref())?,
+        per_page: positive(query.per_page.as_deref())?,
+        date_from: valid_date(query.date_from)?,
+        date_to: valid_date(query.date_to)?,
+        tz: query.tz,
+        ..GameFilters::default()
+    };
     render_games(&state, &filters).await
 }
 
@@ -806,7 +807,7 @@ pub use self::decklist_handlers::{decklist_resolve, decklist_show, remote_decks_
 
 mod decklist_handlers {
     use axum::Json;
-    use axum::extract::{Path, State};
+    use axum::extract::State;
     use serde_json::{Value, json};
 
     use crate::catalog::{Card, Catalog, images};
@@ -815,9 +816,9 @@ mod decklist_handlers {
     use crate::error::{ApiError, ApiResult};
     use crate::state::AppState;
     use crate::validation::ValidationError;
-    use crate::web::api::{data, parse_id};
+    use crate::web::api::data;
     use crate::web::auth::AuthUser;
-    use crate::web::params::Params;
+    use crate::web::extract::{JsonBody, PathParam};
 
     fn invalid_url() -> ApiError {
         ApiError::Validation(ValidationError::single(
@@ -874,9 +875,8 @@ mod decklist_handlers {
     /// private upstream.
     pub async fn decklist_show(
         State(state): State<AppState>,
-        Path(deck_id): Path<String>,
+        PathParam(deck_id): PathParam<i64>,
     ) -> ApiResult<Json<Value>> {
-        let deck_id = parse_id(&deck_id)?;
         let url = sqlx::query_scalar!("SELECT decklist_url FROM decks WHERE id = ?", deck_id)
             .fetch_optional(&state.pool)
             .await?
@@ -912,13 +912,20 @@ mod decklist_handlers {
         })))
     }
 
+    /// The deck-list link to look up.
+    #[derive(Debug, serde::Deserialize)]
+    pub struct ResolveDecklist {
+        #[serde(default)]
+        url: Option<String>,
+    }
+
     /// `POST /api/decklists/resolve`: a deck list's public metadata.
     pub async fn decklist_resolve(
         State(state): State<AppState>,
-        params: Params,
+        JsonBody(body): JsonBody<ResolveDecklist>,
     ) -> ApiResult<Json<Value>> {
-        let url = params.str("url").ok_or_else(invalid_url)?;
-        match state.decklists.resolve(url).await {
+        let url = body.url.ok_or_else(invalid_url)?;
+        match state.decklists.resolve(&url).await {
             Ok(decklist) => Ok(data(decklist.to_json())),
             Err(DecklistError::InvalidUrl | DecklistError::UnsupportedUrl) => Err(invalid_url()),
             Err(DecklistError::NotFound | DecklistError::Private) => Err(ApiError::NotFound),

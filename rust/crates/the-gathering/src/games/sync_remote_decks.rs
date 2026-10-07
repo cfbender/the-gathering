@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 
 use lotus::decklist::Source;
-use serde_json::{Map, Value, json};
+
 use sqlx::SqliteConnection;
 
 use crate::accounts::User;
@@ -24,8 +24,10 @@ use crate::decklists::remote_decks::RemoteDeck;
 use crate::games::DeckLinks;
 use crate::state::AppState;
 
+use super::input::DeckInput;
 use super::model::{Deck, select_decks};
 use super::{GamesError, deck, fold_name, player};
+use crate::patch::Patch;
 
 /// A host that could not be listed.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -148,45 +150,45 @@ fn commander_names(remote: &RemoteDeck) -> (Option<&str>, Option<&str>) {
     (names.next(), names.next())
 }
 
-fn deck_attrs(
-    remote: &RemoteDeck,
-    player_id: i64,
-    summaries: &CardSummaries,
-) -> Map<String, Value> {
+fn deck_input(remote: &RemoteDeck, player_id: i64, summaries: &CardSummaries) -> DeckInput {
     let (commander_name, partner_name) = commander_names(remote);
     let commander = commander_name.and_then(|name| summaries.get(None, Some(name)));
     let partner = partner_name.and_then(|name| summaries.get(None, Some(name)));
-    let Value::Object(attrs) = json!({
-        "player_id": player_id,
-        "name": remote.name,
-        "commander_card_id": commander.map(|card| &card.id),
-        "commander_name": commander.map(|card| card.name.as_str()).or(commander_name),
-        "partner_card_id": partner.map(|card| &card.id),
-        "partner_name": partner.map(|card| card.name.as_str()).or(partner_name),
-        "color_identity": remote.color_identity.concat(),
-        "decklist_url": remote.url,
-    }) else {
-        return Map::new();
-    };
-    attrs
+    DeckInput {
+        player_id: Some(player_id).into(),
+        name: remote.name.clone().into(),
+        commander_card_id: commander.map(|card| card.id.clone()).into(),
+        commander_name: commander
+            .map(|card| card.name.as_str())
+            .or(commander_name)
+            .map(str::to_owned)
+            .into(),
+        partner_card_id: partner.map(|card| card.id.clone()).into(),
+        partner_name: partner
+            .map(|card| card.name.as_str())
+            .or(partner_name)
+            .map(str::to_owned)
+            .into(),
+        color_identity: Some(remote.color_identity.concat()).into(),
+        decklist_url: Some(remote.url.clone()).into(),
+        ..DeckInput::default()
+    }
 }
 
 /// Links an independently created deck: points it at the host and fills in what the owner
 /// never recorded, without renaming what they call it.
-fn link_attrs(deck: &Deck, attrs: &Map<String, Value>) -> Value {
-    let mut linked = Map::new();
-    if let Some(url) = attrs.get("decklist_url") {
-        linked.insert("decklist_url".into(), url.clone());
-    }
-    let mut fill = |key: &str, current_missing: bool| {
-        if current_missing && let Some(value) = attrs.get(key).filter(|value| !value.is_null()) {
-            linked.insert(key.to_owned(), value.clone());
-        }
+fn link_input(deck: &Deck, input: &DeckInput) -> DeckInput {
+    let fill = |value: &Patch<String>, current_missing: bool| match value {
+        Patch::Set(Some(value)) if current_missing => Patch::Set(Some(value.clone())),
+        _ => Patch::Unchanged,
     };
-    fill("commander_card_id", deck.commander_card_id.is_none());
-    fill("partner_card_id", deck.partner_card_id.is_none());
-    fill("color_identity", deck.color_identity.is_empty());
-    Value::Object(linked)
+    DeckInput {
+        decklist_url: input.decklist_url.clone(),
+        commander_card_id: fill(&input.commander_card_id, deck.commander_card_id.is_none()),
+        partner_card_id: fill(&input.partner_card_id, deck.partner_card_id.is_none()),
+        color_identity: fill(&input.color_identity, deck.color_identity.is_empty()),
+        ..DeckInput::default()
+    }
 }
 
 async fn sync(
@@ -225,34 +227,25 @@ async fn sync(
         updated: 0,
     };
     for remote in remote_decks {
-        let attrs = deck_attrs(remote, player_id, summaries);
+        let input = deck_input(remote, player_id, summaries);
         let (commander, partner) = commander_names(remote);
         let by_name = remote.name.as_deref().map(fold_name);
         let saved = if let Some(found) = state.by_url.get(&remote.url).cloned() {
-            (
-                deck::update_deck(conn, links, &found, &Value::Object(attrs)).await?,
-                false,
-            )
+            (deck::update_deck(conn, links, &found, &input).await?, false)
         } else if let Some(found) = by_name.and_then(|name| state.by_name.get(&name).cloned()) {
-            (
-                deck::update_deck(conn, links, &found, &Value::Object(attrs)).await?,
-                false,
-            )
+            (deck::update_deck(conn, links, &found, &input).await?, false)
         } else if let Some(found) = state
             .by_commanders
             .get(&commander_key(commander, partner))
             .cloned()
         {
-            let linked = link_attrs(&found, &attrs);
+            let linked = link_input(&found, &input);
             (
                 deck::update_deck(conn, links, &found, &linked).await?,
                 false,
             )
         } else {
-            (
-                deck::create_deck(conn, links, &Value::Object(attrs)).await?,
-                true,
-            )
+            (deck::create_deck(conn, links, &input).await?, true)
         };
         state.remember(saved.0, saved.1);
     }

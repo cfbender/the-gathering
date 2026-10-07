@@ -428,7 +428,7 @@ impl TestApp {
     ) -> the_gathering::games::Player {
         self.state
             .games
-            .create_player(&attrs, user_id)
+            .create_player(&input(attrs.clone()), user_id)
             .await
             .unwrap_or_else(|error| panic!("player fixture: {error:?}"))
     }
@@ -448,7 +448,7 @@ impl TestApp {
     pub async fn deck_with(&self, attrs: Value) -> the_gathering::games::Deck {
         self.state
             .games
-            .create_deck(&attrs)
+            .create_deck(&input(attrs.clone()))
             .await
             .unwrap_or_else(|error| panic!("deck fixture: {error:?}"))
     }
@@ -457,7 +457,7 @@ impl TestApp {
     pub async fn game(&self, attrs: Value, created_by: Option<i64>) -> the_gathering::games::Game {
         self.state
             .games
-            .create_game(&attrs, created_by)
+            .create_game(&input(attrs.clone()), created_by)
             .await
             .unwrap_or_else(|error| panic!("game fixture: {error:?}"))
     }

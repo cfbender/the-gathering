@@ -357,7 +357,7 @@ async fn link_player_needs_a_player_id_and_known_records() {
     let body = app
         .put(
             &format!("/api/admin/users/{}/player", member.id),
-            json!({"player_id": player.id.to_string()}),
+            json!({"player_id": player.id}),
         )
         .await;
     assert_eq!(body.assert_json(200)["data"]["user_id"], member.id);

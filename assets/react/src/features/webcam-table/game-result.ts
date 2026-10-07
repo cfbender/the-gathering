@@ -36,24 +36,22 @@ export function buildGamePayload(
           ?.map((seat) => seat.peer_id) ?? [])
       : [details.winner]
   return {
-    game: {
-      format: mode,
-      played_at: details.playedAt.toISOString(),
-      duration_minutes: details.duration ? Number(details.duration) : null,
-      turns: details.turns ? Number(details.turns) : null,
-      win_condition: details.winCondition || null,
-      notes: details.notes.trim() || null,
-      seats: participants.map((participant, index) => ({
-        player_id: participant.player_id,
-        deck_id: participant.deck_id ?? null,
-        seat: index + 1,
-        result:
-          details.winner === "draw"
-            ? ("draw" as const)
-            : winners.includes(participant.peer_id)
-              ? ("win" as const)
-              : ("loss" as const),
-      })),
-    },
+    format: mode,
+    played_at: details.playedAt.toISOString(),
+    duration_minutes: details.duration ? Number(details.duration) : null,
+    turns: details.turns ? Number(details.turns) : null,
+    win_condition: details.winCondition || null,
+    notes: details.notes.trim() || null,
+    seats: participants.map((participant, index) => ({
+      player_id: participant.player_id,
+      deck_id: participant.deck_id ?? null,
+      seat: index + 1,
+      result:
+        details.winner === "draw"
+          ? ("draw" as const)
+          : winners.includes(participant.peer_id)
+            ? ("win" as const)
+            : ("loss" as const),
+    })),
   }
 }

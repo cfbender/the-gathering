@@ -56,7 +56,7 @@ impl Sink for FailingSink {
             }
             the_gathering::games::player::create_player(
                 conn,
-                &json!({"name": "Rolled Back"}),
+                &support::input(json!({"name": "Rolled Back"})),
                 None,
             )
             .await

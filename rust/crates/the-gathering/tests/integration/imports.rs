@@ -692,7 +692,10 @@ async fn database_and_csv_changes_after_preview_make_the_revision_stale_without_
     let preview = preview_csv(&app, &csv).await;
     app.state
         .games
-        .update_game(&ctx.game, &json!({"notes": "Concurrent edit"}))
+        .update_game(
+            &ctx.game,
+            &support::input(json!({"notes": "Concurrent edit"})),
+        )
         .await
         .unwrap();
 
@@ -1676,7 +1679,10 @@ async fn round_trip_preserves_gameplay_unused_records_art_and_receipts_with_diff
 
     app.state
         .games
-        .update_game(&saved, &json!({"notes": "Edited on destination"}))
+        .update_game(
+            &saved,
+            &support::input(json!({"notes": "Edited on destination"})),
+        )
         .await
         .unwrap();
     let summary = import_portable(&app, &json).await.unwrap();
@@ -1795,7 +1801,9 @@ async fn same_name_commander_conflict_blocks_instead_of_replacing_destination_me
         .games
         .update_deck(
             &deck,
-            &json!({"commander_name": "Other Commander", "commander_card_id": null}),
+            &support::input(
+                json!({"commander_name": "Other Commander", "commander_card_id": null}),
+            ),
         )
         .await
         .unwrap();
@@ -2068,7 +2076,9 @@ async fn unchanged_values_are_skipped_despite_sheet_nicknames_and_different_turn
         .games
         .update_game(
             &ctx.game,
-            &json!({"seats": seats, "notes": "Win con: Swing Out\nCorrected history"}),
+            &support::input(
+                json!({"seats": seats, "notes": "Win con: Swing Out\nCorrected history"}),
+            ),
         )
         .await
         .unwrap();
@@ -2238,7 +2248,10 @@ async fn stale_notes_and_changed_input_invalidate_the_preview() {
     );
     app.state
         .games
-        .update_game(&ctx.game, &json!({"notes": "Edited after preview"}))
+        .update_game(
+            &ctx.game,
+            &support::input(json!({"notes": "Edited after preview"})),
+        )
         .await
         .unwrap();
     assert!(
