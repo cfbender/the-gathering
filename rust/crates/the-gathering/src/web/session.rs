@@ -41,7 +41,8 @@ impl Session {
         self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn from_cookie(cookie: &str, secret_key_base: &str) -> Self {
+    /// Decodes a signed session cookie; invalid cookies give an empty session.
+    pub fn from_cookie(cookie: &str, secret_key_base: &str) -> Self {
         let key = crypto::derive_key(secret_key_base, SIGNING_SALT);
         let data = crypto::verify(cookie, &key)
             .and_then(|payload| crypto::binary_to_term(&payload))
@@ -58,7 +59,8 @@ impl Session {
         Self(Arc::new(Mutex::new(Inner { data, changed: false, masked_csrf: None })))
     }
 
-    fn to_cookie(&self, secret_key_base: &str) -> String {
+    /// Signs the session into a cookie value.
+    pub fn to_cookie(&self, secret_key_base: &str) -> String {
         let inner = self.lock();
         let map: std::collections::HashMap<Term, Term> = inner
             .data

@@ -380,13 +380,14 @@ impl Accounts {
         allow_insecure: impl Fn(&str) -> bool,
     ) -> Result<User, ApiError> {
         let changes = user::profile_changes(user, attrs, allow_insecure)?;
+        let stored_key = self.stored_api_key(user.id).await?;
         let mut tx = db::begin(&self.pool).await?;
         let display_name = changes.display_name.clone().or(Some(user.display_name.clone())).unwrap_or_default();
         let moxfield = changes.moxfield_username.or(user.moxfield_username.clone());
         let archidekt = changes.archidekt_username.or(user.archidekt_username.clone());
         let manavault_url = changes.manavault_url.or(user.manavault_url.clone());
         let api_key: Option<String> = match changes.manavault_api_key {
-            Change::Unchanged => self.stored_api_key(user.id).await?,
+            Change::Unchanged => stored_key,
             Change::Set(None) => None,
             Change::Set(Some(key)) => Some(crypto::encrypt(
                 &self.secret_key_base,
@@ -675,6 +676,11 @@ impl Accounts {
         }
         tx.commit().await?;
         self.get_user(user.id).await?.ok_or(ApiError::NotFound)
+    }
+
+    /// `disable_user/1`.
+    pub async fn disable_user(&self, user: &User) -> Result<User, ApiError> {
+        self.update_user(user, &json!({ "disabled_at": UtcDateTime::now().to_string() })).await
     }
 
     /// `delete_user/2`: refuses self-deletion, the last administrator, and players with games.
