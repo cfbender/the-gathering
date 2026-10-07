@@ -27,9 +27,6 @@ use self::cache::TtlCache;
 use self::remote_decks::RemoteDecks;
 use crate::config::Config;
 
-/// The ManaVault share schema clamps `first` to 500; a Commander deck fits in one page, so
-/// a few pages are plenty (the Elixir adapter followed four).
-const MANAVAULT_MAX_PAGES: u32 = 4;
 /// ManaVault share tokens are at least this long.
 const MIN_SHARE_TOKEN_BYTES: usize = 20;
 
@@ -257,10 +254,11 @@ impl Decklists {
         ))
         .connect_timeout(std::time::Duration::from_secs(3))
         .timeout(std::time::Duration::from_secs(8))
-        .limits(Limits {
-            max_pages: MANAVAULT_MAX_PAGES,
-            ..Limits::default()
-        })
+        // lotus's default budget (10 pages, as ManaVault's own importer uses). A deck that
+        // needs more is an error rather than a silently shortened list: the Elixir adapter
+        // stopped after four pages and returned what it had, a bug its own comment warned
+        // against ("not silently cut short").
+        .limits(Limits::default())
         .allowlist(Allowlist::parse(allowed))
         .resolver(Arc::new(resolver.clone()))
         .moxfield_api_base(format!(
