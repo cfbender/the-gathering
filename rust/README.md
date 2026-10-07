@@ -20,7 +20,9 @@ lives here.
   - `accounts/`, `catalog/`, `decklists/`, `games/`, ...: domain modules, one per Elixir
     context. `catalog/` also holds the Scryfall sync (`the-gathering catalog-sync`, plus a
     scheduled run started at boot), the backfill (`the-gathering catalog-backfill`), and the
-    card image disk cache; `card_id/` serves the card-recognition bundle and corrections.
+    card image disk cache; `card_id/` serves the card-recognition bundle and corrections;
+    `imports/` parses and commits CSV, Mythic Track, and pasted Google Sheet history and
+    the portable export/import.
   - `self_update.rs`: admin-triggered updates (a systemd request file or Watchtower's
     HTTP API) and the newest-build check against GitHub.
   - `web/`: router (mirrors `TheGatheringWeb.Router` pipelines), session cookie, CSRF,

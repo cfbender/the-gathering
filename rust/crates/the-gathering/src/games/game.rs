@@ -91,6 +91,8 @@ pub(crate) struct ValidGame {
     pub format: GameFormat,
     pub external_id: Option<String>,
     pub created_by_user_id: Option<i64>,
+    /// The portable id to insert with (a new UUID when `None`).
+    pub portable_id: Option<String>,
     /// The seats in params order, or the existing seats when `seats` was not given.
     pub seats: Vec<ValidSeat>,
     /// Whether `seats` was given (so seats are replaced).
@@ -104,6 +106,9 @@ pub(crate) struct Extra<'a> {
     pub created_by_user_id: Option<i64>,
     /// `Game.put_external_identity/3` (inserts only).
     pub identity: Option<(&'a str, &'a str)>,
+    /// A portable import's `(portable_id, source, external_id)`, set on the new game as
+    /// `PortableImport` builds `%Game{portable_id:, source:, external_id:}` (inserts only).
+    pub portable: Option<(&'a str, &'a str, Option<&'a str>)>,
 }
 
 fn seat_rows(value: &Value) -> Option<Vec<&Value>> {
@@ -271,6 +276,12 @@ pub(crate) async fn changeset(
         source = Some(given_source.to_owned());
         external_id = Some(given_external_id.to_owned());
     }
+    if current.is_none()
+        && let Some((_, given_source, given_external_id)) = extra.portable
+    {
+        source = Some(given_source.to_owned());
+        external_id = given_external_id.map(str::to_owned);
+    }
 
     cs.required_value("played_at", played_at.as_ref());
     cs.required("source", source.as_ref());
@@ -419,6 +430,10 @@ pub(crate) async fn changeset(
             .ok_or_else(invalid)?,
         external_id,
         created_by_user_id,
+        portable_id: extra
+            .portable
+            .filter(|_| current.is_none())
+            .map(|(portable_id, _, _)| portable_id.to_owned()),
         seats: valid_seats,
         seats_given,
     })

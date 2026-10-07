@@ -22,7 +22,7 @@ use crate::state::AppState;
 use crate::web::auth::AuthUser;
 use crate::web::params::Params;
 
-use super::{data, not_implemented, parse_id};
+use super::{data, parse_id};
 
 // JSON views
 
@@ -783,9 +783,21 @@ pub async fn v1_games_index(
 
 // Owned by other areas; kept at the bottom to ease merging.
 
-/// Not ported yet.
-pub async fn remote_decks_sync() -> ApiError {
-    not_implemented()
+/// `POST /api/session/remote-decks/sync` (`RemoteDeckController.sync/2` with
+/// `RemoteDeckJSON.sync/1`): folds the member's hosted decks into their player's decks.
+pub async fn remote_decks_sync(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> ApiResult<Json<Value>> {
+    let result = games::sync_remote_decks::run(&state, &user).await?;
+    Ok(data(json!({
+        "created": result.created,
+        "updated": result.updated,
+        "errors": result.errors.iter().map(|failure| json!({
+            "source": failure.source.as_str(),
+            "error": failure.error,
+        })).collect::<Vec<_>>(),
+    })))
 }
 
 // Deck lists (`DecklistController`, `DecklistJSON`, and `RemoteDeckController.index`

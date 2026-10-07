@@ -111,6 +111,7 @@ async fn insert(
         Extra {
             created_by_user_id,
             identity,
+            portable: None,
         },
     )
     .await?;
@@ -132,9 +133,73 @@ async fn insert(
     }
 }
 
+/// Validates a game a portable import would insert (`Game.changeset/2` with the export's
+/// `portable_id`, `source`, and `external_id`, plus `put_created_by/2`), without writing.
+pub async fn validate_portable(
+    conn: &mut SqliteConnection,
+    attrs: &Value,
+    created_by_user_id: Option<i64>,
+    identity: (&str, &str, Option<&str>),
+) -> Result<(), GamesError> {
+    changeset(
+        conn,
+        None,
+        attrs,
+        Extra {
+            created_by_user_id,
+            identity: None,
+            portable: Some(identity),
+        },
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Inserts a game from a portable export, keeping its `portable_id` and source identity
+/// (`PortableImport` inserts with `Repo.insert/1`, not `RecordGame`). Unique violations
+/// are validation errors, as `unique_constraint/2` reports them.
+pub async fn insert_portable(
+    conn: &mut SqliteConnection,
+    attrs: &Value,
+    created_by_user_id: Option<i64>,
+    identity: (&str, &str, Option<&str>),
+) -> Result<Game, GamesError> {
+    let game = changeset(
+        conn,
+        None,
+        attrs,
+        Extra {
+            created_by_user_id,
+            identity: None,
+            portable: Some(identity),
+        },
+    )
+    .await?;
+    let mut tx = conn.begin().await?;
+    match insert_rows(&mut tx, &game).await {
+        Ok(id) => {
+            tx.commit().await?;
+            reload(conn, id).await
+        }
+        Err(error) => {
+            tx.rollback().await?;
+            if db::is_unique_violation(&error, &["games.portable_id"]) {
+                Err(crate::error::Errors::single("portable_id", crate::changeset::TAKEN).into())
+            } else if db::is_unique_violation(&error, &["games.source", "games.external_id"]) {
+                Err(crate::error::Errors::single("source", crate::changeset::TAKEN).into())
+            } else {
+                Err(error.into())
+            }
+        }
+    }
+}
+
 async fn insert_rows(conn: &mut SqliteConnection, game: &ValidGame) -> Result<i64, sqlx::Error> {
     let now = UtcDateTime::now();
-    let portable_id = uuid::Uuid::new_v4().to_string();
+    let portable_id = game
+        .portable_id
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let id = sqlx::query_scalar!(
         r#"INSERT INTO games (played_at, duration_minutes, turns, win_condition, notes, source, format, external_id,
                               portable_id, created_by_user_id, inserted_at, updated_at)
@@ -187,6 +252,20 @@ async fn insert_seat(
     .execute(&mut *conn)
     .await?;
     Ok(())
+}
+
+/// Whether casting left a stored seat as it was.
+fn unchanged(held: &super::model::Seat, seat: &ValidSeat) -> bool {
+    held.player_id == seat.player_id
+        && held.deck_id == seat.deck_id
+        && held.seat == seat.seat
+        && held.result == seat.result
+        && held.kills == seat.kills
+        && held.eliminated_turn == seat.eliminated_turn
+        && held.eliminated_by_player_id == seat.eliminated_by_player_id
+        && held.mvp_card_id == seat.mvp_card_id
+        && held.mvp_card_name == seat.mvp_card_name
+        && held.notes == seat.notes
 }
 
 /// Whether a requested seat number is held by another existing row (`seats_collide?/2`);
@@ -245,7 +324,8 @@ pub async fn update(
                 .execute(&mut *tx)
                 .await?;
         }
-        if seats_collide(game, &valid.seats) {
+        let parked = seats_collide(game, &valid.seats);
+        if parked {
             sqlx::query!(
                 "UPDATE game_players SET seat = -seat WHERE game_id = ?",
                 game.id
@@ -255,6 +335,14 @@ pub async fn update(
         }
         for seat in &valid.seats {
             match seat.existing_id {
+                // Like Ecto, a seat whose fields did not change is not written, so it keeps
+                // its `updated_at` (CSV corrections rely on this).
+                Some(id)
+                    if !parked
+                        && game
+                            .seats
+                            .iter()
+                            .any(|held| held.id == id && unchanged(held, seat)) => {}
                 Some(id) => {
                     sqlx::query!(
                         "UPDATE game_players SET player_id = ?, deck_id = ?, seat = ?, result = ?, kills = ?,

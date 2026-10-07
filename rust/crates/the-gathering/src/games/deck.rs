@@ -285,6 +285,16 @@ pub async fn create_deck(conn: &mut SqliteConnection, attrs: &Value) -> Result<D
         .ok_or(GamesError::NotFound)
 }
 
+/// Validates `attrs` for a new deck without inserting it (`Deck.changeset(%Deck{}, attrs)`
+/// and its `valid?`), for callers that must validate before looking for an existing deck
+/// (portable imports).
+pub async fn validate_new_deck(
+    conn: &mut SqliteConnection,
+    attrs: &Value,
+) -> Result<(), GamesError> {
+    changeset(conn, None, attrs).await.map(|_| ())
+}
+
 /// `Games.update_deck/2`: the same fields as [`create_deck`] except the owner.
 pub async fn update_deck(
     conn: &mut SqliteConnection,

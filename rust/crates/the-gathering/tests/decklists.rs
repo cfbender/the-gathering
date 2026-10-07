@@ -1,7 +1,8 @@
 //! Ported from `test/the_gathering/decklists_test.exs`, `decklists/destination_test.exs`,
 //! `decklists/cache_test.exs` (the remote-deck cache key test; the cache itself is unit
 //! tested in `decklists::cache`), `test/the_gathering_web/controllers/api/decklist_controller_test.exs`,
-//! and the index tests of `remote_deck_controller_test.exs`.
+//! the index and sync tests of `remote_deck_controller_test.exs`, and
+//! `test/the_gathering/games/sync_remote_decks_test.exs`.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -1281,4 +1282,351 @@ async fn remote_cache_keys_and_values_do_not_contain_plaintext_api_keys() {
     let cache = app.state.decklists.remote.cache();
     assert_eq!(cache.keys(), [user.id]);
     assert!(!format!("{:?}", cache.values()).contains(secret));
+}
+
+// ---- games/sync_remote_decks_test.exs and remote_deck_controller_test.exs (sync) ----
+
+mod sync {
+    use super::*;
+    use the_gathering::games::{GamesError, sync_remote_decks};
+
+    fn moxfield_deck(id: &str, name: &str, commanders: &[&str], colors: &[&str]) -> Value {
+        json!({
+            "publicId": id,
+            "name": name,
+            "publicUrl": format!("https://moxfield.com/decks/{id}"),
+            "commanders": commanders.iter().map(|name| json!({"card": {"name": name}})).collect::<Vec<_>>(),
+            "colorIdentity": colors,
+            "lastUpdatedAtUtc": "2026-09-20T10:00:00Z"
+        })
+    }
+
+    async fn stub_moxfield(server: &MockServer, decks: Vec<Value>) {
+        Mock::given(method("GET"))
+            .and(path("/v2/decks/search-sfw"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"pageNumber": 1, "totalPages": 1, "data": decks})),
+            )
+            .mount(server)
+            .await;
+    }
+
+    struct Ctx {
+        app: TestApp,
+        user: User,
+        player: the_gathering::games::Player,
+    }
+
+    async fn setup(server: &MockServer) -> Ctx {
+        let app = stub_app(server, |_| {}).await;
+        let user = app.unique_member().await;
+        let player = app
+            .player_with(json!({"name": "Brewer"}), Some(user.id))
+            .await;
+        let user = set_profile(&app, &user, json!({"moxfield_username": "brewer"})).await;
+        Ctx { app, user, player }
+    }
+
+    async fn decks(ctx: &Ctx) -> Vec<the_gathering::games::Deck> {
+        ctx.app
+            .state
+            .games
+            .list_decks(false, Some(ctx.player.id))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(deck, _)| deck)
+            .collect()
+    }
+
+    async fn deck(ctx: &Ctx, id: i64) -> the_gathering::games::Deck {
+        ctx.app.state.games.get_deck(id).await.unwrap().unwrap()
+    }
+
+    #[tokio::test]
+    async fn links_a_same_commander_deck_without_renaming_it_and_creates_the_rest() {
+        let server = MockServer::start().await;
+        let ctx = setup(&server).await;
+        ctx.app
+            .card("krenko", "Krenko, Mob Boss", &["R"], json!({}), true)
+            .await;
+        let mine = ctx
+            .app
+            .deck(ctx.player.id, "Goblins!!", "krenko, mob boss")
+            .await;
+        stub_moxfield(
+            &server,
+            vec![
+                moxfield_deck("a", "Krenko Storm", &["Krenko, Mob Boss"], &["R"]),
+                moxfield_deck("b", "Krenko Budget", &["Krenko, Mob Boss"], &["R"]),
+            ],
+        )
+        .await;
+
+        let result = sync_remote_decks::run(&ctx.app.state, &ctx.user)
+            .await
+            .unwrap();
+        assert_eq!((result.created, result.updated), (1, 1));
+        assert!(result.errors.is_empty());
+
+        let linked = deck(&ctx, mine.id).await;
+        assert_eq!(linked.name, "Goblins!!");
+        assert_eq!(
+            linked.decklist_url.as_deref(),
+            Some("https://moxfield.com/decks/a")
+        );
+        assert_eq!(
+            linked
+                .decklist_source
+                .map(the_gathering::games::DecklistSource::as_str),
+            Some("moxfield")
+        );
+        assert_eq!(linked.commander_card_id.as_deref(), Some("krenko"));
+        assert_eq!(linked.color_identity, "R");
+
+        // The second Krenko list must not steal the link; it becomes its own deck.
+        let created: Vec<_> = decks(&ctx)
+            .await
+            .into_iter()
+            .filter(|deck| deck.id != mine.id)
+            .collect();
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].name, "Krenko Budget");
+        assert_eq!(
+            created[0].decklist_url.as_deref(),
+            Some("https://moxfield.com/decks/b")
+        );
+    }
+
+    #[tokio::test]
+    async fn matches_partner_pairs_in_either_order_and_never_repoints_a_linked_deck() {
+        let server = MockServer::start().await;
+        let ctx = setup(&server).await;
+        let pair = ctx
+            .app
+            .deck_with(json!({
+                "player_id": ctx.player.id,
+                "name": "Tymna Thrasios",
+                "commander_name": "Tymna the Weaver",
+                "partner_name": "Thrasios, Triton Hero"
+            }))
+            .await;
+        let elsewhere = ctx
+            .app
+            .deck_with(json!({
+                "player_id": ctx.player.id,
+                "name": "Meren",
+                "commander_name": "Meren of Clan Nel Toth",
+                "decklist_url": "https://archidekt.com/decks/9"
+            }))
+            .await;
+        stub_moxfield(
+            &server,
+            vec![
+                moxfield_deck(
+                    "p",
+                    "Blue Farm",
+                    &["Thrasios, Triton Hero", "Tymna the Weaver"],
+                    &["W", "U", "G"],
+                ),
+                moxfield_deck(
+                    "m",
+                    "Meren Reanimator",
+                    &["Meren of Clan Nel Toth"],
+                    &["B", "G"],
+                ),
+            ],
+        )
+        .await;
+
+        let result = sync_remote_decks::run(&ctx.app.state, &ctx.user)
+            .await
+            .unwrap();
+        assert_eq!((result.created, result.updated), (1, 1));
+        assert_eq!(
+            deck(&ctx, pair.id).await.decklist_url.as_deref(),
+            Some("https://moxfield.com/decks/p")
+        );
+        assert_eq!(
+            deck(&ctx, elsewhere.id).await.decklist_url.as_deref(),
+            Some("https://archidekt.com/decks/9")
+        );
+        assert!(
+            decks(&ctx)
+                .await
+                .iter()
+                .any(|deck| deck.name == "Meren Reanimator"
+                    && deck.decklist_url.as_deref() == Some("https://moxfield.com/decks/m"))
+        );
+    }
+
+    #[tokio::test]
+    async fn refreshes_a_deck_already_linked_by_url_from_the_host() {
+        let server = MockServer::start().await;
+        let ctx = setup(&server).await;
+        let old = ctx
+            .app
+            .deck_with(json!({
+                "player_id": ctx.player.id,
+                "name": "Old name",
+                "commander_name": "Old commander",
+                "decklist_url": "https://moxfield.com/decks/a"
+            }))
+            .await;
+        stub_moxfield(
+            &server,
+            vec![moxfield_deck(
+                "a",
+                "New name",
+                &["Krenko, Mob Boss"],
+                &["R"],
+            )],
+        )
+        .await;
+        let result = sync_remote_decks::run(&ctx.app.state, &ctx.user)
+            .await
+            .unwrap();
+        assert_eq!((result.created, result.updated), (0, 1));
+        let refreshed = deck(&ctx, old.id).await;
+        assert_eq!(refreshed.name, "New name");
+        assert_eq!(refreshed.commander_name, "Krenko, Mob Boss");
+    }
+
+    #[tokio::test]
+    async fn reports_a_failed_host_and_syncs_the_others() {
+        let server = MockServer::start().await;
+        let ctx = setup(&server).await;
+        let user = set_profile(&ctx.app, &ctx.user, json!({"archidekt_username": "brewer"})).await;
+        stub_moxfield(
+            &server,
+            vec![moxfield_deck(
+                "a",
+                "Krenko Storm",
+                &["Krenko, Mob Boss"],
+                &["R"],
+            )],
+        )
+        .await;
+        Mock::given(method("GET"))
+            .and(path("/api/decks/v3/"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("boom"))
+            .mount(&server)
+            .await;
+        let result = sync_remote_decks::run(&ctx.app.state, &user).await.unwrap();
+        assert_eq!((result.created, result.updated), (1, 0));
+        assert_eq!(result.errors.len(), 1);
+        assert_eq!(result.errors[0].source, Source::Archidekt);
+        assert!(!result.errors[0].error.is_empty());
+    }
+
+    #[tokio::test]
+    async fn rejects_users_with_no_deck_host_configured_or_no_linked_player() {
+        let app = TestApp::new().await;
+        let bare = app.unique_member().await;
+        assert!(matches!(
+            sync_remote_decks::run(&app.state, &bare).await,
+            Err(GamesError::BadRequest)
+        ));
+        app.player_with(json!({"name": "Unhosted"}), Some(bare.id))
+            .await;
+        let bare = app.reload(&bare).await.unwrap();
+        assert!(matches!(
+            sync_remote_decks::run(&app.state, &bare).await,
+            Err(GamesError::BadRequest)
+        ));
+    }
+
+    #[tokio::test]
+    async fn post_sync_creates_and_updates_manavault_decks() {
+        let server = MockServer::start().await;
+        let (app, user, origin) = vault_app(&server).await;
+        let player = app
+            .player_with(json!({"name": "Chooser"}), Some(user.id))
+            .await;
+        app.card(
+            "atraxa",
+            "Atraxa, Praetors' Voice",
+            &["W", "U", "B", "G"],
+            json!({}),
+            true,
+        )
+        .await;
+        app.card("krenko", "Krenko, Mob Boss", &["R"], json!({}), true)
+            .await;
+        let existing = app
+            .deck_with(json!({
+                "player_id": player.id,
+                "name": "Old name",
+                "commander_name": "Old commander",
+                "decklist_url": format!("{origin}/decks/1")
+            }))
+            .await;
+        set_profile(
+            &app,
+            &user,
+            json!({"manavault_url": origin, "manavault_api_key": "mvk_test_key"}),
+        )
+        .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/decks"))
+            .and(header("authorization", "Bearer mvk_test_key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [
+                    {"id": 1, "name": "Atraxa counters", "commanders": ["Atraxa, Praetors' Voice"],
+                     "commanderColorIdentity": ["W", "U", "B", "G"], "updated_at": "2026-09-20T12:00:00Z"},
+                    {"id": 2, "name": "Goblin rush", "commanders": ["Krenko, Mob Boss"],
+                     "commanderColorIdentity": ["R"], "updated_at": "2026-09-20T12:00:00Z"}
+                ],
+                "pagination": {"total_pages": 1}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let body = app
+            .post("/api/session/remote-decks/sync", json!({}))
+            .await
+            .assert_json(200);
+        assert_eq!(
+            body,
+            json!({"data": {"created": 1, "updated": 1, "errors": []}})
+        );
+        let updated = app
+            .state
+            .games
+            .get_deck(existing.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.name, "Atraxa counters");
+        assert_eq!(updated.commander_card_id.as_deref(), Some("atraxa"));
+        assert_eq!(updated.color_identity, "WUBG");
+        let created: Vec<_> = app
+            .state
+            .games
+            .list_decks(false, Some(player.id))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(deck, _)| deck)
+            .filter(|deck| deck.id != existing.id)
+            .collect();
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].name, "Goblin rush");
+        assert_eq!(created[0].commander_card_id.as_deref(), Some("krenko"));
+        assert_eq!(
+            created[0].decklist_url.as_deref(),
+            Some(format!("{origin}/decks/2").as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn post_sync_without_a_deck_host_is_a_bad_request() {
+        let app = TestApp::new().await;
+        member(&app).await;
+        app.post("/api/session/remote-decks/sync", json!({}))
+            .await
+            .assert_json(400);
+    }
 }
