@@ -18,7 +18,9 @@ lives here.
   - `changeset.rs`, `error.rs`: Ecto-style casting and validation messages; API errors
     rendered like `FallbackController`.
   - `accounts/`, `catalog/`, `decklists/`, `games/`, ...: domain modules, one per Elixir
-    context.
+    context. `catalog/` also holds the Scryfall sync (`the-gathering catalog-sync`, plus a
+    scheduled run started at boot), the backfill (`the-gathering catalog-backfill`), and the
+    card image disk cache; `card_id/` serves the card-recognition bundle and corrections.
   - `web/`: router (mirrors `TheGatheringWeb.Router` pipelines), session cookie, CSRF,
     auth guards, SPA shell, static files, and `web/api/*` controllers.
   - `tests/`: HTTP and domain tests ported from `test/` (`tests/support` is the harness).

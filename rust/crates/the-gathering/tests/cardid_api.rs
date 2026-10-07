@@ -1,5 +1,11 @@
 //! Ported from `test/the_gathering_web/controllers/api/card_id_bundle_controller_test.exs`
 //! and `card_id_correction_controller_test.exs`.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 
 mod support;
 
@@ -195,7 +201,7 @@ fn payload() -> Value {
     })
 }
 
-fn with(mut base: Value, changes: Value) -> Value {
+fn with(mut base: Value, changes: &Value) -> Value {
     for (key, value) in changes.as_object().unwrap() {
         base[key] = value.clone();
     }
@@ -245,7 +251,7 @@ async fn stores_native_jpeg_and_label_metadata_retries_once_and_allows_relabelli
 
     let relabelled = with(
         p.clone(),
-        json!({"label": uuid::Uuid::new_v4().to_string()}),
+        &json!({"label": uuid::Uuid::new_v4().to_string()}),
     );
     app.post("/api/cardid/corrections", relabelled.clone())
         .await
@@ -263,7 +269,7 @@ async fn preserves_face_labels_and_top1_through_storage_and_export() {
     let face = format!("{}-1", p["label"].as_str().unwrap());
     app.post(
         "/api/cardid/corrections",
-        with(p.clone(), json!({"label": face, "top1": face})),
+        with(p.clone(), &json!({"label": face, "top1": face})),
     )
     .await
     .assert_json(201);
@@ -289,7 +295,7 @@ async fn stores_exact_sibling_and_revised_printing_labels_independently_of_the_r
     for label in labels {
         let payload = with(
             p.clone(),
-            json!({"label": label, "capture_id": uuid::Uuid::new_v4().to_string()}),
+            &json!({"label": label, "capture_id": uuid::Uuid::new_v4().to_string()}),
         );
         app.post("/api/cardid/corrections", payload)
             .await
@@ -311,7 +317,7 @@ async fn keeps_a_drawn_outlines_manual_source_for_the_exporter() {
     let p = payload();
     app.post(
         "/api/cardid/corrections",
-        with(p.clone(), json!({"quad_source": "manual"})),
+        with(p.clone(), &json!({"quad_source": "manual"})),
     )
     .await
     .assert_json(201);
@@ -347,7 +353,7 @@ async fn rejects_malformed_oversized_and_traversing_payloads() {
         json!({"bundle_version": "a".repeat(121)}),
     ] {
         let response = app
-            .post("/api/cardid/corrections", with(p.clone(), change.clone()))
+            .post("/api/cardid/corrections", with(p.clone(), &change))
             .await;
         assert_eq!(response.status.as_u16(), 400, "{change}");
     }
@@ -379,7 +385,7 @@ async fn correction_rate_limit_is_per_user() {
     let app = TestApp::with_config(|config| {
         config.rate_limits.corrections = WindowLimit {
             limit: 1,
-            scale: Duration::from_secs(60),
+            scale: Duration::from_mins(1),
         };
     })
     .await;

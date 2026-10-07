@@ -2,6 +2,12 @@
 //! `decklists/cache_test.exs` (the remote-deck cache key test; the cache itself is unit
 //! tested in `decklists::cache`), `test/the_gathering_web/controllers/api/decklist_controller_test.exs`,
 //! and the index tests of `remote_deck_controller_test.exs`.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 
 mod support;
 
@@ -978,7 +984,7 @@ async fn remote_decks_returns_clear_per_source_errors_without_failing_the_reques
 /// at the stub; the operator allowlists the host because it resolves to loopback.
 async fn vault_app(server: &MockServer) -> (TestApp, User, String) {
     let app = stub_app(server, |config| {
-        config.manavault_allowed_hosts = vec!["vault.example.com".to_owned()]
+        config.manavault_allowed_hosts = vec!["vault.example.com".to_owned()];
     })
     .await;
     app.state

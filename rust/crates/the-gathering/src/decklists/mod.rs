@@ -394,7 +394,7 @@ impl Decklists {
 pub fn start_cache_sweeper(state: &crate::state::AppState) {
     let state = state.clone();
     tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(60));
+        let mut ticker = tokio::time::interval(std::time::Duration::from_mins(1));
         loop {
             ticker.tick().await;
             state.decklists.cache.sweep();

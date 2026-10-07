@@ -1,6 +1,12 @@
 //! Ported from `test/the_gathering_web/controllers/api/card_controller_test.exs`,
 //! `card_printing_controller_test.exs` (the catalog parts), `card_rulings_controller_test.exs`,
 //! and `card_image_controller_test.exs`.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 
 mod support;
 
@@ -134,13 +140,11 @@ async fn partner_mode_allows_any_legendary_creature_for_rule_0_pairings() {
             .assert_json(200)),
         [json!("krenko")]
     );
-    assert!(
-        ids(app
-            .get("/api/cards?q=Jotun&partner=true")
-            .await
-            .assert_json(200))
-        .is_empty()
-    );
+    let jotun = ids(app
+        .get("/api/cards?q=Jotun&partner=true")
+        .await
+        .assert_json(200));
+    assert_eq!(jotun, Vec::<Value>::new());
 }
 
 #[tokio::test]
@@ -236,7 +240,7 @@ fn scryfall_card(id: &str, name: &str) -> Value {
     })
 }
 
-fn merge(mut base: Value, overrides: Value) -> Value {
+fn merge(mut base: Value, overrides: &Value) -> Value {
     for (key, value) in overrides.as_object().unwrap() {
         base[key] = value.clone();
     }
@@ -304,18 +308,18 @@ async fn lists_and_caches_english_paper_printings_with_pagination_and_front_face
     let server = MockServer::start().await;
     let printing = merge(
         scryfall_card("commander", "Tymna the Weaver"),
-        json!({"game_changer": true, "id": "double-faced-print", "image_uris": null,
+        &json!({"game_changer": true, "id": "double-faced-print", "image_uris": null,
                "card_faces": [{"image_uris": {"art_crop": "https://img.example/front.jpg"}}]}),
     );
     let other = scryfall_card("partner", "Thrasios, Triton Hero");
     let digital = merge(
         printing.clone(),
-        json!({"id": "digital", "games": ["arena"]}),
+        &json!({"id": "digital", "games": ["arena"]}),
     );
-    let japanese = merge(printing.clone(), json!({"id": "japanese", "lang": "ja"}));
+    let japanese = merge(printing.clone(), &json!({"id": "japanese", "lang": "ja"}));
     let memorabilia = merge(
         printing.clone(),
-        json!({"id": "memorabilia", "set_type": "memorabilia"}),
+        &json!({"id": "memorabilia", "set_type": "memorabilia"}),
     );
     Mock::given(method("GET"))
         .and(path("/cards/search"))
@@ -420,7 +424,7 @@ async fn serves_sibling_and_early_core_printings_without_catalog_membership() {
         assert!(catalog(&app).get_card(id).await.unwrap().is_none());
         let card = merge(
             scryfall_card(id, name),
-            json!({"set": set, "collector_number": number, "lang": lang}),
+            &json!({"set": set, "collector_number": number, "lang": lang}),
         );
         mount_card(&server, id, card, 1).await;
         Mock::given(method("GET"))
@@ -456,7 +460,7 @@ async fn a_selectable_sibling_face_without_its_own_scan_still_returns_its_name_a
     let server = MockServer::start().await;
     let card = merge(
         scryfall_card(MDFC, "Front // Back"),
-        json!({"image_uris": null, "layout": "modal_dfc", "image_status": "missing", "card_faces": [
+        &json!({"image_uris": null, "layout": "modal_dfc", "image_status": "missing", "card_faces": [
             {"name": "Front"},
             {"name": "Back", "oracle_text": "Draw a card.", "type_line": "Sorcery"}
         ]}),
@@ -482,7 +486,7 @@ async fn fetches_full_printing_details_by_scryfall_id_and_caches_the_printing() 
     let server = MockServer::start().await;
     let card = merge(
         scryfall_card(SAGA, "Kiora Bests the Sea God"),
-        json!({
+        &json!({
             "mana_cost": "{5}{U}{U}",
             "type_line": "Enchantment — Saga",
             "oracle_text": "I — Create an 8/8 blue Kraken.",
@@ -554,11 +558,11 @@ async fn refetches_printing_details_once_the_cached_copy_is_a_day_old() {
     let server = MockServer::start().await;
     let first = merge(
         scryfall_card(SAGA, "Kiora Bests the Sea God"),
-        json!({"prices": {"usd": "0.25"}}),
+        &json!({"prices": {"usd": "0.25"}}),
     );
     let second = merge(
         scryfall_card(SAGA, "Kiora Bests the Sea God"),
-        json!({"prices": {"usd": "0.30"}}),
+        &json!({"prices": {"usd": "0.30"}}),
     );
     Mock::given(method("GET"))
         .and(path(format!("/cards/{SAGA}")))
@@ -593,7 +597,7 @@ async fn selects_each_printed_face_without_mixing_text_images_or_cached_ids() {
     let server = MockServer::start().await;
     let mut card = merge(
         scryfall_card(MDFC, "Valki, God of Lies // Tibalt, Cosmic Impostor"),
-        json!({"layout": "modal_dfc", "game_changer": true, "card_faces": [
+        &json!({"layout": "modal_dfc", "game_changer": true, "card_faces": [
             {
                 "name": "Valki, God of Lies", "mana_cost": "{1}{B}", "type_line": "Legendary Creature — God",
                 "oracle_text": "When Valki enters, each opponent reveals their hand.",
@@ -704,7 +708,7 @@ async fn supports_transform_reversible_and_token_faces_including_face_level_orac
         let back_id = format!("{id}-1");
         let mut card = merge(
             scryfall_card(&id, "Front // Back"),
-            json!({"layout": layout, "set_type": "token", "card_faces": [
+            &json!({"layout": layout, "set_type": "token", "card_faces": [
                 {"name": "Front", "oracle_id": "front-oracle"},
                 {"name": "Back", "oracle_id": "back-oracle", "layout": "normal", "type_line": "Token Creature — Spirit",
                  "oracle_text": "Flying", "image_uris": {"normal": "https://img.example/back.jpg"}}
@@ -757,7 +761,7 @@ async fn split_and_flip_halves_select_their_own_rules_but_retain_the_shared_fron
             .collect();
         let card = merge(
             scryfall_card(&id, &names.join(" // ")),
-            json!({"layout": layout, "card_faces": faces, "power": "99"}),
+            &json!({"layout": layout, "card_faces": faces, "power": "99"}),
         );
         mount_card(&server, &id, card, 2).await;
         for (i, name) in names.iter().enumerate() {
@@ -798,7 +802,7 @@ async fn alternate_printings_preserve_either_split_or_flip_half_without_changing
         let full_name = names.join(" // ");
         let card = merge(
             scryfall_card(&id, &full_name),
-            json!({"layout": layout, "card_faces": names.iter().map(|name| json!({"name": name})).collect::<Vec<_>>()}),
+            &json!({"layout": layout, "card_faces": names.iter().map(|name| json!({"name": name})).collect::<Vec<_>>()}),
         );
         app.card(card.clone()).await;
         Mock::given(method("GET"))
@@ -839,7 +843,7 @@ async fn prepare_and_adventure_retain_their_shared_image_and_combined_rules() {
         let id = uuid::Uuid::new_v4().to_string();
         let card = merge(
             scryfall_card(&id, "Studious First-Year // Rampant Growth"),
-            json!({"layout": layout, "card_faces": [
+            &json!({"layout": layout, "card_faces": [
                 {"mana_cost": "{G}", "oracle_text": "When this creature enters, prepare."},
                 {"mana_cost": "{1}{G}", "oracle_text": "Search for a basic land."}
             ]}),
@@ -1278,7 +1282,7 @@ async fn does_not_cache_failures_or_non_images() {
         .await;
     let app = image_app(&server).await;
     app.get(&images::url(SOURCE)).await.assert_json(502);
-    assert!(image_files(&app).is_empty());
+    assert_eq!(image_files(&app), Vec::<std::path::PathBuf>::new());
     let response = app.get(&images::url(SOURCE)).await;
     assert_eq!(response.status.as_u16(), 200);
     assert_eq!(response.body.as_ref(), JPEG);
@@ -1332,7 +1336,7 @@ async fn prunes_expired_and_oldest_files_at_startup_without_losing_fresh_cached_
         .write(true)
         .open(&expired)
         .unwrap()
-        .set_modified(now - Duration::from_secs(30 * 86_400))
+        .set_modified(now - Duration::from_hours(30 * 24))
         .unwrap();
     // A sparse file tests the real 512 MiB limit without allocating that much RAM or disk.
     std::fs::File::create(&fresh)
@@ -1358,7 +1362,7 @@ async fn aborts_an_oversized_response_instead_of_storing_it() {
         .await;
     let app = image_app(&server).await;
     app.get(&images::url(SOURCE)).await.assert_json(502);
-    assert!(image_files(&app).is_empty());
+    assert_eq!(image_files(&app), Vec::<std::path::PathBuf>::new());
 }
 
 #[tokio::test]

@@ -1,5 +1,11 @@
 //! Ported from `test/the_gathering/catalog_test.exs`, `catalog/sync_test.exs`,
 //! `catalog/backfill_test.exs`, and the commander rules in `catalog/card_data_test.exs`.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 
 mod support;
 
@@ -632,7 +638,7 @@ async fn splits_piped_partners_links_both_cards_and_renames_default_deck_names()
         ),
         (2, 2, 1)
     );
-    assert!(summary.unmatched.is_empty());
+    assert_eq!(summary.unmatched, Vec::<String>::new());
 
     let row = deck(&app, default_named).await;
     assert_eq!(row.name, "Frodo, Adventurous Hobbit / Sam, Loyal Attendant");
@@ -779,8 +785,9 @@ fn derives_commander_eligibility_without_treating_backgrounds_as_commanders() {
 
 #[test]
 fn recognizes_pairing_wording() {
-    let pairing =
-        |type_line: &str, text: &str| lotus::commander_pairing(type_line, text).map(|p| p.as_str());
+    let pairing = |type_line: &str, text: &str| {
+        lotus::commander_pairing(type_line, text).map(lotus::CommanderPairing::as_str)
+    };
     let creature = "Legendary Creature — Human";
     assert_eq!(pairing(creature, "Partner"), Some("partner"));
     assert_eq!(
