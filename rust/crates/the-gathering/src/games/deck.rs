@@ -10,7 +10,8 @@ use crate::db::{self, UtcDateTime};
 use crate::error::Errors;
 
 use super::color_identity;
-use super::model::{Deck, DecklistSource, Player, select_decks};
+use super::model::{Deck, DecklistSource, GameFormat, GameResult, Player, select_decks};
+use super::player::SeatGame;
 use super::{GamesError, fold_name};
 
 const COLOR_MESSAGE: &str = "must contain each of W, U, B, R, and G at most once";
@@ -304,6 +305,24 @@ pub async fn list_decks(
             Some((deck, Player { avatar_url: None, ..player }))
         })
         .collect())
+}
+
+/// The deck's seats with their games, newest first (`Games.get_deck!/1` preloads only the
+/// game, so each seat's `deck` stays `None`).
+pub async fn deck_seat_games(conn: &mut SqliteConnection, deck_id: i64) -> Result<Vec<SeatGame>, sqlx::Error> {
+    Ok(sqlx::query!(
+        r#"SELECT s.game_id, s.result AS "result: GameResult", g.played_at AS "played_at: UtcDateTime",
+                  g.format AS "format: GameFormat"
+           FROM game_players s JOIN games g ON g.id = s.game_id
+           WHERE s.deck_id = ?
+           ORDER BY g.played_at DESC"#,
+        deck_id
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .map(|row| SeatGame { game_id: row.game_id, played_at: row.played_at, format: row.format, result: row.result, deck: None })
+    .collect())
 }
 
 /// `Games.find_deck/4`: a player's deck by case-folded name, else by commander pairing

@@ -211,3 +211,157 @@ impl TestApp {
         self.state.accounts.get_user(user.id).await.unwrap()
     }
 }
+
+// Games fixtures (players, decks, games, catalog cards), shared by the games, stats, and
+// later imports/Discord/webcam ports.
+
+static UNIQUE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// A process-unique number (`System.unique_integer([:positive])`).
+pub fn unique() -> u64 {
+    UNIQUE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Builds a `played_at`-style timestamp: `utc("2026-09-19T18:00:00Z")`.
+pub fn utc(value: &str) -> db::UtcDateTime {
+    db::UtcDateTime::parse(value).expect("timestamp")
+}
+
+impl TestApp {
+    /// `AccountsFixtures.user_fixture/0`: a member with a unique username.
+    pub async fn unique_member(&self) -> User {
+        self.member(&format!("user{}", unique())).await
+    }
+
+    /// `AccountsFixtures.admin_fixture/0`: an administrator with a unique username.
+    pub async fn unique_admin(&self) -> User {
+        self.admin(&format!("admin{}", unique())).await
+    }
+
+    /// `Games.create_player(%{name: name})`.
+    pub async fn player(&self, name: &str) -> the_gathering::games::Player {
+        self.player_with(json!({ "name": name }), None).await
+    }
+
+    /// `Games.create_player(attrs, user_id)`.
+    pub async fn player_with(&self, attrs: Value, user_id: Option<i64>) -> the_gathering::games::Player {
+        self.state
+            .games
+            .create_player(&attrs, user_id)
+            .await
+            .unwrap_or_else(|error| panic!("player fixture: {error:?}"))
+    }
+
+    /// `Games.create_deck(%{player_id, name, commander_name})`.
+    pub async fn deck(&self, player_id: i64, name: &str, commander: &str) -> the_gathering::games::Deck {
+        self.deck_with(json!({ "player_id": player_id, "name": name, "commander_name": commander })).await
+    }
+
+    /// `Games.create_deck(attrs)`.
+    pub async fn deck_with(&self, attrs: Value) -> the_gathering::games::Deck {
+        self.state.games.create_deck(&attrs).await.unwrap_or_else(|error| panic!("deck fixture: {error:?}"))
+    }
+
+    /// `Games.create_game(attrs, created_by_user_id)`.
+    pub async fn game(&self, attrs: Value, created_by: Option<i64>) -> the_gathering::games::Game {
+        self.state
+            .games
+            .create_game(&attrs, created_by)
+            .await
+            .unwrap_or_else(|error| panic!("game fixture: {error:?}"))
+    }
+
+    /// A two-seat game the first player won.
+    pub async fn simple_game(&self, played_at: &str, winner: i64, loser: i64, created_by: Option<i64>) -> the_gathering::games::Game {
+        self.game(
+            json!({
+                "played_at": played_at,
+                "seats": [
+                    { "player_id": winner, "seat": 1, "result": "win" },
+                    { "player_id": loser, "seat": 2, "result": "loss" },
+                ],
+            }),
+            created_by,
+        )
+        .await
+    }
+
+    /// Inserts a catalog card (`%Card{}` with test defaults).
+    pub async fn card(&self, id: &str, name: &str, colors: &[&str], image_uris: Value, can_be_commander: bool) {
+        self.card_with(id, name, colors, image_uris, can_be_commander, false).await;
+    }
+
+    /// Inserts a catalog card, optionally on the Game Changers list.
+    pub async fn card_with(
+        &self,
+        id: &str,
+        name: &str,
+        colors: &[&str],
+        image_uris: Value,
+        can_be_commander: bool,
+        game_changer: bool,
+    ) {
+        let now = db::UtcDateTime::now();
+        sqlx::query(
+            "INSERT INTO cards (id, oracle_id, name, normalized_name, cmc, type_line, colors, color_identity, image_uris,
+                                set_code, collector_number, layout, rarity, commander_legal, can_be_commander,
+                                game_changer, inserted_at, updated_at)
+             VALUES (?, ?, ?, ?, 0.0, 'Legendary Creature', '[]', ?, ?, 'tst', ?, 'normal', 'rare', 1, ?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(format!("oracle-{id}"))
+        .bind(name)
+        .bind(lotus::normalize_name(name))
+        .bind(serde_json::to_string(colors).unwrap())
+        .bind(image_uris.to_string())
+        .bind(id)
+        .bind(can_be_commander)
+        .bind(game_changer)
+        .bind(now)
+        .bind(now)
+        .execute(self.pool())
+        .await
+        .unwrap();
+    }
+
+    /// Inserts a cached printing of `oracle-<card>`.
+    pub async fn printing(&self, id: &str, card: &str, name: &str, image_uris: Value) {
+        sqlx::query(
+            "INSERT INTO card_printings (id, oracle_id, name, set_code, set_name, collector_number, image_uris)
+             VALUES (?, ?, ?, 'tst', 'Test', ?, ?)",
+        )
+        .bind(id)
+        .bind(format!("oracle-{card}"))
+        .bind(name)
+        .bind(id)
+        .bind(image_uris.to_string())
+        .execute(self.pool())
+        .await
+        .unwrap();
+    }
+
+    /// Moves the current session's password authentication `seconds_ago` into the past.
+    pub async fn expire_sudo(&self, seconds_ago: i64) {
+        let token = self.session().get_bytes("user_token").expect("signed in");
+        let at = db::UtcDateTime::now().add(time::Duration::seconds(-seconds_ago));
+        sqlx::query("UPDATE users_tokens SET authenticated_at = ? WHERE token = ?")
+            .bind(at)
+            .bind(token)
+            .execute(self.pool())
+            .await
+            .unwrap();
+    }
+
+    /// Sends a GET with a bearer token and no cookie.
+    pub async fn get_bearer(&self, path: &str, token: &str) -> TestResponse {
+        self.clear_cookies();
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, format!("Bearer {token}").parse().unwrap());
+        self.request_with(Method::GET, path, None, headers).await
+    }
+
+    /// Updates the server settings (`Accounts.update_settings/1`).
+    pub async fn settings(&self, attrs: Value) {
+        self.state.accounts.update_settings(&attrs).await.unwrap();
+    }
+}
