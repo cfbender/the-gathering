@@ -12,7 +12,8 @@ name = "the-gathering"
 path = "src/main.rs"
 
 [dependencies]
-lotus = { git = "https://github.com/cfbender/lotus", rev = "878b3f278da6a980765f74c8d8773c94f4a1c163", features = ["sqlx", "http"] }
+the-gathering-sfu = { path = "../sfu" }
+lotus = { git = "https://github.com/cfbender/lotus", features = ["sqlx", "http"] }
 
 anyhow = "1"
 axum = { version = "0.8", features = ["ws", "multipart", "macros"] }

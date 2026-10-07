@@ -27,6 +27,8 @@ pub struct Inner {
     pub rate_limiter: RateLimiter,
     /// Outbound HTTP client for trusted APIs (Discord, GitHub, Cloudflare).
     pub http: reqwest::Client,
+    /// The webcam table SFU.
+    pub sfu: the_gathering_sfu::Sfu,
     /// Session topics (`users_sessions:<token>`) whose sockets must disconnect.
     pub session_disconnects: broadcast::Sender<String>,
 }
@@ -54,12 +56,21 @@ impl AppState {
             .timeout(Duration::from_secs(30))
             .build()?;
         let (session_disconnects, _) = broadcast::channel(64);
+        let sfu = the_gathering_sfu::Sfu::new(the_gathering_sfu::Settings {
+            port_min: config.sfu.port_min,
+            port_max: config.sfu.port_max,
+            public_ip: config.sfu.public_ip.as_deref().and_then(|ip| ip.parse().ok()),
+            ipv6: config.sfu.ipv6,
+            // Relay-only mode needs Cloudflare TURN credentials (wired with CloudflareTurn).
+            relay: None,
+        });
         Ok(Self(Arc::new(Inner {
             config,
             pool,
             accounts,
             rate_limiter: RateLimiter::new(),
             http,
+            sfu,
             session_disconnects,
         })))
     }

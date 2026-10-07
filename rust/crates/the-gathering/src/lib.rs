@@ -2,6 +2,7 @@
 //! realtime webcam tables, the Discord bot, and background jobs, on the same SQLite schema.
 
 pub mod accounts;
+pub mod catalog;
 pub mod changeset;
 pub mod config;
 pub mod crypto;
