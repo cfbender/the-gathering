@@ -5,6 +5,7 @@ pub mod accounts;
 pub mod card_id;
 pub mod catalog;
 pub mod changeset;
+pub mod cloudflare_turn;
 pub mod config;
 pub mod crypto;
 pub mod db;
@@ -17,6 +18,7 @@ pub mod regex;
 pub mod state;
 pub mod stats;
 pub mod web;
+pub mod webcam;
 
 /// `TheGathering.Release.bootstrap_admin/0`: creates the administrator named by
 /// `THE_GATHERING_ADMIN_USERNAME`/`THE_GATHERING_ADMIN_PASSWORD` unless it exists.

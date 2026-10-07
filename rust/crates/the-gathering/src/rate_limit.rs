@@ -89,7 +89,18 @@ impl TokenBucket {
         self.take_at(Instant::now())
     }
 
-    fn take_at(&mut self, now: Instant) -> bool {
+    /// Tokens left after the last spend.
+    pub fn tokens(&self) -> f64 {
+        self.tokens
+    }
+
+    /// When the bucket last changed (the reference for [`TokenBucket::take_at`]).
+    pub fn at(&self) -> Instant {
+        self.at
+    }
+
+    /// [`TokenBucket::take`] at a given instant.
+    pub fn take_at(&mut self, now: Instant) -> bool {
         let elapsed_ms = now.saturating_duration_since(self.at).as_secs_f64() * 1000.0;
         let tokens = (self.tokens + elapsed_ms * self.refill_per_ms).min(self.capacity);
         if tokens >= 1.0 {

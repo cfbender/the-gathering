@@ -51,6 +51,7 @@ uuid = { version = "1", features = ["v4"] }
 flate2 = "1"
 http-body-util = "0.1"
 tempfile = "3"
+tokio-tungstenite = "0.29"
 wiremock = "0.6"
 
 [lints]

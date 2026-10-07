@@ -39,7 +39,10 @@ impl TestResponse {
     /// The body as JSON (panics on invalid JSON).
     pub fn json(&self) -> Value {
         serde_json::from_slice(&self.body).unwrap_or_else(|error| {
-            panic!("invalid JSON ({error}): {}", String::from_utf8_lossy(&self.body))
+            panic!(
+                "invalid JSON ({error}): {}",
+                String::from_utf8_lossy(&self.body)
+            )
         })
     }
 
@@ -51,7 +54,12 @@ impl TestResponse {
     /// Asserts the status and returns the JSON body.
     #[track_caller]
     pub fn assert_json(&self, status: u16) -> Value {
-        assert_eq!(self.status.as_u16(), status, "unexpected status; body: {}", self.text());
+        assert_eq!(
+            self.status.as_u16(),
+            status,
+            "unexpected status; body: {}",
+            self.text()
+        );
         self.json()
     }
 
@@ -63,7 +71,12 @@ impl TestResponse {
     /// The redirect target of a 302.
     #[track_caller]
     pub fn redirected_to(&self) -> String {
-        assert_eq!(self.status, StatusCode::FOUND, "not a redirect: {}", self.text());
+        assert_eq!(
+            self.status,
+            StatusCode::FOUND,
+            "not a redirect: {}",
+            self.text()
+        );
         self.header("location").unwrap_or_default().to_owned()
     }
 }
@@ -80,11 +93,18 @@ impl TestApp {
         let mut config = Config::for_test(dir.path().join("test.db"), dir.path().join("data"));
         config.priv_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../priv");
         adjust(&mut config);
-        let pool = db::connect(&config.database_path, 5).await.expect("database");
+        let pool = db::connect(&config.database_path, 5)
+            .await
+            .expect("database");
         db::migrate::run(&pool).await.expect("migrations");
         let state = AppState::new(config, pool).expect("state");
         let router = web::router(state.clone());
-        Self { state, router, cookie: Mutex::new(None), _dir: dir }
+        Self {
+            state,
+            router,
+            cookie: Mutex::new(None),
+            _dir: dir,
+        }
     }
 
     /// The database pool.
@@ -109,11 +129,18 @@ impl TestApp {
 
     /// Sends a request; mutating requests carry a valid CSRF token.
     pub async fn request(&self, method: Method, path: &str, body: Option<Value>) -> TestResponse {
-        self.request_with(method, path, body, HeaderMap::new()).await
+        self.request_with(method, path, body, HeaderMap::new())
+            .await
     }
 
     /// Sends a request with extra headers.
-    pub async fn request_with(&self, method: Method, path: &str, body: Option<Value>, headers: HeaderMap) -> TestResponse {
+    pub async fn request_with(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        headers: HeaderMap,
+    ) -> TestResponse {
         let mut builder = Request::builder().method(method.clone()).uri(path);
         if !matches!(method, Method::GET | Method::HEAD) && !headers.contains_key("x-csrf-token") {
             let session = self.session();
@@ -145,7 +172,11 @@ impl TestApp {
             }
         }
         let body = response.into_body().collect().await.unwrap().to_bytes();
-        TestResponse { status, headers, body }
+        TestResponse {
+            status,
+            headers,
+            body,
+        }
     }
 
     pub async fn get(&self, path: &str) -> TestResponse {
@@ -170,7 +201,12 @@ impl TestApp {
 
     /// `ConnCase.log_in_user/2`: a tracked session token in a fresh session.
     pub async fn log_in(&self, user: &User) {
-        let token = self.state.accounts.generate_user_session_token(user).await.unwrap();
+        let token = self
+            .state
+            .accounts
+            .generate_user_session_token(user)
+            .await
+            .unwrap();
         let session = Session::default();
         session.put_bytes("user_token", &token);
         self.store_session(&session);
@@ -178,7 +214,10 @@ impl TestApp {
 
     /// Logs in with a password authentication just now (sudo mode).
     pub async fn log_in_sudo(&self, user: &User) {
-        let user = User { authenticated_at: Some(db::UtcDateTime::now()), ..user.clone() };
+        let user = User {
+            authenticated_at: Some(db::UtcDateTime::now()),
+            ..user.clone()
+        };
         self.log_in(&user).await;
     }
 

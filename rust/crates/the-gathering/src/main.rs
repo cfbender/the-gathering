@@ -92,6 +92,9 @@ async fn serve(state: AppState) -> anyhow::Result<()> {
     }
     catalog::sync_server::start(&state);
     decklists::start_cache_sweeper(&state);
+    if state.config.webcam_table_pruning_enabled {
+        state.webcam_tables.spawn_pruner();
+    }
     let app = web::router(state.clone());
     let listener = tokio::net::TcpListener::bind(address).await.with_context(|| format!("binding {address}"))?;
     tracing::info!("listening on http://{address}");

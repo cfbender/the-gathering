@@ -16,6 +16,9 @@ use crate::config::Config;
 use crate::db::Pool;
 use crate::games::Games;
 use crate::rate_limit::RateLimiter;
+use crate::web::channels::presence::Presence;
+use crate::web::channels::pubsub::PubSub;
+use crate::webcam::WebcamTables;
 
 /// Cheap to clone; everything lives behind one `Arc`.
 #[derive(Clone)]
@@ -49,6 +52,12 @@ pub struct Inner {
     pub decklists: Decklists,
     /// Card-recognition corrections.
     pub corrections: Corrections,
+    /// Channel topic subscriptions (`TheGathering.PubSub`).
+    pub pubsub: PubSub,
+    /// Channel presence (`TheGatheringWeb.Presence`).
+    pub presence: Presence,
+    /// Running webcam table rooms.
+    pub webcam_tables: WebcamTables,
 }
 
 impl Deref for AppState {
@@ -80,13 +89,15 @@ impl AppState {
             port_max: config.sfu.port_max,
             public_ip: config.sfu.public_ip.as_deref().and_then(|ip| ip.parse().ok()),
             ipv6: config.sfu.ipv6,
-            // Relay-only mode needs Cloudflare TURN credentials (wired with CloudflareTurn).
-            relay: None,
+            relay: relay_servers(&config, &http),
         });
         let scryfall = Scryfall::new(&config.scryfall_api_base, config.scryfall_rate_limit)?;
         let card_images = CardImages::new(&config.data_dir, &config.card_image_base)?;
         let decklists = Decklists::new(&config)?;
         let corrections = Corrections::new(&config.data_dir);
+        let pubsub = PubSub::new();
+        let presence = Presence::new(pubsub.clone());
+        let webcam_tables = WebcamTables::new(pool.clone(), pubsub.clone());
         Ok(Self(Arc::new(Inner {
             config,
             pool,
@@ -101,6 +112,9 @@ impl AppState {
             catalog_sync: SyncServer::new(),
             decklists,
             corrections,
+            pubsub,
+            presence,
+            webcam_tables,
         })))
     }
 }
@@ -111,6 +125,21 @@ impl AppState {
     pub fn disconnect_session(&self, token: &[u8]) {
         let _ = self.session_disconnects.send(crate::web::auth::user_session_topic(token));
     }
+}
+
+/// Relay-only SFU mode (`Sfu.relay_servers/0`): every connection fetches fresh Cloudflare
+/// TURN credentials. Without Cloudflare TURN configured the SFU listens directly.
+fn relay_servers(config: &Config, http: &reqwest::Client) -> Option<the_gathering_sfu::RelayServers> {
+    if !config.sfu.relay_only || !crate::cloudflare_turn::configured(&config.cloudflare_turn) {
+        return None;
+    }
+    let http = http.clone();
+    let turn = config.cloudflare_turn.clone();
+    Some(Arc::new(move || {
+        let http = http.clone();
+        let turn = turn.clone();
+        Box::pin(async move { crate::cloudflare_turn::relay_servers(&http, &turn).await })
+    }))
 }
 
 /// The User-Agent sent to third parties.
