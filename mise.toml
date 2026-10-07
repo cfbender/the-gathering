@@ -25,10 +25,7 @@ run = "cargo test --locked"
 
 [tasks.precommit]
 description = "Run tests and linting before committing code."
-run = [
-  "mise run rust:check",
-  "aube run precommit",
-]
+run = ["mise run rust:check", "aube run precommit"]
 
 [tasks."rust:check"]
 description = "Format-check, lint, and test the Rust workspace."

@@ -23,11 +23,18 @@ export default defineConfig({
       "priv/static/**",
       "deps/**",
       "_build/**",
+      "rust/**",
       "*.md",
     ],
   },
   lint: {
-    ignorePatterns: ["assets/react/src/routeTree.gen.ts", "priv/static/**", "deps/**", "_build/**"],
+    ignorePatterns: [
+      "assets/react/src/routeTree.gen.ts",
+      "priv/static/**",
+      "deps/**",
+      "_build/**",
+      "rust/**",
+    ],
     options: { typeAware: true, typeCheck: true },
   },
   test: {

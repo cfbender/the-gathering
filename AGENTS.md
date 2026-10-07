@@ -2,7 +2,9 @@
 
 ## Project Structure
 
-The Gathering is a self-hosted Commander (Magic: The Gathering) game tracker: an Elixir/Phoenix JSON API plus a Vite/React single-page app, shipped as one container.
+The Gathering is a self-hosted Commander (Magic: The Gathering) game tracker: a JSON API and realtime server plus a Vite/React single-page app, shipped as one container. The backend is the Rust server in `rust/` (see `rust/README.md`); the original Elixir/Phoenix app in `lib/` stays as the reference implementation and its Ecto migrations remain the schema definition.
+
+- `rust/` — the Rust backend (Cargo workspace): `crates/the-gathering` (axum + sqlx server: API, Phoenix-protocol webcam table channels, Discord bot, background jobs) and `crates/sfu` (the webcam table's str0m WebRTC SFU). `rust/migrations/*.sql` are generated from the Ecto migrations; `rust/.sqlx` is committed query metadata. Shared Magic code (Scryfall, deck-list sources, name normalization, commander rules) comes from the `lotus` git dependency; report lotus gaps instead of forking it here.
 
 - `lib/the_gathering/` — core application/domain code. `Games` and `Accounts` contexts expose stable public APIs backed by workflow modules such as `Games.RecordGame`, `Games.MergePlayers`, and `Accounts.SignInWithDiscord`; import parsing, preview, and commit live under `TheGathering.Imports`.
 - `lib/the_gathering_web/` — Phoenix web layer: router, `/api` controllers, the SPA shell (`AppController`), and `ViteAssets` (dev-server vs manifest asset tags).
@@ -21,11 +23,17 @@ Run commands through `mise` to use the pinned toolchain:
 
 ```sh
 mise install
-mise exec -- mix setup          # deps, database, first asset build
-mise exec -- mix phx.server     # Phoenix on $PORT (default 4000) + Vite dev server on 5173
-mise exec -- mix test
-mise exec -- mix precommit      # compile --warnings-as-errors, format, credo, tests, aube run precommit
+mise run dev                    # Rust server on $PORT (default 4000) + Vite dev server on 5173
+mise run rust:check             # cargo fmt --check, clippy -D warnings, cargo test (in rust/)
+mise run precommit              # rust:check + aube run precommit
+mise run rust:migrations        # regenerate rust/migrations after adding an Ecto migration
+mise run rust:sqlx-prepare      # refresh priv/repo/structure.sql and rust/.sqlx after a schema or query change
 ```
+
+While developing Rust code, check queries against the schema directly:
+`mise run rust:schema-db`, then in `rust/` export `SQLX_OFFLINE=false DATABASE_URL="sqlite://$PWD/target/schema.db?mode=ro"`.
+
+The Elixir app still builds and tests with `mise exec -- mix setup`, `mise exec -- mix test`, and `mise exec -- mix precommit`.
 
 JavaScript tooling goes through aube (the package manager) and Vite Plus (`vp`):
 
@@ -38,13 +46,17 @@ mise exec -- aube exec vp test run
 
 Use `mise exec -- aube` instead of invoking `aube` or npm directly. Fresh orbs do not expose aube on `PATH`. Note that `vp check` is a Vite Plus built-in, so call it via `aube exec vp check` rather than the npm script.
 
-In development the Vite dev server (port 5173, or `VITE_PORT`) is the browser entry point; it proxies everything except its own assets to Phoenix. In an orb, `.amp/services.yaml` already runs this stack as the `the-gathering-review` service, so check `amp orb service status the-gathering-review` (or `ss -ltnp`) before starting another Phoenix server, and reuse the existing one.
+In development the Vite dev server (port 5173, or `VITE_PORT`) is the browser entry point; it proxies everything except its own assets to the backend. In an orb, `.amp/services.yaml` already runs this stack (the Rust server via `mise run dev`) as the `the-gathering-review` service, so check `amp orb service status the-gathering-review` (or `ss -ltnp`) before starting another server, and reuse the existing one.
 
-After creating a new Ecto migration, run it before reporting the change complete:
+After creating a new Ecto migration, run it, then regenerate the Rust migration SQL, the structure dump, and the query metadata before reporting the change complete:
 
 ```sh
 mise exec -- mix ecto.migrate
+mise run rust:migrations
+mise run rust:sqlx-prepare
 ```
+
+Migrations that compute data in Elixir code need that step ported to `rust/crates/the-gathering/src/db/migrate.rs` (`data_step`).
 
 Production/container commands are documented in `README.md`.
 
@@ -64,7 +76,8 @@ Production/container commands are documented in `README.md`.
 - Use `Req` for HTTP requests (Scryfall, Discord, deck-list sites). Avoid `:httpoison`, `:tesla`, and `:httpc`.
 - Follow existing Phoenix context and React component patterns. Keep changes small and focused.
 - Frontend styling uses Tailwind utilities and daisyUI component classes; theme tokens are defined in `assets/react/src/app.css`. Use `cn()` from `src/lib/cn.ts` to merge classes. Shared primitives (Button, Card, Dialog, DropdownMenu, Popover, Select, Tabs, Switch, ToggleGroup, ported from ManaVault on Radix) live in `src/components/ui/`; page scaffolding (`PageHeader`, `PageSection`, `EmptyPanel`) is in `src/components/app-shell.tsx`. The "liquid glass" look is keyed on `html[data-theme-style="glass"]` (default; users can pick Classic in Settings), so glass rules in `app.css` must stay scoped to that attribute. Color palettes (Claret default, plus Nord, Catppuccin, Tokyo Night, Gruvbox, Everforest, Kanagawa, Night Owl, Dracula, Rosé Pine, Solarized, Monochrome) are a third orthogonal axis: `data-palette` on `<html>`, with per-mode token overrides in `src/palettes.css`. Palette and surface style are saved per user (`users.palette`/`users.theme_style`, `PATCH /api/session/appearance`), and `AppController` renders them onto `<html>` for the first paint. `localStorage` (`the-gathering:palette`, `the-gathering:theme-style`) is only the signed-out fallback, and light/dark stays per device. Palette ids live in `PALETTES` (`src/lib/theme.tsx`), `@palettes` (`Accounts.User`), and `palettes.css`, so keep all three in sync. Keep palette roles consistent: secondary is the green, accent the gold used for winners.
-- Run the narrowest relevant tests before reporting completion, and `mise exec -- mix precommit` when a change is complete.
+- Rust backend: keep the lotus conventions (no `unsafe`; no `unwrap`/`expect`/`panic!`/indexing/`as` outside tests; literal regexes via `crate::regex::compile`; `sqlx::query!` macros checked against the schema; `crate::db::begin` for write transactions). JSON shapes, status codes, and error messages must match what the frontend expects; port tests alongside behavior.
+- Run the narrowest relevant tests before reporting completion, and `mise run precommit` when a change is complete.
 - Tests that write to the database must use `async: false`. SQLite allows one writer, and concurrent sandbox transactions fail with `Exqlite.Error: Database busy` on slow CI runners. Only pure or read-free tests may be `async: true`.
 - CI (`.github/workflows/quality.yml`) runs the `precommit` steps as parallel jobs: `mix precommit.lint`, ExUnit as four concurrent `mix test --partitions 4` processes, and `aube run precommit`. Keep the workflow in sync with the `precommit` alias. `MIX_TEST_PARTITION` gives each partition its own SQLite file and data directory (`config/test.exs`). Partitions split by file, so keep very slow modules in several files; the webcam table channel tests share `TheGatheringWeb.WebcamTableChannelCase` for this reason.
 - For UI changes, verify the rendered result through the review portal and leave the service running.
