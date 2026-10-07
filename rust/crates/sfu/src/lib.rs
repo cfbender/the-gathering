@@ -446,3 +446,63 @@ impl Sfu {
         resolved
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_send<T: Send>(_value: &T) {}
+
+    #[test]
+    fn the_sfu_and_its_futures_can_cross_threads() {
+        let sfu = Sfu::with_host_addresses(
+            Settings {
+                port_min: 0,
+                port_max: 0,
+                public_ip: None,
+                ipv6: false,
+                relay: None,
+            },
+            Vec::new(),
+        );
+        assert_send(&sfu);
+        let (events, _receiver) = mpsc::unbounded_channel();
+        assert_send(&sfu.join("r", "p", false, events));
+        assert_send(&sfu.leave("r", "p"));
+        assert_send(&sfu.offer("r", "p", ""));
+        assert_send(&sfu.answer("r", "p", ""));
+        assert_send(&sfu.candidate("r", "p", &Value::Null));
+        assert_send(&sfu.layer("r", "p", "o", "m"));
+        assert_send(&sfu.reveal("r", "p", None));
+        assert_send(&sfu.relay("r", "p", "o", Value::Null));
+    }
+
+    #[test]
+    fn layers_are_the_three_simulcast_rids() {
+        assert!(LAYERS.iter().all(|layer| valid_layer(layer)));
+        assert!(!valid_layer("x"));
+        assert_eq!(
+            LAYERS.map(|rid| Layer::from_rid(rid).map(Layer::rid)),
+            LAYERS.map(Some)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_room_that_cannot_bind_a_socket_is_unavailable() {
+        let sfu = Sfu::with_host_addresses(
+            Settings {
+                port_min: 10,
+                port_max: 9,
+                public_ip: None,
+                ipv6: false,
+                relay: None,
+            },
+            vec!["127.0.0.1".parse().unwrap()],
+        );
+        let (events, _receiver) = mpsc::unbounded_channel();
+        assert!(matches!(
+            sfu.join("r", "p", false, events).await,
+            Err(SfuError::Unavailable(_))
+        ));
+    }
+}
