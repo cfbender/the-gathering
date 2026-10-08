@@ -39,7 +39,6 @@ async fn reload_replaces_a_stale_channel_at_capacity_and_its_exit_cannot_erase_t
     }
     let mut replacement = t.rejoin(NEW_PEER).await;
     t.alice.expect("seat_replaced").await;
-    t.alice.expect("phx_close").await;
     assert_eq!(
         (
             &replacement.participant["life"],
@@ -136,7 +135,10 @@ async fn a_crashing_room_stops_only_its_own_channels_which_rejoin_from_the_saved
     t.alice.ok("update_status", json!({ "life": 21 })).await;
 
     tables.kill(&t.room);
-    t.alice.expect("phx_error").await;
+    assert_eq!(
+        t.alice.expect("rejoin").await,
+        json!({ "reason": "room_down" })
+    );
 
     bystander.ok("update_status", json!({ "life": 30 })).await;
     let lives: Vec<i64> = tables
@@ -171,7 +173,7 @@ async fn the_owner_ends_the_table_for_everyone_and_its_seats_leave_instead_of_re
     t.alice.ok("end_game", json!({})).await;
     for client in [&mut t.alice, &mut bob] {
         client.expect("table_closed").await;
-        client.expect("phx_close").await;
+        client.refute("rejoin").await;
     }
     let tables = &t.server.state().webcam_tables;
     assert_eq!(tables.instance(&t.room), None);
@@ -421,7 +423,7 @@ async fn the_shared_log_records_seat_changes_and_rolls_and_survives_reloads_and_
     assert_eq!(texts, ["Alice: 40 → 35 life", "Alice joined the table"]);
 
     t.server.state().webcam_tables.kill(&t.room);
-    reloaded.expect("phx_error").await;
+    reloaded.expect("rejoin").await;
 
     let mut restarted = t.rejoin(AFTER_RESTART).await;
     let restored = restarted.expect("table_log").await["entries"].clone();

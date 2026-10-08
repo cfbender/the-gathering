@@ -11,7 +11,7 @@ use crate::webcam_support;
 
 use serde_json::{Value, json};
 use the_gathering::webcam::room::Actor;
-use webcam_support::{PEER_A, PEER_B, PEER_C, Table, room_id};
+use webcam_support::{PEER_A, PEER_B, PEER_C, Table, listed, room_id};
 
 const PEER_A_NEW: &str = "00000000-0000-4000-8000-0000000000a2";
 const ELSEWHERE: &str = "00000000-0000-4000-8000-00000000e0e0";
@@ -35,8 +35,8 @@ fn drop_server_now(timer: &Value) -> Value {
 #[tokio::test]
 async fn publishes_separate_commander_counters_and_rejects_invalid_updates_atomically() {
     let mut t = Table::new().await;
-    let presence = t.alice.expect("presence_state").await;
-    let initial = &presence[PEER_A]["metas"][0];
+    let presence = t.alice.expect("presence").await;
+    let initial = listed(&presence, PEER_A).unwrap();
     assert_eq!(
         (
             &initial["poison"],
@@ -100,8 +100,8 @@ async fn publishes_separate_commander_counters_and_rejects_invalid_updates_atomi
 #[tokio::test]
 async fn publishes_shared_custom_counters_and_combat_buffs_rejecting_malformed_ones() {
     let mut t = Table::new().await;
-    let presence = t.alice.expect("presence_state").await;
-    let initial = &presence[PEER_A]["metas"][0];
+    let presence = t.alice.expect("presence").await;
+    let initial = listed(&presence, PEER_A).unwrap();
     assert_eq!(
         (&initial["custom_counters"], &initial["combat_effects"]),
         (&json!([]), &json!([]))
@@ -234,8 +234,8 @@ async fn concurrent_monarch_claims_converge_on_the_last_serialized_event() {
     t.alice.expect("monarch_state").await;
     let mut bob = t.join_player(PEER_B, "Bob").await;
     bob.expect("monarch_state").await;
-    let alice_ref = t.alice.push("take_monarch", json!({})).await;
-    let bob_ref = bob.push("take_monarch", json!({})).await;
+    let alice_ref = t.alice.push("take_monarch", json!({}));
+    let bob_ref = bob.push("take_monarch", json!({}));
     assert_eq!(t.alice.reply(&alice_ref).await.0, "ok");
     assert_eq!(bob.reply(&bob_ref).await.0, "ok");
     let first = t.alice.expect("monarch").await;
@@ -314,12 +314,10 @@ async fn reveal_validates_targets_preserves_status_and_ends_when_the_target_leav
 
     other.leave().await;
     t.alice
-        .expect_where("presence_diff", |diff| {
-            diff["joins"][PEER_A]["metas"][0].get("reveal_to") == Some(&Value::Null)
+        .expect_where("presence", |roster| {
+            listed(roster, PEER_B).is_none()
+                && listed(roster, PEER_A).unwrap()["reveal_to"] == Value::Null
         })
-        .await;
-    t.alice
-        .expect_where("presence_diff", |diff| diff["leaves"].get(PEER_B).is_some())
         .await;
     assert_eq!(t.meta(PEER_A)["reveal_to"], Value::Null);
 }
@@ -687,16 +685,12 @@ async fn departed_eliminated_seats_survive_and_rejoining_replaces_their_peer_id(
         .await;
     // A round trip lets the room's elimination notice update presence first.
     t.alice.ok("timer_sync", json!({})).await;
-    let presence_ref = t.meta(PEER_A)["phx_ref"].clone();
+    assert_eq!(t.meta(PEER_A)["eliminated"], true);
 
     t.alice.leave().await;
-    // Updates also list the replaced meta under `leaves`; the final leave carries the last ref.
-    let diff = other
-        .expect_where("presence_diff", |diff| {
-            diff["leaves"][PEER_A]["metas"][0]["phx_ref"] == presence_ref
-        })
+    other
+        .expect_where("presence", |roster| listed(roster, PEER_A).is_none())
         .await;
-    assert!(diff["joins"].get(PEER_A).is_none());
     t.server.wait_departed(&t.room, t.player).await;
 
     other

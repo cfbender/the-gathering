@@ -16,7 +16,8 @@ use support::TestApp;
 use the_gathering::config::{Config, WindowLimit};
 use the_gathering::crypto;
 use the_gathering::web::channels;
-use webcam_support::{PEER_A, PEER_B, Server, room_id};
+use the_gathering::web::channels::rooms::LOBBY_TOPIC;
+use webcam_support::{PEER_A, PEER_B, Server, room_id, wait_until};
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -249,17 +250,11 @@ async fn keeps_an_empty_room_listed_until_it_is_closed_as_idle() {
     let room = room_id();
     let alice = server.join_player(&room, PEER_A, "Alice").await;
     let player = alice.player_id();
-    let mut lobby = server.state().pubsub.listen("webcam_tables");
     assert_eq!(rooms(&server).await["data"][0]["id"], room);
 
-    alice.close().await;
-    // The join diff may arrive after we subscribe, so skip diffs until the leave shows up.
-    loop {
-        let message = lobby.recv().await.unwrap();
-        if message.event == "presence_diff" && message.payload["leaves"].get(PEER_A).is_some() {
-            break;
-        }
-    }
+    alice.close();
+    let lobby = server.state().presence.clone();
+    wait_until(|| async { lobby.metas(LOBBY_TOPIC).is_empty() }).await;
     let body = rooms(&server).await;
     assert_eq!(
         body["data"],

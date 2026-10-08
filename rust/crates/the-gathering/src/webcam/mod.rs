@@ -27,7 +27,6 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::AbortHandle;
 
 use crate::db::Pool;
-use crate::web::channels::pubsub::PubSub;
 
 use self::cards::Change;
 use self::log::{LogEntry, RollKind, RollResult};
@@ -39,6 +38,11 @@ use self::timer::Action;
 pub const PRUNE_INTERVAL: Duration = Duration::from_secs(60);
 /// How long an empty room may sit idle before the pruner closes it.
 pub const IDLE_TIMEOUT_MS: i64 = 30 * 60 * 1000;
+
+/// The presence topic and Socket.IO room of the table `room_id`.
+pub fn topic(room_id: &str) -> String {
+    format!("webcam_table:{room_id}")
+}
 
 /// Milliseconds since the epoch (`System.system_time(:millisecond)`).
 pub fn now() -> i64 {
@@ -100,7 +104,7 @@ struct RoomHandle {
 #[derive(Debug)]
 pub(crate) struct Shared {
     pool: Pool,
-    pubsub: PubSub,
+    io: socketioxide::SocketIo,
     rooms: Mutex<HashMap<String, RoomHandle>>,
     next_instance: AtomicU64,
 }
@@ -130,10 +134,10 @@ pub struct WebcamTables(Arc<Shared>);
 
 impl WebcamTables {
     /// No rooms yet.
-    pub fn new(pool: Pool, pubsub: PubSub) -> Self {
+    pub fn new(pool: Pool, io: socketioxide::SocketIo) -> Self {
         Self(Arc::new(Shared {
             pool,
-            pubsub,
+            io,
             rooms: Mutex::new(HashMap::new()),
             next_instance: AtomicU64::new(1),
         }))

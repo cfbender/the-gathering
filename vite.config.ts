@@ -70,7 +70,7 @@ export default defineConfig({
     // Vite serves, not to responses proxied from the backend.
     headers: { "Cross-Origin-Embedder-Policy": "require-corp" },
     proxy: {
-      "/socket": {
+      "/socket.io": {
         target: backendOrigin,
         ws: true,
       },

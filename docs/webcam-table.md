@@ -41,8 +41,8 @@ only a seat's owner may choose its commander).
 
 Every browser holds one `RTCPeerConnection` to the server (the `the-gathering-sfu` crate in
 `rust/crates/sfu`, built on [str0m](https://github.com/algesten/str0m)), not one to each other
-seat. The table's channel (Phoenix Channels wire protocol) carries authenticated presence
-and the signaling for that single connection: the browser's first `sfu_offer` carries its camera
+seat. The table's channel (a Socket.IO connection: socketioxide on the server,
+`socket.io-client` in the browser) carries authenticated presence and the signaling for that single connection: the browser's first `sfu_offer` carries its camera
 and every later offer comes from the server (`sfu_offer` with a `tracks` map of mid → owner peer
 id) and is answered with `sfu_answer`; `sfu_candidate` trickles ICE in both directions.
 A room is one tokio task per table owning one str0m `Rtc` per seat; it adds a
@@ -121,7 +121,7 @@ SDP and ICE exchange through such a signaling service. References:
 
 ### ICE, STUN, TURN, and proxies
 
-The normal HTTPS reverse proxy must pass WebSocket upgrades for `/socket`; it never carries RTP.
+The normal HTTPS reverse proxy must pass WebSocket upgrades for `/socket.io/`; it never carries RTP.
 Media is UDP between each browser and the SFU's ports, which no HTTP proxy can front: forward
 `WEBRTC_SFU_PORT_RANGE` from the router straight to the host running the app and set
 `WEBRTC_SFU_PUBLIC_IP` to the router's WAN address so the server's candidates are reachable.
@@ -316,15 +316,15 @@ restarts. Media is not stored. Immediate writes avoid a debounce data-loss windo
 this remains a single-server design, not a distributed room coordinator.
 
 Ending the game closes the room. After the owner records the result, or chooses End without
-recording (confirmed inline), the browser sends `end_game`. `WebcamTables.close/1` deletes the
-snapshot and stops the room with `{:shutdown, :closed}`. Every joined channel sees that exit on its
-room monitor, pushes `table_closed`, and stops normally, so browsers leave instead of rejoining a
-fresh room under the same id. Other seats return to the games list with a notice. The table drops
+recording (confirmed inline), the browser sends `end_game`. `WebcamTables::close` deletes the
+snapshot and stops the room. Every joined channel sees that exit on the room's exit watch, pushes
+`table_closed`, and stops normally, so browsers leave instead of rejoining a fresh room under the
+same id. Other seats return to the games list with a notice. The table drops
 off the Play/Join list at once, and its seats no longer count as taken.
 
 **End and rematch** is the form's other *After this game* choice. It records the result (**Record
 and rematch**) or skips it (**Rematch without recording**, confirmed inline), then sends `rematch`
-instead of `end_game`. `WebcamTables.rematch/1` resets the same room to a fresh lobby and nobody
+instead of `end_game`. `WebcamTables::rematch` resets the same room to a fresh lobby and nobody
 navigates, so the table keeps its cross-origin-isolated document. What persists: the room id,
 owner, game mode, auto-randomize setting, and the seats of players still connected (or within the
 ten-second reload grace), in their last seat order with their decks, commanders, camera and reveal
@@ -333,8 +333,8 @@ state. What resets: the timer (back to setup, not started), turns and turn times
 identified cards, and the log (which restarts with one "Rematch" line). Seats of players who have
 left are dropped, so the lobby holds exactly who is present; spectators keep watching and take a
 seat by reloading while the new lobby is open. The room broadcasts `table_state` and `table_log`
-to every seat and sends each seated connection `{:seat_reset, seat}`; the channel adopts that seat
-in its assigns and presence and pushes `seat_reset` so the browser rehydrates its local life and
+to every seat and sends each seated connection its reset seat; the channel adopts that seat in its
+state and presence and pushes `seat_reset` so the browser rehydrates its local life and
 counters. If recording succeeds but the rematch does not, the form still closes (the game is saved)
 and the owner can retry with Rematch without recording.
 
@@ -365,13 +365,13 @@ failure. Game state survives restarts: rooms reload their saved session on the n
 
 The server bounds untrusted input: `peer_id` must be a canonical UUID (clients use
 `crypto.randomUUID()`), SDP in `sfu_offer`/`sfu_answer` is capped at 64 KB and a relayed
-`peer_message` at 256 KiB, and the websocket refuses frames over 384 KiB. Every channel event spends a token from a per-connection bucket
+`peer_message` at 256 KiB, and the socket refuses messages over 384 KiB. Every channel event spends a token from a per-connection bucket
 (signals have their own, larger bucket) and replies `{reason: "rate limited"}` when it is empty;
 joins and TURN credential requests (`GET /api/webcam-table/config`) are limited per account.
 Limits live in `rate_limit.rs` and `config.rs`.
 
 The Games page still finds open tables without the URL: `GET /api/webcam-table/rooms`
-(`web/channels/rooms.rs`) lists every running room, and every seated channel process
+(`web/channels/rooms.rs`) lists every running room, and every seated channel
 also tracks itself on one lobby presence topic that supplies each room's connected players (join
 order, `full` at ten seats). `PlayActions` (`features/webcam-table/play-actions.tsx`) polls it
 every 15 s: with no open table the header shows **Play**; with one it shows **Join** naming the
@@ -647,10 +647,17 @@ can still save or share what they saw; this feature cannot revoke frames already
 
 ## File and component structure
 
-- The socket (`GET /socket/websocket`, `web/api/webcam.rs`) issues and decrypts a short-lived
-  encrypted token wrapping the tracked cookie session; `web/channels/` is the channels server
-  (V2 JSON wire protocol, pubsub, and presence for room membership and seat status).
-- The `webcam_table:*` channel (`web/channels/webcam_table.rs`) caps rooms at ten, carries SFU
+- The socket (Socket.IO on `/socket.io/`, `web/channels/mod.rs`) authenticates on connect with a
+  short-lived encrypted token wrapping the tracked cookie session (issued by
+  `GET /api/webcam-table/config`, `web/api/webcam.rs`), forwards each socket's events in order to
+  one task, and acknowledges events that ask for a reply with `{ok: response}` or
+  `{error: reason}`. Joining sends `join` with `{room_id, peer_id, player_id, deck_id}`; `leave`
+  ends the seat. When a channel fails (its room or SFU connection crashed) the server sends
+  `rejoin` and the browser joins again with a fresh peer id; when the socket drops, Socket.IO
+  reconnects and the browser rejoins (`features/webcam-table/table-channel.ts`). Table broadcasts
+  go to a Socket.IO room per table, and presence (`web/channels/presence.rs`) sends the full
+  `presence` roster whenever room membership or a seat's status changes.
+- The table channel (`web/channels/webcam_table.rs`) caps rooms at ten, carries SFU
   signaling and targeted `peer_message`s, merges `update_status`/`set_eliminated` into presence,
   validates `seat_order`/`timer`/`timer_sync`,
   `start_game`/`turn_settings`/`pass_turn`/`unpass_turn`/`adjust_turn`, and generates

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { useMemo } from "react"
 import { afterEach, expect, it, vi } from "vite-plus/test"
 import type { GalleryArt } from "./recognition/pipeline"
-import { serveCards, wire } from "./test-support/fake-phoenix"
+import { serveCards, wire } from "./test-support/fake-socket-io"
 import { installFakeMedia, serveTableConfig } from "./test-support/fake-webrtc"
 import type { CapturedCard } from "./use-webcam-room"
 import { WebcamTablePage } from "./webcam-table-page"
@@ -11,7 +11,7 @@ import { WebcamTablePage } from "./webcam-table-page"
 // Keep the real room hook (including announceCard/deduplication) against a fake server that
 // echoes card changes; replace only camera capture and the unavailable recognition worker
 // with an explicit two-printing picker fixture.
-vi.mock("phoenix", () => import("./test-support/fake-phoenix"))
+vi.mock("socket.io-client", () => import("./test-support/fake-socket-io"))
 vi.mock("./use-webcam-room", async (importOriginal) => {
   const original = await importOriginal<typeof import("./use-webcam-room")>()
   return {
@@ -102,7 +102,7 @@ it("previews the newly identified printing while retaining one original tray ent
       <WebcamTablePage roomId="preview-test" />
     </QueryClientProvider>,
   )
-  await waitFor(() => expect(wire.channel).not.toBeNull())
+  await waitFor(() => expect(wire.sent("join")).not.toHaveLength(0))
   fireEvent.click(await screen.findByRole("button", { name: "Identify first Forest" }))
   expect(screen.getByText(/LEA · #280/)).toBeTruthy()
   fireEvent.click(screen.getByRole("button", { name: "Close card details" }))

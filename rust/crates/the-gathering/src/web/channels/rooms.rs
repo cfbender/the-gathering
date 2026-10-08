@@ -1,7 +1,7 @@
 //! Which webcam tables are open right now.
 //!
 //! Every running room is listed, including empty ones, until the pruner closes it after 30
-//! idle minutes. Presence on the `webcam_tables` lobby topic supplies each room's connected
+//! idle minutes. Presence on the `webcam_tables` lobby topic (which no socket joins) supplies each room's connected
 //! seats; spectators do not appear.
 
 use std::collections::HashMap;
@@ -44,7 +44,7 @@ pub fn track_seat(state: &AppState, owner: u64, room_id: &str, participant: &Sea
         LOBBY_TOPIC,
         owner,
         &participant.peer_id,
-        &json!({
+        json!({
             "room_id": room_id,
             "player_id": participant.player_id,
             "player_name": participant.player_name,

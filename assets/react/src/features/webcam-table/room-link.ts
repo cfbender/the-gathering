@@ -1,4 +1,4 @@
-import type { Channel } from "phoenix"
+import type { TableChannel } from "./table-channel"
 import { useRef } from "react"
 import type { TableParticipant } from "./room-types"
 
@@ -8,7 +8,7 @@ export interface RoomLink {
   /** This tab's media generation. `useRoomChannel` replaces it when the channel rejoins. */
   peerId: string
   /** Set by `useRoomChannel` once the socket opens the room channel. */
-  channel: Channel | null
+  channel: TableChannel | null
   /** Set by `useRoomChannel` from the join reply. */
   spectator: boolean
   /** Seated participants from the last presence sync; written by `useTableGameState`. */

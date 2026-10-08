@@ -1,7 +1,7 @@
 //! Shared server state handed to every request handler and background job.
 
 use std::ops::Deref;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use tokio::sync::broadcast;
@@ -18,7 +18,6 @@ use crate::games::Games;
 use crate::rate_limit::RateLimiter;
 use crate::self_update::SelfUpdate;
 use crate::web::channels::presence::Presence;
-use crate::web::channels::pubsub::PubSub;
 use crate::webcam::WebcamTables;
 
 /// Cheap to clone; everything lives behind one `Arc`.
@@ -55,9 +54,11 @@ pub struct Inner {
     pub decklists: Decklists,
     /// Card-recognition corrections.
     pub corrections: Corrections,
-    /// Channel topic subscriptions.
-    pub pubsub: PubSub,
-    /// Channel presence.
+    /// The webcam table's Socket.IO server: emits to sockets and rooms.
+    pub io: socketioxide::SocketIo,
+    /// Serves `io` on `/socket.io/`.
+    pub socket_layer: socketioxide::layer::SocketIoLayer,
+    /// Who is at each table.
     pub presence: Presence,
     /// Running webcam table rooms.
     pub webcam_tables: WebcamTables,
@@ -108,11 +109,11 @@ impl AppState {
         let card_images = CardImages::new(&config.data_dir, &config.card_image_base)?;
         let decklists = Decklists::new(&config)?;
         let corrections = Corrections::new(&config.data_dir);
-        let pubsub = PubSub::new();
-        let presence = Presence::new(pubsub.clone());
-        let webcam_tables = WebcamTables::new(pool.clone(), pubsub.clone());
+        let (socket_layer, io) = crate::web::channels::build();
+        let presence = Presence::new(io.clone());
+        let webcam_tables = WebcamTables::new(pool.clone(), io.clone());
         let self_update = SelfUpdate::new(&config)?;
-        Ok(Self(Arc::new(Inner {
+        let state = Self(Arc::new(Inner {
             config,
             pool,
             accounts,
@@ -127,17 +128,36 @@ impl AppState {
             catalog_sync: SyncServer::new(),
             decklists,
             corrections,
-            pubsub,
+            io,
+            socket_layer,
             presence,
             webcam_tables,
             self_update,
-        })))
+        }));
+        crate::web::channels::serve(&state);
+        Ok(state)
+    }
+
+    /// A reference that does not keep the state alive.
+    pub fn downgrade(&self) -> WeakAppState {
+        WeakAppState(Arc::downgrade(&self.0))
+    }
+}
+
+/// A weak [`AppState`], for handlers owned by the state itself.
+#[derive(Clone)]
+pub struct WeakAppState(Weak<Inner>);
+
+impl WeakAppState {
+    /// The state, unless it was dropped.
+    pub fn upgrade(&self) -> Option<AppState> {
+        self.0.upgrade().map(AppState)
     }
 }
 
 impl AppState {
-    /// Disconnects realtime sockets opened with this session token (logging out or a
-    /// password change broadcasts `disconnect` to the session topic).
+    /// Disconnects realtime sockets opened with this session token (on logging out or a
+    /// password change).
     pub fn disconnect_session(&self, token: &[u8]) {
         let _ = self
             .session_disconnects

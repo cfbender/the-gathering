@@ -1,45 +1,47 @@
-//! A channels server speaking the Phoenix Channels V2 protocol, so the frontend's `phoenix`
-//! JS client connects to it unchanged.
+//! The webcam table's realtime connection: Socket.IO, served by socketioxide on `/socket.io/`.
 //!
-//! * One task per WebSocket ([`run_socket`]) decodes V2 JSON frames, answers `heartbeat`,
-//!   routes `phx_join` to a new channel task per topic and other events to the joined
-//!   channel, and owns a writer task that serializes every outbound frame.
-//! * One task per joined channel ([`webcam_table::run`]) handles its events in order, like
-//!   a channel process. Broadcasts to its topic are fastlaned to the socket by [`pubsub`],
-//!   except intercepted events (`presence_diff`), which go through the channel.
-//! * When a channel stops normally the client gets `phx_close`; abnormally, `phx_error`
-//!   (and phoenix.js rejoins). When the socket closes, every channel stops silently.
-//! * Logging out broadcasts the session's topic on `state.session_disconnects`; sockets
-//!   opened with that session close.
+//! * A socket authenticates while connecting with the sealed token from
+//!   `GET /api/webcam-table/config` (`auth: { token }`); a refused token gets a `connect_error`.
+//! * Every event a socket sends is forwarded, in arrival order, to one task per socket
+//!   ([`run_socket`]). A `join` starts a table channel ([`webcam_table::run`]) and later events go
+//!   to it; a socket sits at one table at a time, and joining again replaces the channel.
+//! * Events that expect a reply are acknowledged with `{"ok": response}` or `{"error": reason}`.
+//! * Table broadcasts go to the Socket.IO room named after the table's topic, and every presence
+//!   change sends the room the full roster ([`presence`]).
+//! * When a channel fails (its room or SFU connection crashed) the client gets `rejoin` and joins
+//!   again with a new peer id. When the socket disconnects, its channel stops silently.
+//! * Logging out broadcasts the session's topic on `state.session_disconnects`; sockets opened with
+//!   that session disconnect.
 
 pub mod presence;
-pub mod protocol;
-pub mod pubsub;
 pub mod rooms;
 pub mod webcam_table;
 
-use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
-use axum::extract::ws::{Message, WebSocket};
-use futures_util::{SinkExt, StreamExt};
-use serde_json::json;
+use serde_json::{Value, json};
+use socketioxide::extract::{AckSender, Event, Extension, SocketRef, TryData};
+use socketioxide::handler::{ConnectHandler, FromMessageParts, MessageHandler};
+use socketioxide::layer::SocketIoLayer;
+use socketioxide::socket::Socket;
+use socketioxide::{SocketIo, TransportType};
 use tokio::sync::{broadcast, mpsc};
+use tokio::task::JoinHandle;
 
 use crate::accounts::User;
 use crate::crypto;
-use crate::state::AppState;
+use crate::state::{AppState, WeakAppState};
 use crate::web::auth::user_session_topic;
-
-use self::protocol::{Frame, Outbound, Reply, encode};
 
 /// The purpose socket tokens are sealed for.
 pub const TOKEN_PURPOSE: &str = "webcam-table-socket";
 /// Socket tokens expire after a day.
 pub const TOKEN_MAX_AGE_SECONDS: i64 = 86_400;
-/// Inbound frames are capped above the largest legitimate signal (SDP offers, card crops).
+/// Inbound messages are capped above the largest legitimate signal (SDP offers, card crops).
 pub const MAX_FRAME_SIZE: usize = 393_216;
-/// The topic prefix the webcam table channel serves.
-pub const WEBCAM_TABLE_PREFIX: &str = "webcam_table:";
+/// Packets queued for one socket before further emits to it are dropped. A table sends bursts
+/// (a join's snapshot, every seat's candidates), so this is well above socketioxide's 128.
+const MAX_BUFFERED_PACKETS: usize = 1_024;
 
 /// What a socket token carries.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -50,8 +52,8 @@ struct SocketToken {
     expires_at: i64,
 }
 
-/// Seals the cookie session token for the browser to pass as the `token` connect param.
-/// Encrypted, not just signed, so page scripts cannot read the session token out of it.
+/// Seals the cookie session token for the browser to send when it connects. Encrypted, not just
+/// signed, so page scripts cannot read the session token out of it.
 pub fn socket_token(state: &AppState, session_token: &[u8]) -> String {
     let token = SocketToken {
         session: crypto::url_encode64_unpadded(session_token),
@@ -84,12 +86,185 @@ pub async fn authenticate(
         .map(|(user, _)| (user, session_token)))
 }
 
-/// What the socket tells a channel task.
-#[derive(Debug)]
+/// The Socket.IO layer for the router and the handle that emits to sockets and rooms.
+pub fn build() -> (SocketIoLayer, SocketIo) {
+    SocketIo::builder()
+        .transports([TransportType::Websocket])
+        .ws_max_message_size(MAX_FRAME_SIZE)
+        .ws_max_frame_size(MAX_FRAME_SIZE)
+        .max_payload(u64::try_from(MAX_FRAME_SIZE).unwrap_or(u64::MAX))
+        .max_buffer_size(MAX_BUFFERED_PACKETS)
+        .build_layer()
+}
+
+/// Serves table sockets on `state.io`. The handlers hold the state weakly, since the state owns
+/// the Socket.IO handle that owns them.
+pub fn serve(state: &AppState) {
+    let weak = state.downgrade();
+    let authorize = move |socket: SocketRef, TryData(auth): TryData<ConnectAuth>| {
+        let weak = weak.clone();
+        async move { authorize(&weak, &socket, auth.ok()).await }
+    };
+    state.io.ns("/", connected.with(authorize));
+}
+
+/// The `auth` payload a client connects with.
+#[derive(serde::Deserialize)]
+struct ConnectAuth {
+    token: String,
+}
+
+/// Why a connection was refused; the client receives it as the `connect_error` message.
+#[derive(Debug, thiserror::Error)]
+enum Refused {
+    #[error("unauthorized")]
+    Unauthorized,
+    #[error("unavailable")]
+    Unavailable,
+}
+
+/// An authenticated socket waiting for its task to start.
+struct Connection {
+    state: AppState,
+    user: User,
+    session_token: Vec<u8>,
+    inbox: mpsc::UnboundedReceiver<Inbound>,
+}
+
+/// Hands the [`Connection`] from the middleware to the connect handler (socket extensions must
+/// be `Clone`).
+#[derive(Clone)]
+struct Pending(Arc<Mutex<Option<Connection>>>);
+
+/// Connect middleware: authenticates the token and starts forwarding events before the client
+/// learns it is connected, so its first event cannot be missed.
+async fn authorize(
+    weak: &WeakAppState,
+    socket: &SocketRef,
+    auth: Option<ConnectAuth>,
+) -> Result<(), Refused> {
+    let state = weak.upgrade().ok_or(Refused::Unavailable)?;
+    let Some(auth) = auth else {
+        return Err(Refused::Unauthorized);
+    };
+    let (user, session_token) = match authenticate(&state, &auth.token).await {
+        Ok(Some(authenticated)) => authenticated,
+        Ok(None) => return Err(Refused::Unauthorized),
+        Err(error) => {
+            tracing::error!("authenticating a table socket failed: {error}");
+            return Err(Refused::Unavailable);
+        }
+    };
+    let (tx, inbox) = mpsc::unbounded_channel();
+    socket.on_fallback(Forward(tx.clone()));
+    socket.on_disconnect(move || {
+        let _ = tx.send(Inbound::Disconnected);
+        async {}
+    });
+    socket
+        .extensions
+        .insert(Pending(Arc::new(Mutex::new(Some(Connection {
+            state,
+            user,
+            session_token,
+            inbox,
+        })))));
+    Ok(())
+}
+
+async fn connected(socket: SocketRef, Extension(pending): Extension<Pending>) {
+    socket.extensions.remove::<Pending>();
+    let connection = pending
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take();
+    if let Some(connection) = connection {
+        run_socket(connection, socket).await;
+    }
+}
+
+/// An event from the client, with the means to acknowledge it.
+pub struct ClientEvent {
+    /// Event name.
+    pub event: String,
+    /// The event's first argument (`null` when it has none or it is not JSON).
+    pub payload: Value,
+    /// Acknowledges the event; does nothing when the client did not ask for a reply.
+    pub ack: AckSender,
+}
+
+enum Inbound {
+    Event(ClientEvent),
+    Disconnected,
+}
+
+/// Forwards every event to the socket's task as it is parsed. socketioxide runs ordinary
+/// handlers as separate tasks, which would let events overtake each other.
+struct Forward(mpsc::UnboundedSender<Inbound>);
+
+/// Marks [`Forward`]'s [`MessageHandler`] impl.
+struct Forwarded;
+
+impl MessageHandler<socketioxide::adapter::LocalAdapter, Forwarded> for Forward {
+    fn call(&self, socket: Arc<Socket>, mut value: socketioxide::handler::Value, ack: Option<i64>) {
+        let Ok(Event(event)) = Event::from_message_parts(&socket, &mut value, &ack) else {
+            return;
+        };
+        let Ok(TryData(payload)) = TryData::<Value>::from_message_parts(&socket, &mut value, &ack);
+        let Ok(ack) = AckSender::from_message_parts(&socket, &mut value, &ack);
+        let _ = self.0.send(Inbound::Event(ClientEvent {
+            event,
+            payload: payload.unwrap_or(Value::Null),
+            ack,
+        }));
+    }
+}
+
+/// How an event is answered.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Reply {
+    /// Acknowledged as `{"ok": response}`.
+    Ok(Value),
+    /// Acknowledged as `{"error": reason}`.
+    Error(String),
+}
+
+impl Reply {
+    /// An empty ok response.
+    pub fn ok() -> Self {
+        Self::Ok(json!({}))
+    }
+
+    /// An error.
+    pub fn error(reason: impl Into<String>) -> Self {
+        Self::Error(reason.into())
+    }
+
+    /// Acknowledges the event this answers.
+    pub fn send(&self, ack: AckSender) {
+        let body = match self {
+            Self::Ok(response) => json!({ "ok": response }),
+            Self::Error(reason) => json!({ "error": reason }),
+        };
+        let _ = ack.send(&body);
+    }
+}
+
+impl From<Result<(), String>> for Reply {
+    fn from(result: Result<(), String>) -> Self {
+        match result {
+            Ok(()) => Self::ok(),
+            Err(reason) => Self::Error(reason),
+        }
+    }
+}
+
+/// What the socket tells its table channel.
 pub enum ClientMsg {
-    /// A frame for this channel.
-    Frame(Frame),
-    /// A duplicate join replaced this channel: stop with `phx_close`.
+    /// An event for the table.
+    Event(ClientEvent),
+    /// A new join replaces this channel: stop without telling the client.
     Shutdown,
 }
 
@@ -100,137 +275,75 @@ pub struct SocketCtx {
     pub state: AppState,
     /// The signed-in user.
     pub user: User,
-    /// Outbound frames.
-    pub out: mpsc::UnboundedSender<Outbound>,
-    /// Tells the socket a channel ended: `(topic, join_ref)`.
-    pub exited: mpsc::UnboundedSender<(String, Option<String>)>,
-}
-
-impl SocketCtx {
-    /// Queues a frame.
-    pub fn send(
-        &self,
-        join_ref: Option<&str>,
-        ref_: Option<&str>,
-        topic: &str,
-        event: &str,
-        payload: &serde_json::Value,
-    ) {
-        let _ = self.out.send(Outbound::Text(
-            encode(join_ref, ref_, topic, event, payload).into(),
-        ));
-    }
+    /// The Socket.IO socket.
+    pub socket: SocketRef,
 }
 
 struct Joined {
-    join_ref: Option<String>,
     tx: mpsc::UnboundedSender<ClientMsg>,
+    task: JoinHandle<()>,
 }
 
-/// Serves one WebSocket until it closes or its session is revoked.
-pub async fn run_socket(state: AppState, socket: WebSocket, user: User, session_token: Vec<u8>) {
-    let (mut sink, mut stream) = socket.split();
-    let (out, mut outbound) = mpsc::unbounded_channel::<Outbound>();
-    let writer = tokio::spawn(async move {
-        while let Some(frame) = outbound.recv().await {
-            let message = match frame {
-                Outbound::Text(text) => Message::Text(text),
-                Outbound::Close => break,
-            };
-            if sink.send(message).await.is_err() {
-                return;
-            }
-        }
-        let _ = sink.send(Message::Close(None)).await;
-        let _ = sink.close().await;
-    });
+impl Joined {
+    /// Stops the channel and waits until it has left its room.
+    async fn stop(self) {
+        let _ = self.tx.send(ClientMsg::Shutdown);
+        let _ = self.task.await;
+    }
+}
 
-    let (exited, mut exits) = mpsc::unbounded_channel();
+/// Serves one socket until it disconnects or its session is revoked.
+async fn run_socket(connection: Connection, socket: SocketRef) {
+    let Connection {
+        state,
+        user,
+        session_token,
+        mut inbox,
+    } = connection;
     let ctx = SocketCtx {
         state: state.clone(),
         user,
-        out: out.clone(),
-        exited,
+        socket: socket.clone(),
     };
     let session_topic = user_session_topic(&session_token);
     let mut disconnects = state.session_disconnects.subscribe();
     let mut listening = true;
-    let mut channels: HashMap<String, Joined> = HashMap::new();
+    let mut table: Option<Joined> = None;
 
     loop {
         tokio::select! {
-            message = stream.next() => match message {
-                Some(Ok(Message::Text(text))) => {
-                    if let Some(frame) = Frame::decode(text.as_str()) {
-                        route(&ctx, &mut channels, frame);
-                    } else {
-                        tracing::debug!("dropping undecodable socket frame");
+            inbound = inbox.recv() => match inbound {
+                Some(Inbound::Event(event)) if event.event == "join" => {
+                    // A table's channel joins and leaves the socket's room, so the previous one
+                    // must be gone before the next starts.
+                    if let Some(previous) = table.take() {
+                        previous.stop().await;
                     }
+                    let (tx, rx) = mpsc::unbounded_channel();
+                    let task = tokio::spawn(webcam_table::run(ctx.clone(), event, rx));
+                    table = Some(Joined { tx, task });
                 }
-                Some(Ok(Message::Binary(_) | Message::Ping(_) | Message::Pong(_))) => {}
-                Some(Ok(Message::Close(_)) | Err(_)) | None => break,
-            },
-            Some((topic, join_ref)) = exits.recv() => {
-                if channels.get(&topic).is_some_and(|joined| joined.join_ref == join_ref) {
-                    channels.remove(&topic);
-                }
+                Some(Inbound::Event(event)) => match &table {
+                    Some(joined) if !joined.tx.is_closed() => {
+                        let _ = joined.tx.send(ClientMsg::Event(event));
+                    }
+                    _ => Reply::error("not joined").send(event.ack),
+                },
+                Some(Inbound::Disconnected) | None => break,
             },
             revoked = disconnects.recv(), if listening => match revoked {
-                Ok(topic) if topic == session_topic => break,
+                Ok(topic) if topic == session_topic => {
+                    let _ = socket.clone().disconnect();
+                    break;
+                }
                 Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
                 Err(broadcast::error::RecvError::Closed) => listening = false,
             },
         }
     }
-    // Dropping the channel senders stops every channel task.
-    channels.clear();
-    let _ = out.send(Outbound::Close);
-    drop(out);
-    let _ = writer.await;
-}
-
-fn route(ctx: &SocketCtx, channels: &mut HashMap<String, Joined>, frame: Frame) {
-    let reply = |reply: Reply| {
-        ctx.send(
-            frame.join_ref.as_deref(),
-            frame.ref_.as_deref(),
-            &frame.topic,
-            "phx_reply",
-            &reply.payload(),
-        );
-    };
-    match (frame.topic.as_str(), frame.event.as_str()) {
-        ("phoenix", "heartbeat") => reply(Reply::ok()),
-        (topic, "phx_join") => {
-            if !topic.starts_with(WEBCAM_TABLE_PREFIX) {
-                reply(Reply::reason("unmatched topic"));
-                return;
-            }
-            // A duplicate join closes the earlier channel first, as Phoenix does.
-            if let Some(previous) = channels.remove(topic) {
-                let _ = previous.tx.send(ClientMsg::Shutdown);
-            }
-            let (tx, rx) = mpsc::unbounded_channel();
-            channels.insert(
-                topic.to_owned(),
-                Joined {
-                    join_ref: frame.join_ref.clone(),
-                    tx,
-                },
-            );
-            tokio::spawn(webcam_table::run(ctx.clone(), frame, rx));
-        }
-        (topic, _) => match channels.get(topic) {
-            Some(joined) if frame.join_ref.is_none() || frame.join_ref == joined.join_ref => {
-                let _ = joined.tx.send(ClientMsg::Frame(frame));
-            }
-            _ => ctx.send(
-                frame.join_ref.as_deref(),
-                frame.ref_.as_deref(),
-                &frame.topic,
-                "phx_reply",
-                &json!({ "status": "error", "response": { "reason": "unmatched topic" } }),
-            ),
-        },
+    // Dropping the sender stops the channel silently.
+    if let Some(joined) = table {
+        drop(joined.tx);
+        let _ = joined.task.await;
     }
 }

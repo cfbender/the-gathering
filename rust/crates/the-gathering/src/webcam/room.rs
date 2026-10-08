@@ -525,25 +525,16 @@ impl Room {
             self.entry.as_ref().map(|old| old.log.as_slice()),
             &entry.log,
         );
-        let topic = format!("webcam_table:{}", self.id);
+        let topic = super::topic(&self.id);
+        let room = || self.shared.io.to(topic.clone());
         for broadcast in broadcasts {
-            match broadcast {
-                Broadcast::TableState => {
-                    self.shared.pubsub.broadcast(
-                        &topic,
-                        "table_state",
-                        to_value(&entry.snapshot()),
-                    );
-                }
-                Broadcast::Event(event, payload) => {
-                    self.shared.pubsub.broadcast(&topic, event, payload);
-                }
-            }
+            let _ = match broadcast {
+                Broadcast::TableState => room().emit("table_state", &entry.snapshot()).await,
+                Broadcast::Event(event, payload) => room().emit(event, &payload).await,
+            };
         }
         for log_entry in log_entries {
-            self.shared
-                .pubsub
-                .broadcast(&topic, "log_entry", to_value(&log_entry));
+            let _ = room().emit("log_entry", &log_entry).await;
         }
         self.entry = Some(entry);
         self.active_at = now();

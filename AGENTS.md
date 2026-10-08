@@ -4,7 +4,7 @@
 
 The Gathering is a self-hosted Commander (Magic: The Gathering) game tracker: a Rust JSON API and realtime server plus a Vite/React single-page app, shipped as one container or as a tarball for the Proxmox LXC installer.
 
-- `rust/` — the backend (Cargo workspace; see `rust/README.md`): `crates/the-gathering` (axum + sqlx server: API, webcam table channels over the Phoenix Channels wire protocol the frontend's `phoenix` client speaks, Discord bot, background jobs) and `crates/sfu` (the webcam table's str0m WebRTC SFU). Shared Magic code (Scryfall, deck-list sources, name normalization, commander rules) comes from the `lotus` git dependency; report lotus gaps instead of forking it here.
+- `rust/` — the backend (Cargo workspace; see `rust/README.md`): `crates/the-gathering` (axum + sqlx server: API, webcam table channels over Socket.IO (socketioxide on the server, `socket.io-client` in the frontend), Discord bot, background jobs) and `crates/sfu` (the webcam table's str0m WebRTC SFU). Shared Magic code (Scryfall, deck-list sources, name normalization, commander rules) comes from the `lotus` git dependency; report lotus gaps instead of forking it here.
   - `rust/migrations/*.sql` — the schema's only source, one file per migration (`<14-digit UTC version>_<name>.sql`). The versions continue the numbering existing databases record in `schema_migrations`.
   - `rust/schema.sql` — the generated dump of those migrations, committed for review; `rust/.sqlx` — committed query metadata for offline builds.
   - `rust/crates/the-gathering/src/web/` — router (`mod.rs`), auth guards, session/CSRF, the SPA shell, and the `/api` handlers in `web/api/`.

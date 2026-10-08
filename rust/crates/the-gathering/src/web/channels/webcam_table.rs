@@ -1,4 +1,8 @@
-//! The webcam table channel (`webcam_table:<room id>`) and its per-connection rate limits.
+//! The webcam table channel: one socket's seat at one table, and its per-connection rate limits.
+//!
+//! A channel task starts with the socket's `join` event and handles the socket's events in order
+//! until it stops. While joined, the socket is in the table topic's Socket.IO room, which carries
+//! the room's broadcasts and presence rosters.
 //!
 //! Every event spends a token from the connection's bucket before it is handled, so floods
 //! are refused before they validate, broadcast or write SQLite. Signals have their own,
@@ -13,12 +17,11 @@ use std::time::Instant;
 use rand::Rng;
 use serde_json::{Map, Value, json};
 use the_gathering_sfu::SfuEvent;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{broadcast, mpsc, watch};
 
-use super::protocol::{Frame, Reply};
-use super::pubsub::{Broadcast, Sink};
+use super::presence::Left;
 use super::rooms::{self, LOBBY_TOPIC};
-use super::{ClientMsg, SocketCtx, WEBCAM_TABLE_PREFIX};
+use super::{ClientEvent, ClientMsg, Reply, SocketCtx};
 use crate::accounts::User;
 use crate::rate_limit::{Decision, TokenBucket};
 use crate::regex::{Regex, compile};
@@ -54,7 +57,6 @@ const OWNER_EVENTS: [&str; 9] = [
     "end_game",
     "rematch",
 ];
-const INTERCEPTS: &[&str] = &["presence_diff"];
 
 static UUID: LazyLock<Regex> =
     LazyLock::new(|| compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"));
@@ -70,7 +72,7 @@ pub fn uuid(value: &str) -> bool {
     UUID.is_match(value)
 }
 
-/// `Ecto.UUID.dump/1` accepts either case.
+/// Room ids are UUIDs in either case.
 fn valid_room_id(room_id: &str) -> bool {
     ROOM_ID.is_match(room_id)
 }
@@ -78,9 +80,9 @@ fn valid_room_id(room_id: &str) -> bool {
 /// How a channel stops.
 #[derive(Debug)]
 enum Stop {
-    /// Normally: `phx_close`, and the client does not rejoin.
+    /// Normally, and the client does not rejoin.
     Close,
-    /// Abnormally: `phx_error`, and the client rejoins.
+    /// Abnormally: the client gets `rejoin`.
     Error(String),
     /// The socket went away.
     Silent,
@@ -107,7 +109,7 @@ fn reply(reply: impl Into<Reply>) -> Handled {
 
 #[allow(clippy::unnecessary_wraps)] // Shaped like every handler's result.
 fn error(reason: &str) -> Handled {
-    Ok(Some(Reply::reason(reason)))
+    Ok(Some(Reply::error(reason)))
 }
 
 fn object(payload: &Value) -> Option<&Map<String, Value>> {
@@ -310,7 +312,6 @@ fn to_value(value: &impl serde::Serialize) -> Value {
 struct Channel {
     socket: SocketCtx,
     topic: String,
-    join_ref: Option<String>,
     room_id: String,
     participant: Seat,
     owner: bool,
@@ -323,65 +324,70 @@ struct Channel {
 /// What a successful join hands the channel loop.
 struct Inboxes {
     conn: mpsc::UnboundedReceiver<ConnEvent>,
-    intercepts: mpsc::UnboundedReceiver<Broadcast>,
+    leaves: broadcast::Receiver<Left>,
     exit: watch::Receiver<Option<RoomExit>>,
-    subscription: u64,
+}
+
+/// The `join` event's payload.
+#[derive(serde::Deserialize)]
+struct JoinParams {
+    room_id: String,
+    #[serde(flatten)]
+    seat: Value,
 }
 
 /// Runs one joined channel: the join, `after_join`, then events until it stops.
-pub async fn run(socket: SocketCtx, join: Frame, mut client: mpsc::UnboundedReceiver<ClientMsg>) {
-    let topic = join.topic.clone();
-    let join_ref = join.join_ref.clone();
-    let reply_join = |reply: &Reply| {
-        socket.send(
-            join_ref.as_deref(),
-            join.ref_.as_deref(),
-            &topic,
-            "phx_reply",
-            &reply.payload(),
-        );
-    };
-    let (mut channel, mut inboxes, response) = match Channel::join(&socket, &join).await {
+pub async fn run(
+    socket: SocketCtx,
+    join: ClientEvent,
+    mut client: mpsc::UnboundedReceiver<ClientMsg>,
+) {
+    let (mut channel, mut inboxes, response) = match Channel::join(&socket, &join.payload).await {
         Ok(joined) => joined,
         Err(reply) => {
-            reply_join(&reply);
-            let _ = socket.exited.send((topic, join_ref));
+            reply.send(join.ack);
             return;
         }
     };
-    reply_join(&Reply::Ok(response));
+    Reply::Ok(response).send(join.ack);
 
     let (sfu_tx, mut sfu_rx) = mpsc::unbounded_channel();
     let mut stop = channel.after_join(sfu_tx).await.err();
     while stop.is_none() {
-        // Biased: room, presence and SFU events that arrived before a client frame are handled
+        // Biased: room, presence and SFU events that arrived before a client event are handled
         // first, in mailbox order.
         let outcome = tokio::select! {
             biased;
             Some(event) = inboxes.conn.recv() => channel.handle_conn_event(event),
-            Some(broadcast) = inboxes.intercepts.recv() => channel.handle_out(&broadcast).await,
+            left = inboxes.leaves.recv() => match left {
+                Ok(left) if left.topic != channel.topic => Ok(()),
+                Ok(left) => channel.handle_left(Some(&left.key)).await,
+                // Missed leaves: check the reveal target directly.
+                Err(broadcast::error::RecvError::Lagged(_)) => channel.handle_left(None).await,
+                Err(broadcast::error::RecvError::Closed) => Err(Stop::Silent),
+            },
             Some(event) = sfu_rx.recv() => channel.handle_sfu(event),
             changed = inboxes.exit.changed() => Err(match changed.ok().and(*inboxes.exit.borrow()) {
-                // The owner ended the table. Stopping normally sends phx_close, so the client
-                // leaves instead of rejoining (which would open a fresh room under the id).
+                // The owner ended the table. The client leaves instead of rejoining (which
+                // would open a fresh room under the id).
                 Some(RoomExit::Closed) => {
                     channel.push("table_closed", &json!({}));
                     Stop::Close
                 }
-                // The room crashed. Stopping abnormally sends phx_error, so the client rejoins a
-                // fresh room restored from the saved session.
+                // The room crashed: the client rejoins a fresh room restored from the saved
+                // session.
                 _ => Stop::Error("room_down".into()),
             }),
             message = client.recv() => match message {
                 None => Err(Stop::Silent),
                 Some(ClientMsg::Shutdown) => Err(Stop::Close),
-                Some(ClientMsg::Frame(frame)) if frame.event == "phx_leave" => {
-                    channel.reply(frame.ref_.as_deref(), &Reply::ok());
+                Some(ClientMsg::Event(event)) if event.event == "leave" => {
+                    Reply::ok().send(event.ack);
                     Err(Stop::Close)
                 }
-                Some(ClientMsg::Frame(frame)) => match channel.handle_in(&frame.event, &frame.payload).await {
+                Some(ClientMsg::Event(event)) => match channel.handle_in(&event.event, &event.payload).await {
                     Ok(Some(answer)) => {
-                        channel.reply(frame.ref_.as_deref(), &answer);
+                        answer.send(event.ack);
                         Ok(())
                     }
                     Ok(None) => Ok(()),
@@ -391,32 +397,19 @@ pub async fn run(socket: SocketCtx, join: Frame, mut client: mpsc::UnboundedRece
         };
         stop = outcome.err();
     }
-    channel
-        .terminate(stop.unwrap_or(Stop::Silent), inboxes.subscription)
-        .await;
+    channel.terminate(stop.unwrap_or(Stop::Silent)).await;
 }
 
 impl Channel {
-    fn push(&self, event: &str, payload: &Value) {
-        self.socket
-            .send(self.join_ref.as_deref(), None, &self.topic, event, payload);
-    }
-
-    fn reply(&self, ref_: Option<&str>, reply: &Reply) {
-        self.socket.send(
-            self.join_ref.as_deref(),
-            ref_,
-            &self.topic,
-            "phx_reply",
-            &reply.payload(),
-        );
+    fn push(&self, event: &str, payload: &impl serde::Serialize) {
+        let _ = self.socket.socket.emit(event, payload);
     }
 
     fn tables(&self) -> &webcam::WebcamTables {
         &self.socket.state.webcam_tables
     }
 
-    async fn join(socket: &SocketCtx, join: &Frame) -> Result<(Self, Inboxes, Value), Reply> {
+    async fn join(socket: &SocketCtx, payload: &Value) -> Result<(Self, Inboxes, Value), Reply> {
         let state = &socket.state;
         let user = &socket.user;
         let limits = &state.config.rate_limits;
@@ -424,19 +417,17 @@ impl Channel {
             &format!("webcam_table_joins:{}", user.id),
             limits.webcam_table_joins,
         ) {
-            return Err(Reply::reason("rate limited"));
+            return Err(Reply::error("rate limited"));
         }
-        let room_id = join
-            .topic
-            .strip_prefix(WEBCAM_TABLE_PREFIX)
-            .unwrap_or_default()
-            .to_owned();
-        if !valid_room_id(&room_id) {
-            return Err(Reply::reason("invalid room"));
-        }
-        let participant = participant(state, &join.payload, user)
+        let params = serde_json::from_value::<JoinParams>(payload.clone())
+            .ok()
+            .filter(|params| valid_room_id(&params.room_id));
+        let Some(JoinParams { room_id, seat }) = params else {
+            return Err(Reply::error("invalid room"));
+        };
+        let participant = participant(state, &seat, user)
             .await
-            .map_err(Reply::reason)?;
+            .map_err(Reply::error)?;
 
         let conn_id = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
         let (conn_tx, conn_rx) = mpsc::unbounded_channel();
@@ -453,8 +444,8 @@ impl Channel {
             .await
         {
             Ok(Ok(admitted)) => admitted,
-            Ok(Err(reason)) => return Err(Reply::reason(reason)),
-            Err(RoomGone) => return Err(Reply::reason("join crashed")),
+            Ok(Err(reason)) => return Err(Reply::Error(reason)),
+            Err(RoomGone) => return Err(Reply::error("join crashed")),
         };
         let participant = admitted.participant;
         // Admins run every table they sit at, alongside the player who opened it. Spectators
@@ -462,21 +453,15 @@ impl Channel {
         let owner = !participant.spectator
             && (user.is_admin() || admitted.snapshot.owner_id == participant.player_id);
 
-        let (intercept_tx, intercepts) = mpsc::unbounded_channel();
-        let subscription = state.pubsub.subscribe(
-            &join.topic,
-            Sink::Channel {
-                outbound: socket.out.clone(),
-                intercept: intercept_tx,
-                intercepts: INTERCEPTS,
-            },
-        );
+        // Subscribed before the reply, so no broadcast after the snapshot is missed.
+        let topic = webcam::topic(&room_id);
+        let leaves = state.presence.leaves();
+        socket.socket.join(topic.clone());
         let response =
             json!({ "participant": participant, "table_state": admitted.snapshot, "owner": owner });
         let channel = Self {
             socket: socket.clone(),
-            topic: join.topic.clone(),
-            join_ref: join.join_ref.clone(),
+            topic,
             room_id,
             participant,
             owner,
@@ -489,9 +474,8 @@ impl Channel {
             channel,
             Inboxes {
                 conn: conn_rx,
-                intercepts,
+                leaves,
                 exit: admitted.exit,
-                subscription,
             },
             response,
         ))
@@ -499,19 +483,19 @@ impl Channel {
 
     async fn after_join(&mut self, sfu: mpsc::UnboundedSender<SfuEvent>) -> Result<(), Stop> {
         let state = self.socket.state.clone();
+        // Sends every seat, this one included, the roster.
         state.presence.track(
             &self.topic,
             self.conn_id,
             &self.participant.peer_id,
-            &to_value(&self.participant),
+            to_value(&self.participant),
         );
         if !self.participant.spectator {
             rooms::track_seat(&state, self.conn_id, &self.room_id, &self.participant);
         }
         let snapshot = self.tables().snapshot(&self.room_id).await?;
-        self.push("table_state", &to_value(&snapshot));
-        self.push("presence_state", &state.presence.list(&self.topic));
-        self.push("monarch_state", &to_value(&snapshot.monarch));
+        self.push("table_state", &snapshot);
+        self.push("monarch_state", &snapshot.monarch);
         // Sent once per join rather than in every table_state; new entries follow as log_entry.
         let log = self.tables().log(&self.room_id).await?;
         self.push("table_log", &json!({ "entries": log }));
@@ -529,7 +513,7 @@ impl Channel {
             .map_err(|error| Stop::Error(format!("sfu_unavailable: {error}")))
     }
 
-    async fn terminate(self, stop: Stop, subscription: u64) {
+    async fn terminate(self, stop: Stop) {
         let state = &self.socket.state;
         let lifetime = self.joined_at.elapsed().as_millis();
         let reason = match &stop {
@@ -541,31 +525,16 @@ impl Channel {
             "Webcam table seat {} left after {lifetime}ms: {reason}",
             self.participant.peer_id
         );
-        state.pubsub.unsubscribe(&self.topic, subscription);
+        self.socket.socket.leave(self.topic.clone());
         state.presence.untrack(&self.topic, self.conn_id);
         state.presence.untrack(LOBBY_TOPIC, self.conn_id);
         state
             .sfu
             .leave(&self.room_id, &self.participant.peer_id)
             .await;
-        let event = match stop {
-            Stop::Close => Some("phx_close"),
-            Stop::Error(_) => Some("phx_error"),
-            Stop::Silent => None,
-        };
-        if let Some(event) = event {
-            self.socket.send(
-                self.join_ref.as_deref(),
-                self.join_ref.as_deref(),
-                &self.topic,
-                event,
-                &json!({}),
-            );
+        if let Stop::Error(reason) = stop {
+            self.push("rejoin", &json!({ "reason": reason }));
         }
-        let _ = self
-            .socket
-            .exited
-            .send((self.topic.clone(), self.join_ref.clone()));
     }
 
     fn update_presence(&self) {
@@ -573,7 +542,7 @@ impl Channel {
             &self.topic,
             self.conn_id,
             &self.participant.peer_id,
-            &to_value(&self.participant),
+            to_value(&self.participant),
         );
     }
 
@@ -592,8 +561,8 @@ impl Channel {
             SfuEvent::Offer(payload) => self.push("sfu_offer", &payload),
             SfuEvent::Candidate(payload) => self.push("sfu_candidate", &payload),
             SfuEvent::PeerMessage(payload) => self.push("peer_message", &payload),
-            // The media connection failed or crashed: phx_error, so the client rejoins under a
-            // new peer id and negotiates a fresh connection.
+            // The media connection failed or crashed: the client rejoins under a new peer id and
+            // negotiates a fresh connection.
             SfuEvent::Down(reason) => return Err(Stop::Error(format!("sfu_down: {reason}"))),
         }
         Ok(())
@@ -620,19 +589,14 @@ impl Channel {
         Ok(())
     }
 
-    /// `handle_out("presence_diff", ...)`: a reveal ends when its target leaves.
-    async fn handle_out(&mut self, broadcast: &Broadcast) -> Result<(), Stop> {
+    /// A reveal ends when its target leaves (`left` is `None` when leaves were missed).
+    async fn handle_left(&mut self, left: Option<&str>) -> Result<(), Stop> {
         if let Some(target) = self.participant.reveal_to.clone()
-            && broadcast
-                .payload
-                .get("leaves")
-                .and_then(|leaves| leaves.get(&target))
-                .is_some()
+            && left.is_none_or(|key| key == target)
             && !self.present(&target)
         {
             self.put_reveal(None).await?;
         }
-        self.push(&broadcast.event, &broadcast.payload);
         Ok(())
     }
 
@@ -739,8 +703,6 @@ impl Channel {
             }
             "timer_sync" => error("invalid timer sync"),
             "roll" => self.roll(payload).await,
-            // A clause-less event crashed the Elixir channel (and the client rejoined); answer
-            // with an error instead.
             _ => error("unknown event"),
         }
     }
@@ -922,9 +884,11 @@ impl Channel {
                 self.participant.deck_name = Some(deck.name);
                 self.update_presence();
                 // Peers may have cached the deck list before this deck was created or edited.
-                state
-                    .pubsub
-                    .broadcast(&self.topic, "deck_selected", json!({ "deck_id": deck.id }));
+                let _ = state
+                    .io
+                    .to(self.topic.clone())
+                    .emit("deck_selected", &json!({ "deck_id": deck.id }))
+                    .await;
                 self.remember_seat().await?;
                 reply(Reply::ok())
             }

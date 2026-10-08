@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query"
-import type { Channel } from "phoenix"
+import type { TableChannel } from "./table-channel"
 import { useCallback, useRef, useState } from "react"
 import { prefetchPrintings } from "./card-details"
 import { applyCardCommand, sameCard, type CardCommand } from "./identified-cards"
@@ -73,7 +73,7 @@ export function useBoardCards(link: RoomLink) {
   )
 
   const bindChannel = useCallback(
-    (room: Channel) => {
+    (room: TableChannel) => {
       room.on("identified_cards", ({ entries }: { entries: BoardCard[] }) => receive(entries))
       room.on("table_state", ({ cards }: { cards: BoardCard[] }) => receive(cards))
     },

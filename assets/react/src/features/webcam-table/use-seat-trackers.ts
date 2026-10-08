@@ -1,4 +1,4 @@
-import type { Channel } from "phoenix"
+import type { TableChannel } from "./table-channel"
 import { useCallback, useRef, useState } from "react"
 import type { RoomLink } from "./room-link"
 import {
@@ -60,7 +60,7 @@ export function useSeatTrackers(link: RoomLink, roomId: string, playerId: number
   )
 
   const bindChannel = useCallback(
-    (room: Channel) => {
+    (room: TableChannel) => {
       room.on("seat_reset", () => setTrackers(EMPTY_TRACKERS))
     },
     [setTrackers],

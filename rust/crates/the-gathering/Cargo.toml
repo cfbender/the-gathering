@@ -16,7 +16,7 @@ the-gathering-sfu = { path = "../sfu" }
 lotus = { git = "https://github.com/cfbender/lotus", features = ["sqlx", "http"] }
 
 anyhow = "1"
-axum = { version = "0.8", features = ["ws", "multipart", "macros"] }
+axum = { version = "0.8", features = ["multipart", "macros"] }
 base64 = "0.22"
 bcrypt = "0.17"
 bytes = "1"
@@ -37,6 +37,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.10"
 sha2 = "0.10"
+socketioxide = { version = "0.18", features = ["extensions"] }
 sqlx = { version = "0.9", default-features = false, features = ["derive", "macros", "migrate", "runtime-tokio", "sqlite-bundled", "time", "json"] }
 subtle = "2"
 thiserror = "2"
@@ -56,7 +57,7 @@ axum-extra = { version = "0.12.6", default-features = false, features = ["cookie
 flate2 = "1"
 http-body-util = "0.1"
 tempfile = "3"
-tokio-tungstenite = "0.29"
+tokio-tungstenite = "0.30"
 wiremock = "0.6"
 
 [lints]

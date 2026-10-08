@@ -4,7 +4,7 @@ import type { ReactNode } from "react"
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test"
 import { EMPTY_TURNS } from "./turns"
 import { TOKEN_REFRESH_INTERVAL_MS } from "./use-room-channel"
-import { wire } from "./test-support/fake-phoenix"
+import { wire } from "./test-support/fake-socket-io"
 import {
   FakePeerConnection,
   FakeResizeObserver,
@@ -21,7 +21,7 @@ import {
 } from "./use-webcam-room"
 
 const camera = vi.hoisted(() => ({ open: vi.fn() }))
-vi.mock("phoenix", () => import("./test-support/fake-phoenix"))
+vi.mock("socket.io-client", () => import("./test-support/fake-socket-io"))
 vi.mock("./camera", () => ({ openCamera: () => camera.open() }))
 
 beforeEach(() => {
@@ -50,8 +50,8 @@ function renderRoom() {
 
 async function joinedRoom(participant: TableParticipant = saved) {
   const view = renderRoom()
-  await waitFor(() => expect(wire.channel).not.toBeNull())
-  await act(async () => wire.channel!.joinPush.reply("ok", { participant }))
+  await waitFor(() => expect(wire.sent("join")).not.toHaveLength(0))
+  await act(async () => wire.joinPush().reply("ok", { participant }))
   return view
 }
 
@@ -110,12 +110,12 @@ it("hydrates before editing and reconnects without republishing default life or 
   expect(payloads("update_status").at(-1)).toEqual({ life: 21 })
   act(() => wire.socketError())
   expect(result.current.status).toMatch(/Reconnecting/)
-  const beforeRetry = wire.channel!.params()
-  act(() => wire.channel!.fail())
-  expect(wire.channel!.params().peer_id).not.toBe(beforeRetry.peer_id)
-  expect(wire.channel!.params().peer_id).toBe(result.current.peerId)
-  expect(wire.channel!.params().player_id).toBe(beforeRetry.player_id)
-  await act(async () => wire.channel!.joinPush.reply("ok", { participant: { ...saved, life: 21 } }))
+  const beforeRetry = wire.joinParams()
+  act(() => wire.reconnect())
+  expect(wire.joinParams().peer_id).not.toBe(beforeRetry.peer_id)
+  expect(wire.joinParams().peer_id).toBe(result.current.peerId)
+  expect(wire.joinParams().player_id).toBe(beforeRetry.player_id)
+  await act(async () => wire.joinPush().reply("ok", { participant: { ...saved, life: 21 } }))
   expect(result.current.life).toBe(21)
   expect(result.current.error).toBeNull()
   expect(camera.open).toHaveBeenCalledOnce()
@@ -132,7 +132,7 @@ it("refreshes the socket token at most once per interval while reconnect attempt
   act(() => wire.socketError())
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
 
-  // phoenix.js retries every few seconds during an outage; those attempts reuse the fresh token.
+  // Socket.IO retries every few seconds during an outage; those attempts reuse the fresh token.
   for (let attempt = 0; attempt < 10; attempt += 1) {
     now += 2_000
     act(() => wire.socketError())
@@ -145,11 +145,31 @@ it("refreshes the socket token at most once per interval while reconnect attempt
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3))
 })
 
+it("reconnects with a fresh token after the server refuses one, at most once per interval", async () => {
+  await joinedRoom()
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] })
+  expect(fetch).toHaveBeenCalledTimes(1)
+
+  // Socket.IO does not retry a refused connection on its own.
+  act(() => wire.socketError(true))
+  await act(() => vi.advanceTimersByTimeAsync(0))
+  expect(wire.connects).toBe(1)
+  expect(fetch).toHaveBeenCalledTimes(2)
+  expect(wire.socketParams().token).toBe("fresh-token")
+
+  act(() => wire.socketError(true))
+  await act(() => vi.advanceTimersByTimeAsync(TOKEN_REFRESH_INTERVAL_MS - 1))
+  expect(wire.connects).toBe(1)
+  await act(() => vi.advanceTimersByTimeAsync(1))
+  expect(wire.connects).toBe(2)
+  expect(fetch).toHaveBeenCalledTimes(3)
+})
+
 it("hydrates team state and routes life shortcuts to the viewer's team without changing personal counters", async () => {
   const { result } = await joinedRoom()
   const seats = [12, 19, 3, 7].map((id) => ({ ...saved, player_id: id, peer_id: `peer-${id}` }))
   act(() =>
-    wire.channel!.emit(
+    wire.emit(
       "table_state",
       tableState({
         peer_ids: seats.map((seat) => seat.peer_id),
@@ -174,21 +194,20 @@ it("hydrates team state and routes life shortcuts to the viewer's team without c
 it("takes table controls from the join reply, not the room's creator id", async () => {
   const { result } = await joinedRoom()
   // The fixture's owner_id matches this seat, but only the server's join decision counts.
-  act(() => wire.channel!.emit("table_state", tableState()))
+  act(() => wire.emit("table_state", tableState()))
   expect(result.current.isOwner).toBe(false)
 
-  await act(async () => wire.channel!.joinPush.reply("ok", { participant: saved, owner: true }))
+  act(() => wire.reconnect())
+  await act(async () => wire.joinPush().reply("ok", { participant: saved, owner: true }))
   expect(result.current.isOwner).toBe(true)
 })
 
 it("a rematch keeps the seat connected and resets its local life, counters and table state", async () => {
   const { result } = await joinedRoom()
   const self = { ...saved, peer_id: result.current.peerId }
-  act(() => wire.presence!.sync([self]))
-  act(() =>
-    wire.channel!.emit("table_state", tableState({ peer_ids: [self.peer_id], seats: [self] })),
-  )
-  act(() => wire.channel!.emit("table_log", { entries: [{ id: 9, at: 1, text: "Cody: 25 → 23" }] }))
+  act(() => wire.presence([self]))
+  act(() => wire.emit("table_state", tableState({ peer_ids: [self.peer_id], seats: [self] })))
+  act(() => wire.emit("table_log", { entries: [{ id: 9, at: 1, text: "Cody: 25 → 23" }] }))
   let rematched: Promise<boolean> = Promise.resolve(false)
   act(() => {
     rematched = result.current.rematch()
@@ -199,7 +218,7 @@ it("a rematch keeps the seat connected and resets its local life, counters and t
   // The server broadcasts the fresh lobby, then tells this seat its reset copy, then replies.
   const fresh = { ...self, life: 40, poison: 0, rad: 0, commander_casts: {}, commander_damage: {} }
   act(() => {
-    wire.channel!.emit(
+    wire.emit(
       "table_state",
       tableState({
         timer: { started_at: null, paused_at: null, paused_ms: 0, server_now: 2000 },
@@ -208,8 +227,8 @@ it("a rematch keeps the seat connected and resets its local life, counters and t
         monarch: { holder: null, revision: 1 },
       }),
     )
-    wire.channel!.emit("table_log", { entries: [{ id: 1, at: 2, text: "Rematch" }] })
-    wire.channel!.emit("seat_reset", { participant: fresh })
+    wire.emit("table_log", { entries: [{ id: 1, at: 2, text: "Rematch" }] })
+    wire.emit("seat_reset", { participant: fresh })
     push.push.reply("ok")
   })
   await expect(rematched).resolves.toBe(true)
@@ -247,11 +266,11 @@ it("lists spectators from presence apart from the seats", async () => {
     { ...saved, player_id: 11, player_name: "Wren", peer_id: "zz-wren", spectator: true },
     { ...saved, player_id: 12, player_name: "Ada", peer_id: "zz-ada", spectator: true },
   ]
-  act(() => wire.presence!.sync([self, ...watchers]))
+  act(() => wire.presence([self, ...watchers]))
   expect(result.current.participants.map((seat) => seat.player_name)).toEqual(["Cody"])
   expect(result.current.spectators.map((watcher) => watcher.player_name)).toEqual(["Ada", "Wren"])
 
-  act(() => wire.presence!.sync([self]))
+  act(() => wire.presence([self]))
   expect(result.current.spectators).toEqual([])
 })
 
@@ -272,9 +291,10 @@ it("keeps the hidden capture video playing after the camera replaces the placeho
   await waitFor(() => expect(playedSources).toContain(media))
 })
 
-it("joins with only the seat identity; the server no longer negotiates a protocol version", async () => {
+it("joins the room with only the seat identity", async () => {
   const { result } = await joinedRoom()
-  expect(wire.channel!.params()).toEqual({
+  expect(wire.joinParams()).toEqual({
+    room_id: "room",
     peer_id: result.current.peerId,
     player_id: 7,
     deck_id: null,
@@ -284,7 +304,7 @@ it("joins with only the seat identity; the server no longer negotiates a protoco
 it("shows the server's card list, overlaying only changes the server has not answered", async () => {
   const { result } = await joinedRoom()
   const theirs = boardCard("theirs", "remote", "Counterspell")
-  act(() => wire.channel!.emit("table_state", tableState({ cards: [theirs] })))
+  act(() => wire.emit("table_state", tableState({ cards: [theirs] })))
   expect(result.current.identifiedCards).toEqual([theirs])
 
   const bolt = { id: "bolt", name: "Lightning Bolt", set: "lea" }
@@ -303,7 +323,7 @@ it("shows the server's card list, overlaying only changes the server has not ans
     entry = result.current.announceCard(result.current.peerId, "Cody", bolt)
   })
   act(() => {
-    wire.channel!.emit("identified_cards", { entries: [theirs, entry] })
+    wire.emit("identified_cards", { entries: [theirs, entry] })
     wire.sent("cards").at(-1)!.push.reply("ok")
   })
   expect(result.current.identifiedCards).toEqual([theirs, entry])
@@ -318,7 +338,7 @@ it("shows the server's card list, overlaying only changes the server has not ans
   expect(result.current.identifiedCards).toEqual([theirs, entry])
 
   // Another seat's accepted change arrives as the whole list.
-  act(() => wire.channel!.emit("identified_cards", { entries: [] }))
+  act(() => wire.emit("identified_cards", { entries: [] }))
   expect(result.current.identifiedCards).toEqual([])
 })
 
@@ -361,7 +381,7 @@ it("prefetches details and images for every card new to this seat, newest first,
   // Joining mid-game: the table already has cards, fetched newest first and one at a time.
   const older = boardCard("older", "remote", "Counterspell")
   const newer = boardCard("newer", "remote", "Swords to Plowshares")
-  act(() => wire.channel!.emit("table_state", tableState({ cards: [older, newer] })))
+  act(() => wire.emit("table_state", tableState({ cards: [older, newer] })))
   await waitFor(() => expect(requested()).toEqual(["newer"]))
   await answer("newer")
   await waitFor(() => expect(requested()).toEqual(["newer", "older"]))
@@ -374,7 +394,7 @@ it("prefetches details and images for every card new to this seat, newest first,
   const named = boardCard("named", "remote", "Lightning Bolt")
   const sameOnAnotherBoard = { ...named, id: "again", ownerPeerId: "other" }
   act(() =>
-    wire.channel!.emit("identified_cards", {
+    wire.emit("identified_cards", {
       entries: [older, newer, named, sameOnAnotherBoard],
     }),
   )
@@ -382,16 +402,16 @@ it("prefetches details and images for every card new to this seat, newest first,
   await waitFor(() => expect(preloaded.slice(4)).toEqual(["/small/named", "/normal/named"]))
 
   // A later snapshot with nothing new fetches nothing.
-  act(() => wire.channel!.emit("table_state", tableState({ cards: [older, newer, named] })))
+  act(() => wire.emit("table_state", tableState({ cards: [older, newer, named] })))
   expect(requested()).toEqual(["newer", "older", "named"])
 })
 
 it("ignores card messages from peers and never sends cards to them", async () => {
   const { result } = await joinedRoom()
   const theirs = boardCard("theirs", "remote", "Counterspell")
-  act(() => wire.channel!.emit("identified_cards", { entries: [theirs] }))
+  act(() => wire.emit("identified_cards", { entries: [theirs] }))
   const remote = { ...saved, player_id: 9, player_name: "Theo", peer_id: "zz-remote" }
-  act(() => wire.presence!.sync([{ ...saved, peer_id: result.current.peerId }, remote]))
+  act(() => wire.presence([{ ...saved, peer_id: result.current.peerId }, remote]))
   const injected = boardCard("injected", result.current.peerId, "Black Lotus")
   act(() => {
     deliver(remote.peer_id, { type: "card_identified", entry: injected })
@@ -416,7 +436,7 @@ const theo = { ...saved, player_id: 9, player_name: "Theo", peer_id: "zz-remote"
 
 /** A message another seat sent this one, as the server relays it. */
 function deliver(from: string, message: unknown) {
-  wire.channel!.emit("peer_message", { from, message })
+  wire.emit("peer_message", { from, message })
 }
 
 /** Messages this seat sent to other seats through the server. */
@@ -438,7 +458,7 @@ async function flush() {
 async function roomWithTheo() {
   const view = await joinedRoom()
   const self = { ...saved, peer_id: view.result.current.peerId }
-  act(() => wire.presence!.sync([self, theo]))
+  act(() => wire.presence([self, theo]))
   const connection = FakePeerConnection.instances[0]!
   await waitFor(() => expect(wire.sent("sfu_offer")).toHaveLength(1))
   act(() => wire.sent("sfu_offer")[0]!.push.reply("ok", { sdp: "answer" }))
@@ -452,7 +472,7 @@ async function serveTheoBoard(
   stream: MediaStream,
   owner = theo.peer_id,
 ) {
-  act(() => wire.channel!.emit("sfu_offer", { sdp: "server-offer", tracks: { "1": owner } }))
+  act(() => wire.emit("sfu_offer", { sdp: "server-offer", tracks: { "1": owner } }))
   await waitFor(() => expect(wire.sent("sfu_answer").length).toBeGreaterThan(0))
   act(() => connection.arrive("1", stream))
 }
@@ -496,14 +516,14 @@ it("leaves the sender alone when presence changes nothing it encodes, and lets t
   expect(sender.replaceTrack).toHaveBeenCalledOnce()
   expect(sender.setParameters).not.toHaveBeenCalled()
   sender.replaceTrack.mockClear()
-  for (const life of [39, 38, 37]) act(() => wire.presence!.sync([self, { ...theo, life }]))
+  for (const life of [39, 38, 37]) act(() => wire.presence([self, { ...theo, life }]))
   await flush()
   expect(sender.replaceTrack).not.toHaveBeenCalled()
   expect(sender.setParameters).not.toHaveBeenCalled()
 
   // A third seat drops the frame rate on every layer, once.
   const lee = { ...saved, player_id: 11, player_name: "Lee", peer_id: "zzz-lee" }
-  act(() => wire.presence!.sync([self, theo, lee]))
+  act(() => wire.presence([self, theo, lee]))
   await flush()
   expect(sender.setParameters).toHaveBeenCalledOnce()
   expect(sender.getParameters().encodings.map((encoding) => encoding.maxFramerate)).toEqual([
@@ -656,7 +676,7 @@ it("crops a remote board from its own frame when that frame is the owner's nativ
     shares_corrections: false,
     reveal_to: self.peer_id,
   }
-  act(() => wire.presence!.sync([self, owner]))
+  act(() => wire.presence([self, owner]))
   const stream = { id: theo.peer_id } as unknown as MediaStream
   await serveTheoBoard(connection, stream)
   const drawImage = vi.fn()
@@ -690,7 +710,7 @@ it("crops a remote board from its own frame when that frame is the owner's nativ
 
 it("asks the owner for a crop while its board arrives below the camera's resolution", async () => {
   const { result, self, connection } = await roomWithTheo()
-  act(() => wire.presence!.sync([self, { ...theo, camera_height: 1080 }]))
+  act(() => wire.presence([self, { ...theo, camera_height: 1080 }]))
   const stream = { id: theo.peer_id } as unknown as MediaStream
   await serveTheoBoard(connection, stream)
   // A rail tile and a grid cell both decode a lower simulcast layer.
@@ -718,7 +738,7 @@ it("maps each arriving board to its owner by mid and drops it when the server wi
   })
   expect(wire.sent("sfu_answer")[0]!.payload).toEqual({ sdp: "a" })
 
-  act(() => wire.channel!.emit("sfu_offer", { sdp: "server-offer-2", tracks: {} }))
+  act(() => wire.emit("sfu_offer", { sdp: "server-offer-2", tracks: {} }))
   await waitFor(() => expect(wire.sent("sfu_answer")).toHaveLength(2))
   expect(result.current.streams).toEqual({})
 })
@@ -733,7 +753,7 @@ it("drops a departed peer's stream so a rejoin under a new peer ID does not coun
   // Theo's channel drops; he rejoins with a new media generation. Presence says so first,
   // then the server offers his new board.
   const rejoined = { ...theo, peer_id: "zz-remote-2" }
-  act(() => wire.presence!.sync([self, rejoined]))
+  act(() => wire.presence([self, rejoined]))
   expect(result.current.streams).toEqual({})
   expect(result.current.connectionStates).toEqual({ [rejoined.peer_id]: "new" })
 
@@ -791,7 +811,7 @@ it("reconnects with a fresh offer after a channel retry and abandons the old con
     }),
   )
   act(() => wire.sent("sfu_offer")[0]!.push.reply("ok", { sdp: "answer" }))
-  act(() => wire.channel!.fail())
+  act(() => wire.reconnect())
   expect(first.connectionState).toBe("closed")
   expect(result.current.streams).toEqual({})
   await act(async () => {
@@ -800,7 +820,7 @@ it("reconnects with a fresh offer after a channel retry and abandons the old con
   })
   expect(first.addIceCandidate).not.toHaveBeenCalled()
 
-  await act(async () => wire.channel!.joinPush.reply("ok", { participant: saved }))
+  await act(async () => wire.joinPush().reply("ok", { participant: saved }))
   await waitFor(() => expect(FakePeerConnection.instances).toHaveLength(2))
   await waitFor(() => expect(wire.sent("sfu_offer")).toHaveLength(2))
   expect(result.current.error).toBeNull()
@@ -824,8 +844,8 @@ it("reports a rejected offer and logs later failed steps instead of leaving unha
     new DOMException("bad sdp", "InvalidStateError"),
   )
   act(() => {
-    wire.channel!.emit("sfu_offer", { sdp: "bad", tracks: {} })
-    wire.channel!.emit("sfu_candidate", { candidate: { candidate: "c" } })
+    wire.emit("sfu_offer", { sdp: "bad", tracks: {} })
+    wire.emit("sfu_candidate", { candidate: { candidate: "c" } })
   })
   await waitFor(() => expect(warn).toHaveBeenCalledTimes(2))
   expect(connection.createAnswer).not.toHaveBeenCalled()

@@ -279,7 +279,8 @@ pub fn router(state: AppState) -> Router {
         .route_layer(from_fn_with_state(state.clone(), api::rate_limit_api_keys))
         .route_layer(from_fn_with_state(state.clone(), auth::api_key_layer));
 
-    // Static files and the socket are not logged; routed requests get an id and a log line.
+    // Static files and the table socket (the outermost layer) are not logged; routed requests
+    // get an id and a log line.
     let routed = Router::new()
         .merge(v1)
         .merge(sessioned)
@@ -288,8 +289,8 @@ pub fn router(state: AppState) -> Router {
         .layer(from_fn(request_id::layer));
 
     Router::new()
-        .route("/socket/websocket", get(webcam::socket))
         .merge(statics::router(&state))
         .merge(routed)
+        .layer(state.socket_layer.clone())
         .with_state(state)
 }

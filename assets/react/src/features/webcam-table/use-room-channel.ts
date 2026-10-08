@@ -1,8 +1,9 @@
-import { type Channel, Presence, Socket } from "phoenix"
 import { useEffect, useRef, useState } from "react"
+import { io, type Socket } from "socket.io-client"
 import { api } from "@/lib/api"
 import { liveStatus, type RoomLink } from "./room-link"
 import type { TableParticipant } from "./room-types"
+import { TableChannel } from "./table-channel"
 import type { SfuOffer } from "./use-sfu-connection"
 
 /** Minimum gap between socket-token refreshes while reconnecting. The config endpoint allows
@@ -29,9 +30,9 @@ export interface RoomChannelHandlers {
   setError: (error: string | null) => void
   /** The table config arrived; the channel opens right after this returns. */
   onConfig: (iceServers: RTCIceServer[], sfu: SfuInfo) => void
-  /** Register channel and presence bindings; runs before the first join. */
-  bind: (room: Channel, presence: Presence) => void
-  /** Everyone present after a presence sync, spectators included. */
+  /** Register channel bindings; runs before the first join. */
+  bind: (room: TableChannel) => void
+  /** Everyone present whenever the roster changes, spectators included. */
   onPresence: (everyone: TableParticipant[]) => void
   /** The server offers this seat a new set of boards (or asks to drop one). */
   onSfuOffer: (offer: SfuOffer) => void
@@ -53,7 +54,7 @@ interface JoinReply {
   owner?: boolean
 }
 
-/** The Phoenix socket, `webcam_table:<roomId>` channel, and presence for one seat. */
+/** The table socket, this seat's channel, and the presence roster for one seat. */
 export function useRoomChannel(
   link: RoomLink,
   roomId: string,
@@ -68,6 +69,7 @@ export function useRoomChannel(
   useEffect(() => {
     let disposed = false
     let socket: Socket | null = null
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
     const on = () => handlersRef.current
 
     async function run() {
@@ -78,51 +80,70 @@ export function useRoomChannel(
         if (disposed) return
         on().onConfig(config.ice_servers, config.sfu)
 
-        socket = new Socket("/socket", { params: () => ({ token: config.socket_token }) })
-        let refreshing = false
-        let refreshedAt: number | null = null
-        socket.onClose((event) => {
-          // A close is routine on leaving; a stream of them is why seats keep "Connecting…".
-          console.warn("Table socket closed", {
-            code: event?.code,
-            reason: event?.reason,
-            wasClean: event?.wasClean,
-          })
+        socket = io({
+          transports: ["websocket"],
+          // Read on every connection attempt, so reconnects use a refreshed token.
+          auth: (send) => send({ token: config.socket_token }),
         })
-        socket.onError((error, transport, establishedConnections) => {
-          console.warn("Table socket error", { error, transport, establishedConnections })
-          on().setStatus("Reconnecting… Your game is saved.")
-          // Socket tokens expire after a day; refresh from the still-authenticated
-          // cookie session so the next automatic retry does not reuse an expired token.
-          // phoenix.js retries every few seconds while the server is away, and the config
-          // endpoint is rate-limited (it mints TURN credentials), so refresh at most once
-          // per interval instead of on every failed attempt.
+        const current = socket
+        let refreshing: Promise<void> | null = null
+        let refreshedAt: number | null = null
+        // Socket tokens expire after a day; refresh from the still-authenticated cookie session
+        // so the next attempt does not reuse an expired token. Socket.IO retries every few
+        // seconds while the server is away, and the config endpoint is rate-limited (it mints
+        // TURN credentials), so refresh at most once per interval instead of on every attempt.
+        const refreshToken = () => {
           const now = Date.now()
           if (refreshing || (refreshedAt !== null && now - refreshedAt < TOKEN_REFRESH_INTERVAL_MS))
-            return
-          refreshing = true
+            return refreshing
           refreshedAt = now
-          void api<{ data: TableConfig }>("/api/webcam-table/config")
+          refreshing = api<{ data: TableConfig }>("/api/webcam-table/config")
             .then(({ data }) => {
               config.socket_token = data.socket_token
             })
             .catch(() => {})
             .finally(() => {
-              refreshing = false
+              refreshing = null
             })
+          return refreshing
+        }
+        // Socket.IO does not retry a connection the server refused or closed, so retry with a
+        // fresh token once the refresh interval allows.
+        const reconnect = () => {
+          clearTimeout(retryTimer)
+          const wait =
+            refreshedAt === null
+              ? 0
+              : Math.max(0, refreshedAt + TOKEN_REFRESH_INTERVAL_MS - Date.now())
+          retryTimer = setTimeout(() => {
+            void Promise.resolve(refreshToken()).then(() => {
+              if (!disposed) current.connect()
+            })
+          }, wait)
+        }
+        socket.on("disconnect", (reason) => {
+          // A disconnect is routine on leaving; a stream of them is why seats keep "Connecting…".
+          console.warn("Table socket disconnected", reason)
+          if (reason === "io server disconnect") {
+            on().setStatus("Reconnecting… Your game is saved.")
+            reconnect()
+          }
         })
-        socket.connect()
-        const room = socket.channel(`webcam_table:${roomId}`, () => ({
+        socket.on("connect_error", (error) => {
+          console.warn("Table socket error", error.message)
+          on().setStatus("Reconnecting… Your game is saved.")
+          if (current.active) void refreshToken()
+          else reconnect()
+        })
+        const room = new TableChannel(socket, () => ({
+          room_id: roomId,
           peer_id: link.peerId,
           player_id: playerId,
           deck_id: deckId,
         }))
         link.channel = room
-        const presence = new Presence(room)
-        on().bind(room, presence)
-        presence.onSync(() =>
-          on().onPresence(presence.list((_id, value) => value.metas[0] as TableParticipant)),
-        )
+        on().bind(room)
+        room.on("presence", (everyone: TableParticipant[]) => on().onPresence(everyone))
         room.on("sfu_offer", (offer: SfuOffer) => on().onSfuOffer(offer))
         room.on("sfu_candidate", (payload: { candidate: RTCIceCandidateInit }) =>
           on().onSfuCandidate(payload),
@@ -130,7 +151,7 @@ export function useRoomChannel(
         room.on("peer_message", (payload: { from: string; message: unknown }) =>
           on().onPeerMessage(payload),
         )
-        // The owner ended the table; the server closes this channel right after.
+        // The owner ended the table; the server ends this seat's channel right after.
         room.on("table_closed", () => {
           room.leave()
           socket?.disconnect()
@@ -146,7 +167,7 @@ export function useRoomChannel(
         room.onError((reason) => {
           console.warn("Table channel error; rejoining with a new seat connection", reason)
           // A channel retry is a new media generation. Reusing its peer ID can
-          // leave one browser offering to an old connection after Presence resets.
+          // leave one browser offering to an old connection after presence resets.
           link.peerId = crypto.randomUUID()
           on().onChannelError()
           on().setStatus("Reconnecting… Your game is saved.")
@@ -169,6 +190,7 @@ export function useRoomChannel(
     void run()
     return () => {
       disposed = true
+      clearTimeout(retryTimer)
       link.channel?.leave()
       link.channel = null
       socket?.disconnect()

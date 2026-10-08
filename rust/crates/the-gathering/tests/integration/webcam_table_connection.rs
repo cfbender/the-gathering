@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use the_gathering::config::{BucketLimit, WindowLimit};
 use the_gathering::crypto;
 use the_gathering::web::channels::{self, MAX_FRAME_SIZE};
-use webcam_support::{Client, PEER_A, PEER_B, PEER_C, Server, Table, peer};
+use webcam_support::{Client, PEER_A, PEER_B, PEER_C, Server, Table, listed, peer};
 
 #[tokio::test]
 async fn socket_connection_uses_the_tracked_cookie_session() {
@@ -38,10 +38,10 @@ async fn socket_connection_uses_the_tracked_cookie_session() {
         .unwrap();
     assert_eq!(connected.id, user.id);
     let mut client = Client::connect(server.addr, &token).await.unwrap();
-    assert!(matches!(
-        Client::connect(server.addr, "invalid").await,
-        Err(403)
-    ));
+    assert_eq!(
+        Client::connect(server.addr, "invalid").await.err().unwrap(),
+        "unauthorized"
+    );
 
     // Logging out broadcasts the session topic, which closes its sockets.
     server.state().disconnect_session(&session_token);
@@ -55,10 +55,10 @@ async fn socket_connection_uses_the_tracked_cookie_session() {
         .delete_user_session_token(&session_token)
         .await
         .unwrap();
-    assert!(matches!(
-        Client::connect(server.addr, &token).await,
-        Err(403)
-    ));
+    assert_eq!(
+        Client::connect(server.addr, &token).await.err().unwrap(),
+        "unauthorized"
+    );
 }
 
 #[tokio::test]
@@ -105,30 +105,33 @@ async fn socket_tokens_are_encrypted_and_tampered_or_expired_tokens_are_rejected
                 .is_none(),
             "{tampered}"
         );
-        assert!(matches!(
-            Client::connect(server.addr, &tampered).await,
-            Err(403)
-        ));
+        assert_eq!(
+            Client::connect(server.addr, &tampered).await.err().unwrap(),
+            "unauthorized"
+        );
     }
 
-    // No token at all is refused before upgrading.
-    let response = server.app.get("/socket/websocket?vsn=2.0.0").await;
-    assert_eq!(response.status.as_u16(), 403);
+    // No token at all is refused.
+    for auth in [json!({}), Value::Null, json!("token")] {
+        assert_eq!(
+            Client::connect_with(server.addr, auth).await.err().unwrap(),
+            "unauthorized"
+        );
+    }
 }
 
 #[tokio::test]
 async fn joins_with_a_real_player_and_keeps_signaling_off_the_topic() {
     let mut t = Table::new().await;
-    let presence = t.alice.expect("presence_state").await;
-    assert_eq!(presence[PEER_A]["metas"][0]["player_name"], "Alice");
+    let presence = t.alice.expect("presence").await;
+    assert_eq!(listed(&presence, PEER_A).unwrap()["player_name"], "Alice");
 
     let mut bob = t.join_player(PEER_B, "Bob").await;
     // Candidates go to the SFU and never fan out to the room; a malformed one is refused.
     let candidate =
         json!({ "candidate": "candidate:1 1 udp 1 127.0.0.1 9 typ host", "sdpMid": "0" });
     t.alice
-        .push("sfu_candidate", json!({ "candidate": candidate }))
-        .await;
+        .push("sfu_candidate", json!({ "candidate": candidate }));
     t.alice
         .refused(
             "sfu_candidate",
@@ -170,7 +173,7 @@ async fn validates_peer_messages_without_broadcasting_them() {
     let mut t = Table::new().await;
     let mut bob = t.join_player(PEER_B, "Bob").await;
     t.alice
-        .expect_where("presence_diff", |diff| diff["joins"].get(PEER_B).is_some())
+        .expect_where("presence", |roster| listed(roster, PEER_B).is_some())
         .await;
 
     t.alice
@@ -254,8 +257,7 @@ async fn the_websocket_caps_inbound_frames_above_the_largest_legitimate_signal()
     // Anything above the frame cap closes the socket.
     let huge = json!({ "data": "a".repeat(MAX_FRAME_SIZE) });
     t.alice
-        .push("peer_message", json!({ "to": PEER_B, "message": huge }))
-        .await;
+        .push("peer_message", json!({ "to": PEER_B, "message": huge }));
     t.alice.expect("socket_closed").await;
 }
 
@@ -298,8 +300,8 @@ async fn updates_presence_only_with_a_deck_owned_by_the_seated_player() {
 #[tokio::test]
 async fn publishes_life_and_camera_status_through_presence() {
     let mut t = Table::new().await;
-    let presence = t.alice.expect("presence_state").await;
-    let meta = &presence[PEER_A]["metas"][0];
+    let presence = t.alice.expect("presence").await;
+    let meta = listed(&presence, PEER_A).unwrap();
     assert_eq!(
         (meta["life"].clone(), meta["camera_off"].clone()),
         (json!(40), json!(false))
@@ -335,8 +337,8 @@ async fn publishes_life_and_camera_status_through_presence() {
 #[tokio::test]
 async fn publishes_the_cameras_native_height_and_correction_consent() {
     let mut t = Table::new().await;
-    let presence = t.alice.expect("presence_state").await;
-    let meta = &presence[PEER_A]["metas"][0];
+    let presence = t.alice.expect("presence").await;
+    let meta = listed(&presence, PEER_A).unwrap();
     assert_eq!(
         (
             meta["camera_height"].clone(),
@@ -469,10 +471,7 @@ async fn rejects_non_uuid_and_duplicate_peer_ids() {
     ] {
         let mut client = t.server.connect(&user).await;
         let (status, response) = client
-            .join(
-                &t.topic(),
-                json!({ "peer_id": peer_id, "player_id": player }),
-            )
+            .join(&t.room, json!({ "peer_id": peer_id, "player_id": player }))
             .await;
         assert_eq!(
             (status.as_str(), response),
@@ -511,8 +510,7 @@ async fn each_connections_events_are_limited_with_signals_budgeted_separately() 
         bob.push(
             "peer_message",
             json!({ "to": PEER_A, "message": { "type": "crop" } }),
-        )
-        .await;
+        );
     }
     bob.settle(Duration::from_millis(100)).await;
     bob.refused(
@@ -560,7 +558,7 @@ async fn rejects_a_player_not_linked_to_the_authenticated_account() {
     );
     let mut client = t.server.connect(&user).await;
     let (status, response) = client
-        .join(&t.topic(), json!({ "peer_id": PEER_B, "player_id": "1" }))
+        .join(&t.room, json!({ "peer_id": PEER_B, "player_id": "1" }))
         .await;
     assert_eq!(
         (status.as_str(), response),
@@ -572,18 +570,25 @@ async fn rejects_a_player_not_linked_to_the_authenticated_account() {
 }
 
 #[tokio::test]
-async fn answers_heartbeats_and_unmatched_topics() {
+async fn refuses_table_events_before_a_join_and_malformed_joins() {
     let t = Table::new().await;
     let mut client = t.server.connect(&t.user).await;
     client
-        .send(None, "1", "phoenix", "heartbeat", json!({}))
+        .refused("update_status", json!({ "life": 1 }), "not joined")
         .await;
-    assert_eq!(client.reply("1").await, ("ok".to_owned(), json!({})));
-    client
-        .send(Some("2"), "2", "rooms:lobby", "phx_join", json!({}))
-        .await;
+    for payload in [
+        json!({ "peer_id": PEER_B, "player_id": t.player }),
+        json!({ "room_id": "lobby", "peer_id": PEER_B, "player_id": t.player }),
+    ] {
+        assert_eq!(
+            client.call("join", payload).await,
+            ("error".to_owned(), json!({ "reason": "invalid room" }))
+        );
+    }
+    // A packet without a payload still gets an answer.
+    client.send("299[\"timer_sync\"]");
     assert_eq!(
-        client.reply("2").await,
-        ("error".to_owned(), json!({ "reason": "unmatched topic" }))
+        client.reply("99").await,
+        ("error".to_owned(), json!({ "reason": "not joined" }))
     );
 }

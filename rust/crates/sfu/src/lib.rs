@@ -3,7 +3,7 @@
 //! Every seat (and spectator) holds one WebRTC connection to this server. Each seat
 //! publishes its camera as simulcast layers `l`, `m`, and `h`; the server forwards one
 //! layer of every other seat to each connection, picking the layer each viewer asks for.
-//! Signaling travels over the seat's Phoenix channel: the channel calls the methods here,
+//! Signaling travels over the seat's table channel: the channel calls the methods here,
 //! and the SFU sends [`SfuEvent`]s back on the channel's event sender.
 //!
 //! This file defines the interface the webcam table channel uses; [`room`] holds the media

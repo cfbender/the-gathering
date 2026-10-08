@@ -1,21 +1,20 @@
-//! Webcam tables: `WebcamTableConfigController`, `WebcamTableRoomController` (and its JSON
-//! view), and the `/socket/websocket` upgrade.
+//! Webcam tables: the table config (ICE servers and the socket token) and the open-room list.
+//! The table's realtime connection is served by [`crate::web::channels`].
 
 use std::collections::HashSet;
 
 use axum::Json;
-use axum::extract::ws::{WebSocketUpgrade, rejection::WebSocketUpgradeRejection};
-use axum::extract::{Query, State};
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::extract::State;
+use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
 
 use crate::cloudflare_turn;
 use crate::config::WebcamTableConfig;
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 use crate::state::AppState;
 use crate::web::auth::AuthUser;
-use crate::web::channels::{self, MAX_FRAME_SIZE, rooms};
+use crate::web::channels::{self, rooms};
 use crate::web::session::Session;
 
 use super::check_user_limit;
@@ -119,45 +118,4 @@ fn turn_server(config: &WebcamTableConfig) -> Option<Value> {
 pub async fn rooms_index(State(state): State<AppState>, AuthUser(_user): AuthUser) -> Response {
     let rooms = rooms::active_rooms(&state);
     no_store(Json(json!({ "data": rooms })).into_response())
-}
-
-/// The socket's connect params.
-#[derive(Debug, serde::Deserialize)]
-pub struct SocketParams {
-    /// The encrypted socket token from the config endpoint.
-    token: Option<String>,
-    /// The serializer version (only `2.x` is served).
-    vsn: Option<String>,
-}
-
-/// `GET /socket/websocket?token=…&vsn=2.0.0`: the Phoenix socket. An invalid or revoked token
-/// is refused with 403 before upgrading, as Phoenix refuses a failed `connect/3`.
-pub async fn socket(
-    State(state): State<AppState>,
-    Query(params): Query<SocketParams>,
-    upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
-) -> Response {
-    if params
-        .vsn
-        .as_deref()
-        .is_some_and(|vsn| !vsn.starts_with("2."))
-    {
-        return StatusCode::BAD_REQUEST.into_response();
-    }
-    let authenticated = match &params.token {
-        Some(token) => channels::authenticate(&state, token).await,
-        None => Ok(None),
-    };
-    let (user, session_token) = match authenticated {
-        Ok(Some(authenticated)) => authenticated,
-        Ok(None) => return StatusCode::FORBIDDEN.into_response(),
-        Err(error) => return ApiError::from(error).into_response(),
-    };
-    match upgrade {
-        Ok(upgrade) => upgrade
-            .max_frame_size(MAX_FRAME_SIZE)
-            .max_message_size(MAX_FRAME_SIZE)
-            .on_upgrade(move |socket| channels::run_socket(state, socket, user, session_token)),
-        Err(rejection) => rejection.into_response(),
-    }
 }

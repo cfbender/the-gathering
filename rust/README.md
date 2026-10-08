@@ -1,7 +1,7 @@
 # Rust backend
 
-The Gathering's server. It serves the JSON API, realtime webcam tables (over the Phoenix
-Channels wire protocol the frontend's `phoenix` client speaks), the Discord bot, and
+The Gathering's server. It serves the JSON API, realtime webcam tables (Socket.IO through
+socketioxide, which the frontend's `socket.io-client` connects to), the Discord bot, and
 background jobs on a SQLite database, and serves the React frontend.
 
 Shared Magic code (Scryfall models and bulk data, decklist sources, name normalization,
@@ -38,8 +38,8 @@ lives here.
     `DiscordApi` trait (tests use a recording fake), SpellBot staging, `/log`, `/summary`,
     `/newgame` queues and their scheduler, and the legacy `/won` form.
   - `webcam/`: webcam table rooms (one tokio task per room), turns, timer, log, cards,
-    and saved sessions; `web/channels/`: the channels server (V2 JSON over
-    `/socket/websocket`), pubsub, presence, and the `webcam_table:*` channel.
+    and saved sessions; `web/channels/`: the table socket (Socket.IO on `/socket.io/`:
+    connect auth, one ordered task per socket), presence rosters, and the table channel.
   - `tests/integration/`: HTTP and domain tests, compiled as one binary (`support/` is the
     harness); `tests/fixtures` holds recorded decklist, Discord, and Scryfall payloads.
 - `crates/sfu/`: the webcam table's WebRTC SFU (see its README).

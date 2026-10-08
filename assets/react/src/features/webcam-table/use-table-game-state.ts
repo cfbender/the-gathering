@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query"
-import type { Channel } from "phoenix"
+import type { TableChannel } from "./table-channel"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { GameFormat } from "@/features/games/game-format"
 import type { GameTimerState, TimerSample } from "./game-timer"
@@ -125,7 +125,7 @@ export function useTableGameState(
   )
 
   const bindChannel = useCallback(
-    (room: Channel) => {
+    (room: TableChannel) => {
       // The server owns the log: the full history on every (re)join, then each new or merged entry.
       room.on("table_log", ({ entries }: { entries: TableLogEntry[] }) =>
         setEvents(entries.map(toTableEvent)),
