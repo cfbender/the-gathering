@@ -1,11 +1,11 @@
 ---
 id: TASK-1
 title: Make the Rust backend idiomatic instead of Phoenix/Plug/Ecto-compatible
-status: To Do
+status: Done
 assignee:
   - '@cfbender'
 created_date: '2026-10-07 21:47'
-updated_date: '2026-10-07 21:55'
+updated_date: '2026-10-08 01:39'
 labels: []
 dependencies: []
 priority: medium
@@ -59,12 +59,37 @@ None found during the audit. Gaps found during implementation will be recorded i
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every subtask is Done
-- [ ] #2 rust/README.md and module docs describe the architecture without framing it as an Elixir port; remaining Elixir references only record on-disk compatibility (stored identities, legacy cookie/secret readers)
+- [x] #1 Every subtask is Done
+- [x] #2 rust/README.md and module docs describe the architecture without framing it as an Elixir port; remaining Elixir references only record on-disk compatibility (stored identities, legacy cookie/secret readers)
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Owner decision 2026-10-07: replace the Phoenix Channels protocol within TASK-1 (TASK-1.8, socketioxide + socket.io-client preferred); DRAFT-1 archived. Other audit decisions approved as proposed.
+
+Finalized 2026-10-08. All eight subtasks are Done and pushed to main.
+
+Open item: TASK-1.8 AC #5 (cross-seat video in a portal check) is unchecked. This orb's SFU binds only loopback, so remote frames cannot flow between browsers here, and the pre-change build behaves the same. Presence, table state, signaling, and rejoin were verified with two browser seats.
+
+Follow-ups found during the work, not started:
+1. The SFU announces private LAN host candidates beside the public IP. Chrome 142+ Local Network Access can then prompt remote players ('Access other apps and services on this device', or the local-network wording). Denying it only drops those candidates.
+2. A phone whose network flaps (offline/online every 10-20s, likely Tailscale) rebuilds its media connection on every reconnect. The 5e6c6fa fix removed duplicate seats and the churn. Keeping the media connection across a short drop would need a server-side seat resume.
+3. DRAFT-2: remove the legacy cookie and XCP readers after the deprecation window.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Made the Rust backend idiomatic instead of Phoenix/Plug/Ecto-compatible, in eight shipped phases:
+- typed private-cookie sessions and a plain CSRF token
+- renamed configuration with a deprecation window
+- ValidationError
+- typed extractors and flat request bodies
+- native 405s and request logging
+- Socket.IO in place of Phoenix Channels for the webcam table
+- typed timestamps
+- architecture docs
+
+Password hashes, existing sessions, sealed secrets, stored identities, saved table sessions, and migration numbering all stay compatible. Each phase passed mise run precommit and was pushed to main.
+<!-- SECTION:FINAL_SUMMARY:END -->
