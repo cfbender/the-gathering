@@ -81,7 +81,7 @@ fn valid_room_id(room_id: &str) -> bool {
 #[derive(Debug)]
 enum Stop {
     /// Normally, and the client does not rejoin.
-    Close,
+    Close(&'static str),
     /// Abnormally: the client gets `rejoin`.
     Error(String),
     /// The socket went away.
@@ -372,7 +372,7 @@ pub async fn run(
                 // would open a fresh room under the id).
                 Some(RoomExit::Closed) => {
                     channel.push("table_closed", &json!({}));
-                    Stop::Close
+                    Stop::Close("the table ended")
                 }
                 // The room crashed: the client rejoins a fresh room restored from the saved
                 // session.
@@ -380,10 +380,10 @@ pub async fn run(
             }),
             message = client.recv() => match message {
                 None => Err(Stop::Silent),
-                Some(ClientMsg::Shutdown) => Err(Stop::Close),
+                Some(ClientMsg::Shutdown) => Err(Stop::Close("replaced by a new join on the same socket")),
                 Some(ClientMsg::Event(event)) if event.event == "leave" => {
                     Reply::ok().send(event.ack);
-                    Err(Stop::Close)
+                    Err(Stop::Close("left"))
                 }
                 Some(ClientMsg::Event(event)) => match channel.handle_in(&event.event, &event.payload).await {
                     Ok(Some(answer)) => {
@@ -483,6 +483,12 @@ impl Channel {
 
     async fn after_join(&mut self, sfu: mpsc::UnboundedSender<SfuEvent>) -> Result<(), Stop> {
         let state = self.socket.state.clone();
+        tracing::info!(
+            "Webcam table seat {} (socket {}) joined table {}",
+            self.participant.peer_id,
+            self.socket.socket.id,
+            self.room_id
+        );
         // Sends every seat, this one included, the roster.
         state.presence.track(
             &self.topic,
@@ -517,13 +523,14 @@ impl Channel {
         let state = &self.socket.state;
         let lifetime = self.joined_at.elapsed().as_millis();
         let reason = match &stop {
-            Stop::Close => "closed",
+            Stop::Close(reason) => reason,
             Stop::Error(reason) => reason.as_str(),
             Stop::Silent => "socket closed",
         };
         tracing::info!(
-            "Webcam table seat {} left after {lifetime}ms: {reason}",
-            self.participant.peer_id
+            "Webcam table seat {} (socket {}) left after {lifetime}ms: {reason}",
+            self.participant.peer_id,
+            self.socket.socket.id
         );
         self.socket.socket.leave(self.topic.clone());
         state.presence.untrack(&self.topic, self.conn_id);
@@ -572,7 +579,7 @@ impl Channel {
         match event {
             ConnEvent::SeatReplaced => {
                 self.push("seat_replaced", &json!({}));
-                return Err(Stop::Close);
+                return Err(Stop::Close("the seat was taken by another connection"));
             }
             ConnEvent::SeatEliminated(eliminated) => {
                 self.participant.eliminated = eliminated;

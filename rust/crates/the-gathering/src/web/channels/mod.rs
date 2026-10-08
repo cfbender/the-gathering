@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 use socketioxide::extract::{AckSender, Event, Extension, SocketRef, TryData};
 use socketioxide::handler::{ConnectHandler, FromMessageParts, MessageHandler};
 use socketioxide::layer::SocketIoLayer;
-use socketioxide::socket::Socket;
+use socketioxide::socket::{DisconnectReason, Socket};
 use socketioxide::{SocketIo, TransportType};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
@@ -155,9 +155,11 @@ async fn authorize(
             return Err(Refused::Unavailable);
         }
     };
+    tracing::info!("Table socket {} connected for user {}", socket.id, user.id);
     let (tx, inbox) = mpsc::unbounded_channel();
     socket.on_fallback(Forward(tx.clone()));
-    socket.on_disconnect(move || {
+    socket.on_disconnect(move |socket: SocketRef, reason: DisconnectReason| {
+        tracing::info!("Table socket {} disconnected: {reason}", socket.id);
         let _ = tx.send(Inbound::Disconnected);
         async {}
     });
