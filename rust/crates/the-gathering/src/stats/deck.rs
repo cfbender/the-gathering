@@ -17,7 +17,7 @@ fn results(seat: Option<&Seat>) -> Vec<GameResult> {
     seat.map(|seat| seat.result).into_iter().collect()
 }
 
-/// `Deck.get/2`.
+/// A deck's statistics for a date range; `None` for an unknown deck.
 pub async fn get(
     conn: &mut SqliteConnection,
     deck_id: i64,

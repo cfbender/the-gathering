@@ -1,4 +1,4 @@
-//! Players: listing, detail, identity administration, and `Player.changeset/2`.
+//! Players: listing, detail, identity administration, and validated writes.
 
 use sqlx::SqliteConnection;
 
@@ -9,8 +9,7 @@ use super::input::PlayerInput;
 use super::model::{Deck, GameFormat, GameResult, Player, select_decks, select_players};
 use super::{GamesError, Pagination, fold_name, user_exists};
 
-/// A player with their decks (by name) and seats (newest game first) for the player page
-/// (`Games.get_player!/1`).
+/// A player with their decks (by name) and seats (newest game first) for the player page.
 #[derive(Clone, Debug)]
 pub struct PlayerDetail {
     /// The player, with the linked user's avatar.
@@ -21,7 +20,7 @@ pub struct PlayerDetail {
     pub seats: Vec<SeatGame>,
 }
 
-/// A seat with its game's header and deck (`GameJSON.seat_game/2`).
+/// A seat with its game's header and deck.
 #[derive(Clone, Debug)]
 pub struct SeatGame {
     /// The game.
@@ -36,7 +35,7 @@ pub struct SeatGame {
     pub deck: Option<Deck>,
 }
 
-/// A row of the administrator's identity list (`Games.list_player_identities/1`).
+/// A row of the administrator's identity list.
 #[derive(Clone, Debug)]
 pub struct PlayerIdentityRow {
     /// The player.
@@ -45,7 +44,7 @@ pub struct PlayerIdentityRow {
     pub user: Option<(i64, String)>,
 }
 
-/// `Games.list_players/1`, ordered by case-folded name, with avatars.
+/// Every player (archived ones on request), ordered by case-folded name, with avatars.
 pub async fn list_players(
     conn: &mut SqliteConnection,
     include_archived: bool,
@@ -82,7 +81,7 @@ pub async fn get_player_with_avatar(
     .await
 }
 
-/// `Games.get_player!/1` (without the raise): decks and seats preloaded.
+/// A player with decks and seats loaded, or `None` for an unknown id.
 pub async fn get_player_detail(
     conn: &mut SqliteConnection,
     id: i64,
@@ -127,7 +126,7 @@ pub async fn get_player_detail(
     }))
 }
 
-/// `Games.get_player_for_user/1`.
+/// The player linked to an account, if any.
 pub async fn get_player_for_user(
     conn: &mut SqliteConnection,
     user_id: i64,
@@ -206,7 +205,7 @@ pub async fn list_player_identities(
     Ok((players, Pagination::new(page, per_page, total)))
 }
 
-/// `Games.unlink_player_identity/1`: detaches the account and Discord identity.
+/// Detaches the account and Discord identity.
 pub async fn unlink_player_identity(
     conn: &mut SqliteConnection,
     player: &Player,
@@ -319,11 +318,11 @@ pub async fn update_player(
     })
 }
 
-/// `Games.delete_player/1`.
+/// Deletes a player.
 ///
-/// Elixir's `Repo.delete/1` raised (a 500) when the player still had decks or seats, since
-/// SQLite's foreign-key errors carry no constraint name; this returns Ecto's
-/// `no_assoc_constraint` error instead.
+/// A player who still has decks or seats is a validation error ("are still associated with
+/// this entry") rather than a foreign-key failure, since SQLite's foreign-key errors carry no
+/// constraint name to report.
 pub async fn delete_player(conn: &mut SqliteConnection, player: &Player) -> Result<(), GamesError> {
     let refs = sqlx::query!(
         r#"SELECT EXISTS(SELECT 1 FROM decks WHERE player_id = ?1) AS "decks!: bool",

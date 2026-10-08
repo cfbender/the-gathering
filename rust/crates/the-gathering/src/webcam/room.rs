@@ -706,9 +706,8 @@ impl Room {
                 let outcome = self.team_life(entry, actor, team_index, delta).await?;
                 let _ = reply.send(outcome);
             }
-            // Elixir bug fixed: an unknown peer id (a seat whose peer changed between the
-            // channel's check and this call) crashed the room (`seat.player_id` on nil); it is
-            // ignored here.
+            // An unknown peer id (a seat whose peer changed between the channel's check and
+            // this call) is ignored.
             RoomMsg::Eliminate(peer_id, eliminated, reply) => {
                 if let Some(seat) = entry
                     .all_seats
@@ -1018,7 +1017,7 @@ impl Room {
         {
             return Ok(());
         }
-        // The Elixir room crashed if the seat was missing; there is nothing to remember then.
+        // A missing seat leaves nothing to remember.
         let Some(previous) = entry.all_seats.get(&participant.player_id).cloned() else {
             return Ok(());
         };

@@ -1,4 +1,4 @@
-//! The gateway connection and event routing (`Discord` supervisor and `Consumer`).
+//! The gateway connection and event routing.
 //!
 //! [`Bot`] handles parsed events; [`start`] connects it to Discord's gateway with
 //! `twilight-gateway`. Tests drive [`Bot`] directly with a fake [`DiscordApi`].
@@ -190,7 +190,7 @@ pub fn start(state: &AppState) {
     let scheduler = bot.scheduler.spawn(INTERVAL);
     tokio::spawn(async move {
         run_gateway(bot, config.token).await;
-        // Like the Elixir supervisor, nothing keeps running without a gateway session.
+        // Nothing keeps running without a gateway session.
         scheduler.abort();
     });
 }

@@ -41,7 +41,7 @@ impl fmt::Display for Layer {
 }
 
 /// Which of a publisher's encodings a packet belongs to: one simulcast layer, or the only
-/// stream of a publisher without simulcast (`:single` in the Elixir version).
+/// stream of a publisher without simulcast.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Encoding {
     Single,

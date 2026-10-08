@@ -60,7 +60,7 @@ pub struct StagedPlayer {
 }
 
 impl PendingGame {
-    /// The players in seat order (`ResolvePendingGame.decode_players/1`).
+    /// The players in seat order.
     pub fn players(&self) -> Vec<ReportPlayer> {
         serde_json::from_str::<StagedPlayers>(&self.players_json)
             .unwrap_or_default()
@@ -74,7 +74,7 @@ impl PendingGame {
             .collect()
     }
 
-    /// `Discord.pending_report/1`.
+    /// The staged game as a report.
     pub fn report(&self) -> GameReport {
         GameReport {
             external_id: self.external_id.clone(),
@@ -96,8 +96,8 @@ impl PendingGame {
             .any(|player| player.discord_id == discord_id)
     }
 
-    /// A digest of the roster and identity a draft was opened against. Replaces Elixir's
-    /// SHA-256 of `:erlang.term_to_binary/1`, so drafts written by the Elixir server never
+    /// A digest of the roster and identity a draft was opened against. Releases up to 0.2
+    /// stored a SHA-256 of `:erlang.term_to_binary/1` instead, so drafts they wrote never
     /// match and read as expired.
     pub fn snapshot(&self) -> Vec<u8> {
         use sha2::Digest;
@@ -153,7 +153,7 @@ macro_rules! select_pending {
     };
 }
 
-/// `Discord.list_pending/0`: winnerless games, newest first.
+/// Winnerless games, newest first.
 pub async fn list(conn: &mut SqliteConnection) -> Result<Vec<PendingGame>, sqlx::Error> {
     Ok(select_pending!(
         "WHERE NOT EXISTS (SELECT 1 FROM games WHERE games.source = 'discord' AND games.external_id = pending.external_id)
@@ -166,7 +166,7 @@ pub async fn list(conn: &mut SqliteConnection) -> Result<Vec<PendingGame>, sqlx:
     .collect())
 }
 
-/// `Repo.get(PendingGame, id)`.
+/// A staged game by id.
 pub async fn get(conn: &mut SqliteConnection, id: i64) -> Result<Option<PendingGame>, sqlx::Error> {
     Ok(select_pending!("WHERE id = ?", id)
         .fetch_optional(&mut *conn)
@@ -174,7 +174,7 @@ pub async fn get(conn: &mut SqliteConnection, id: i64) -> Result<Option<PendingG
         .map(PendingGame::from))
 }
 
-/// `Discord.get_pending_by_external_id/1` (recorded games included).
+/// The staged game with this external id (recorded games included).
 pub async fn by_external_id(
     conn: &mut SqliteConnection,
     external_id: &str,
@@ -185,7 +185,7 @@ pub async fn by_external_id(
         .map(PendingGame::from))
 }
 
-/// `Discord.latest_pending_in_channel/1`: the most recently started winnerless game.
+/// The most recently started winnerless game.
 pub async fn latest_in_channel(
     conn: &mut SqliteConnection,
     channel_id: &str,
@@ -222,7 +222,7 @@ pub enum StageError {
     Database(#[from] sqlx::Error),
 }
 
-/// `StageReport.run/1`: stages a report, replacing the normalized data when SpellBot edits
+/// Stages a report, replacing the normalized data when SpellBot edits
 /// the same game.
 pub async fn stage(
     conn: &mut SqliteConnection,
@@ -272,7 +272,7 @@ pub async fn delete(conn: &mut SqliteConnection, id: i64) -> Result<(), sqlx::Er
     Ok(())
 }
 
-/// `Discord.prune_pending/1`: drops games not updated for [`RETENTION_DAYS`].
+/// Drops games not updated for [`RETENTION_DAYS`].
 pub async fn prune(conn: &mut SqliteConnection, now: UtcDateTime) -> Result<(), sqlx::Error> {
     let cutoff = now.plus(time::Duration::days(-RETENTION_DAYS));
     sqlx::query!(
@@ -304,7 +304,7 @@ pub enum ResolveError {
     Database(#[from] sqlx::Error),
 }
 
-/// `ResolvePendingGame.run/3`: records `discord_id` as the winner and consumes the staged
+/// Records `discord_id` as the winner and consumes the staged
 /// game, atomically.
 pub async fn resolve(
     pool: &Pool,

@@ -45,7 +45,7 @@ fn card_images(card: &Card, variants: &[&str]) -> Value {
     json!(images::urls(&taken))
 }
 
-/// `CardJSON.summary/1`.
+/// A card's summary JSON.
 pub fn card_summary_json(card: &Card) -> Value {
     json!({
         "id": card.id,
@@ -61,7 +61,7 @@ pub fn card_summary_json(card: &Card) -> Value {
     })
 }
 
-/// `CardJSON.detail/1`.
+/// A card's summary JSON plus rules text, set, rarity, and legality details.
 pub fn card_detail_json(card: &Card) -> Value {
     let mut detail = card_summary_json(card);
     if let Some(object) = detail.as_object_mut() {
@@ -82,7 +82,7 @@ pub fn card_detail_json(card: &Card) -> Value {
     detail
 }
 
-/// `CardPrintingJSON.summary/1`.
+/// A printing's summary JSON.
 pub fn printing_summary_json(printing: &Printing) -> Value {
     json!({
         "id": printing.id,

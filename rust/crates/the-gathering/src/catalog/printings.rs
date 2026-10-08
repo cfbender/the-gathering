@@ -64,7 +64,7 @@ impl From<Failure> for LookupError {
     }
 }
 
-/// Elixir truthiness: present and neither `null` nor `false`.
+/// The value when present and neither `null` nor `false`.
 fn truthy(value: Option<&Value>) -> Option<&Value> {
     value.filter(|value| !matches!(value, Value::Null | Value::Bool(false)))
 }
@@ -83,7 +83,7 @@ fn layout(card: &Value) -> Option<&str> {
     card.get("layout").and_then(Value::as_str)
 }
 
-/// `select_face/3`: the card with one face's fields copied over it and `id` as its id.
+/// The card with one face's fields copied over it and `id` as its id.
 fn select_face(card: &Value, index: usize, id: &str) -> Result<Value, LookupError> {
     let layout = layout(card);
     if layout.is_some_and(|layout| FACE_LAYOUTS.contains(&layout))
@@ -161,7 +161,7 @@ fn string_field(card: &Value, key: &str) -> Option<String> {
     card.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
-/// `printing_data/1`: the `card_printings` row of a card object.
+/// The `card_printings` row of a card object.
 fn printing_data(card: &Value) -> Printing {
     let images = truthy(card.get("image_uris"))
         .or_else(|| front(card).and_then(|face| truthy(face.get("image_uris"))))
@@ -215,7 +215,7 @@ fn card_or_front(card: &Value, key: &str) -> Value {
         .unwrap_or(Value::Null)
 }
 
-/// `details_data/2`: everything the card preview shows.
+/// Everything the card preview shows.
 fn details_data(card: &Value, row: &Printing) -> Value {
     let prices: Map<String, Value> = ["usd", "usd_foil", "usd_etched"]
         .into_iter()
@@ -283,7 +283,7 @@ async fn upsert_printing(
     Ok(())
 }
 
-/// `Printings.list/3`: one page of a card's English paper printings, cached in
+/// One page of a card's English paper printings, cached in
 /// `card_printings`. `name` keeps the requested half of a split or flip card selected.
 pub async fn list(
     pool: &Pool,
@@ -322,7 +322,7 @@ pub async fn list(
     Ok((rows, has_more))
 }
 
-/// `Printings.details/1`: rules text, cost, type, set, prices, and images of any printing
+/// Rules text, cost, type, set, prices, and images of any printing
 /// by Scryfall id (with `-1` for the second face), cached for a day in `card_details_cache`
 /// so every seat at a table, and every later game, reads it locally. The printing's image
 /// and set are cached in `card_printings` on the way through.
@@ -363,7 +363,7 @@ pub async fn details(pool: &Pool, scryfall: &Scryfall, id: &str) -> Result<Value
     Ok(details)
 }
 
-/// `Rulings.get/1`: a printing's rulings, cached for a day by printing id (face suffix
+/// A printing's rulings, cached for a day by printing id (face suffix
 /// included) in `card_rulings_cache`.
 pub async fn rulings(
     pool: &Pool,

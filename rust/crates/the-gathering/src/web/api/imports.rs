@@ -26,7 +26,7 @@ friday-001,2026-09-18,Alice,Birds of a Feather,\"Kangee, Sky Warden\",1,win,Swan
 friday-001,2026-09-18,Bob,Goblins,Krenko Mob Boss,2,loss,,75,10,Friday Commander
 ";
 
-/// `send_download/3`: an attachment with the given content type.
+/// A file download (an attachment) with the given content type.
 fn download(body: Vec<u8>, filename: &str, content_type: &'static str) -> Response {
     let mut response = (StatusCode::OK, body).into_response();
     let headers = response.headers_mut();
@@ -58,7 +58,7 @@ fn game_json(game: &ImportGame, seats: &[Value]) -> Value {
     })
 }
 
-/// `CSVImportJSON.csv_seat/2`.
+/// A CSV preview seat's JSON.
 fn csv_seat(seat: &ImportSeat, game: &ImportGame) -> Value {
     json!({
         "game_id": game.game_id,
@@ -78,7 +78,7 @@ fn csv_seat(seat: &ImportSeat, game: &ImportGame) -> Value {
     })
 }
 
-/// `MythicTrackImportJSON.mythic_seat/1`: the seat with `partner_name` as `partner`.
+/// The seat with `partner_name` as `partner`.
 fn mythic_seat(seat: &ImportSeat) -> Value {
     json!({
         "line": seat.line,
@@ -99,7 +99,7 @@ fn mythic_seat(seat: &ImportSeat) -> Value {
     })
 }
 
-/// `CSVImportJSON.preview/1` and `MythicTrackImportJSON.preview/1`.
+/// A CSV or Mythic Track import preview's JSON.
 fn preview_json(preview: &Preview, source: Source) -> Value {
     let games: Vec<Value> = preview
         .games

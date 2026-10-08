@@ -161,8 +161,7 @@ impl Field {
 
     /// The new encoding's value continues one past the last value forwarded.
     ///
-    /// `ex_webrtc` subtracted from a missing value and crashed the room when the new encoding's
-    /// descriptor lacked the field; a missing field keeps the old offset here.
+    /// When the new encoding's descriptor lacks the field, the old offset is kept.
     fn update(&mut self, value: Option<i32>) {
         if let (true, Some(value)) = (self.used, value) {
             self.offset = value - self.last - 1;
@@ -171,7 +170,7 @@ impl Field {
 
     fn munge(&mut self, value: Option<i32>, modulus: i32) -> Option<i32> {
         let munged = value.map(|value| (value + modulus - self.offset).rem_euclid(modulus));
-        // `ex_webrtc` stored the missing value and crashed on the next switch.
+        // A missing value is not remembered, so the next switch still has a real one.
         if let Some(munged) = munged {
             self.last = munged;
         }
@@ -179,8 +178,7 @@ impl Field {
     }
 }
 
-/// VP8 picture ids, `TL0PICIDX`, and `KEYIDX` made continuous across encodings
-/// (`ExWebRTC.RTP.VP8.Munger`).
+/// VP8 picture ids, `TL0PICIDX`, and `KEYIDX` made continuous across encodings.
 #[derive(Clone, Copy, Debug, Default)]
 struct Vp8Munger {
     picture_id: Field,
@@ -197,8 +195,7 @@ struct Vp8Fields {
 }
 
 impl Vp8Fields {
-    /// `ex_webrtc` crashed the room on a payload it could not parse; such a packet is forwarded
-    /// unchanged here.
+    /// `None` for a payload that cannot be parsed; such a packet is forwarded unchanged.
     fn parse(payload: &[u8]) -> Option<Self> {
         let descriptor = Vp8Descriptor::parse(payload).ok()?;
         // The M bit of the first PictureID octet says whether it is 15 bits or 7.

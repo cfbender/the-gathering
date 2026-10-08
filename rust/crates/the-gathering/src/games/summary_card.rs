@@ -18,7 +18,7 @@ pub type Images = HashMap<ArtKey, String>;
 static CONTROL: LazyLock<Regex> = LazyLock::new(|| compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]"));
 static SPACE: LazyLock<Regex> = LazyLock::new(|| compile(r"\s+"));
 
-/// `Plug.HTML.html_escape/1` after dropping control characters.
+/// HTML-escapes text after dropping control characters.
 fn escape(text: &str) -> String {
     let cleaned = CONTROL.replace_all(text, "");
     let mut out = String::with_capacity(cleaned.len());
@@ -74,7 +74,7 @@ fn lines(text: &str, width: usize, count: usize) -> Vec<String> {
     visible
 }
 
-/// Elixir's `to_string/1` for floats: always a decimal point.
+/// A float as text, always with a decimal point.
 fn float(value: f64) -> String {
     if value.fract() == 0.0 && value.abs() < 1e15 {
         format!("{value:.1}")
@@ -122,7 +122,7 @@ fn int(value: usize) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
 }
 
-/// `SummaryCard.description/1`: alt text for the image (at most 1024 characters).
+/// Alt text for the image (at most 1024 characters).
 pub fn description(game: &Game) -> String {
     let result = game.winner().map_or_else(
         || "Draw".to_owned(),
@@ -137,7 +137,7 @@ pub fn description(game: &Game) -> String {
     text.chars().take(1024).collect()
 }
 
-/// `SummaryCard.svg/2`.
+/// The game's summary card as an SVG document.
 pub fn svg(game: &Game, images: &Images) -> String {
     let mut seats: Vec<&Seat> = game.seats.iter().collect();
     seats.sort_by_key(|seat| seat.seat);

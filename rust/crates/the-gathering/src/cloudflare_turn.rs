@@ -109,8 +109,8 @@ fn prefer_urls(mut server: Value) -> Value {
     server
 }
 
-/// Relay servers for the SFU's relay-only mode (`Sfu.relay_servers/0`): TURN entries with
-/// credentials, or none when Cloudflare is unavailable.
+/// Relay servers for the SFU's relay-only mode: TURN entries with credentials, or none when
+/// Cloudflare is unavailable.
 pub async fn relay_servers(
     http: &reqwest::Client,
     config: &CloudflareTurnConfig,

@@ -33,12 +33,13 @@ fn field<'a>(value: &'a Value, key: &str) -> &'a Value {
     value.get(key).unwrap_or(&Value::Null)
 }
 
-/// An object, or an empty one for anything else (`value || %{}`).
+/// An object, or an empty one for anything else.
 fn object(value: &Value) -> &Map<String, Value> {
     value.as_object().unwrap_or(&EMPTY)
 }
 
-/// `List.wrap/1` (non-object items are treated as empty objects where fields are read).
+/// A list as its items, `null` as none, and anything else as a one-item list (non-object
+/// items are treated as empty objects where fields are read).
 fn wrap(value: &Value) -> Vec<&Value> {
     match value {
         Value::Null => Vec::new(),
@@ -47,8 +48,7 @@ fn wrap(value: &Value) -> Vec<&Value> {
     }
 }
 
-/// `string/1`: trimmed text; numbers and booleans as text; `nil` (and, where Elixir would
-/// have raised, lists and objects) as `""`.
+/// Trimmed text; numbers and booleans as text; `null`, lists, and objects as `""`.
 fn string(value: &Value) -> String {
     match value {
         Value::String(text) => text.trim().to_owned(),
@@ -91,8 +91,7 @@ pub fn parse(json: &str) -> Result<Parsed, Vec<LineError>> {
             Classified::Error(error) => errors.push(error),
         }
     }
-    // Elixir sorted by the `DateTime` structs' term order (day of month first); this sorts
-    // chronologically.
+    // Chronologically, ties broken by external id.
     parsed.sort_by(|a, b| (a.played_at, &a.external_id).cmp(&(b.played_at, &b.external_id)));
     Ok((parsed, errors, warnings))
 }

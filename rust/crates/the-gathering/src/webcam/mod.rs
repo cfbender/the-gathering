@@ -496,7 +496,7 @@ impl WebcamTables {
     }
 }
 
-/// A player as the table needs it (`Games.get_player/1`).
+/// A player as the table needs it.
 #[derive(Clone, Debug)]
 pub struct Player {
     /// Id.
@@ -507,7 +507,7 @@ pub struct Player {
     pub user_id: Option<i64>,
 }
 
-/// A deck as the table needs it (`Games.get_deck/1`).
+/// A deck as the table needs it.
 #[derive(Clone, Debug)]
 pub struct Deck {
     /// Id.

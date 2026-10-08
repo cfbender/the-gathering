@@ -1,14 +1,13 @@
-//! Static files from `priv/static` (`Plug.Static`).
+//! Static files from `priv/static`.
 //!
 //! Vite output under `/assets/react` has hashed names, so it is cached forever and carries
 //! COEP so the card recognizer's workers can start inside the cross-origin-isolated table.
 //! Only files are served (never directory indexes), and only successful responses get the
 //! year-long cache header, so a 404 for an asset that is still deploying is not cached.
 //!
-//! Elixir difference (fixed here): a missing file under `/assets/react` fell through
-//! `Plug.Static` to the router's SPA catch-all and came back as the HTML shell with a 200,
-//! so a stale tab loading an old chunk after a deploy got HTML instead of a 404. Here it is
-//! a 404.
+//! A missing file under `/assets/react` is a 404 rather than falling through to the SPA
+//! catch-all, so a stale tab loading an old chunk after a deploy gets an error instead of the
+//! HTML shell with a 200.
 
 use axum::Router;
 use axum::http::{HeaderName, HeaderValue, Response, header};

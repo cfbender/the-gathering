@@ -36,7 +36,7 @@ pub struct LinkSummary {
 }
 
 impl LinkSummary {
-    /// `merge_summaries/2`.
+    /// Combines two summaries.
     #[must_use]
     pub fn merge(&self, other: &Self) -> Self {
         let mut unmatched: Vec<String> = self
@@ -107,7 +107,7 @@ pub struct BatchResult {
     pub done: bool,
 }
 
-/// `split_partners/1`: `"Commander || Partner (note)"` → commander and partner names.
+/// `"Commander || Partner (note)"` → commander and partner names.
 pub fn split_partners(name: &str) -> (String, Option<String>) {
     match name.split_once("||") {
         Some((commander, partner)) => (
@@ -302,7 +302,7 @@ async fn link_rows(
     })
 }
 
-/// `link_game/1`: the game's unlinked decks and its seats' MVP cards.
+/// The game's unlinked decks and its seats' MVP cards.
 pub async fn link_game(
     conn: &mut SqliteConnection,
     links: &DeckLinks,
@@ -329,7 +329,7 @@ pub async fn link_game(
     Ok(result)
 }
 
-/// `repair_batch/2`: the next `limit` (default 100, at most 500) unlinked decks and
+/// The next `limit` (default 100, at most 500) unlinked decks and
 /// unlinked MVP seats after `cursor`.
 pub async fn repair_batch(
     conn: &mut SqliteConnection,

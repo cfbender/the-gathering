@@ -39,7 +39,7 @@ pub enum LinkSource {
     Other,
 }
 
-/// A recognized link (`parse_url/1`).
+/// A recognized deck link.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParsedUrl {
     /// The service.
@@ -161,7 +161,7 @@ impl Decklist {
         micros.format(&Rfc3339).unwrap_or_default()
     }
 
-    /// `DecklistJSON.show/1`: the metadata, without `nil` fields.
+    /// The metadata, without `null` fields.
     pub fn to_json(&self) -> Value {
         let mut data = Map::new();
         data.insert("source".into(), json!(self.source.as_str()));
@@ -246,8 +246,8 @@ impl Decklists {
     pub fn new(config: &Config) -> anyhow::Result<Self> {
         let resolver = SharedResolver(Arc::new(RwLock::new(Arc::new(SystemResolver))));
         let manavault = config.manavault_url.as_deref().and_then(Origin::parse);
-        // The configured instance is operator-trusted (the Elixir server never checked it),
-        // so its host passes the destination policy even on a private network.
+        // The configured instance is operator-trusted, so its host passes the destination
+        // policy even on a private network.
         let mut allowed: Vec<&str> = config
             .manavault_allowed_hosts
             .iter()
@@ -263,9 +263,7 @@ impl Decklists {
         .connect_timeout(std::time::Duration::from_secs(3))
         .timeout(std::time::Duration::from_secs(8))
         // lotus's default budget (10 pages, as ManaVault's own importer uses). A deck that
-        // needs more is an error rather than a silently shortened list: the Elixir adapter
-        // stopped after four pages and returned what it had, a bug its own comment warned
-        // against ("not silently cut short").
+        // needs more is an error rather than a silently shortened list.
         .limits(Limits::default())
         .allowlist(Allowlist::parse(allowed))
         .resolver(Arc::new(resolver.clone()))
@@ -293,7 +291,7 @@ impl Decklists {
         self.resolver.set(resolver);
     }
 
-    /// The configured ManaVault origin (`manavault_url/0`).
+    /// The configured ManaVault origin.
     pub fn manavault_url(&self) -> Option<&Origin> {
         self.manavault.as_ref()
     }
@@ -303,7 +301,7 @@ impl Decklists {
         &self.cache
     }
 
-    /// `parse_url/1`: recognizes Moxfield and Archidekt deck links and share links on the
+    /// Recognizes Moxfield and Archidekt deck links and share links on the
     /// configured ManaVault host (or its `www.` alias); any other `http(s)` URL with a
     /// plausible host is [`LinkSource::Other`].
     ///
@@ -354,7 +352,7 @@ impl Decklists {
         })
     }
 
-    /// `resolve/1`: the deck behind a supported link, cached for five minutes on success.
+    /// The deck behind a supported link, cached for five minutes on success.
     pub async fn resolve(&self, url: &str) -> Result<Decklist, DecklistError> {
         let parsed = self.parse_url(url)?;
         let LinkSource::Supported(source) = parsed.source else {
@@ -397,7 +395,7 @@ impl Decklists {
     }
 }
 
-/// Sweeps expired cache entries every minute (the Elixir cache's sweep timer).
+/// Sweeps expired cache entries every minute.
 pub fn start_cache_sweeper(state: &crate::state::AppState) {
     let state = state.clone();
     tokio::spawn(async move {

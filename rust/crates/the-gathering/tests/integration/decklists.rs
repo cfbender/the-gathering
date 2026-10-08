@@ -88,7 +88,7 @@ async fn parses_and_canonicalizes_provider_url_variants() {
     let app = TestApp::new().await;
     let token = "AbCdEfGhIjKlMnOpQrStUvWx";
     let cases = [
-        // lotus requires Moxfield ids of at least five characters ("abc" in the Elixir test).
+        // lotus requires Moxfield ids of at least five characters.
         (
             "https://www.moxfield.com/decks/abcde?x=1",
             Source::Moxfield,
@@ -470,8 +470,8 @@ impl Respond for ManyPages {
     }
 }
 
-/// The Elixir adapter stopped after four pages and returned a truncated list; the Rust
-/// server follows lotus's default budget (ten pages) and keeps every card.
+/// Paging follows lotus's default budget (ten pages), so a deck longer than four pages keeps
+/// every card instead of being truncated.
 #[tokio::test]
 async fn follows_manavault_decks_past_four_pages() {
     let server = MockServer::start().await;

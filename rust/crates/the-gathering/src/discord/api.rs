@@ -2,8 +2,7 @@
 //!
 //! Every handler talks to Discord through [`DiscordApi`], so command and interaction
 //! handling runs without a gateway: production uses [`super::rest::RestApi`], tests a
-//! recording fake (the Elixir tests stubbed Nostrum's API modules the same way).
-//! Payloads are typed and serialize to exactly the JSON the Elixir bot sent.
+//! recording fake. Payloads are typed and serialize to Discord's JSON.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -14,7 +13,7 @@ use serde::{Deserialize, Serialize, Serializer};
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, DiscordError>> + Send + 'a>>;
 
 /// Why a Discord call failed. `Display` never includes response bodies, tokens, or
-/// message content, only numeric codes (`SummaryCommand.failure_details/1`).
+/// message content, only numeric codes.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum DiscordError {
     /// Discord answered with a non-success status.
@@ -63,8 +62,7 @@ pub struct RegisteredCommand {
     pub name: String,
 }
 
-/// Outbound Discord operations (Nostrum's `Api.Interaction`, `Api.Message`, and
-/// `Api.ApplicationCommand`).
+/// Outbound Discord operations: interaction responses, messages, and application commands.
 pub trait DiscordApi: Send + Sync {
     /// Responds to an interaction. Never retried: Discord may already have accepted it.
     fn create_response<'a>(
@@ -175,7 +173,7 @@ pub enum ResponseData {
 }
 
 impl InteractionResponse {
-    /// `%{type: 5}`, optionally private (`data: %{flags: 64}`).
+    /// A deferred channel message (`type: 5`), optionally private (`flags: 64`).
     pub fn deferred(ephemeral: bool) -> Self {
         Self {
             kind: ResponseKind::DeferredChannelMessage,
@@ -250,12 +248,12 @@ pub struct AllowedMentions {
 }
 
 impl AllowedMentions {
-    /// No pings (`%{parse: []}`).
+    /// No pings (`{"parse": []}`).
     pub fn none() -> Self {
         Self::default()
     }
 
-    /// Only these users (`%{parse: [], users: ids}`).
+    /// Only these users (`{"parse": [], "users": ids}`).
     pub fn users(ids: Vec<String>) -> Self {
         Self {
             parse: Vec::new(),
@@ -639,7 +637,7 @@ impl CommandOption {
     }
 }
 
-/// A private, mention-free message (`%{content: c, flags: 64, allowed_mentions: %{parse: []}}`).
+/// A private (`flags: 64`), mention-free message.
 pub fn private(content: impl Into<String>) -> MessagePayload {
     MessagePayload {
         content: Some(content.into()),

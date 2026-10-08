@@ -181,8 +181,8 @@ async fn next_offer(
     }
 }
 
-/// The Elixir room waited forever after a rejected answer; this one offers again, and tells a
-/// browser that keeps failing to reconnect.
+/// After a rejected answer the room offers again, and tells a browser that keeps failing to
+/// reconnect.
 #[tokio::test]
 async fn a_rejected_answer_is_offered_again_and_repeated_failures_reconnect() {
     let sfu =

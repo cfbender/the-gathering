@@ -9,7 +9,7 @@ static ID: LazyLock<Regex> = LazyLock::new(|| {
     compile(r"\A([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(-1)?\z")
 });
 
-/// `parse/1`: the Scryfall card id and the face index (0 or 1), or `None` for anything else.
+/// The Scryfall card id and the face index (0 or 1), or `None` for anything else.
 pub fn parse(id: &str) -> Option<(&str, usize)> {
     let captures = ID.captures(id)?;
     let card_id = captures.get(1)?.as_str();

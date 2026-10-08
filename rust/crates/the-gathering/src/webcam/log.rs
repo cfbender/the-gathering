@@ -322,7 +322,7 @@ fn counter_text(counter: &CounterChange) -> String {
     format!("{}{} → {}", counter.prefix, counter.from, counter.to)
 }
 
-/// `Enum.uniq(Map.keys(a) ++ Map.keys(b))`.
+/// The keys of `a`, then the keys only `b` has.
 fn keys<'a, V>(a: &'a BTreeMap<String, V>, b: &'a BTreeMap<String, V>) -> Vec<&'a String> {
     let mut keys: Vec<&String> = a.keys().collect();
     keys.extend(b.keys().filter(|key| !a.contains_key(*key)));

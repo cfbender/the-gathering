@@ -124,7 +124,7 @@ async fn authorize(
     Ok(Ok(()))
 }
 
-/// `WonReport.open/2`: starts a draft for the referenced (or latest) staged game.
+/// Starts a draft for the referenced (or latest) staged game.
 pub async fn open(
     state: &AppState,
     reference: &str,
@@ -172,7 +172,8 @@ pub async fn open(
     }))
 }
 
-/// `WonReport.load/2` on a connection.
+/// Loads a `/won` draft for `actor` on a connection, or the message for an unusable one
+/// (unknown, someone else's, expired, or its game changed since).
 pub async fn load_in(
     conn: &mut SqliteConnection,
     state: &AppState,
@@ -213,7 +214,7 @@ pub async fn load_in(
     }))
 }
 
-/// `WonReport.load/2`.
+/// Loads a `/won` draft for `actor`; see [`load_in`].
 pub async fn load(
     state: &AppState,
     id: &str,
@@ -222,7 +223,7 @@ pub async fn load(
     load_in(&mut *state.pool.acquire().await?, state, id, actor).await
 }
 
-/// `WonReport.act/4`: applies an action atomically.
+/// Applies an action atomically.
 pub async fn act(
     state: &AppState,
     id: &str,

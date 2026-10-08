@@ -154,7 +154,7 @@ fn changes<const N: usize>(
         .collect()
 }
 
-/// `CSVChanges.diff/2`: game fields, then each participant's seat (current seats first).
+/// Game fields, then each participant's seat (current seats first).
 pub fn diff(before: &GameView, after: &GameView) -> Vec<Change> {
     let mut diffs = changes(game_values(before), game_values(after), None);
     let mut players: Vec<i64> = Vec::new();

@@ -1,4 +1,4 @@
-//! `/summary`: posts a rendered recap of a recorded game (`SummaryCommand`).
+//! `/summary`: posts a rendered recap of a recorded game.
 
 use std::time::Instant;
 
@@ -48,7 +48,7 @@ pub enum Rejection {
     Failed(String),
 }
 
-/// `SummaryCommand.message/1`.
+/// The message shown for a rejected summary request.
 pub fn message(reason: &Rejection) -> &'static str {
     match reason {
         Rejection::Forbidden => {
@@ -67,7 +67,7 @@ pub fn message(reason: &Rejection) -> &'static str {
     }
 }
 
-/// `SummaryCommand.prepare/1`: the game to summarize, for active members only.
+/// The game to summarize, for active members only.
 pub async fn prepare(state: &AppState, interaction: &Interaction) -> Result<Game, Rejection> {
     let Some(guild) = &interaction.guild_id else {
         return Err(Rejection::Forbidden);
@@ -101,7 +101,7 @@ pub async fn prepare(state: &AppState, interaction: &Interaction) -> Result<Game
         })
 }
 
-/// `SummaryCommand.render_response/1`: the PNG upload, or a plain-text failure.
+/// The PNG upload, or a plain-text failure.
 pub async fn render_response(state: &AppState, game: &Game) -> MessagePayload {
     let started = Instant::now();
     tracing::info!("Discord /summary rendering game {}", game.id);
@@ -159,7 +159,7 @@ async fn logged<T>(stage: &str, call: ApiFuture<'_, T>) -> Result<T, DiscordErro
     result
 }
 
-/// `SummaryCommand.respond/3`: acknowledges publicly before rendering, then uploads.
+/// Acknowledges publicly before rendering, then uploads.
 /// A failed acknowledgement is never retried: Discord may already have accepted it.
 pub async fn respond(
     state: &AppState,

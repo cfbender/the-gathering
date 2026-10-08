@@ -165,7 +165,7 @@ struct Negotiation {
 
 #[expect(
     clippy::struct_excessive_bools,
-    reason = "independent negotiation flags, as in the Elixir room's peer map"
+    reason = "independent negotiation flags"
 )]
 struct Peer {
     /// Which join this is; a rejoin under the same id gets a new one.
@@ -604,9 +604,8 @@ impl Room {
                 Ok(())
             }
             Err(reason) => {
-                // `ex_webrtc` left the room waiting for an answer forever after a rejected one,
-                // so the seat never got another offer. The offered changes are rolled back and
-                // offered again; a browser that keeps failing reconnects.
+                // The offered changes are rolled back and offered again, so the seat is not
+                // left waiting for an answer forever; a browser that keeps failing reconnects.
                 tracing::warn!("SFU rejected an answer from {id}: {reason}");
                 revert(peer, &negotiation.added);
                 peer.failed_answers += 1;
@@ -883,7 +882,7 @@ impl Room {
         };
         tracing::debug!("SFU relay candidate for {id}: {added}");
         peer.ice.local.push(added.clone());
-        // The answer may already have gone out without it; trickle it like `ex_webrtc` did.
+        // The answer may already have gone out without it; trickle it.
         if peer.ready {
             let _ = peer.events.send(SfuEvent::Candidate(
                 json!({ "candidate": candidate_json(&added, peer) }),
@@ -1032,8 +1031,8 @@ impl Room {
         self.forward(id, rid, packet);
     }
 
-    /// Registers the seat's camera as its board, once (`{:track, track}` in the Elixir room),
-    /// and gives every other connection a subscription to it.
+    /// Registers the seat's camera as its board, once, and gives every other connection a
+    /// subscription to it.
     fn publish(
         &mut self,
         id: &PeerId,
@@ -1775,7 +1774,7 @@ fn candidate_stats(id: &str, kind: CandidateKind, addr: SocketAddr) -> Candidate
     }
 }
 
-/// A local candidate as the browser's `RTCIceCandidateInit` (`ICECandidate.to_json/1`).
+/// A local candidate as the browser's `RTCIceCandidateInit`.
 fn candidate_json(candidate: &Candidate, peer: &Peer) -> Value {
     json!({
         "candidate": candidate.to_sdp_string(),

@@ -19,12 +19,12 @@ const DB_FORMAT: &[FormatItem<'static>] =
     format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]Z");
 const DATE_FORMAT: &[FormatItem<'static>] = format_description!("[year]-[month]-[day]");
 
-/// A UTC instant truncated to whole seconds (`:utc_datetime`).
+/// A UTC instant truncated to whole seconds, the precision timestamps are stored at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UtcDateTime(OffsetDateTime);
 
 impl UtcDateTime {
-    /// The current time, truncated to seconds like `DateTime.utc_now() |> DateTime.truncate(:second)`.
+    /// The current time, truncated to seconds.
     pub fn now() -> Self {
         Self::from_offset(OffsetDateTime::now_utc())
     }
@@ -154,7 +154,7 @@ impl Encode<'_, Sqlite> for UtcDateTime {
     }
 }
 
-/// A calendar date (`:date`), stored and rendered as `2026-10-06`.
+/// A calendar date, stored and rendered as `2026-10-06`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IsoDate(pub Date);
 
@@ -220,6 +220,7 @@ mod tests {
             "2026-10-06 21:21:40",
             "2026-10-06T21:21:40",
             "2026-10-06T21:21:40.123456Z",
+            "2026-10-06T21:21:40.123456+00:00",
             "2026-10-06T17:21:40-04:00",
         ] {
             assert_eq!(

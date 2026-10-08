@@ -70,7 +70,7 @@ impl RecordingApi {
         }
     }
 
-    /// Makes each operation fail once with a network error (`DiscordNewGameAPI.fail/1`).
+    /// Makes each operation fail once with a network error.
     pub fn fail(&self, operations: &[Op]) {
         self.failures.lock().unwrap().extend_from_slice(operations);
     }

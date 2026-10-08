@@ -57,13 +57,13 @@ pub struct CardData {
     pub selection_key: String,
 }
 
-/// `from_scryfall/1`: the row for a record that describes a card (not a token or
-/// memorabilia set, and with an oracle id), else `None`.
+/// The row for a record that describes a card (not a token or memorabilia set, and with an
+/// oracle id), else `None`.
 ///
-/// Unlike the Elixir code, which stored only the top-level `oracle_text` (empty for
-/// multi-faced cards), the stored text joins every face's text with lotus's
-/// [`ScryfallCard::full_oracle_text`], and commander eligibility and pairing are derived
-/// from it, so modal double-faced commanders and partners are recognized.
+/// Rather than only the top-level `oracle_text` (empty for multi-faced cards), the stored
+/// text joins every face's text with lotus's [`ScryfallCard::full_oracle_text`], and
+/// commander eligibility and pairing are derived from it, so modal double-faced commanders
+/// and partners are recognized.
 pub fn from_scryfall(card: &ScryfallCard) -> Option<CardData> {
     if !describes_card(card) {
         return None;

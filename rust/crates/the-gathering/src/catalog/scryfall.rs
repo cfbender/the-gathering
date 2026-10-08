@@ -159,7 +159,7 @@ impl Scryfall {
             .collect())
     }
 
-    /// `fetch/0`: downloads the `default_cards` bulk file into `dir`, returning its path
+    /// Downloads the `default_cards` bulk file into `dir`, returning its path
     /// and Scryfall's generation time.
     pub async fn download_bulk(
         &self,

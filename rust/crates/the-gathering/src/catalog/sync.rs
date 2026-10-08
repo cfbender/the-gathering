@@ -58,7 +58,7 @@ impl Default for SyncState {
     }
 }
 
-/// `Catalog.sync_status/0`.
+/// The state of the latest catalog sync.
 pub async fn status(pool: &Pool) -> Result<SyncState, sqlx::Error> {
     let row = sqlx::query_as!(
         SyncState,
@@ -75,8 +75,8 @@ pub async fn status(pool: &Pool) -> Result<SyncState, sqlx::Error> {
 type Batch = Result<Vec<CardData>, String>;
 
 /// Reads records on a blocking thread and hands them over in batches. A line that is not
-/// JSON fails the run; a JSON object that is not a usable Scryfall card is skipped, as
-/// `CardData.from_scryfall/1` returned `nil` for it.
+/// JSON fails the run; a JSON object that is not a usable Scryfall card (one
+/// [`card_data::from_scryfall`] rejects) is skipped.
 fn read_batches<R: std::io::BufRead>(lines: JsonLines<R, Value>, sender: &mpsc::Sender<Batch>) {
     let mut batch = Vec::with_capacity(BATCH_SIZE);
     for record in lines {
@@ -134,7 +134,7 @@ fn spawn_reader(path: &Path, compressed: bool) -> Result<mpsc::Receiver<Batch>, 
     Ok(receiver)
 }
 
-/// `stage_batch/1`: the best printing of each card in the batch replaces the staged one
+/// The best printing of each card in the batch replaces the staged one
 /// when its selection key is greater.
 async fn stage_batch(pool: &Pool, rows: Vec<CardData>) -> Result<(), sqlx::Error> {
     let mut candidates: HashMap<String, CardData> = HashMap::new();
@@ -264,8 +264,8 @@ async fn fail_state(pool: &Pool, id: i64, error: &str) -> Result<(), sqlx::Error
     Ok(())
 }
 
-/// `Sync.run/1`: stages a generation in batches, publishes it only when it is complete and
-/// non-empty, records the run, and links catalog references afterwards (`Catalog.backfill/0`).
+/// Stages a generation in batches, publishes it only when it is complete and non-empty,
+/// records the run, and links catalog references afterwards.
 /// Returns the number of cards published, or the failure message. A failure never touches
 /// the published catalog.
 pub async fn run(pool: &Pool, scryfall: &Scryfall, source: Source) -> Result<i64, String> {

@@ -151,7 +151,7 @@ pub enum ParseError {
     MissingPlayers,
 }
 
-/// `SpellBotParser.parse/2`.
+/// Parses a SpellBot game message into a report.
 pub fn parse(message: &SpellBotMessage, spellbot_user_id: &str) -> Result<GameReport, ParseError> {
     let author = message.author.as_ref();
     let is_spellbot = author.is_some_and(|author| {

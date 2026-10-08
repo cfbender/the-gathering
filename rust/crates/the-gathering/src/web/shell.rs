@@ -17,7 +17,7 @@ const ENTRY: &str = "assets/react/src/main.tsx";
 const PUBLIC_PATH: &str = "/assets/react/";
 const PROXY_HEADER: &str = "x-the-gathering-vite-proxy";
 
-/// HTML-escapes an attribute value (`Plug.HTML.html_escape/1`).
+/// HTML-escapes an attribute value.
 pub fn html_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for c in value.chars() {
@@ -189,8 +189,8 @@ pub async fn index(
         .into_response()
 }
 
-/// `put_secure_browser_headers` for the browser pipeline: Phoenix 1.8's defaults, kept
-/// when the handler already set the header.
+/// The browser security headers (referrer policy, a `base-uri`/`frame-ancestors` CSP,
+/// `nosniff`, and no cross-domain policies), each kept when the handler already set it.
 pub async fn secure_browser_headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
@@ -210,7 +210,7 @@ pub async fn secure_browser_headers(request: Request, next: Next) -> Response {
     response
 }
 
-/// `CrossOriginIsolation` for the webcam table document.
+/// Cross-origin isolation headers (COOP and COEP) for the webcam table document.
 pub async fn cross_origin_isolation(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();

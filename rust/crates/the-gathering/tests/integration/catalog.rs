@@ -41,7 +41,7 @@ async fn get(app: &TestApp, id: &str) -> Card {
         .unwrap_or_else(|| panic!("card {id}"))
 }
 
-/// `CatalogTest.insert_card/4`.
+/// Inserts an instant with these ids and name, with `overrides` merged over the record.
 async fn insert(app: &TestApp, id: &str, oracle_id: &str, name: &str, overrides: Value) {
     let mut record = json!({
         "id": id, "oracle_id": oracle_id, "name": name, "collector_number": id, "type_line": "Instant"
@@ -787,9 +787,8 @@ fn derives_commander_eligibility_without_treating_backgrounds_as_commanders() {
 }
 
 /// CR 903.3 (lotus): legendary Vehicles and Spacecraft lead decks, and a multi-faced card is
-/// judged by its front face. The Elixir rule accepted only legendary creatures and read the
-/// whole type line, so it rejected legendary Vehicles and accepted a card whose back face is
-/// a legendary creature.
+/// judged by its front face, so a card whose back face is a legendary creature is not
+/// eligible.
 #[test]
 fn follows_cr_903_3_for_vehicles_spacecraft_and_front_faces() {
     assert!(lotus::can_be_commander("Legendary Artifact — Vehicle", ""));

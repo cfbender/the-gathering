@@ -1,4 +1,4 @@
-//! `/newgame`: gathers players for a webcam table (`NewGameCommand`).
+//! `/newgame`: gathers players for a webcam table.
 
 use crate::db::UtcDateTime;
 use crate::state::AppState;
@@ -145,7 +145,7 @@ fn actor(interaction: &Interaction) -> QueueActor {
     }
 }
 
-/// `NewGameCommand.respond/5`.
+/// Handles a `/newgame` command or one of its buttons.
 pub async fn respond(
     state: &AppState,
     api: &dyn DiscordApi,
@@ -312,7 +312,7 @@ fn time_modal(id: i64) -> InteractionResponse {
     })
 }
 
-/// `NewGameCommand.confirmation/2`.
+/// The private confirmation for a queue action.
 pub fn confirmation(result: &Result<ScheduledGame, QueueError>, action: &QueueAction) -> String {
     let game = match result {
         Ok(game) => game,
@@ -339,8 +339,7 @@ pub fn confirmation(result: &Result<ScheduledGame, QueueError>, action: &QueueAc
             None => "The game now starts when filled.".into(),
             Some(start) => format!("The game now starts <t:{}:F>.", start.unix()),
         },
-        // Elixir had no clause for an open game after `cancel` (only reachable if the
-        // cancel did not apply); report the status instead of crashing.
+        // Only reachable if the cancel did not apply; report the status.
         (Status::Open, QueueAction::Cancel) => "This game is still open.".into(),
     }
 }

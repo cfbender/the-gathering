@@ -179,7 +179,8 @@ async fn enforces_the_two_to_ten_seat_bounds_at_both_edges() {
         rows[10].messages("seat"),
         ["must be less than or equal to 10"]
     );
-    // Like Ecto's traverse_errors, the JSON lists the rows only.
+    // The JSON lists one object per seat row, holding only that row's field errors (an
+    // empty object for a valid row).
     assert_eq!(
         errors.to_json()["seats"][10],
         json!({"seat": ["must be less than or equal to 10"]})
@@ -620,7 +621,7 @@ async fn players_carry_the_linked_users_avatar_and_nil_when_unlinked_or_the_user
 }
 
 #[tokio::test]
-async fn invalid_user_references_return_changeset_errors() {
+async fn invalid_user_references_return_field_errors() {
     let app = TestApp::new().await;
     let alice = app.player("Alice").await;
     let bob = app.player("Bob").await;

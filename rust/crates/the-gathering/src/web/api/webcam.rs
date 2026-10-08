@@ -87,7 +87,7 @@ async fn ice_servers(state: &AppState) -> Vec<Value> {
     servers
 }
 
-/// `List.wrap(server.urls)`.
+/// An ICE server's `urls`, a single string or a list.
 fn urls(server: &Value) -> Vec<String> {
     match server.get("urls") {
         Some(Value::String(url)) => vec![url.clone()],

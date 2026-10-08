@@ -2,14 +2,16 @@
 //! `webcam_table_sessions`, retained for seven days after last activity or until their room
 //! closes as idle. Writes finish before an action is acknowledged.
 //!
-//! The BLOB holds `{"version": 2, "state": entry}` JSON, the same shape the Elixir server
-//! writes with Jason, so a running table survives switching servers. Anything that does not
-//! decode as that (an older version, an Erlang term, garbage) is treated as missing and the
-//! table starts fresh, where the Elixir code raised on undecodable JSON.
+//! The BLOB holds `{"version": 2, "state": entry}` JSON, the shape releases up to 0.2 also
+//! wrote, so tables saved before an upgrade restore. Anything that does not decode as that (an
+//! older version, an Erlang term those releases' predecessors wrote, garbage) is treated as
+//! missing and the table starts fresh.
+//!
+//! `expires_at` is text: whole seconds (`2026-10-06T21:21:40Z`), or microseconds in rows
+//! written by releases up to 0.2. [`UtcDateTime`] reads both, and the two forms compare in
+//! the right order as text to within a second, which is all pruning needs.
 
-use time::format_description::FormatItem;
-use time::macros::format_description;
-use time::{Duration, OffsetDateTime};
+use time::Duration;
 
 use crate::db::{Pool, UtcDateTime};
 
@@ -17,19 +19,6 @@ use super::room::Entry;
 
 const VERSION: i64 = 2;
 const RETENTION_DAYS: i64 = 7;
-const USEC_FORMAT: &[FormatItem<'static>] =
-    format_description!("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z");
-
-/// `:utc_datetime_usec` as `ecto_sqlite3` stores it.
-fn usec(at: OffsetDateTime) -> String {
-    at.format(USEC_FORMAT).unwrap_or_default()
-}
-
-fn parse_usec(value: &str) -> Option<OffsetDateTime> {
-    OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
-        .ok()
-        .or_else(|| UtcDateTime::parse(value).map(UtcDateTime::inner))
-}
 
 #[derive(serde::Serialize)]
 struct SnapshotRef<'a> {
@@ -46,7 +35,7 @@ struct Snapshot {
 /// The saved table, unless missing, expired, or in another format.
 pub async fn load(pool: &Pool, id: &str) -> Result<Option<Entry>, sqlx::Error> {
     let row = sqlx::query!(
-        r#"SELECT snapshot, expires_at FROM webcam_table_sessions WHERE id = ?"#,
+        r#"SELECT snapshot, expires_at AS "expires_at: UtcDateTime" FROM webcam_table_sessions WHERE id = ?"#,
         id
     )
     .fetch_optional(pool)
@@ -54,7 +43,7 @@ pub async fn load(pool: &Pool, id: &str) -> Result<Option<Entry>, sqlx::Error> {
     let Some(row) = row else {
         return Ok(None);
     };
-    if parse_usec(&row.expires_at).is_none_or(|expires| expires <= OffsetDateTime::now_utc()) {
+    if row.expires_at <= UtcDateTime::now() {
         return Ok(None);
     }
     Ok(serde_json::from_slice::<Snapshot>(&row.snapshot)
@@ -70,7 +59,7 @@ pub async fn save(pool: &Pool, id: &str, entry: &Entry) -> Result<(), sqlx::Erro
         state: entry,
     })
     .map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
-    let expires_at = usec(OffsetDateTime::now_utc() + Duration::days(RETENTION_DAYS));
+    let expires_at = UtcDateTime::now().plus(Duration::days(RETENTION_DAYS));
     sqlx::query!(
         r#"INSERT INTO webcam_table_sessions (id, snapshot, expires_at) VALUES (?, ?, ?)
            ON CONFLICT (id) DO UPDATE SET snapshot = excluded.snapshot, expires_at = excluded.expires_at"#,
@@ -93,7 +82,7 @@ pub async fn delete(pool: &Pool, id: &str) -> Result<(), sqlx::Error> {
 
 /// Deletes expired sessions; returns how many.
 pub async fn prune(pool: &Pool) -> Result<u64, sqlx::Error> {
-    let now = usec(OffsetDateTime::now_utc());
+    let now = UtcDateTime::now();
     let result = sqlx::query!(
         "DELETE FROM webcam_table_sessions WHERE expires_at < ?",
         now

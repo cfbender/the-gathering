@@ -51,8 +51,8 @@ const DECK_FIELDS: [&str; 12] = [
     "skip_count",
     "included_for_play",
 ];
-/// Elixir exported no `format`, so a Two-Headed Giant game (two winners) failed
-/// validation on import; it is exported and restored here.
+/// `format` is included so a Two-Headed Giant game (two winners) passes validation on
+/// import; files from releases up to 0.2 lack it.
 const GAME_FIELDS: [&str; 9] = [
     "portable_id",
     "played_at",
@@ -145,7 +145,7 @@ fn card_json(card: &catalog::Card) -> Value {
     })
 }
 
-/// `PortableExport.run/0`: one consistent read of everything.
+/// One consistent read of everything.
 pub async fn export(state: &AppState) -> Result<Value, sqlx::Error> {
     let mut tx = state.pool.begin().await?;
     let conn: &mut SqliteConnection = &mut tx;
@@ -267,7 +267,7 @@ fn local_id(value: &Value) -> Option<i64> {
     value.as_i64().filter(|id| value.is_i64() && *id > 0)
 }
 
-/// `Ecto.UUID.cast(id) == {:ok, id}`: lowercase and hyphenated.
+/// A UUID in canonical form: lowercase and hyphenated.
 fn canonical_uuid(value: &Value) -> bool {
     value.as_str().is_some_and(|id| {
         id.len() == 36
@@ -302,7 +302,7 @@ fn valid_game(game: &Value) -> bool {
             .is_none_or(|id| id.is_null() || id.is_string())
 }
 
-/// `PortableFile.decode/1`.
+/// Decodes and validates a portable export file.
 pub fn decode(json: &str) -> Result<Map<String, Value>, String> {
     let invalid = || INVALID_FILE.to_owned();
     let Ok(Value::Object(data)) = serde_json::from_str::<Value>(json) else {
@@ -885,7 +885,7 @@ async fn restore(
     Ok(summary)
 }
 
-/// `PortableImport.preview/1`: the import's counts, with every write rolled back.
+/// The import's counts, with every write rolled back.
 pub async fn preview(state: &AppState, json: &str) -> Result<Summary, ImportError> {
     let data = decode(json).map_err(ImportError::Message)?;
     let mut tx = db::begin(&state.pool).await?;
@@ -894,7 +894,7 @@ pub async fn preview(state: &AppState, json: &str) -> Result<Summary, ImportErro
     result
 }
 
-/// `PortableImport.run/2`.
+/// Restores a portable export in one transaction.
 pub async fn run(
     state: &AppState,
     json: &str,

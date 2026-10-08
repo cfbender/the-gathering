@@ -103,7 +103,7 @@ pub struct Preview {
     pub review: Option<Vec<Review>>,
 }
 
-/// `Preview.run/2`.
+/// Parses an import and previews what it would create, match, and change, without writing.
 pub async fn run(
     conn: &mut SqliteConnection,
     source: Source,
@@ -158,7 +158,7 @@ fn all_seats(games: &[ImportGame]) -> impl Iterator<Item = &ImportSeat> {
     games.iter().flat_map(|game| &game.seats)
 }
 
-/// Reverses `items` and drops repeats (`Enum.uniq/1` of a list built by prepending).
+/// Reverses `items` and drops repeats, keeping the last occurrence of each.
 fn unique_reversed<T: PartialEq>(items: Vec<T>) -> Vec<T> {
     let mut unique: Vec<T> = Vec::with_capacity(items.len());
     for item in items.into_iter().rev() {
@@ -198,7 +198,7 @@ async fn match_players(
             }
         }
     }
-    // Elixir prepended while reducing, so ties keep the reversed order.
+    // Names that tie under the case-insensitive sort keep reverse input order.
     result.create.reverse();
     result.matched = unique_reversed(result.matched);
     result.create.sort_by_key(|name| sort_key(name));

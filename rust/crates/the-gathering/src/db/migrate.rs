@@ -235,11 +235,11 @@ async fn renormalize_card_names(conn: &mut SqliteConnection) -> Result<(), sqlx:
     Ok(())
 }
 
-/// `RecomputeCanBeCommander`: the stored flag follows [`lotus::can_be_commander`] (CR 903.3:
+/// Recomputes the stored `can_be_commander` flag with [`lotus::can_be_commander`] (CR 903.3:
 /// legendary creature, Vehicle, or Spacecraft judged by the front face, or "can be your
-/// commander" text). The Elixir rule accepted only legendary creatures and judged the whole
-/// type line, so legendary Vehicles were missing and cards with a legendary-creature back face
-/// were wrongly eligible.
+/// commander" text). Releases up to 0.2 accepted only legendary creatures and judged the whole
+/// type line, so stored flags missed legendary Vehicles and wrongly marked cards with a
+/// legendary-creature back face as eligible.
 async fn recompute_can_be_commander(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
     let rows: Vec<(String, Option<String>, Option<String>, bool)> =
         sqlx::query_as("SELECT id, type_line, oracle_text, can_be_commander FROM cards")

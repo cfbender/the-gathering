@@ -23,7 +23,7 @@ fn response(content: &str, components: Vec<Component>) -> InteractionResponse {
     )
 }
 
-/// `LogCommand.respond/2`.
+/// Handles a `/log` interaction and sends the response.
 pub async fn respond(state: &AppState, api: &dyn DiscordApi, interaction: &Interaction) {
     let response = handle(state, interaction).await;
     if api
@@ -35,7 +35,7 @@ pub async fn respond(state: &AppState, api: &dyn DiscordApi, interaction: &Inter
     }
 }
 
-/// `LogCommand.handle/1`.
+/// The response to a `/log` interaction.
 pub async fn handle(state: &AppState, interaction: &Interaction) -> InteractionResponse {
     let actor = Actor {
         discord_id: interaction.user_id(),

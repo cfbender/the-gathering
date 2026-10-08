@@ -84,9 +84,8 @@ pub async fn upsert_by_external_id(
 
 /// Inserts a validated game.
 ///
-/// Elixir recovered from a concurrent insert of the same `(source, external_id)` by looking
-/// for an `external_id` error, but `unique_constraint([:source, :external_id])` reports on
-/// `source`, so the recovery never ran; this returns the existing game as intended.
+/// When a concurrent insert of the same `(source, external_id)` wins the race, the unique
+/// violation is caught and the existing game is returned instead.
 async fn insert(
     conn: &mut SqliteConnection,
     input: &GameInput,
@@ -123,7 +122,7 @@ async fn insert(
 }
 
 /// Validates a game a portable import would insert (with the export's
-/// `portable_id`, `source`, and `external_id`, plus `put_created_by/2`), without writing.
+/// `portable_id`, `source`, and `external_id`, plus the creating account), without writing.
 pub async fn validate_portable(
     conn: &mut SqliteConnection,
     input: &GameInput,
@@ -145,8 +144,8 @@ pub async fn validate_portable(
 }
 
 /// Inserts a game from a portable export, keeping its `portable_id` and source identity
-/// (`PortableImport` inserts with `Repo.insert/1`, not `RecordGame`). Unique violations
-/// are validation errors, as `unique_constraint/2` reports them.
+/// (written directly, without the external-id lookup of [`create`]). Unique violations are
+/// "taken" validation errors on `portable_id` or `source`.
 pub async fn insert_portable(
     conn: &mut SqliteConnection,
     input: &GameInput,
@@ -264,8 +263,8 @@ fn unchanged(held: &super::model::Seat, seat: &ValidSeat) -> bool {
         && held.notes == seat.notes
 }
 
-/// Whether a requested seat number is held by another existing row (`seats_collide?/2`);
-/// Ecto updated rows one at a time, so swapping numbers needs the rows parked first.
+/// Whether a requested seat number is held by another existing row; rows are updated one at
+/// a time, so swapping numbers needs the rows parked first.
 fn seats_collide(current: &Game, requested: &[ValidSeat]) -> bool {
     requested.iter().any(|seat| {
         current
@@ -275,7 +274,7 @@ fn seats_collide(current: &Game, requested: &[ValidSeat]) -> bool {
     })
 }
 
-/// `RecordGame.update/2`: `played_at`, `duration_minutes`, `turns`, `win_condition`,
+/// `played_at`, `duration_minutes`, `turns`, `win_condition`,
 /// `format`, `notes`, and `seats` (matched to existing rows by `id`; rows left out are
 /// deleted). Provenance (`source`, `external_id`, creator) never changes. All or nothing.
 pub async fn update(
@@ -331,7 +330,7 @@ pub async fn update(
         }
         for seat in &valid.seats {
             match seat.existing_id {
-                // Like Ecto, a seat whose fields did not change is not written, so it keeps
+                // A seat whose fields did not change is not written, so it keeps
                 // its `updated_at` (CSV corrections rely on this).
                 Some(id)
                     if !parked
@@ -369,7 +368,7 @@ pub async fn update(
     reload(conn, game.id).await
 }
 
-/// `Games.delete_game/1` (seats cascade).
+/// Deletes a game (seats cascade).
 pub async fn delete(conn: &mut SqliteConnection, game_id: i64) -> Result<(), sqlx::Error> {
     sqlx::query!("DELETE FROM games WHERE id = ?", game_id)
         .execute(&mut *conn)

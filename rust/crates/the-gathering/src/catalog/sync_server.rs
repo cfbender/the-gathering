@@ -60,7 +60,7 @@ impl SyncServer {
         self.finished.subscribe()
     }
 
-    /// `trigger/0`: starts a Scryfall sync in the background unless one is running.
+    /// Starts a Scryfall sync in the background unless one is running.
     pub fn trigger(&self, state: &AppState) -> Trigger {
         self.start(state, Source::Scryfall)
     }

@@ -1,15 +1,13 @@
-//! Delimited text (CSV/TSV) parsing with `NimbleCSV`'s rules, as `NimbleCSV.define(..., escape:
-//! "\"")` parsers read pasted and uploaded files.
+//! Delimited text (CSV/TSV) parsing for pasted and uploaded files, with `"` as the quote
+//! character.
 //!
-//! The `csv` crate does the splitting and unquoting; it is more lenient than `NimbleCSV`,
-//! so a pre-pass reproduces `NimbleCSV.ParseError`'s conditions and messages: a quote that
-//! does not start a field, text after a closing quote, and an unclosed quote at the end.
+//! The `csv` crate does the splitting and unquoting; it is lenient, so a strict pre-pass
+//! rejects malformed quoting with a message: a quote that does not start a field, text after
+//! a closing quote, and an unclosed quote at the end.
 //!
-//! Rows carry their 1-based starting line. Like `NimbleCSV`, lines end at `\n` or `\r\n`
-//! (a lone `\r` is data) and rows may have any number of fields. Two deliberate
-//! differences: blank lines yield no row (every caller skipped blank rows anyway), and
-//! a row's number is the physical line it starts on, which `NimbleCSV`-based numbering
-//! only matched when no quoted cell spanned lines.
+//! Rows carry the 1-based physical line they start on (a quoted cell may span lines). Lines
+//! end at `\n` or `\r\n` (a lone `\r` is data), rows may have any number of fields, and blank
+//! lines yield no row.
 
 /// One parsed row.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,7 +31,7 @@ fn at_line_end(rest: &str) -> bool {
     rest.is_empty() || rest == "\n" || rest == "\r\n"
 }
 
-/// `NimbleCSV`'s parse errors, or `Ok` when it would parse `text`.
+/// The strict quoting check: the first malformed quote's message, or `Ok`.
 fn validate(text: &str, separator: char) -> Result<(), String> {
     let mut quoted = false;
     for line in lines(text) {
@@ -140,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_like_nimble_csv() {
+    fn parses_delimited_text() {
         let rows = parse(
             "a,\"b,c\",\"say \"\"hi\"\"\"\r\n\nd,\"multi\nline\"\ne\n",
             b',',
@@ -161,7 +159,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_nimble_csv_errors() {
+    fn reports_malformed_quotes() {
         assert_eq!(
             parse("a,b\"c\n", b',').unwrap_err(),
             "unexpected escape character \" in \"a,b\\\"c\\n\""

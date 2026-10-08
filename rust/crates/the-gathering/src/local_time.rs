@@ -27,10 +27,10 @@ impl Zone {
         }
     }
 
-    /// `LocalTime.zone/1`: `name` when it names a known IANA zone, otherwise UTC.
+    /// `name` when it names a known IANA zone, otherwise UTC.
     ///
-    /// Elixir's `Tz` database is case-sensitive while jiff's lookup is not, so a name only
-    /// counts as known when it is spelled exactly as the database spells it.
+    /// jiff's lookup is case-insensitive, but a name only counts as known when it is spelled
+    /// exactly as the database spells it.
     pub fn parse(name: Option<&str>) -> Self {
         let Some(name) = name.filter(|name| !name.is_empty()) else {
             return Self::utc();
@@ -49,7 +49,7 @@ impl Zone {
         &self.name
     }
 
-    /// `LocalTime.start_of_day/2`: the UTC instant at which `date` begins in this zone. When
+    /// The UTC instant at which `date` begins in this zone. When
     /// DST skips local midnight the day starts at the first valid moment after the gap.
     pub fn start_of_day(&self, date: Date) -> Option<UtcDateTime> {
         let civil = civil::Date::new(

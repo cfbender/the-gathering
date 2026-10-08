@@ -80,7 +80,7 @@ pub async fn account_disabled(
     .await
 }
 
-/// `Discord.stage_report/1`.
+/// Stages a SpellBot game report until a winner completes it.
 pub async fn stage_report(pool: &Pool, report: &GameReport) -> Result<PendingGame, StageError> {
     let mut tx = db::begin(pool).await?;
     let pending = pending::stage(&mut tx, report).await?;
@@ -88,12 +88,12 @@ pub async fn stage_report(pool: &Pool, report: &GameReport) -> Result<PendingGam
     Ok(pending)
 }
 
-/// `Discord.list_pending/0`: winnerless staged games, newest first (never prunes).
+/// Winnerless staged games, newest first (never prunes).
 pub async fn list_pending(pool: &Pool) -> Result<Vec<PendingGame>, sqlx::Error> {
     pending::list(&mut *pool.acquire().await?).await
 }
 
-/// `Discord.get_pending_by_external_id/1`.
+/// The staged game with this external id (recorded games included).
 pub async fn get_pending_by_external_id(
     pool: &Pool,
     external_id: &str,
@@ -101,7 +101,7 @@ pub async fn get_pending_by_external_id(
     pending::by_external_id(&mut *pool.acquire().await?, external_id).await
 }
 
-/// `Discord.latest_pending_in_channel/1`.
+/// The newest staged game reported in a channel.
 pub async fn latest_pending_in_channel(
     pool: &Pool,
     channel_id: &str,
@@ -109,7 +109,7 @@ pub async fn latest_pending_in_channel(
     pending::latest_in_channel(&mut *pool.acquire().await?, channel_id).await
 }
 
-/// `Discord.resolve_pending/3` by id.
+/// Records the staged game with this id, with `discord_id` as the winner.
 pub async fn resolve_pending(
     pool: &Pool,
     id: i64,
@@ -121,7 +121,7 @@ pub async fn resolve_pending(
     pending::resolve(pool, &pending, discord_id, sink).await
 }
 
-/// `Discord.discard_pending/1`: `false` when there is no such game.
+/// `false` when there is no such game.
 pub async fn discard_pending(pool: &Pool, id: i64) -> Result<bool, sqlx::Error> {
     let mut conn = pool.acquire().await?;
     if pending::get(&mut conn, id).await?.is_none() {
@@ -131,7 +131,7 @@ pub async fn discard_pending(pool: &Pool, id: i64) -> Result<bool, sqlx::Error> 
     Ok(true)
 }
 
-/// `Discord.prune_pending/1`: drops staged games older than 30 days.
+/// Drops staged games older than 30 days.
 pub async fn prune_pending(pool: &Pool, now: UtcDateTime) -> Result<(), sqlx::Error> {
     pending::prune(&mut *pool.acquire().await?, now).await
 }

@@ -25,7 +25,7 @@ use super::{check_user_limit, data};
 
 const NO_STORE: &str = "private, no-store";
 
-/// Streams a file with the given content type and cache policy (Phoenix's `send_file`).
+/// Streams a file with the given content type and cache policy.
 async fn send_file(
     path: &FsPath,
     content_type: &'static str,

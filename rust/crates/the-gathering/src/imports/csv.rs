@@ -70,7 +70,7 @@ pub(crate) fn parse_iso_date(value: &str) -> Option<Date> {
     Date::parse(value, format_description!("[year]-[month]-[day]")).ok()
 }
 
-/// `Date.new/3`.
+/// The calendar date, or `None` when it does not exist.
 pub(crate) fn new_date(year: i64, month: i64, day: i64) -> Option<Date> {
     let month = Month::try_from(u8::try_from(month).ok()?).ok()?;
     Date::from_calendar_date(i32::try_from(year).ok()?, month, u8::try_from(day).ok()?).ok()
@@ -461,7 +461,7 @@ fn valid(row: RawRow) -> Row {
     }
 }
 
-/// Rows grouped by `game_id`, in `game_id` order (Elixir iterated a map).
+/// Rows grouped by `game_id`, in `game_id` order.
 fn group_games(rows: Vec<Row>) -> Vec<Vec<Row>> {
     let mut groups: BTreeMap<String, Vec<Row>> = BTreeMap::new();
     for row in rows {
@@ -470,10 +470,7 @@ fn group_games(rows: Vec<Row>) -> Vec<Vec<Row>> {
     groups.into_values().collect()
 }
 
-/// Games sorted by `{played_at, external_id}`.
-///
-/// Elixir sorted by the `DateTime` structs' term order, which compares the day of the
-/// month before the month and year; this sorts chronologically.
+/// Games sorted chronologically, ties broken by external id.
 fn build_games(groups: &[Vec<Row>]) -> Vec<ImportGame> {
     let mut games: Vec<ImportGame> = groups
         .iter()
@@ -497,8 +494,9 @@ fn lines(seats: &[Row]) -> Vec<i64> {
 }
 
 /// The game's identity: SHA-256 of its normalized rows, plus the Erlang term of the
-/// kills/partner/win-condition extensions when any is present (as the Elixir importer
-/// computed it, so re-imports of files imported there are still recognized).
+/// kills/partner/win-condition extensions when any is present. This is the identity earlier
+/// releases stored, and it must not change, so re-imports of files imported by them are still
+/// recognized.
 fn external_id(first: &Row, seats: &[&Row]) -> String {
     let opt = |value: Option<i64>| value.map(|value| value.to_string()).unwrap_or_default();
     let normalized = seats
@@ -714,9 +712,9 @@ mod tests {
         assert_eq!(normalize_header("\u{feff}game_id"), "gameid");
     }
 
-    /// The identity the Elixir importer computed for the same rows.
+    /// The identity releases up to 0.2 stored for the same rows.
     #[test]
-    fn external_ids_match_elixir() {
+    fn external_ids_match_earlier_releases() {
         let csv = "game_id,date,player,deck,commander,seat,result,mvp_card,duration_minutes,turns,notes\n\
                    friday-1,2026-09-18,Alice,Birds,\"Kangee, Sky Warden\",1,win,Swan Song,75,10,Close game\n\
                    friday-1,2026-09-18,Bob,Goblins,Krenko,2,loss,,75,10,Close game\n";

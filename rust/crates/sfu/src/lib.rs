@@ -459,8 +459,8 @@ impl Sfu {
         })
     }
 
-    /// The UDP TURN servers among `servers`, resolved (`relay_servers/0`: only entries with
-    /// credentials count).
+    /// The UDP TURN servers among `servers`, resolved (only entries with credentials
+    /// count).
     async fn turn_servers(&self, servers: Vec<IceServer>) -> Vec<TurnServer> {
         let mut resolved = Vec::new();
         for server in servers {

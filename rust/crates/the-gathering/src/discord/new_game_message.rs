@@ -9,7 +9,7 @@ use super::api::{
 use super::scheduled::{MAYBE_GRACE_SECONDS, Roster, ScheduledGame, Status};
 
 fn roster(list: &Roster) -> String {
-    let mut entries: Vec<(&String, &String)> = list
+    let mut entries: Vec<(&UtcDateTime, &String)> = list
         .iter()
         .map(|(id, entry)| (&entry.joined_at, id))
         .collect();
@@ -68,7 +68,7 @@ fn button(game: &ScheduledGame, action: &str, label: &str, style: ButtonStyle) -
     })
 }
 
-/// `NewGameMessage.render/1`: the queue embed and buttons.
+/// The queue embed and buttons.
 pub fn render(public_url: &str, game: &ScheduledGame) -> MessagePayload {
     let players = roster(&game.players);
     let mut fields = vec![
@@ -116,7 +116,7 @@ fn mentions(ids: &[String]) -> String {
         .join(" ")
 }
 
-/// `NewGameMessage.announcement/1`: pings the roster with the lobby link.
+/// Pings the roster with the lobby link.
 pub fn announcement(public_url: &str, game: &ScheduledGame) -> MessagePayload {
     let ids: Vec<String> = game.players.keys().cloned().collect();
     MessagePayload {
@@ -132,7 +132,7 @@ pub fn announcement(public_url: &str, game: &ScheduledGame) -> MessagePayload {
     }
 }
 
-/// `NewGameMessage.maybe_ping/1`: asks the maybe list to fill an underfilled game.
+/// Asks the maybe list to fill an underfilled game.
 pub fn maybe_ping(game: &ScheduledGame) -> MessagePayload {
     let ids: Vec<String> = game.maybe.keys().cloned().collect();
     let missing = game.min_players - i64::try_from(game.players.len()).unwrap_or(i64::MAX);

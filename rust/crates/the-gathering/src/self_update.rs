@@ -34,7 +34,7 @@ const DEFAULT_WATCHTOWER_URL: &str = "http://watchtower:8080";
 const CHECK_TTL: Duration = Duration::from_mins(15);
 /// A request older than this without a restart has most likely failed; let the admin retry.
 const PENDING: Duration = Duration::from_mins(15);
-/// `DateTime.to_iso8601/1` of a microsecond `DateTime.utc_now()`.
+/// The request file's timestamp (microseconds, UTC).
 const ISO_MICROS: &[FormatItem<'static>] =
     format_description!("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z");
 
@@ -80,7 +80,7 @@ pub struct Latest {
     pub url: String,
 }
 
-/// What the admin page shows (`AdminSoftwareUpdateJSON.show/1`).
+/// What the admin page shows.
 #[derive(Clone, Debug, Serialize)]
 pub struct Status {
     /// The running version, or `None` for a development build.
@@ -91,8 +91,9 @@ pub struct Status {
     pub method: Option<Method>,
     /// Whether an update request is still being handled.
     pub pending: bool,
-    /// When the last update was requested (ISO 8601, microseconds).
-    pub requested_at: Option<String>,
+    /// When the last update was requested.
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub requested_at: Option<OffsetDateTime>,
     /// The newest build of the channel.
     pub latest: Option<Latest>,
     /// Whether `latest` is newer than the running version (`None` without `latest`).
@@ -118,7 +119,7 @@ struct State {
     requested_at: Option<OffsetDateTime>,
 }
 
-/// The self-update service. Calls are serialized like the Elixir `GenServer`'s.
+/// The self-update service. Calls are serialized behind one lock.
 #[derive(Debug)]
 pub struct SelfUpdate {
     config: SelfUpdateConfig,
@@ -204,7 +205,7 @@ impl SelfUpdate {
             channel,
             method: self.method(),
             pending: self.pending(state),
-            requested_at: state.requested_at.and_then(|at| at.format(ISO_MICROS).ok()),
+            requested_at: state.requested_at,
             latest,
             update_available,
             check_error,
@@ -417,7 +418,7 @@ pub fn update_available(channel: Channel, current: &str, latest: &str) -> bool {
     current != latest
 }
 
-/// Precedence-ordered parts of a semantic version (`Version.compare/2` ignores build metadata).
+/// Precedence-ordered parts of a semantic version, ignoring build metadata.
 fn parse_version(version: &str) -> Option<(u64, u64, u64, semver::Prerelease)> {
     let parsed = semver::Version::parse(version).ok()?;
     Some((parsed.major, parsed.minor, parsed.patch, parsed.pre))

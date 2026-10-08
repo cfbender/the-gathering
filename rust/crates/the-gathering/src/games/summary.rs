@@ -12,7 +12,7 @@ use super::model::{Game, load_game};
 static SPELLBOT: LazyLock<Regex> = LazyLock::new(|| compile(r"(?i)\A#?SB[0-9]{1,20}\z"));
 static LOCAL_ID: LazyLock<Regex> = LazyLock::new(|| compile(r"\A[0-9]{1,18}\z"));
 
-/// `Games.find_summary_game/1`: a local game id, an `SB`-prefixed SpellBot id (optionally
+/// A local game id, an `SB`-prefixed SpellBot id (optionally
 /// with `#`), or the latest game for a blank reference. Anything else is a bad request.
 pub async fn find(conn: &mut SqliteConnection, reference: &str) -> Result<Game, GamesError> {
     let reference = reference.trim();

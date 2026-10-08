@@ -102,12 +102,12 @@ pub(crate) struct ValidGame {
 /// What the caller adds beyond the cast params.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Extra<'a> {
-    /// `Game.put_created_by/2` (inserts only).
+    /// The account that recorded the game (inserts only).
     pub created_by_user_id: Option<i64>,
-    /// `Game.put_external_identity/3` (inserts only).
+    /// The game's `(source, external_id)` (inserts only).
     pub identity: Option<(&'a str, &'a str)>,
-    /// A portable import's `(portable_id, source, external_id)`, set on the new game as
-    /// `PortableImport` builds `%Game{portable_id:, source:, external_id:}` (inserts only).
+    /// A portable import's `(portable_id, source, external_id)`, set on the new game
+    /// (inserts only).
     pub portable: Option<(&'a str, &'a str, Option<&'a str>)>,
 }
 

@@ -74,7 +74,7 @@ fn float(value: i64) -> f64 {
     i32::try_from(value).map_or(f64::from(i32::MAX), f64::from)
 }
 
-/// `selection_weights/2`: recency in hours × (skips + 1) ÷ (plays + 1); never-played decks
+/// Recency in hours × (skips + 1) ÷ (plays + 1); never-played decks
 /// count as a month older than the oldest played one.
 pub fn selection_weights(candidates: Vec<Candidate>, now: UtcDateTime) -> Vec<Candidate> {
     let oldest = candidates
@@ -180,7 +180,7 @@ pub async fn random_deck(
     )
 }
 
-/// `DeckPicker.record_outcome/3`: only the member's own, unretired decks.
+/// Only the member's own, unretired decks.
 pub async fn record_outcome(
     conn: &mut SqliteConnection,
     user_id: i64,

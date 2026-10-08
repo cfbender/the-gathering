@@ -24,12 +24,12 @@ use crate::db::Pool;
 /// `assets/react/src/lib/stats.ts`.
 pub const MIN_GAMES: usize = 3;
 
-/// `Stats.overview/1`.
+/// The group overview for a date range.
 pub async fn overview(pool: &Pool, params: &DateRange) -> Result<Value, sqlx::Error> {
     overview::get(&mut *pool.acquire().await?, params).await
 }
 
-/// `Stats.player/2`; `None` for an unknown player.
+/// A player's statistics for a date range; `None` for an unknown player.
 pub async fn player(
     pool: &Pool,
     player_id: i64,
@@ -38,7 +38,7 @@ pub async fn player(
     player::get(&mut *pool.acquire().await?, player_id, params).await
 }
 
-/// `Stats.deck/2`; `None` for an unknown deck.
+/// A deck's statistics for a date range; `None` for an unknown deck.
 pub async fn deck(
     pool: &Pool,
     deck_id: i64,
@@ -47,12 +47,12 @@ pub async fn deck(
     deck::get(&mut *pool.acquire().await?, deck_id, params).await
 }
 
-/// `Stats.commanders/1`: every commander played, most played first.
+/// Every commander played, most played first.
 pub async fn commanders(pool: &Pool, params: &DateRange) -> Result<Vec<Value>, sqlx::Error> {
     commanders::list(&mut *pool.acquire().await?, params).await
 }
 
-/// `Stats.commander/2`: one commander by Scryfall id or card name; `None` when never played.
+/// One commander by Scryfall id or card name; `None` when never played.
 pub async fn commander(
     pool: &Pool,
     id: &str,

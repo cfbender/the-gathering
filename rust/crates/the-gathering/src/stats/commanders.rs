@@ -103,7 +103,7 @@ fn canonical(
     }
 }
 
-/// `Summaries.commander/2`.
+/// A commander's summary JSON, keyed by published id or (for name-only references) name.
 fn commander_json(key: &Key, card: &CommanderCard) -> Object {
     let id = match key {
         Key::Id(id) => json!(id),
@@ -251,7 +251,7 @@ fn commander_records(entries: &[Entry<'_>], extras: bool) -> Vec<Object> {
     rows
 }
 
-/// `summarize/1`: every commander among `seats`, most played first.
+/// Every commander among `seats`, most played first.
 pub async fn summarize(
     conn: &mut SqliteConnection,
     seats: &[SeatInGame<'_>],
@@ -265,7 +265,7 @@ pub async fn summarize(
     Ok(commander_records(&entries, true))
 }
 
-/// Seats with decks, newest game first, then by seat number (`Query.commander_seats/1`).
+/// Seats with decks, newest game first, then by seat number.
 pub fn deck_seats(games: &[Game]) -> Vec<SeatInGame<'_>> {
     games
         .iter()
@@ -281,7 +281,7 @@ pub fn deck_seats(games: &[Game]) -> Vec<SeatInGame<'_>> {
         .collect()
 }
 
-/// `list/1`: every commander played in the date range.
+/// Every commander played in the date range.
 pub async fn list(
     conn: &mut SqliteConnection,
     params: &DateRange,
@@ -326,7 +326,7 @@ async fn resolve(
     }))
 }
 
-/// `get/2`: detail for one commander by published id, stored id, or card name; `None` when
+/// Detail for one commander by published id, stored id, or card name; `None` when
 /// never played in the range.
 pub async fn get(
     conn: &mut SqliteConnection,

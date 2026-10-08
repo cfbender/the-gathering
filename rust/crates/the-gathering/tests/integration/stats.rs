@@ -32,7 +32,7 @@ impl Fixture {
         self.players[name].id
     }
 
-    /// `game/5`: everyone plays their deck; Alice's wins name Swords to Plowshares MVP.
+    /// Everyone plays their deck; Alice's wins name Swords to Plowshares MVP.
     async fn game(
         &self,
         decks: &HashMap<&'static str, Deck>,

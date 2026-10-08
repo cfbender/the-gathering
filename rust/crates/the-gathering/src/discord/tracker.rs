@@ -1,6 +1,6 @@
-//! Stages observed SpellBot reports so a winner can complete them later (`Tracker`).
+//! Stages observed SpellBot reports so a winner can complete them later.
 //!
-//! The Elixir `GenServer` serialized calls; a mutex does the same here.
+//! A mutex serializes calls, so concurrent reports and winners for one game do not race.
 
 use std::sync::Arc;
 
@@ -39,7 +39,7 @@ impl std::fmt::Debug for Tracker {
     }
 }
 
-/// `Tracker.normalize_game_id/1`: `12345`, `sb12345` → `spellbot:SB12345`.
+/// `12345`, `sb12345` → `spellbot:SB12345`.
 pub fn normalize_game_id(game_id: &str) -> String {
     let game_id = game_id.trim().to_uppercase();
     if game_id.starts_with("SB") {
@@ -59,7 +59,7 @@ impl Tracker {
         }
     }
 
-    /// `Tracker.observe/1`: dispatches, stages, then prunes old staged games.
+    /// Dispatches, stages, then prunes old staged games.
     pub async fn observe(&self, report: &GameReport) -> Result<(), ObserveError> {
         let _guard = self.lock.lock().await;
         let mut tx = db::begin(&self.pool).await?;
@@ -77,7 +77,7 @@ impl Tracker {
         Ok(())
     }
 
-    /// `Tracker.record_winner/2`.
+    /// Records the staged game with `discord_id` as the winner.
     pub async fn record_winner(
         &self,
         game_id: &str,
@@ -90,7 +90,7 @@ impl Tracker {
         pending::resolve(&self.pool, &pending, discord_id, self.sink.as_ref()).await
     }
 
-    /// `Tracker.record_latest_winner/2`: the most recently started winnerless game in
+    /// The most recently started winnerless game in
     /// `channel_id`.
     pub async fn record_latest_winner(
         &self,

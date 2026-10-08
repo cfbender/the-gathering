@@ -8,7 +8,7 @@ use crate::games::{Deck, Game, GameResult, Player, Seat};
 
 use super::records::{Object, histogram, sort_records, tracked_result};
 
-/// `entity/1` of a player: `{id, name}`.
+/// A player as a stats entity: `{id, name}`.
 pub fn player(player: &Player) -> Object {
     let mut object = Object::new();
     object.insert("id".into(), json!(player.id));
@@ -16,8 +16,8 @@ pub fn player(player: &Player) -> Object {
     object
 }
 
-/// `entity/1` of a deck: `{id, name, commander_name, color_identity}`, plus `retired: true`
-/// when archived.
+/// A deck as a stats entity: `{id, name, commander_name, color_identity}`, plus
+/// `retired: true` when archived.
 pub fn deck_entity(deck: &Deck) -> Object {
     let mut object = Object::new();
     object.insert("id".into(), json!(deck.id));
@@ -30,7 +30,7 @@ pub fn deck_entity(deck: &Deck) -> Object {
     object
 }
 
-/// `recent_game/2`: `tracked` are the tracked seats' results (empty for none).
+/// `tracked` are the tracked seats' results (empty for none).
 pub fn recent_game(game: &Game, tracked: &[GameResult]) -> Object {
     let mut object = Object::new();
     object.insert("id".into(), json!(game.id));
@@ -73,7 +73,7 @@ fn commander_refs(deck: Option<&Deck>) -> Vec<Slot> {
     }
 }
 
-/// `recent_games/1`: recent games with one winner-first portrait per seat; partner pairings
+/// Recent games with one winner-first portrait per seat; partner pairings
 /// carry both crops.
 pub async fn recent_games(
     conn: &mut SqliteConnection,
@@ -138,7 +138,7 @@ pub async fn recent_games(
         .collect())
 }
 
-/// `game_lengths/2`: duration (15-minute) and turn (2-turn) histograms plus the fastest
+/// Duration (15-minute) and turn (2-turn) histograms plus the fastest
 /// win and longest game. `tracked` picks a game's tracked results; `None` means any winner
 /// counts as a win.
 pub fn game_lengths(games: &[&Game], tracked: &dyn Fn(&Game) -> Option<Vec<GameResult>>) -> Value {
@@ -174,7 +174,7 @@ pub fn game_lengths(games: &[&Game], tracked: &dyn Fn(&Game) -> Option<Vec<GameR
     })
 }
 
-/// `deck/2`: a deck row for commander detail, with commander and partner crops.
+/// A deck row for commander detail, with commander and partner crops.
 pub fn deck(deck: &Deck, summaries: &CardSummaries) -> Object {
     let art = summaries.get(
         deck.commander_card_id.as_deref(),
@@ -204,7 +204,7 @@ pub fn deck(deck: &Deck, summaries: &CardSummaries) -> Object {
     object
 }
 
-/// `records/1`: adds `win_rate` and sorts.
+/// Adds `win_rate` and sorts.
 pub fn records(counts: Vec<Object>) -> Vec<Value> {
     let mut rows: Vec<Object> = counts
         .into_iter()

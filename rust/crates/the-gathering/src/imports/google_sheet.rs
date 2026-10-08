@@ -77,8 +77,8 @@ struct Indexes {
 
 /// Parses the paste: rows, or a message for the whole file.
 pub fn parse(payload: &str) -> Result<Vec<SheetRow>, String> {
-    // A spreadsheet download can start with a byte-order mark, which Elixir left in the
-    // first heading (so "Date" was not found); it is dropped here.
+    // A spreadsheet download can start with a byte-order mark; it is dropped so the first
+    // heading ("Date") is still found.
     let payload = payload.strip_prefix('\u{feff}').unwrap_or(payload);
     let tsv = payload.contains('\t');
     let rows = parse_file(payload, tsv)?;
@@ -339,12 +339,12 @@ fn index(value: usize) -> Term<'static> {
 }
 
 /// SHA-256 of `:erlang.term_to_binary({:blank_kills_zero, indexes, raw})`, the identity
-/// the Elixir importer stored in `sheet_import_receipts` and `sheet:<key>` external ids.
+/// releases up to 0.2 stored in `sheet_import_receipts` and `sheet:<key>` external ids. It
+/// must not change, or rows imported by those releases are imported again.
 ///
-/// The BEAM encodes the atom-keyed `indexes` map in its internal key order, which
-/// depends on atom creation order at runtime; this uses the order of the map literal in
-/// `GoogleSheet.validate_header/1` (what a fresh VM produces), so keys match the Elixir
-/// server's whenever its VM did the same.
+/// The BEAM encodes the atom-keyed `indexes` map in its internal key order, which depends on
+/// atom creation order at runtime; this uses the order a freshly started Elixir release
+/// produced, so keys match whenever that release did the same.
 fn raw_key(indexes: &Indexes, raw: &[String]) -> String {
     let kills = Term::List(
         indexes

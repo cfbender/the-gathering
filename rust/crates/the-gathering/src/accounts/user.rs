@@ -56,8 +56,8 @@ pub const ROLES: [&str; 2] = ["admin", "member"];
 static USERNAME: LazyLock<Regex> = LazyLock::new(|| compile(r"^[a-z0-9][a-z0-9_.-]*$"));
 static DECK_HOST_USERNAME: LazyLock<Regex> = LazyLock::new(|| compile(r"^[^\s/]+$"));
 
-/// A member or administrator account. `Debug` redacts the credentials, like the Ecto
-/// schema's `redact: true` fields.
+/// A member or administrator account. `Debug` prints [`REDACTED`] in place of the password
+/// hash and ManaVault API key, so credentials never reach the logs.
 #[derive(Clone, PartialEq, Eq)]
 pub struct User {
     /// Primary key.
@@ -82,7 +82,7 @@ pub struct User {
     pub archidekt_username: Option<String>,
     /// Personal ManaVault origin.
     pub manavault_url: Option<String>,
-    /// Decrypted ManaVault API key (`nil` when absent or unreadable).
+    /// Decrypted ManaVault API key (`None` when absent or unreadable).
     pub manavault_api_key: Option<String>,
     /// Color palette.
     pub palette: String,
@@ -96,7 +96,7 @@ pub struct User {
     pub authenticated_at: Option<UtcDateTime>,
 }
 
-/// Shown in place of a redacted field (Ecto's `inspect` output).
+/// Shown in place of a redacted field in `Debug` output.
 pub const REDACTED: &str = "**redacted**";
 
 /// `Some("**redacted**")` for a present secret.

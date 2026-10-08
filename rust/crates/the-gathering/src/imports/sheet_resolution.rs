@@ -223,7 +223,8 @@ async fn resolve_seat(
     })
 }
 
-/// `SheetResolution.resolve/6`.
+/// Resolves a sheet row: its seats' players and decks, and the existing game it updates
+/// (the user's choice, else the best match among `candidates`) or `skip`.
 pub async fn resolve(
     conn: &mut SqliteConnection,
     row: &SheetRow,

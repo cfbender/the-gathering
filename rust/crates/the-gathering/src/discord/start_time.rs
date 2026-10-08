@@ -15,7 +15,7 @@ fn syntax() -> String {
     SYNTAX.to_owned()
 }
 
-/// `StartTime.parse/3`.
+/// Parses a start time in `zone`; `None` for no input, a usage message for bad input.
 pub fn parse(
     input: Option<&str>,
     now: UtcDateTime,
@@ -62,7 +62,7 @@ fn clock(input: &str, now: UtcDateTime, zone: &str) -> Result<UtcDateTime, Strin
         Some(rest) => (true, rest),
         None => (false, input),
     };
-    // Elixir's Tz is case-sensitive; jiff's lookup is not.
+    // jiff's lookup is case-insensitive; only the exact IANA spelling counts.
     let tz = TimeZone::get(zone)
         .ok()
         .filter(|tz| tz.iana_name() == Some(zone))

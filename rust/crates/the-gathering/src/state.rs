@@ -36,7 +36,7 @@ pub struct Inner {
     pub session_key: axum_extra::extract::cookie::Key,
     /// Players, decks, and games.
     pub games: Games,
-    /// Fixed-window rate limiter (Hammer).
+    /// Fixed-window rate limiter.
     pub rate_limiter: RateLimiter,
     /// Outbound HTTP client for trusted APIs (Discord, GitHub, Cloudflare).
     pub http: reqwest::Client,
@@ -165,8 +165,8 @@ impl AppState {
     }
 }
 
-/// Relay-only SFU mode (`Sfu.relay_servers/0`): every connection fetches fresh Cloudflare
-/// TURN credentials. Without Cloudflare TURN configured the SFU listens directly.
+/// Relay-only SFU mode: every connection fetches fresh Cloudflare TURN credentials. Without
+/// Cloudflare TURN configured the SFU listens directly.
 fn relay_servers(
     config: &Config,
     http: &reqwest::Client,

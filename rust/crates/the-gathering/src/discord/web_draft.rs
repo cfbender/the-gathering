@@ -39,7 +39,7 @@ pub enum OpenError {
     Database(#[from] sqlx::Error),
 }
 
-/// A link's preview (`DiscordResultDraftJSON.show/1`).
+/// A link's preview.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Preview {
     /// Draft UUID.
@@ -67,7 +67,8 @@ pub struct PreviewSeat {
     pub player_name: String,
 }
 
-/// `WebGameDraft.open/3`.
+/// Opens a web result draft for a staged game (`reference` is its id, or blank for the
+/// channel's latest), checking that `actor` may report it.
 pub async fn open(
     state: &AppState,
     reference: &str,
@@ -122,7 +123,7 @@ pub async fn open(
     Ok(draft)
 }
 
-/// `WebGameDraft.load/2`: the draft and its staged game, if `user` may use it.
+/// The draft and its staged game, if `user` may use it.
 pub async fn load(
     conn: &mut SqliteConnection,
     id: &str,
@@ -150,7 +151,7 @@ pub async fn load(
     Ok(Some((draft, pending)))
 }
 
-/// `WebGameDraft.preview/2`.
+/// A draft's preview for `user`, or `None` when the draft is unusable.
 pub async fn preview(
     state: &AppState,
     id: &str,
@@ -264,7 +265,7 @@ pub struct DraftDeck {
     pub decklist_url: Option<String>,
 }
 
-/// `SaveWebGame.run/3`: the recorded game.
+/// The recorded game.
 pub async fn save(
     state: &AppState,
     id: &str,

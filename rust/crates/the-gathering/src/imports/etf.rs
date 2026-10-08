@@ -1,7 +1,11 @@
-//! The subset of Erlang's external term format (`:erlang.term_to_binary/1`) the Elixir
-//! importer hashed into stored identities: CSV game `external_id`s and Google Sheet row
-//! keys (`sheet:<key>` and `sheet_import_receipts.key`). Encoding the same terms byte for
-//! byte keeps re-imports recognizing games the Elixir server imported.
+//! The subset of Erlang's external term format (`:erlang.term_to_binary/1`) that stored
+//! import identities are hashed from: CSV game `external_id`s and Google Sheet row keys
+//! (`sheet:<key>` and `sheet_import_receipts.key`), first written by the Elixir releases (up
+//! to 0.2).
+//!
+//! This is a frozen hash encoding, not a general serializer: it must not change. Encoding the
+//! same terms byte for byte is what lets re-imports recognize games imported earlier; any
+//! difference silently duplicates them.
 
 /// A term to encode.
 #[derive(Clone, Debug, PartialEq, Eq)]

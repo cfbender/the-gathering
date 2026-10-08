@@ -55,12 +55,24 @@ impl Status {
 /// A roster or maybe-list entry.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
-    /// When they first joined this list (ISO 8601).
-    #[serde(default)]
-    pub joined_at: String,
+    /// When they first joined this list; lists are shown in this order.
+    #[serde(default, deserialize_with = "joined_at_or_epoch")]
+    pub joined_at: UtcDateTime,
     /// Their name when they last clicked.
     #[serde(default)]
     pub display_name: String,
+}
+
+/// Rosters are stored JSON. Entries saved without a readable time (none written by this server)
+/// sort first instead of failing the whole roster.
+fn joined_at_or_epoch<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<UtcDateTime, D::Error> {
+    let value = Option::<String>::deserialize(deserializer)?;
+    Ok(value
+        .as_deref()
+        .and_then(UtcDateTime::parse)
+        .unwrap_or_default())
 }
 
 /// A list keyed by Discord id.
@@ -273,14 +285,14 @@ fn authorize(state: &AppState, actor: &QueueActor) -> Result<(), QueueError> {
     }
 }
 
-/// `ScheduledGames.create/2`: a queue hosted by `actor` (not yet published).
+/// Creates a queue hosted by `actor` (not yet published).
 pub async fn create(
     state: &AppState,
     queue: &NewQueue,
     actor: &QueueActor,
 ) -> Result<ScheduledGame, QueueError> {
     authorize(state, actor)?;
-    // Ecto casts "" to nil, so a blank title fails `validate_required`.
+    // A missing title gets the default; a blank one is invalid.
     let title = match &queue.title {
         None => "Commander game".to_owned(),
         Some(title) if title.trim().is_empty() => return Err(QueueError::Invalid),
@@ -320,7 +332,7 @@ pub async fn create(
     Ok(get_required(&mut conn, id).await?)
 }
 
-/// `ScheduledGames.attach_message/2`.
+/// Records the Discord message that shows the queue.
 pub async fn attach_message(
     pool: &Pool,
     id: i64,
@@ -339,7 +351,7 @@ pub async fn attach_message(
     get_required(&mut conn, id).await
 }
 
-/// `ScheduledGames.cancel_unpublished/1`.
+/// Cancels a queue whose message was never posted.
 pub async fn cancel_unpublished(pool: &Pool, id: i64) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "UPDATE discord_scheduled_games SET status = 'cancelled', message_dirty = 0 WHERE id = ? AND message_id IS NULL",
@@ -376,7 +388,7 @@ pub async fn manageable(
     }))
 }
 
-/// `ScheduledGames.act/4`: applies an action and settles the queue. A queue that is no
+/// Applies an action and settles the queue. A queue that is no
 /// longer open is returned unchanged.
 pub async fn act(
     state: &AppState,
@@ -479,13 +491,13 @@ fn put_entry(list: &mut Roster, actor: &QueueActor, now: UtcDateTime) {
     let entry = list
         .entry(actor.discord_id.clone())
         .or_insert_with(|| Entry {
-            joined_at: now.to_db_string(),
+            joined_at: now,
             display_name: String::new(),
         });
     entry.display_name.clone_from(&actor.display_name);
 }
 
-/// `ScheduledGames.settle/2` for an id, in its own transaction.
+/// [`settle`] for an id, in its own transaction.
 pub async fn settle_id(
     pool: &Pool,
     id: i64,
@@ -498,7 +510,7 @@ pub async fn settle_id(
     Ok(game)
 }
 
-/// `ScheduledGames.settle/2`: starts, pings the maybe list, or expires a published open
+/// Starts, pings the maybe list, or expires a published open
 /// queue as its roster and start time require.
 pub async fn settle(
     conn: &mut SqliteConnection,
@@ -566,7 +578,7 @@ async fn transition(
     get_required(conn, game.id).await
 }
 
-/// `ScheduledGames.pending_ids/2`: published queues needing an edit or due to settle.
+/// Published queues needing an edit or due to settle.
 pub async fn pending_ids(
     pool: &Pool,
     now: UtcDateTime,
@@ -616,4 +628,39 @@ pub async fn mark_clean(pool: &Pool, id: i64) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn roster_entries_read_every_stored_joined_at() {
+        let roster: Roster = serde_json::from_str(
+            r#"{
+                "1": {"joined_at": "2026-10-06T21:21:40Z", "display_name": "Seconds"},
+                "2": {"joined_at": "2026-10-06T21:21:40.123456Z", "display_name": "Micros"},
+                "3": {"joined_at": "2026-10-06T21:21:40.123456+00:00", "display_name": "Offset"},
+                "4": {"joined_at": "", "display_name": "Blank"},
+                "5": {"display_name": "Missing"}
+            }"#,
+        )
+        .unwrap_or_default();
+        let joined: Vec<String> = roster
+            .values()
+            .map(|entry| entry.joined_at.to_string())
+            .collect();
+        assert_eq!(
+            joined,
+            [
+                "2026-10-06T21:21:40Z",
+                "2026-10-06T21:21:40Z",
+                "2026-10-06T21:21:40Z",
+                "1970-01-01T00:00:00Z",
+                "1970-01-01T00:00:00Z",
+            ]
+        );
+        let saved = serde_json::to_value(&roster["1"]).unwrap_or_default();
+        assert_eq!(saved["joined_at"], "2026-10-06T21:21:40Z");
+    }
 }

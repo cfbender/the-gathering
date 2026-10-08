@@ -122,7 +122,8 @@ async fn user_exists(conn: &mut SqliteConnection, user_id: i64) -> Result<bool, 
     .await
 }
 
-/// `Games.resolve_player/3` inside a transaction.
+/// Finds or creates the player for a name, Discord id, and account, inside the caller's
+/// transaction.
 pub async fn run(
     conn: &mut SqliteConnection,
     name: &str,
@@ -171,7 +172,7 @@ fn unique_error(error: sqlx::Error, field: &str) -> ResolveError {
     }
 }
 
-/// Inserts a player after `Player.changeset/2` validation.
+/// Inserts a player after validating the name and the linked account.
 pub async fn insert_player(
     conn: &mut SqliteConnection,
     name: &str,
@@ -217,7 +218,7 @@ pub async fn insert_player(
     })
 }
 
-/// How an identity would resolve, without writing (`ResolvePlayer.preview/1`).
+/// How an identity would resolve, without writing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Resolution {
     /// An existing player.
@@ -226,7 +227,7 @@ pub enum Resolution {
     Create(String),
 }
 
-/// `Games.preview_player_resolutions/1`: later identities see names earlier ones reserved.
+/// Later identities see names earlier ones reserved.
 pub async fn preview(
     conn: &mut SqliteConnection,
     identities: &[(String, Option<String>)],

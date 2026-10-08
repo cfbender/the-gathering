@@ -1,9 +1,8 @@
 //! Rendering the summary card to PNG.
 //!
-//! Elixir shelled out to `rsvg-convert`; this renders in-process with `resvg`, using the
-//! system fonts (the container ships the `DejaVu` family). Commander art is downloaded from Scryfall's CDN
-//! only, without redirects and with a size cap, and embedded as `data:` URIs so the
-//! renderer never fetches anything itself.
+//! Renders in-process with `resvg`, using the system fonts (the container ships the `DejaVu`
+//! family). Commander art is downloaded from Scryfall's CDN only, without redirects and with
+//! a size cap, and embedded as `data:` URIs so the renderer never fetches anything itself.
 
 use std::collections::HashSet;
 use std::sync::{Arc, LazyLock};
@@ -60,7 +59,7 @@ impl ArtFetcher {
         self
     }
 
-    /// `SummaryImage.fetch_art/2`: a `data:` URI for a JPEG or PNG from
+    /// A `data:` URI for a JPEG or PNG from
     /// `https://cards.scryfall.io`, or `None` for anything else (other hosts, ports,
     /// credentials, redirects, non-200 responses, other formats, or more than 2 MB).
     pub async fn fetch_art(&self, url: Option<&str>) -> Option<String> {
@@ -208,7 +207,7 @@ pub fn rasterize(svg: &str) -> Result<Vec<u8>, RenderError> {
         .map_err(|error| RenderError::Failed(error.to_string()))
 }
 
-/// `SummaryImage.render/1` without the rate limit: downloads art and renders the PNG.
+/// Downloads art and renders the summary PNG, without a rate limit.
 pub async fn render(
     pool: &crate::db::Pool,
     fetcher: &ArtFetcher,

@@ -2,8 +2,8 @@
 //!
 //! [`Games`] is the pool-level API (each call runs in its own transaction when it writes).
 //! The submodules expose the same operations on a `&mut SqliteConnection`, so callers that
-//! already hold a transaction (imports, the Discord bot) can compose them; those open a
-//! savepoint where Elixir used `Repo.transaction`.
+//! already hold a transaction (imports, the Discord bot) can compose them; steps that must
+//! succeed or fail together open a savepoint.
 
 pub mod color_identity;
 pub mod deck;
@@ -48,7 +48,7 @@ pub use self::resolve_player::{PlayerIdentity, Resolution, ResolveError};
 pub use self::summary_image::{ArtFetcher, RenderError};
 pub use self::win_condition::WinCondition;
 
-/// Case-folds a player or deck name the way SQLite compares them (`Games.fold_name/1`).
+/// Case-folds a player or deck name the way SQLite compares them.
 ///
 /// The `players_name_nocase_index` and `decks_player_name_nocase_index` unique indexes use
 /// `COLLATE NOCASE`, and `lower()` in queries is ASCII-only, so folding must be ASCII-only too:
@@ -133,13 +133,13 @@ pub(crate) async fn user_exists(
     .await
 }
 
-/// `Games.can_manage_player?/2`: administrators manage everyone; members manage their own
+/// Administrators manage everyone; members manage their own
 /// linked player and unclaimed guests.
 pub fn can_manage_player(user: &User, player: &Player) -> bool {
     user.is_admin() || player.user_id.is_none_or(|owner| owner == user.id)
 }
 
-/// Asks whether a player holds a seat at an open webcam table (`WebcamTables.seated?/1`).
+/// Asks whether a player holds a seat at an open webcam table.
 pub type SeatedCheck = Arc<dyn Fn(i64) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
 
 /// The pool-level games API (`state.games`).
@@ -200,27 +200,27 @@ impl Games {
 
     // Players
 
-    /// `Games.list_players/1` (avatars included).
+    /// Every player (archived ones on request), avatars included.
     pub async fn list_players(&self, include_archived: bool) -> Result<Vec<Player>, sqlx::Error> {
         player::list_players(&mut *self.pool.acquire().await?, include_archived).await
     }
 
-    /// `Games.get_player/1` (no avatar).
+    /// A player by id (no avatar).
     pub async fn get_player(&self, id: i64) -> Result<Option<Player>, sqlx::Error> {
         model::get_player(&mut *self.pool.acquire().await?, id).await
     }
 
-    /// `Games.get_player!/1`: the player page.
+    /// The player page.
     pub async fn get_player_detail(&self, id: i64) -> Result<Option<PlayerDetail>, sqlx::Error> {
         player::get_player_detail(&mut *self.pool.acquire().await?, id).await
     }
 
-    /// `Games.get_player_for_user/1`.
+    /// The player linked to an account, if any.
     pub async fn get_player_for_user(&self, user_id: i64) -> Result<Option<Player>, sqlx::Error> {
         player::get_player_for_user(&mut *self.pool.acquire().await?, user_id).await
     }
 
-    /// `Games.list_player_identities/1` (`page`, `per_page`, `search`).
+    /// One page of the administrator's player identity list (`page`, `per_page`, `search`).
     pub async fn list_player_identities(
         &self,
         query: &IdentityQuery,
@@ -228,12 +228,12 @@ impl Games {
         player::list_player_identities(&mut *self.pool.acquire().await?, query).await
     }
 
-    /// `Games.unlink_player_identity/1`.
+    /// Clears a player's linked identity.
     pub async fn unlink_player_identity(&self, player: &Player) -> Result<Player, sqlx::Error> {
         player::unlink_player_identity(&mut *self.pool.acquire().await?, player).await
     }
 
-    /// `Games.create_player/2`.
+    /// Creates a player, optionally linked to an account.
     pub async fn create_player(
         &self,
         input: &PlayerInput,
@@ -243,7 +243,7 @@ impl Games {
             .await)
     }
 
-    /// `Games.update_player/2`.
+    /// Updates a player.
     pub async fn update_player(
         &self,
         player: &Player,
@@ -253,12 +253,12 @@ impl Games {
             .await)
     }
 
-    /// `Games.delete_player/1`.
+    /// Deletes a player that has no decks or seats.
     pub async fn delete_player(&self, player: &Player) -> Result<(), GamesError> {
         write_tx!(self, |conn| player::delete_player(conn, player).await)
     }
 
-    /// `Games.resolve_player/3`.
+    /// Finds or creates the player for a name, Discord id, and account, in one transaction.
     pub async fn resolve_player(
         &self,
         name: &str,
@@ -273,7 +273,7 @@ impl Games {
         result
     }
 
-    /// `Games.preview_player_resolutions/1`.
+    /// How each `(name, discord_id)` identity would resolve, without writing.
     pub async fn preview_player_resolutions(
         &self,
         identities: &[(String, Option<String>)],
@@ -281,7 +281,7 @@ impl Games {
         resolve_player::preview(&mut *self.pool.acquire().await?, identities).await
     }
 
-    /// `Games.find_or_create_player_by_name/2`.
+    /// The player named `name`, created from `input` if missing.
     pub async fn find_or_create_player_by_name(
         &self,
         name: &str,
@@ -293,7 +293,7 @@ impl Games {
         .await)
     }
 
-    /// `Games.merge_players/2`: refuses a source seated at an open webcam table.
+    /// Refuses a source seated at an open webcam table.
     pub async fn merge_players(
         &self,
         source: &Player,
@@ -311,7 +311,7 @@ impl Games {
         .await)
     }
 
-    /// `Games.link_player_to_user/2`: makes `player` the account's player, merging the
+    /// Makes `player` the account's player, merging the
     /// account's current player into it.
     pub async fn link_player_to_user(
         &self,
@@ -328,7 +328,7 @@ impl Games {
 
     // Decks
 
-    /// `Games.list_decks/1` with each deck's player.
+    /// Decks (archived ones on request, optionally one player's) with each deck's player.
     pub async fn list_decks(
         &self,
         include_archived: bool,
@@ -342,18 +342,18 @@ impl Games {
         .await
     }
 
-    /// `Games.get_deck/1`.
+    /// A deck by id.
     pub async fn get_deck(&self, id: i64) -> Result<Option<Deck>, sqlx::Error> {
         model::get_deck(&mut *self.pool.acquire().await?, id).await
     }
 
-    /// `Games.create_deck/1`.
+    /// Creates a deck.
     pub async fn create_deck(&self, input: &DeckInput) -> Result<Deck, GamesError> {
         write_tx!(self, |conn| deck::create_deck(conn, &self.links, input)
             .await)
     }
 
-    /// `Games.update_deck/2`.
+    /// Updates a deck.
     pub async fn update_deck(&self, deck: &Deck, input: &DeckInput) -> Result<Deck, GamesError> {
         write_tx!(self, |conn| deck::update_deck(
             conn,
@@ -364,7 +364,7 @@ impl Games {
         .await)
     }
 
-    /// `Games.delete_deck/2`.
+    /// Deletes a deck; its seats move to `replacement` or lose their deck.
     pub async fn delete_deck(
         &self,
         deck: &Deck,
@@ -374,7 +374,7 @@ impl Games {
             .await)
     }
 
-    /// `Games.find_deck/4`.
+    /// A player's deck matching the name and commanders.
     pub async fn find_deck(
         &self,
         player_id: i64,
@@ -392,7 +392,7 @@ impl Games {
         .await
     }
 
-    /// `Games.find_or_create_deck/3`.
+    /// A player's deck named `name`, created from `input` if missing.
     pub async fn find_or_create_deck(
         &self,
         player_id: i64,
@@ -409,7 +409,7 @@ impl Games {
         .await)
     }
 
-    /// `Games.can_manage_deck?/2`: administrators, or the member linked to the deck's player.
+    /// Administrators, or the member linked to the deck's player.
     pub async fn can_manage_deck(&self, user: &User, deck: &Deck) -> Result<bool, sqlx::Error> {
         if user.is_admin() {
             return Ok(true);
@@ -423,7 +423,7 @@ impl Games {
         .await
     }
 
-    /// `Games.pick_deck/2`.
+    /// Picks one of the member's decks at random, weighted toward decks played least lately.
     pub async fn pick_deck(
         &self,
         user: &User,
@@ -440,7 +440,7 @@ impl Games {
         .await
     }
 
-    /// `Games.record_deck_outcome/3`.
+    /// Records whether the member played or skipped a picked deck.
     pub async fn record_deck_outcome(
         &self,
         user: &User,
@@ -455,7 +455,7 @@ impl Games {
 
     // Games
 
-    /// `Games.list_games/1`.
+    /// One page of games matching the filters.
     pub async fn list_games(
         &self,
         opts: &GameFilters,
@@ -463,17 +463,17 @@ impl Games {
         list_games::list_games(&mut *self.pool.acquire().await?, opts).await
     }
 
-    /// `Games.get_game!/1` (seats, players, and decks loaded).
+    /// A game by id, with seats, players, and decks loaded.
     pub async fn get_game(&self, id: i64) -> Result<Option<Game>, sqlx::Error> {
         model::load_game(&mut *self.pool.acquire().await?, id).await
     }
 
-    /// `Games.find_summary_game/1`.
+    /// The game a summary request refers to.
     pub async fn find_summary_game(&self, reference: &str) -> Result<Game, GamesError> {
         summary::find(&mut *self.pool.acquire().await?, reference).await
     }
 
-    /// `Games.can_manage_game?/2`: administrators, the creator, or a member whose linked
+    /// Administrators, the creator, or a member whose linked
     /// player sat in the game.
     pub async fn can_manage_game(&self, user: &User, game: &Game) -> Result<bool, sqlx::Error> {
         if user.is_admin() || game.created_by_user_id == Some(user.id) {
@@ -489,7 +489,7 @@ impl Games {
         .await
     }
 
-    /// `Games.create_game/2`.
+    /// Records a new game with its seats.
     pub async fn create_game(
         &self,
         input: &GameInput,
@@ -503,7 +503,7 @@ impl Games {
         .await)
     }
 
-    /// `Games.find_or_create_game_by_external_id/3`.
+    /// The game with this `(source, external_id)`, recorded from `input` if missing.
     pub async fn find_or_create_game_by_external_id(
         &self,
         source: &str,
@@ -519,7 +519,7 @@ impl Games {
         .await)
     }
 
-    /// `Games.upsert_game_by_external_id/3`.
+    /// Records or replaces the game with this `(source, external_id)`.
     pub async fn upsert_game_by_external_id(
         &self,
         source: &str,
@@ -535,17 +535,17 @@ impl Games {
         .await)
     }
 
-    /// `Games.update_game/2`.
+    /// Updates a game and its seats.
     pub async fn update_game(&self, game: &Game, input: &GameInput) -> Result<Game, GamesError> {
         write_tx!(self, |conn| record_game::update(conn, game, input).await)
     }
 
-    /// `Games.delete_game/1`.
+    /// Deletes a game (seats cascade).
     pub async fn delete_game(&self, game: &Game) -> Result<(), sqlx::Error> {
         record_game::delete(&mut *self.pool.acquire().await?, game.id).await
     }
 
-    /// `LinkCatalogCards.link_game/1`.
+    /// Links a game's unlinked decks and its seats' MVP cards to catalog cards.
     pub async fn link_catalog_cards(
         &self,
         game_id: i64,
@@ -558,7 +558,7 @@ impl Games {
         .await)
     }
 
-    /// `LinkCatalogCards.repair_batch/2`.
+    /// Links the next batch of unlinked decks and seats after `cursor` to catalog cards.
     pub async fn repair_catalog_links(
         &self,
         cursor: link_catalog_cards::Cursor,
@@ -580,7 +580,7 @@ pub const SUMMARY_IMAGES_LIMIT: crate::config::WindowLimit = crate::config::Wind
     scale: crate::rate_limit::MINUTE,
 };
 
-/// `Games.render_summary/1`: the summary card PNG, within the `summary_images` budget.
+/// The summary card PNG, within the `summary_images` budget.
 pub async fn render_summary(
     state: &crate::state::AppState,
     game: &Game,

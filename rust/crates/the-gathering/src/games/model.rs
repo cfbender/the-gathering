@@ -86,7 +86,7 @@ text_enum! {
 }
 
 text_enum! {
-    /// Where a deck list lives (`Deck.put_decklist_source/1`).
+    /// Where a deck list lives.
     DecklistSource {
         /// moxfield.com.
         Moxfield => "moxfield",
@@ -100,7 +100,8 @@ text_enum! {
 }
 
 impl DecklistSource {
-    /// `Deck.source/1` without a configured ManaVault origin; see [`DeckLinks::source`].
+    /// The source of a deck link without a configured ManaVault origin; see
+    /// [`DeckLinks::source`].
     pub fn of_url(url: &str) -> Self {
         DeckLinks::default().source(url)
     }
@@ -109,7 +110,7 @@ impl DecklistSource {
 /// Classifies deck-list URLs into [`DecklistSource`]s for the server's configuration.
 ///
 /// This is an app-level label for stored decks, so it keeps an `Other` value that lotus's
-/// fetchable `Source` deliberately lacks, and it accepts subdomains as `Deck.source/1` did.
+/// fetchable `Source` deliberately lacks, and it accepts subdomains of the public sites.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DeckLinks {
     /// Lowercased host of `MANAVAULT_URL`, when one is configured.
@@ -131,12 +132,11 @@ impl DeckLinks {
         }
     }
 
-    /// `Deck.source/1`: by host, including subdomains of the public sites.
+    /// By host, including subdomains of the public sites.
     ///
-    /// Fixes an Elixir inconsistency: `Decklists.parse_url/1` resolves share links on the
-    /// configured `MANAVAULT_URL` host (and its `www.` alias), but `Deck.source/1` only knew
-    /// `manavault.app`, so a deck linked to a self-hosted ManaVault elsewhere was stored as
-    /// `other`. The configured origin's host and its `www.` alias count as `manavault` here.
+    /// The configured `MANAVAULT_URL` host and its `www.` alias count as `manavault`, matching
+    /// the share links the deck-list resolver accepts, so a deck linked to a self-hosted
+    /// ManaVault is not stored as `other`.
     pub fn source(&self, url: &str) -> DecklistSource {
         let host = url::Url::parse(url)
             .ok()
@@ -258,7 +258,7 @@ pub struct Seat {
     pub seat: i64,
     /// Result.
     pub result: GameResult,
-    /// Kills (`nil` when not recorded, distinct from zero).
+    /// Kills (`None` when not recorded, distinct from zero).
     pub kills: Option<i64>,
     /// Turn eliminated.
     pub eliminated_turn: Option<i64>,

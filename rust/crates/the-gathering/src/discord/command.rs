@@ -24,7 +24,7 @@ pub fn definition() -> CommandDefinition {
     }
 }
 
-/// `Command.register/2`: registers `/log`, `/summary`, and `/newgame` (in the configured
+/// Registers `/log`, `/summary`, and `/newgame` (in the configured
 /// guild, else globally) and removes only the replaced `/won` command. Returns a
 /// description for the log.
 pub async fn register(

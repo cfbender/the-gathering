@@ -63,7 +63,7 @@ fn invalid(mut base: Preview, error: &ImportError) -> Preview {
     base
 }
 
-/// `CSVTransfer.preview/1`: the parse preview plus, when valid, a dry run's review and
+/// The parse preview plus, when valid, a dry run's review and
 /// the revision.
 pub async fn preview(state: &AppState, csv: &str) -> Result<Preview, sqlx::Error> {
     let base = {
@@ -88,7 +88,8 @@ pub async fn preview(state: &AppState, csv: &str) -> Result<Preview, sqlx::Error
     }
 }
 
-/// `CSVTransfer.run/3`.
+/// Imports a CSV file in one transaction. Updating existing games requires the revision of
+/// a current preview.
 pub async fn run(
     state: &AppState,
     csv: &str,

@@ -41,7 +41,7 @@ fn valid_version(version: &str) -> bool {
     version != "current" && VERSION.is_match(version)
 }
 
-/// `current_manifest/0`: the manifest of the bundle `current` points at, or `None` when
+/// The manifest of the bundle `current` points at, or `None` when
 /// nothing valid has been published. The version is read from the manifest, not the
 /// symlink, so a plain copied directory named `current` works too.
 pub async fn current_manifest(data_dir: &Path) -> Option<Value> {
@@ -53,7 +53,7 @@ pub async fn current_manifest(data_dir: &Path) -> Option<Value> {
     valid_version(version).then_some(manifest)
 }
 
-/// `file_path/2`: a bundle file, refusing names and versions outside the bundle root.
+/// A bundle file, refusing names and versions outside the bundle root.
 pub async fn file_path(data_dir: &Path, version: &str, name: &str) -> Option<PathBuf> {
     if !valid_version(version) || !FILES.contains(&name) {
         return None;

@@ -69,7 +69,7 @@ const VALUES: [(WinCondition, &str, &str); 12] = [
 ];
 
 impl WinCondition {
-    /// `values/0`: every condition in display order.
+    /// Every condition in display order.
     pub fn all() -> impl Iterator<Item = Self> {
         VALUES.iter().map(|(value, _, _)| *value)
     }
@@ -90,7 +90,7 @@ impl WinCondition {
             .map(|(value, _, _)| *value)
     }
 
-    /// `label/1`.
+    /// The display label.
     pub fn label(self) -> &'static str {
         VALUES
             .iter()
@@ -98,12 +98,12 @@ impl WinCondition {
             .map_or("Unknown", |(_, _, label)| label)
     }
 
-    /// `label/1` for an optional key (`nil` and unknown keys are "Unknown").
+    /// The display label of an optional condition ("Unknown" for `None`).
     pub fn label_of(value: Option<Self>) -> &'static str {
         value.map_or("Unknown", Self::label)
     }
 
-    /// `from_mythic/1`.
+    /// The condition for a Mythic Track win-condition code.
     pub fn from_mythic(value: i64) -> Self {
         match value {
             1 => Self::Damage,

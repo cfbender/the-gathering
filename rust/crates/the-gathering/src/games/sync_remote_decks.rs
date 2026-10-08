@@ -49,7 +49,7 @@ pub struct SyncResult {
     pub errors: Vec<SourceError>,
 }
 
-/// `SyncRemoteDecks.configured?/1`: a deck host is set up.
+/// A deck host is set up.
 pub fn configured(user: &User) -> bool {
     let present = |value: &Option<String>| value.as_deref().is_some_and(|value| !value.is_empty());
     present(&user.moxfield_username)
@@ -57,7 +57,7 @@ pub fn configured(user: &User) -> bool {
         || (present(&user.manavault_url) && present(&user.manavault_api_key))
 }
 
-/// `SyncRemoteDecks.run/1`: a bad request for members with no linked player or no deck
+/// A bad request for members with no linked player or no deck
 /// host configured.
 pub async fn run(state: &AppState, user: &User) -> Result<SyncResult, GamesError> {
     let player = player::get_player_for_user(&mut *state.pool.acquire().await?, user.id)

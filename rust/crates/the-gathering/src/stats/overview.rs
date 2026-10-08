@@ -9,7 +9,7 @@ use crate::games::{Game, Seat};
 use super::records::{self, group_by, grouped_records, player_entity, seat_entity};
 use super::{commanders, elo, outcomes, query, summaries};
 
-/// `Overview.get/1`.
+/// The group overview for a date range.
 pub async fn get(conn: &mut SqliteConnection, params: &DateRange) -> Result<Value, sqlx::Error> {
     let games = query::games(conn, params, None, None).await?;
     let seats: Vec<&Seat> = games.iter().flat_map(|game| &game.seats).collect();

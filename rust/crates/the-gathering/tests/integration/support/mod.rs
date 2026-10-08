@@ -225,7 +225,7 @@ impl TestApp {
         self.request(Method::DELETE, path, None).await
     }
 
-    /// `ConnCase.log_in_user/2`: a tracked session token in a fresh session.
+    /// A tracked session token in a fresh session.
     pub async fn log_in(&self, user: &User) {
         let token = self
             .state
@@ -248,7 +248,7 @@ impl TestApp {
         self.log_in(&user).await;
     }
 
-    /// `AccountsFixtures.user_fixture/1`.
+    /// Creates an account with this username and role.
     pub async fn user(&self, username: &str, role: &str) -> User {
         self.state
             .accounts
@@ -277,9 +277,9 @@ impl TestApp {
         self.state.accounts.get_user(user.id).await.unwrap()
     }
 
-    /// Inserts a catalog card from Scryfall-shaped JSON merged over the defaults the
-    /// Elixir tests used (`insert_card!/1`): English paper, `tst` set, common, Commander
-    /// legal, released 2024-01-01. `id`, `oracle_id`, and `name` are required.
+    /// Inserts a catalog card from Scryfall-shaped JSON merged over test defaults: English
+    /// paper, `tst` set, common, Commander legal, released 2024-01-01. `id`, `oracle_id`, and
+    /// `name` are required.
     pub async fn catalog_card(
         &self,
         overrides: Value,
@@ -405,22 +405,22 @@ pub fn utc(value: &str) -> db::UtcDateTime {
 }
 
 impl TestApp {
-    /// `AccountsFixtures.user_fixture/0`: a member with a unique username.
+    /// A member with a unique username.
     pub async fn unique_member(&self) -> User {
         self.member(&format!("user{}", unique())).await
     }
 
-    /// `AccountsFixtures.admin_fixture/0`: an administrator with a unique username.
+    /// An administrator with a unique username.
     pub async fn unique_admin(&self) -> User {
         self.admin(&format!("admin{}", unique())).await
     }
 
-    /// `Games.create_player(%{name: name})`.
+    /// Creates a player named `name`.
     pub async fn player(&self, name: &str) -> the_gathering::games::Player {
         self.player_with(json!({ "name": name }), None).await
     }
 
-    /// `Games.create_player(attrs, user_id)`.
+    /// Creates a player from `attrs`, optionally linked to an account.
     pub async fn player_with(
         &self,
         attrs: Value,
@@ -433,7 +433,7 @@ impl TestApp {
             .unwrap_or_else(|error| panic!("player fixture: {error:?}"))
     }
 
-    /// `Games.create_deck(%{player_id, name, commander_name})`.
+    /// Creates a deck for a player with a name and commander.
     pub async fn deck(
         &self,
         player_id: i64,
@@ -444,7 +444,7 @@ impl TestApp {
             .await
     }
 
-    /// `Games.create_deck(attrs)`.
+    /// Creates a deck from `attrs`.
     pub async fn deck_with(&self, attrs: Value) -> the_gathering::games::Deck {
         self.state
             .games
@@ -453,7 +453,7 @@ impl TestApp {
             .unwrap_or_else(|error| panic!("deck fixture: {error:?}"))
     }
 
-    /// `Games.create_game(attrs, created_by_user_id)`.
+    /// Records a game from `attrs`, optionally created by an account.
     pub async fn game(&self, attrs: Value, created_by: Option<i64>) -> the_gathering::games::Game {
         self.state
             .games
@@ -568,7 +568,7 @@ impl TestApp {
         self.request_with(Method::GET, path, None, headers).await
     }
 
-    /// Updates the server settings (`Accounts.update_settings/1`).
+    /// Updates the server settings.
     pub async fn settings(&self, attrs: Value) {
         self.state
             .accounts

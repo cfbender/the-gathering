@@ -9,7 +9,7 @@ use crate::validation::{TAKEN, Validator};
 use super::user::{normalize_username, validate_account_fields};
 use super::{Accounts, User, UserRow, select_users};
 
-/// The Discord profile, normalized like Assent's Discord strategy.
+/// The Discord profile, normalized to OpenID-style claims.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DiscordClaims {
     /// Discord user id (`sub`).
@@ -23,9 +23,8 @@ pub struct DiscordClaims {
 impl DiscordClaims {
     /// From Discord's `/users/@me` response.
     ///
-    /// Assent builds `https://cdn.discordapp.com/avatars/<id>/<avatar>` even when `avatar` is
-    /// `null`, which stored a broken URL ending in `/` for members without an avatar (the
-    /// `/nil` check in the Elixir code never matched). Here a missing avatar is `None`.
+    /// The avatar URL is `https://cdn.discordapp.com/avatars/<id>/<avatar>`; a `null` avatar
+    /// is `None` rather than a broken URL ending in `/`.
     pub fn from_discord_user(user: &serde_json::Value) -> Option<Self> {
         let sub = match user.get("id")? {
             serde_json::Value::String(id) => id.clone(),

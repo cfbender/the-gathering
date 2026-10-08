@@ -55,7 +55,7 @@ pub fn window_start(params: &DateRange) -> Option<(Date, UtcDateTime)> {
     Some((date, starts_at))
 }
 
-/// `games/2`: games in the date range (optionally those a player or deck sat in), newest
+/// Games in the date range (optionally those a player or deck sat in), newest
 /// first, with seats, players, and decks.
 pub async fn games(
     conn: &mut SqliteConnection,
@@ -80,7 +80,7 @@ pub async fn games(
     load_games(conn, &ids).await
 }
 
-/// `recent_games/2`: the newest `limit` of `game_ids`.
+/// The newest `limit` of `game_ids`.
 pub async fn recent_games(
     conn: &mut SqliteConnection,
     game_ids: &[i64],
@@ -142,7 +142,7 @@ fn reference_matches(reference: &Reference, id: &str, normalized: &str) -> bool 
             .is_some_and(|name| lotus::normalize_name(name) == normalized)
 }
 
-/// `commander_references/1`: stored references that match `id` as an id or normalized name.
+/// Stored references that match `id` as an id or normalized name.
 pub async fn commander_references(
     conn: &mut SqliteConnection,
     id: &str,
@@ -177,7 +177,7 @@ pub async fn commander_references(
         .collect())
 }
 
-/// `commander_aliases/2`: every stored id and exact name spelling that canonicalizes to the
+/// Every stored id and exact name spelling that canonicalizes to the
 /// given ids or names.
 pub async fn commander_aliases(
     conn: &mut SqliteConnection,
@@ -215,7 +215,7 @@ pub async fn commander_aliases(
     Ok((stored_ids, stored_names))
 }
 
-/// `opponent_counts/2`: per opponent across `game_ids`, their record in those games and
+/// Per opponent across `game_ids`, their record in those games and
 /// `beaten`, how many of those games a tracked seat won against them.
 pub async fn opponent_counts(
     conn: &mut SqliteConnection,

@@ -26,11 +26,11 @@ pub struct SheetResult {
     pub updated: i64,
     /// Rows skipped.
     pub skipped: i64,
-    /// Written games, most recent first (as Elixir accumulated them).
+    /// Written games, most recently written first.
     pub game_ids: Vec<i64>,
 }
 
-/// `SheetCommit.run/3`: re-runs the preview inside the transaction and commits only when
+/// Re-runs the preview inside the transaction and commits only when
 /// it still has the reviewed revision and is valid.
 pub async fn run(
     state: &AppState,

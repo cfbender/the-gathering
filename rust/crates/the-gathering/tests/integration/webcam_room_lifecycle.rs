@@ -543,6 +543,39 @@ async fn a_seat_stays_taken_until_the_table_closes() {
 }
 
 #[tokio::test]
+async fn sessions_saved_with_microsecond_expiries_by_earlier_releases_still_load_and_prune() {
+    let t = Table::new().await;
+    let tables = t.server.state().webcam_tables.clone();
+    tables.kill(&t.room);
+    let pool = t.server.app.pool();
+    let set_expiry = |expires_at: String| {
+        sqlx::query("UPDATE webcam_table_sessions SET expires_at = ? WHERE id = ?")
+            .bind(expires_at)
+            .bind(t.room.clone())
+            .execute(pool)
+    };
+    let micros = |at: time::OffsetDateTime| {
+        at.format(time::macros::format_description!(
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z"
+        ))
+        .unwrap()
+    };
+    let now = time::OffsetDateTime::now_utc();
+
+    set_expiry(micros(now + time::Duration::days(1)))
+        .await
+        .unwrap();
+    assert!(session::load(pool, &t.room).await.unwrap().is_some());
+    assert_eq!(tables.prune_sessions().await.unwrap(), 0);
+
+    set_expiry(micros(now - time::Duration::seconds(2)))
+        .await
+        .unwrap();
+    assert!(session::load(pool, &t.room).await.unwrap().is_none());
+    assert_eq!(tables.prune_sessions().await.unwrap(), 1);
+}
+
+#[tokio::test]
 async fn expired_disconnected_sessions_are_pruned_instead_of_resurrected() {
     let mut t = Table::new().await;
     t.alice.ok("update_status", json!({ "life": 3 })).await;

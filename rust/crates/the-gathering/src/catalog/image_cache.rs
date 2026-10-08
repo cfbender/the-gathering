@@ -206,7 +206,7 @@ impl CardImages {
         self.0.state.lock().map_or(0, |state| state.active)
     }
 
-    /// `fetch/1`: the JPEG for an accepted Scryfall source, from disk or the CDN.
+    /// The JPEG for an accepted Scryfall source, from disk or the CDN.
     pub async fn fetch(&self, source: &str) -> Reply {
         if !images::valid_source(source) {
             return Err(ImageError::BadRequest);

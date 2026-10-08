@@ -64,7 +64,7 @@ fn prefer_unique_leading_name(matches: Vec<Card>, name: &str) -> Vec<Card> {
     }
 }
 
-/// `CardChoice.resolve/3`.
+/// Resolves a typed card name to one catalog card, or an error to show for none or too many.
 pub async fn resolve(
     conn: &mut SqliteConnection,
     name: Option<&str>,
@@ -115,7 +115,7 @@ pub async fn resolve(
     Ok(choice)
 }
 
-/// `CardChoice.choose/2`: picks one of the candidates.
+/// Picks one of the candidates.
 pub fn choose(choice: &CardChoice, id: &str) -> Result<CardChoice, String> {
     let card = choice
         .candidates
@@ -130,7 +130,7 @@ pub fn choose(choice: &CardChoice, id: &str) -> Result<CardChoice, String> {
     })
 }
 
-/// `CardChoice.card/2`: the chosen card, `None` for a blank name.
+/// The chosen card, `None` for a blank name.
 pub async fn card(
     conn: &mut SqliteConnection,
     choice: &CardChoice,
@@ -151,7 +151,7 @@ pub async fn card(
     }))
 }
 
-/// `ResultCommanders.put/3`: resolves a player's typed commander and partner.
+/// Resolves a player's typed commander and partner.
 pub async fn put_commanders(
     conn: &mut SqliteConnection,
     data: &mut WonDraftData,
@@ -167,7 +167,7 @@ pub async fn put_commanders(
     Ok(())
 }
 
-/// `ResultCommanders.choose/4`.
+/// Picks one of the offered cards for a player's commander or partner.
 pub fn choose_commander(
     data: &mut WonDraftData,
     player_id: &str,
@@ -224,7 +224,7 @@ async fn deck(
     })
 }
 
-/// `ResultDetails.with_mvp/1`: resolves the typed MVP.
+/// Resolves the typed MVP.
 pub async fn with_mvp(
     conn: &mut SqliteConnection,
     data: &mut WonDraftData,
@@ -256,7 +256,7 @@ pub fn reportable_conditions() -> impl Iterator<Item = WinCondition> {
     WinCondition::all().filter(|condition| *condition != WinCondition::Draw)
 }
 
-/// `ResultDetails.validate/2`: the details to save, or the first problem.
+/// The details to save, or the first problem.
 pub async fn validate(
     conn: &mut SqliteConnection,
     data: &WonDraftData,

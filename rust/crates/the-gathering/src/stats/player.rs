@@ -22,7 +22,7 @@ fn results(seat: Option<&Seat>) -> Vec<GameResult> {
     seat.map(|seat| seat.result).into_iter().collect()
 }
 
-/// `Player.get/2`.
+/// A player's statistics for a date range; `None` for an unknown player.
 pub async fn get(
     conn: &mut SqliteConnection,
     player_id: i64,

@@ -34,7 +34,7 @@ pub struct ResultDraft {
     pub expires_at: UtcDateTime,
 }
 
-/// `Ecto.UUID.cast/1`: the canonical lowercase hyphenated form.
+/// The canonical lowercase hyphenated form.
 pub fn cast_uuid(id: &str) -> Option<String> {
     uuid::Uuid::parse_str(id)
         .ok()

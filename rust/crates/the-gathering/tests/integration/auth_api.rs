@@ -554,7 +554,7 @@ async fn a_legacy_cookie_without_a_live_token_is_anonymous_and_still_expired() {
 async fn credentials_stored_by_earlier_releases_decrypt_and_are_reencrypted() {
     let app = TestApp::new().await;
     let member = app.unique_member().await;
-    // Written by the Elixir server with the test secret.
+    // Written by releases up to 0.2 with the test secret.
     let legacy = "XCP.AMB52kLujURW-VRD3fCoZ-IaLvueQYDiiEVPAKF_dWuq7QCoKbEj8syhxNrdBVZE5BxgIxr1ekz1vZuRihpd6tyyQPg";
     sqlx::query("UPDATE users SET manavault_api_key = ? WHERE id = ?")
         .bind(legacy)

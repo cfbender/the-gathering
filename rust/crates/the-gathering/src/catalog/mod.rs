@@ -183,7 +183,7 @@ pub struct Catalog {
     pub pool: Pool,
 }
 
-/// A batched name/art/identity lookup result (`Catalog.card_summaries/1`).
+/// A batched name/art/identity lookup result.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CardSummary {
     /// Scryfall id.
@@ -208,14 +208,14 @@ pub struct CardSummaries {
 }
 
 impl CardSummaries {
-    /// `Catalog.card_summary/3`: the stored id wins, then the name.
+    /// The stored id wins, then the name.
     pub fn get(&self, id: Option<&str>, name: Option<&str>) -> Option<&CardSummary> {
         id.and_then(|id| self.by_id.get(id))
             .or_else(|| name.and_then(|name| self.by_name.get(&lotus::normalize_name(name))))
     }
 }
 
-/// Art and image URLs for card references and exact printings (`Catalog.art_crop_urls/1`).
+/// Art and image URLs for card references and exact printings.
 #[derive(Clone, Debug, Default)]
 pub struct ArtUrls {
     summaries: CardSummaries,
@@ -223,7 +223,7 @@ pub struct ArtUrls {
 }
 
 impl ArtUrls {
-    /// `Catalog.art_crop_url/4`: the printing's crop, else the card's.
+    /// The printing's crop, else the card's.
     pub fn art_crop_url(
         &self,
         id: Option<&str>,
@@ -240,7 +240,7 @@ impl ArtUrls {
             })
     }
 
-    /// `Catalog.card_image_url/4`.
+    /// The printing's image, else the card's.
     pub fn card_image_url(
         &self,
         id: Option<&str>,
@@ -257,7 +257,7 @@ impl ArtUrls {
             })
     }
 
-    /// `Catalog.game_changer?/3`.
+    /// Whether the referenced card is on the Game Changers list.
     pub fn game_changer(&self, id: Option<&str>, name: Option<&str>) -> bool {
         self.summaries
             .get(id, name)
@@ -290,7 +290,7 @@ fn strip_search_punctuation(value: &str) -> String {
     value.replace(['\'', '\u{2019}', ','], "")
 }
 
-/// `face_query/1`: a double-faced, split, or flip card one of whose halves is `normalized`.
+/// A double-faced, split, or flip card one of whose halves is `normalized`.
 async fn find_by_face(
     conn: &mut SqliteConnection,
     normalized: &str,
@@ -327,7 +327,7 @@ impl Catalog {
             .await
     }
 
-    /// `resolve_card/2`: by id, else by name.
+    /// Resolves a card by id, else by name.
     pub async fn resolve_card(
         &self,
         id: Option<&str>,
@@ -341,13 +341,13 @@ impl Catalog {
         get_printing_in(&mut *self.pool.acquire().await?, id).await
     }
 
-    /// `find_card_by_name/1`: exact normalized name (commanders and newer printings first),
+    /// Exact normalized name (commanders and newer printings first),
     /// else a face of a multi-faced card.
     pub async fn find_card_by_name(&self, name: &str) -> Result<Option<Card>, sqlx::Error> {
         find_card_by_name_in(&mut *self.pool.acquire().await?, name).await
     }
 
-    /// `cards_by_name/1`: every given name that resolves, keyed by the given name.
+    /// Every given name that resolves, keyed by the given name.
     pub async fn cards_by_name(
         &self,
         names: &[String],
@@ -382,7 +382,7 @@ impl Catalog {
         Ok(found)
     }
 
-    /// `search/2`: name search ranked exact, whole-word prefix, prefix, then substring.
+    /// Name search ranked exact, whole-word prefix, prefix, then substring.
     /// `commander` filters to (non-)commanders; `partner` allows any card that can share
     /// the command zone.
     pub async fn search(
@@ -402,7 +402,7 @@ impl Catalog {
         .await
     }
 
-    /// `card_summaries/1`: one lookup for many `(id, name)` references.
+    /// One lookup for many `(id, name)` references.
     pub async fn card_summaries(
         &self,
         refs: &[(Option<String>, Option<String>)],
@@ -410,7 +410,7 @@ impl Catalog {
         card_summaries_in(&mut *self.pool.acquire().await?, refs).await
     }
 
-    /// `list_printings/3`: one page of printings of the card resolved from `id` or `name`.
+    /// One page of printings of the card resolved from `id` or `name`.
     pub async fn list_printings(
         &self,
         scryfall: &scryfall::Scryfall,
@@ -429,12 +429,12 @@ impl Catalog {
         printings::list(&self.pool, scryfall, &card, page, name).await
     }
 
-    /// `sync_status/0`.
+    /// The state of the latest catalog sync.
     pub async fn sync_status(&self) -> Result<sync::SyncState, sqlx::Error> {
         sync::status(&self.pool).await
     }
 
-    /// `art_crop_urls/1`.
+    /// Art and image URLs for `refs`, in one lookup.
     pub async fn art_crop_urls(&self, refs: &[CardRef]) -> Result<ArtUrls, sqlx::Error> {
         art_crop_urls_in(&mut *self.pool.acquire().await?, refs).await
     }

@@ -24,6 +24,7 @@ use super::cache::{self, TtlCache};
 use super::destination;
 use crate::accounts::User;
 use crate::config::Config;
+use crate::db::UtcDateTime;
 
 const COLORS: [&str; 5] = ["W", "U", "B", "R", "G"];
 const PUBLIC_ARCHIDEKT: &str = "https://archidekt.com";
@@ -67,8 +68,8 @@ pub struct RemoteDeck {
     pub url: String,
     /// Which host listed it.
     pub source: Source,
-    /// The host's last-updated timestamp, as it sent it.
-    pub updated_at: Option<String>,
+    /// When the host last saw the deck change; `None` when it sent no readable time.
+    pub updated_at: Option<UtcDateTime>,
 }
 
 /// How one source fared.
@@ -82,7 +83,7 @@ pub struct SourceStatus {
     pub error: Option<String>,
 }
 
-/// `RemoteDecks.list/1`'s result: every deck, newest first, and each source's status
+/// A member's hosted decks: every deck, newest first, and each source's status
 /// (Moxfield, Archidekt, ManaVault, in that order).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct RemoteDeckList {
@@ -179,7 +180,14 @@ fn string(value: Option<&Value>) -> Option<String> {
     value.and_then(Value::as_str).map(str::to_owned)
 }
 
-/// `commander_name/1`.
+/// Hosts send ISO 8601 in different shapes (`Z` or an offset, with or without fractions);
+/// parsing them lets decks from different hosts sort by time rather than by text.
+fn timestamp(value: Option<&Value>) -> Option<UtcDateTime> {
+    value.and_then(Value::as_str).and_then(UtcDateTime::parse)
+}
+
+/// A commander entry's name: a plain string, an object's `name`, or its card's (or the
+/// card's oracle card's) `name`.
 fn commander_name(value: &Value) -> Option<String> {
     if let Some(name) = value.as_str() {
         return Some(name.to_owned());
@@ -226,7 +234,7 @@ fn moxfield_deck(row: &Value) -> RemoteDeck {
         url: string(row.get("publicUrl"))
             .unwrap_or_else(|| format!("{PUBLIC_MOXFIELD}/decks/{}", id_text(public_id))),
         source: Source::Moxfield,
-        updated_at: string(row.get("lastUpdatedAtUtc")),
+        updated_at: timestamp(row.get("lastUpdatedAtUtc")),
     }
 }
 
@@ -238,7 +246,7 @@ fn manavault_deck(row: &Value, origin: &str) -> RemoteDeck {
         url: string(row.get("public_share_url"))
             .unwrap_or_else(|| format!("{origin}/decks/{}", id_text(row.get("id")))),
         source: Source::ManaVault,
-        updated_at: string(row.get("updated_at")),
+        updated_at: timestamp(row.get("updated_at")),
     }
 }
 
@@ -288,7 +296,7 @@ fn client_builder() -> reqwest::ClientBuilder {
         .no_proxy()
 }
 
-/// `settings_fingerprint/1`: changes whenever a deck-host setting changes.
+/// Changes whenever a deck-host setting changes.
 fn fingerprint(user: &User) -> [u8; 32] {
     let mut hasher = Sha256::new();
     for value in [
@@ -356,7 +364,7 @@ impl RemoteDecks {
         &self.cache
     }
 
-    /// `list/1`: the member's decks on every configured host. Never fails: each source
+    /// The member's decks on every configured host. Never fails: each source
     /// reports its own error. Concurrent misses for one member share a single fetch.
     pub async fn list(&self, user: &User) -> RemoteDeckList {
         let print = fingerprint(user);
@@ -429,19 +437,13 @@ impl RemoteDecks {
             });
         }
         decks.sort_by(|a, b| {
-            let key = |deck: &RemoteDeck| {
-                (
-                    deck.updated_at.clone().unwrap_or_default(),
-                    deck.name.clone().unwrap_or_default(),
-                )
-            };
+            let key = |deck: &RemoteDeck| (deck.updated_at, deck.name.clone().unwrap_or_default());
             key(b).cmp(&key(a))
         });
         RemoteDeckList { decks, sources }
     }
 
-    /// `HTTP.get_limited/3` (and the request half of `get_remote/4`): a GET whose body
-    /// counts against the budget and whose time is bounded by it.
+    /// A GET whose body counts against the budget and whose time is bounded by it.
     async fn get_limited(
         &self,
         client: &reqwest::Client,
@@ -484,7 +486,7 @@ impl RemoteDecks {
         })
     }
 
-    /// `HTTP.get_remote/4`: resolves the member's origin within the budget, applies the
+    /// Resolves the member's origin within the budget, applies the
     /// destination policy, and pins the connection to the checked address (keeping the
     /// hostname for TLS and `Host`). Redirects are never followed.
     async fn get_remote(
@@ -603,7 +605,7 @@ impl RemoteDecks {
         }
     }
 
-    /// `archidekt_next_url/1`: only Archidekt pages (relative or on archidekt.com) are followed.
+    /// Only Archidekt pages (relative or on archidekt.com) are followed.
     fn archidekt_next_url(&self, next: Option<&Value>) -> Option<String> {
         let next = next?.as_str()?;
         if next.starts_with('/') {
@@ -744,7 +746,7 @@ impl RemoteDecks {
                     color_identity: order_colors(&colors),
                     url: format!("{PUBLIC_ARCHIDEKT}/decks/{id}"),
                     source: Source::Archidekt,
-                    updated_at: string(row.get("updatedAt")),
+                    updated_at: timestamp(row.get("updatedAt")),
                 })
             }
             Err(error @ (HttpError::ByteLimit | HttpError::DurationLimit)) => {

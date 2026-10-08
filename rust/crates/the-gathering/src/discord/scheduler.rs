@@ -66,7 +66,7 @@ impl NewGameScheduler {
         })
     }
 
-    /// `NewGameScheduler.act/4`: applies a queue action, then delivers its edits.
+    /// Applies a queue action, then delivers its edits.
     pub async fn act(
         &self,
         id: i64,
@@ -79,7 +79,7 @@ impl NewGameScheduler {
         Ok(game)
     }
 
-    /// `NewGameScheduler.attach/3`: publishes a queue on its placeholder message.
+    /// Publishes a queue on its placeholder message.
     pub async fn attach(&self, id: i64, message_id: &str) -> Result<(), sqlx::Error> {
         let _guard = self.lock.lock().await;
         scheduled::attach_message(&self.state.pool, id, message_id).await?;
@@ -88,7 +88,7 @@ impl NewGameScheduler {
         Ok(())
     }
 
-    /// `NewGameScheduler.sweep/1`: settles due queues and retries dirty messages.
+    /// Settles due queues and retries dirty messages.
     pub async fn sweep(&self) {
         let _guard = self.lock.lock().await;
         if let Err(error) = self.run().await {
@@ -112,7 +112,7 @@ impl NewGameScheduler {
         }
     }
 
-    /// `NewGameDelivery.deliver/2`: posts the announcement or maybe ping (each recorded
+    /// Posts the announcement or maybe ping (each recorded
     /// before the embed edit, so an edit failure never re-pings), then edits the queue.
     async fn deliver(&self, game: &ScheduledGame) -> Result<(), DeliveryFailed> {
         let Some(message_id) = &game.message_id else {

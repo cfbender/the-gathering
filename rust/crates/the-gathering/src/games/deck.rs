@@ -81,7 +81,7 @@ fn valid_identity(identity: &str) -> bool {
     })
 }
 
-/// `DeckPrintings.validate_printing/4`: the printing must be of the card the slot names.
+/// The printing must be of the card the slot names.
 async fn printing_matches(
     conn: &mut SqliteConnection,
     id: Option<&str>,
@@ -360,7 +360,7 @@ pub async fn update_deck(
         .ok_or(GamesError::NotFound)
 }
 
-/// `Games.list_decks/1`: by case-folded name, with each deck's player.
+/// By case-folded name, with each deck's player.
 pub async fn list_decks(
     conn: &mut SqliteConnection,
     include_archived: bool,
@@ -393,8 +393,8 @@ pub async fn list_decks(
         .collect())
 }
 
-/// The deck's seats with their games, newest first (`Games.get_deck!/1` preloads only the
-/// game, so each seat's `deck` stays `None`).
+/// The deck's seats with their games, newest first (only the game is loaded, so each seat's
+/// `deck` stays `None`).
 pub async fn deck_seat_games(
     conn: &mut SqliteConnection,
     deck_id: i64,
@@ -414,7 +414,7 @@ pub async fn deck_seat_games(
     .collect())
 }
 
-/// `Games.find_deck/4`: a player's deck by case-folded name, else by commander pairing
+/// A player's deck by case-folded name, else by commander pairing
 /// (order-insensitive across commander and partner; the earliest deck wins).
 pub async fn find_deck(
     conn: &mut SqliteConnection,
@@ -500,7 +500,7 @@ pub async fn find_or_create_deck(
     }
 }
 
-/// `DeleteDeck.run/2`: seats that used the deck move to `replacement` (another deck of the
+/// Seats that used the deck move to `replacement` (another deck of the
 /// same player) or lose their deck. A replacement that is the deck itself or belongs to
 /// another player is a bad request.
 pub async fn delete_deck(

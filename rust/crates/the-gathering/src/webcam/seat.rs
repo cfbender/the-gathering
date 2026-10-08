@@ -44,9 +44,8 @@ pub struct CombatEffect {
 
 /// A seat (the channel's participant).
 ///
-/// Elixir bug fixed: `Session.restore/1` listed seat fields explicitly and omitted
-/// `camera_height` and `shares_corrections`, so seats restored after a room restart lost them;
-/// every field round-trips here.
+/// Every field round-trips through the saved session, so a seat restored after a room restart
+/// keeps all of its state (including `camera_height` and `shares_corrections`).
 #[allow(clippy::struct_excessive_bools)] // The wire format the frontend reads.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Seat {

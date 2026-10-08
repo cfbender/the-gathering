@@ -117,7 +117,7 @@ pub struct Accounts {
     pub bcrypt_cost: u32,
 }
 
-/// `registration_status/0`.
+/// Whether sign-up is open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RegistrationStatus {
     /// Whether new accounts may be created.
@@ -185,7 +185,7 @@ pub struct ApiKey {
 }
 
 impl ApiKey {
-    /// `ApiKeyJSON.data/1`.
+    /// The key's API JSON.
     pub fn to_json(&self) -> Value {
         json!({
             "id": self.id,
@@ -213,7 +213,8 @@ fn bcrypt_verify(password: &str, hash: &str) -> bool {
     bcrypt::verify(password, hash).unwrap_or(false)
 }
 
-/// Spends the same time as a failed verification (`Bcrypt.no_user_verify/0`).
+/// Spends the same time as a failed verification, so unknown usernames are not revealed by
+/// timing.
 fn no_user_verify(cost: u32) {
     let _ = bcrypt::hash("no user verify", cost);
 }
@@ -257,7 +258,7 @@ impl Accounts {
             .collect())
     }
 
-    /// `registration_status/0` (without the Discord flag, which the caller adds).
+    /// Whether sign-up is open (without the Discord flag, which the caller adds).
     pub async fn registration_status(&self) -> Result<RegistrationStatus, sqlx::Error> {
         let count = sqlx::query_scalar!(r#"SELECT count(*) AS "count!: i64" FROM users"#)
             .fetch_one(&self.pool)
@@ -841,7 +842,7 @@ impl Accounts {
         self.get_user(user.id).await?.ok_or(ApiError::NotFound)
     }
 
-    /// `disable_user/1`.
+    /// Disables an account.
     pub async fn disable_user(&self, user: &User) -> Result<User, ApiError> {
         self.update_user(
             user,
@@ -853,7 +854,8 @@ impl Accounts {
         .await
     }
 
-    /// `delete_user/2`: refuses self-deletion, the last administrator, and players with games.
+    /// Deletes an account; refuses self-deletion, the last administrator, and players with
+    /// games.
     pub async fn delete_user(&self, user: &User, actor: &User) -> Result<(), ApiError> {
         if user.id == actor.id {
             return Err(ApiError::Forbidden);
@@ -1024,7 +1026,7 @@ async fn rename_linked_player(
     }
 }
 
-/// `sudo_mode?/2`: whether the session authenticated within the last `minutes`.
+/// Whether the session authenticated within the last `minutes`.
 pub fn sudo_mode(user: &User, minutes: i64) -> bool {
     user.authenticated_at
         .is_some_and(|at| at > UtcDateTime::now().plus(Duration::minutes(-minutes)))

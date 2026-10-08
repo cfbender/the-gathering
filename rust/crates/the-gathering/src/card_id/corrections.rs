@@ -186,7 +186,7 @@ fn validate(params: &Value) -> Option<Vec<u8>> {
     fits.then_some(jpeg)
 }
 
-/// `split_for/1`: a stable fifth of captures is held out for evaluation.
+/// A stable fifth of captures is held out for evaluation.
 fn split_for(id: &str) -> &'static str {
     let remainder = Sha1::digest(id.as_bytes())
         .iter()
@@ -208,7 +208,7 @@ impl Corrections {
         &self.dir
     }
 
-    /// `save/2`: validates and stores a correction for `user_id`, returning its capture id.
+    /// Validates and stores a correction for `user_id`, returning its capture id.
     pub async fn save(&self, params: &Value, user_id: i64) -> Result<String, CorrectionError> {
         let jpeg = validate(params).ok_or(CorrectionError::BadRequest)?;
         let id = params
@@ -265,7 +265,7 @@ impl Corrections {
         Ok(id)
     }
 
-    /// `page/1`: up to 50 labels after `cursor`.
+    /// Up to 50 labels after `cursor`.
     pub async fn page(&self, cursor: usize) -> Result<Page, CorrectionError> {
         let contents = match tokio::fs::read_to_string(self.dir.join("labels.jsonl")).await {
             Ok(contents) => contents,
@@ -287,7 +287,7 @@ impl Corrections {
         })
     }
 
-    /// `crop_path/1`: a capture's stored crop.
+    /// A capture's stored crop.
     pub async fn crop_path(&self, id: &str) -> Option<PathBuf> {
         if !UUID.is_match(id) {
             return None;

@@ -1,7 +1,7 @@
 //! Win/loss/draw arithmetic shared by every statistics view.
 //!
 //! Rows are seats; games come newest first. Groups are visited in key order before the
-//! stable sort, which is how Elixir's small maps iterate, so ties keep the same order.
+//! stable sort, so ties keep key order.
 
 use std::collections::BTreeMap;
 
@@ -33,18 +33,18 @@ pub fn float_i64(value: i64) -> f64 {
     )
 }
 
-/// `Float.round/2`: half away from zero at `digits` decimals.
+/// Half away from zero at `digits` decimals.
 pub fn round(value: f64, digits: i32) -> f64 {
     let scale = 10_f64.powi(digits);
     (value * scale).round() / scale
 }
 
-/// `Kernel.round/1` to an integer.
+/// Rounds half away from zero to an integer.
 pub fn round_i64(value: f64) -> i64 {
     format!("{:.0}", value.round()).parse().unwrap_or_default()
 }
 
-/// `percentage/2`: one decimal, `0.0` for no games.
+/// One decimal, `0.0` for no games.
 pub fn percentage(part: usize, total: usize) -> f64 {
     if total == 0 {
         0.0
@@ -53,7 +53,7 @@ pub fn percentage(part: usize, total: usize) -> f64 {
     }
 }
 
-/// `average/2`: one decimal over the present values, `None` without any.
+/// One decimal over the present values, `None` without any.
 pub fn average(values: impl IntoIterator<Item = Option<i64>>) -> Option<f64> {
     let values: Vec<i64> = values.into_iter().flatten().collect();
     if values.is_empty() {
@@ -79,7 +79,7 @@ pub struct Record {
 }
 
 impl Record {
-    /// `record/1`.
+    /// Tallies a record from seat results.
     pub fn of(results: impl IntoIterator<Item = GameResult>) -> Self {
         let (mut games, mut wins, mut losses, mut draws) = (0, 0, 0, 0);
         for result in results {
@@ -116,7 +116,7 @@ impl Record {
         object
     }
 
-    /// Adds the fields to `object` (`Map.merge(entity, record)`).
+    /// Adds the record's fields to `object`, replacing any of the same name.
     pub fn merge_into(&self, object: &mut Object) {
         object.insert("games".into(), json!(self.games));
         object.insert("wins".into(), json!(self.wins));
@@ -160,7 +160,7 @@ pub fn group_by<T, K: Ord>(
     groups
 }
 
-/// `grouped_records/3`: one record per group (entity of its first row), most played first.
+/// One record per group (entity of its first row), most played first.
 pub fn grouped_records<'a, K: Ord>(
     seats: impl IntoIterator<Item = &'a Seat>,
     entity: impl Fn(&Seat) -> Object,
@@ -195,7 +195,7 @@ pub fn seat_entity(seat: &Seat) -> Object {
     object
 }
 
-/// `color_records/1`: one record per deck identity (canonical letters and guild name).
+/// One record per deck identity (canonical letters and guild name).
 pub fn color_records<'a>(seats: impl IntoIterator<Item = &'a Seat>) -> Vec<Value> {
     grouped_records(
         seats.into_iter().filter(|seat| seat.deck.is_some()),
@@ -221,7 +221,7 @@ pub fn color_records<'a>(seats: impl IntoIterator<Item = &'a Seat>) -> Vec<Value
     )
 }
 
-/// `color_exposure/1`: per WUBRG color, the seats whose deck ran it, with `share` of the
+/// Per WUBRG color, the seats whose deck ran it, with `share` of the
 /// deck-bearing seats.
 pub fn color_exposure<'a>(seats: impl IntoIterator<Item = &'a Seat>) -> Vec<Value> {
     let with_decks: Vec<&Seat> = seats
@@ -275,7 +275,7 @@ pub fn unique_players(game: &Game) -> Vec<&Seat> {
         .collect()
 }
 
-/// `matchups/1`: every ordered pair of players who shared a table, with the first
+/// Every ordered pair of players who shared a table, with the first
 /// player's record in those games.
 pub fn matchups<'a>(games: impl IntoIterator<Item = &'a Game>) -> Vec<Value> {
     let pairs = games.into_iter().flat_map(|game| {
@@ -315,7 +315,7 @@ pub fn matchups<'a>(games: impl IntoIterator<Item = &'a Game>) -> Vec<Value> {
         .collect()
 }
 
-/// `histogram/2`: consecutive `bin_size`-wide bins from the lowest value's bin to the
+/// Consecutive `bin_size`-wide bins from the lowest value's bin to the
 /// highest's (`to` exclusive), skipping missing values.
 pub fn histogram(values: impl IntoIterator<Item = Option<i64>>, bin_size: i64) -> Vec<Value> {
     let values: Vec<i64> = values.into_iter().flatten().collect();
@@ -337,7 +337,7 @@ pub fn histogram(values: impl IntoIterator<Item = Option<i64>>, bin_size: i64) -
         .collect()
 }
 
-/// `cumulative_win_rate/2`: games (newest first) as `(played_at, tracked results)`; the
+/// Games (newest first) as `(played_at, tracked results)`; the
 /// running win rate after each game with any tracked seat, oldest first.
 pub fn cumulative_win_rate(
     games: impl DoubleEndedIterator<Item = (UtcDateTime, Vec<GameResult>)>,
@@ -361,7 +361,7 @@ pub fn cumulative_win_rate(
     points
 }
 
-/// `tracked_result/1`: a seat's own result, or for several tracked seats in one game
+/// A seat's own result, or for several tracked seats in one game
 /// `win` if any won, `draw` if any drew, else `loss`.
 pub fn tracked_result(results: &[GameResult]) -> Option<GameResult> {
     match results {

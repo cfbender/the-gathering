@@ -3,9 +3,8 @@
 //! Bot-authenticated routes (messages, commands) wait out a 429 and retry a few times;
 //! message creation is idempotent through `nonce`/`enforce_nonce`. Interaction callbacks
 //! and webhook edits authenticate with the interaction token instead of the bot token
-//! and are never retried, redirected, or left waiting without a limit
-//! (`SummaryUpload.edit_response/3`). Errors keep only numeric codes, so neither tokens
-//! nor response bodies reach the logs.
+//! and are never retried, redirected, or left waiting without a limit. Errors keep only
+//! numeric codes, so neither tokens nor response bodies reach the logs.
 
 use std::fmt::Write as _;
 use std::time::Duration;

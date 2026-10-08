@@ -24,7 +24,7 @@ use super::data;
 
 // JSON views
 
-/// `PlayerJSON.summary/1`.
+/// A player's summary JSON.
 pub fn player_summary(player: &Player) -> Value {
     json!({
         "id": player.id,
@@ -35,7 +35,7 @@ pub fn player_summary(player: &Player) -> Value {
     })
 }
 
-/// `DeckJSON.card_refs/1` for one deck.
+/// A deck's commander and partner card and printing references, for art lookup.
 pub fn deck_card_refs(deck: &Deck) -> Vec<CardRef> {
     vec![
         CardRef::Card(
@@ -48,7 +48,7 @@ pub fn deck_card_refs(deck: &Deck) -> Vec<CardRef> {
     ]
 }
 
-/// `DeckJSON.summary/2`; `player` is the preloaded owner, when loaded.
+/// A deck's summary JSON; `player` is the owner, when loaded.
 pub fn deck_summary(deck: &Deck, player: Option<&Player>, art: &ArtUrls) -> Value {
     let commander = (
         deck.commander_card_id.as_deref(),
@@ -84,7 +84,7 @@ pub fn deck_summary(deck: &Deck, player: Option<&Player>, art: &ArtUrls) -> Valu
     })
 }
 
-/// `GameJSON.seat_game/2`.
+/// A seat's game header JSON, as listed on player and deck pages.
 pub fn seat_game(seat: &SeatGame, art: &ArtUrls) -> Value {
     json!({
         "id": seat.game_id,
@@ -95,7 +95,7 @@ pub fn seat_game(seat: &SeatGame, art: &ArtUrls) -> Value {
     })
 }
 
-/// `GameJSON.card_refs/1`.
+/// The card references of games' MVP cards and seated decks, for art lookup.
 pub fn game_card_refs<'a>(games: impl IntoIterator<Item = &'a Game>) -> Vec<CardRef> {
     games
         .into_iter()
@@ -113,7 +113,7 @@ pub fn game_card_refs<'a>(games: impl IntoIterator<Item = &'a Game>) -> Vec<Card
         .collect()
 }
 
-/// `GameJSON.seat/2`.
+/// A seat's JSON.
 pub fn seat_json(seat: &Seat, art: &ArtUrls) -> Value {
     let mvp = (seat.mvp_card_id.as_deref(), seat.mvp_card_name.as_deref());
     json!({
@@ -136,7 +136,7 @@ pub fn seat_json(seat: &Seat, art: &ArtUrls) -> Value {
     })
 }
 
-/// `GameJSON.game/2`.
+/// A game's JSON, seats in seat order.
 pub fn game_json(game: &Game, art: &ArtUrls) -> Value {
     let mut seats: Vec<&Seat> = game.seats.iter().collect();
     seats.sort_by_key(|seat| seat.seat);
@@ -159,7 +159,7 @@ async fn art_urls(state: &AppState, refs: &[CardRef]) -> ApiResult<ArtUrls> {
     Ok(crate::catalog::art_crop_urls_in(&mut *state.pool.acquire().await?, refs).await?)
 }
 
-/// `PlayerJSON.card_refs/1`.
+/// The card references of a player's decks and seated decks, for art lookup.
 fn player_card_refs(detail: &PlayerDetail) -> Vec<CardRef> {
     detail
         .decks
@@ -175,7 +175,7 @@ fn player_card_refs(detail: &PlayerDetail) -> Vec<CardRef> {
         .collect()
 }
 
-/// `PlayerJSON.show/1` for a player id.
+/// The player page JSON for a player id.
 async fn render_player(state: &AppState, id: i64) -> ApiResult<Value> {
     let detail = state
         .games
@@ -218,7 +218,7 @@ async fn render_player(state: &AppState, id: i64) -> ApiResult<Value> {
     Ok(json!({ "data": body }))
 }
 
-/// `DeckJSON.show/1` for a deck id.
+/// The deck page JSON for a deck id.
 async fn render_deck(state: &AppState, id: i64) -> ApiResult<Value> {
     let deck = state.games.get_deck(id).await?.ok_or(ApiError::NotFound)?;
     let mut conn = state.pool.acquire().await?;
@@ -248,7 +248,7 @@ async fn render_deck(state: &AppState, id: i64) -> ApiResult<Value> {
     Ok(json!({ "data": body }))
 }
 
-/// `GameJSON.show/1` (also rendered by the Discord result draft controller).
+/// A game's JSON response (also rendered by the Discord result draft endpoints).
 pub async fn render_game(state: &AppState, game: &Game) -> ApiResult<Value> {
     let art = art_urls(state, &game_card_refs([game])).await?;
     Ok(json!({ "data": game_json(game, &art) }))
@@ -784,8 +784,8 @@ pub async fn v1_games_index(
 
 // Owned by other areas; kept at the bottom to ease merging.
 
-/// `POST /api/session/remote-decks/sync` (`RemoteDeckController.sync/2` with
-/// `RemoteDeckJSON.sync/1`): folds the member's hosted decks into their player's decks.
+/// `POST /api/session/remote-decks/sync`: folds the member's hosted decks into their
+/// player's decks.
 pub async fn remote_decks_sync(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -947,7 +947,7 @@ mod decklist_handlers {
         )
     }
 
-    /// `RemoteDeckJSON.index/1`.
+    /// The member's hosted decks and each source's status as JSON.
     pub fn remote_decks_json(result: &RemoteDeckList) -> Value {
         json!({
             "decks": result.decks.iter().map(|deck| json!({

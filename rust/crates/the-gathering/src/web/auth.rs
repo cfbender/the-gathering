@@ -17,11 +17,11 @@ use super::session::Session;
 
 const SESSION_REISSUE_AGE_DAYS: i64 = 7;
 
-/// The signed-in user, if any (`conn.assigns.current_scope.user`).
+/// The signed-in user, if any.
 #[derive(Clone, Debug, Default)]
 pub struct CurrentUser(pub Option<User>);
 
-/// Creates a tracked session token and signs `user` in (`UserAuth.log_in_user/3`).
+/// Creates a tracked session token and signs `user` in.
 pub async fn log_in_user(
     state: &AppState,
     session: &Session,
@@ -51,7 +51,7 @@ pub fn user_session_topic(token: &[u8]) -> String {
     format!("users_sessions:{}", crypto::url_encode64(token))
 }
 
-/// Deletes the session token and clears the session (`UserAuth.log_out_user/1`).
+/// Deletes the session token and clears the session.
 pub async fn log_out_user(state: &AppState, session: &Session) -> Result<(), ApiError> {
     if let Some(token) = session.user_token() {
         state.accounts.delete_user_session_token(&token).await?;

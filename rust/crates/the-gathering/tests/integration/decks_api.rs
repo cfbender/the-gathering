@@ -282,7 +282,7 @@ async fn patch_cannot_transfer_an_owned_or_guest_deck_and_historical_stats_remai
 }
 
 #[tokio::test]
-async fn creating_a_deck_validates_like_the_changeset() {
+async fn creating_a_deck_validates_its_fields() {
     let ctx = setup().await;
     ctx.app.log_in(&ctx.owner).await;
     let body = ctx
@@ -343,9 +343,8 @@ async fn creating_a_deck_validates_like_the_changeset() {
 }
 
 /// Deck links on the configured self-hosted ManaVault (`MANAVAULT_URL`, here
-/// `https://manavault.example.com`) are labeled `manavault`, like manavault.app links. The
-/// Elixir `Deck.source/1` only knew manavault.app and stored them as `other`, although
-/// `Decklists.parse_url/1` resolves them.
+/// `https://manavault.example.com`) are labeled `manavault`, like manavault.app links, since
+/// the deck-list resolver accepts them too.
 #[tokio::test]
 async fn labels_links_to_the_configured_manavault_as_manavault() {
     let ctx = setup().await;

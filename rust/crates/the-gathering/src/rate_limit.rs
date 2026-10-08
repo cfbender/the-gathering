@@ -1,5 +1,5 @@
-//! In-memory fixed-window rate limiter (Hammer's ETS `fix_window` algorithm) and the
-//! token buckets webcam table channels spend per event.
+//! In-memory fixed-window rate limiter and the token buckets webcam table channels spend per
+//! event.
 
 use std::collections::HashMap;
 use std::sync::Mutex;

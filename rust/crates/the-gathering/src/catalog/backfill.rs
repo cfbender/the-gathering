@@ -80,7 +80,7 @@ pub struct Batch {
     pub done: bool,
 }
 
-/// `split_partners/1`: `"A || B (Partners)"` is `("A", Some("B"))`.
+/// `"A || B (Partners)"` is `("A", Some("B"))`.
 pub fn split_partners(name: &str) -> (String, Option<String>) {
     match name.split_once("||") {
         Some((commander, partner)) => (
@@ -91,7 +91,7 @@ pub fn split_partners(name: &str) -> (String, Option<String>) {
     }
 }
 
-/// `Backfill.run/0`: repairs every deck and seat, batch by batch (each batch is its own
+/// Repairs every deck and seat, batch by batch (each batch is its own
 /// transaction so other writers are not starved).
 pub async fn run(pool: &Pool) -> Result<Summary, sqlx::Error> {
     let mut cursor = Cursor::default();
@@ -126,7 +126,7 @@ fn valid_identity(value: &str) -> bool {
     })
 }
 
-/// `repair_batch/2`: links up to `limit` decks without a commander card and `limit` seats
+/// Links up to `limit` decks without a commander card and `limit` seats
 /// with an unlinked MVP name after `cursor`.
 pub async fn repair_batch(pool: &Pool, cursor: Cursor, limit: i64) -> Result<Batch, sqlx::Error> {
     let limit = limit.clamp(1, MAX_BATCH_SIZE);
@@ -177,7 +177,7 @@ pub async fn repair_batch(pool: &Pool, cursor: Cursor, limit: i64) -> Result<Bat
         } else {
             deck.color_identity.clone()
         };
-        // `Deck.update_changeset` widens the identity to cover every commander card.
+        // Deck updates widen the identity to cover every commander card.
         let summaries = catalog
             .card_summaries(&[
                 (
@@ -253,7 +253,7 @@ pub async fn repair_batch(pool: &Pool, cursor: Cursor, limit: i64) -> Result<Bat
             deck.name.clone()
         };
         let commander_card_id = commander.as_ref().map(|card| card.id.clone());
-        // `DeckPrintings.validate/1`: a changed card or name clears its saved printing.
+        // A changed card or name clears its saved printing.
         let commander_printing_id =
             if commander_card_id.is_some() || commander_name != deck.commander_name {
                 None

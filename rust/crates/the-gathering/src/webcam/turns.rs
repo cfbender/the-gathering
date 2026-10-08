@@ -19,7 +19,8 @@ pub trait TurnSeat {
     fn player_id(&self) -> i64;
     /// Knocked out of the game.
     fn eliminated(&self) -> bool;
-    /// Left the game for good (never set by the room; kept for parity with the Elixir code).
+    /// Left the game for good, so turns skip the seat. Room seats never report it (the
+    /// default); [`Unit`] carries it explicitly.
     fn departed(&self) -> bool {
         false
     }

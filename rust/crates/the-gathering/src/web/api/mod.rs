@@ -30,7 +30,7 @@ pub fn data(value: impl Into<Value>) -> axum::Json<Value> {
     axum::Json(json!({ "data": value.into() }))
 }
 
-/// `RateLimit.client_ip/1`: the peer address, or the proxy headers when trusted.
+/// The peer address, or the proxy headers when trusted.
 pub fn client_ip(state: &AppState, headers: &HeaderMap, peer: Option<SocketAddr>) -> String {
     let peer_ip = peer.map_or_else(|| "127.0.0.1".to_owned(), |peer| peer.ip().to_string());
     if !state.config.rate_limits.trust_proxy_headers {

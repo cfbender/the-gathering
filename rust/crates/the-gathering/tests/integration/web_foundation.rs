@@ -172,7 +172,7 @@ async fn known_api_paths_answer_405_with_the_allowed_methods() {
 }
 
 #[tokio::test]
-async fn the_browser_pipeline_sends_phoenix_secure_headers() {
+async fn the_browser_pipeline_sends_secure_headers() {
     let app = TestApp::new().await;
     for path in ["/", "/games", "/table/abc", "/auth/discord"] {
         let response = app.get(path).await;
@@ -207,7 +207,7 @@ async fn head_requests_are_answered_like_gets_without_a_body() {
     }
 }
 
-// -- Plug.RequestId -----------------------------------------------------------------------
+// -- Request ids --------------------------------------------------------------------------
 
 #[tokio::test]
 async fn every_routed_response_carries_a_request_id() {

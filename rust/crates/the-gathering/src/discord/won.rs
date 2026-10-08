@@ -116,7 +116,7 @@ fn message(content: impl Into<String>) -> InteractionResponse {
     won_form::message(content, ResponseKind::ChannelMessage)
 }
 
-/// `WonCommand.respond/2`.
+/// Handles a `/won` interaction and sends the response.
 pub async fn respond(state: &AppState, api: &dyn DiscordApi, interaction: &Interaction) {
     let response = handle(state, interaction).await;
     if api
@@ -131,7 +131,7 @@ pub async fn respond(state: &AppState, api: &dyn DiscordApi, interaction: &Inter
     }
 }
 
-/// `WonCommand.handle/1`: the response for an interaction.
+/// The response for an interaction.
 pub async fn handle(state: &AppState, interaction: &Interaction) -> InteractionResponse {
     match handle_inner(state, interaction).await {
         Ok(response) => response,

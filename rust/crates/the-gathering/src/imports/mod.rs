@@ -33,7 +33,7 @@ use crate::validation::ValidationError;
 
 pub use self::preview::Preview;
 
-/// A problem with one input line (`%{line, field, message}`).
+/// A problem with one input line.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct LineError {
     /// 1-based line (CSV) or game position (Mythic Track).
@@ -55,7 +55,7 @@ impl LineError {
     }
 }
 
-/// A game that was skipped rather than rejected (`%{line, message}`).
+/// A game that was skipped rather than rejected.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Warning {
     /// Game position.
@@ -130,7 +130,7 @@ pub struct ImportSeat {
     pub mvp_card_id: Option<String>,
 }
 
-/// A commit's counts (`%{created, updated, skipped, game_ids}`; `updated` only for CSV).
+/// A commit's counts (`updated` only for CSV).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct ImportResult {
     /// Games created.
@@ -153,7 +153,7 @@ pub enum ImportError {
     /// A rolled-back import with a message (422 `{"errors": {"import": [message]}}`).
     #[error("{0}")]
     Message(String),
-    /// A record failed validation (422 with the changeset errors).
+    /// A record failed validation (422 with its field errors).
     #[error("invalid record")]
     Invalid(ValidationError),
     /// Database error.
@@ -185,8 +185,8 @@ impl From<crate::games::ResolveError> for ImportError {
 }
 
 impl ImportError {
-    /// The controller rendering: an `import` field error for messages, changeset errors
-    /// otherwise. `Validation` is rendered by the controllers themselves.
+    /// The API error: an `import` field error for messages, the record's field errors
+    /// otherwise. `Validation` is rendered by the handlers themselves.
     pub fn into_api(self) -> ApiError {
         match self {
             Self::Message(message) => {
@@ -199,12 +199,12 @@ impl ImportError {
     }
 }
 
-/// `String.trim/1` then `nil` for blank.
+/// `None` for an (already trimmed) empty value.
 pub(crate) fn blank_to_nil(value: String) -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
 }
 
-/// Integer.parse/1 requiring the whole string: an optional sign and decimal digits.
+/// Parses an integer that is the whole string: an optional sign and decimal digits.
 pub(crate) fn parse_integer(value: &str) -> Option<i64> {
     let digits = value
         .strip_prefix('+')
@@ -220,7 +220,7 @@ pub(crate) fn parse_integer(value: &str) -> Option<i64> {
     }
 }
 
-/// `Ecto.UUID.cast/1` succeeds: a hyphenated UUID in either case (or 16 raw bytes).
+/// A hyphenated UUID in either case (or 16 raw bytes).
 pub(crate) fn uuid_castable(value: &str) -> bool {
     if value.len() == 16 {
         return true;

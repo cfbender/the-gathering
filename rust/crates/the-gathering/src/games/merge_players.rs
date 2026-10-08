@@ -26,9 +26,9 @@ pub fn seated_error(source: &Player) -> GamesError {
     merge_error(format!("{} {SEATED_MESSAGE}", source.name))
 }
 
-/// `MergePlayers.run/2` once the webcam-table check passed: every seat and deck moves to
-/// `target`, the account/Discord identity carries over, and `source` is deleted. Decks with
-/// the same (case-folded) name collapse into `target`'s deck.
+/// Merges `source` into `target` once the webcam-table check passed: every seat and deck
+/// moves to `target`, the account/Discord identity carries over, and `source` is deleted.
+/// Decks with the same (case-folded) name collapse into `target`'s deck.
 pub async fn merge_unseated(
     conn: &mut SqliteConnection,
     source: &Player,
@@ -152,7 +152,7 @@ pub enum LinkPlan {
     },
 }
 
-/// `MergePlayers.link_to_user/2` up to the merge: links directly when the account has no
+/// The first step of linking a player to an account: links directly when the account has no
 /// player, or says which merge links it.
 pub async fn plan_link(
     conn: &mut SqliteConnection,

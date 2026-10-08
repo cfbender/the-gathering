@@ -8,7 +8,7 @@ use url::Url;
 
 const INVALID_ORIGIN: &str = "must be an allowed origin (scheme, host, and optional port only)";
 
-/// `normalize_origin/1`: an `http(s)` origin with a lowercased host and no path, query,
+/// An `http(s)` origin with a lowercased host and no path, query,
 /// fragment, or credentials. Plain HTTP needs `allow_insecure(host)`.
 pub fn normalize_origin(
     value: &str,
@@ -38,13 +38,13 @@ pub fn normalize_origin(
 #[error("the destination resolved to a blocked network address")]
 pub struct Blocked;
 
-/// `allowed_host?/1`: whether the operator listed `host` in `MANAVAULT_ALLOWED_HOSTS`.
+/// Whether the operator listed `host` in `MANAVAULT_ALLOWED_HOSTS`.
 pub fn allowed_host(host: &str, allowed_hosts: &[String]) -> bool {
     let host = host.to_lowercase();
     allowed_hosts.contains(&host)
 }
 
-/// `resolve/1`: the origin and the first address it resolves to, provided the host is
+/// The origin and the first address it resolves to, provided the host is
 /// allowlisted or every address (IPv4 and IPv6) is public. An IP literal is its own answer;
 /// no answer at all is blocked. Callers connect to the returned address only, so a later
 /// DNS change cannot redirect the request.

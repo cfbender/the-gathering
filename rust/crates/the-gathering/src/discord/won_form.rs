@@ -126,12 +126,12 @@ fn response(
     )
 }
 
-/// `WonForm.message/2`.
+/// A text-only message (private when new).
 pub fn message(content: impl Into<String>, kind: ResponseKind) -> InteractionResponse {
     response(content.into(), Vec::new(), kind)
 }
 
-/// `WonForm.modal/3`.
+/// One of the draft's edit modals, prefilled from the draft.
 pub fn modal(loaded: &Loaded, which: FormModal) -> InteractionResponse {
     let draft_id = &loaded.draft.id;
     let data = &loaded.data;
@@ -199,7 +199,7 @@ pub fn modal(loaded: &Loaded, which: FormModal) -> InteractionResponse {
     }
 }
 
-/// `WonForm.commander_modal/2`.
+/// The modal for a player's commander and partner, prefilled from the draft.
 pub fn commander_modal(loaded: &Loaded, player: &ReportPlayer) -> InteractionResponse {
     let (commander, partner) = match loaded.data.commanders.get(&player.discord_id) {
         Some(choices) => (choices.commander.name.clone(), choices.partner.name.clone()),
@@ -262,7 +262,7 @@ fn commander_line(loaded: &Loaded, player: &ReportPlayer) -> String {
     )
 }
 
-/// `WonForm.commanders/4`: the commander panel, with candidate pickers for `player_id`.
+/// The commander panel, with candidate pickers for `player_id`.
 pub fn commanders(
     loaded: &Loaded,
     kind: ResponseKind,
@@ -317,7 +317,7 @@ pub fn commanders(
     response(lines.join("\n"), components, kind)
 }
 
-/// `WonForm.review/4`.
+/// The draft's review message and its controls, showing `error` when given.
 pub fn review(loaded: &Loaded, kind: ResponseKind, error: Option<&str>) -> InteractionResponse {
     let draft_id = &loaded.draft.id;
     let data = &loaded.data;

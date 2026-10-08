@@ -122,7 +122,7 @@ pub struct SheetPreview {
     pub revision: String,
 }
 
-/// `SheetPreview.run/1`; parse failures are `ImportError::Message`.
+/// Previews a Google Sheet import; parse failures are `ImportError::Message`.
 pub async fn run(
     conn: &mut SqliteConnection,
     params: &SheetRequest,

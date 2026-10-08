@@ -137,7 +137,7 @@ fn rate_game(game: &Game, states: &mut BTreeMap<i64, State>) {
     }
 }
 
-/// `Elo.ratings/2` over `games` (newest first), highest rating first.
+/// Elo ratings over `games` (newest first), highest rating first.
 ///
 /// `window` is `(first local day, the instant it starts)`: earlier games are replayed so
 /// ratings carry in, but only players who played inside the window are returned, with peak,

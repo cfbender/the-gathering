@@ -8,6 +8,76 @@ Shared Magic code (Scryfall models and bulk data, decklist sources, name normali
 commander rules) comes from [lotus](https://github.com/cfbender/lotus); app-specific code
 lives here.
 
+## Architecture
+
+```text
+browser ──▶ socketioxide layer ─── /socket.io/ ──▶ table socket task ──▶ table channel
+   │            │                                                  │
+   │            └─▶ static files (priv/static)                     ├─▶ room task (webcam/)
+   │                                                               └─▶ SFU room (crates/sfu)
+   └──▶ request id + tower-http trace ──▶ session ──▶ CSRF ──▶ current user ──▶ guards ──▶ handler
+```
+
+**Requests.** `web::router` builds one axum router. The Socket.IO layer and static files
+sit outside the logged stack. Every other request gets a request id and a tower-http trace
+line (method, path, status, latency; never bodies or query strings), then passes three
+middlewares:
+
+- `session_layer`: decrypts the session cookie into a typed `SessionData` (axum-extra
+  private cookie) and writes it back only when a handler changed it.
+- `csrf_layer`: rejects state-changing requests whose `x-csrf-token` does not match the
+  session's token.
+- `current_user_layer`: looks up the session's `users_tokens` token and puts the user in
+  the request extensions.
+
+Route groups add guards with `route_layer`: `require_authenticated_user`, `require_admin`,
+`require_sudo_mode`. `/api/v1` is separate: personal API keys, with its own rate limit.
+
+**Handlers.** Handlers in `web/api/` take typed inputs through `web/extract.rs`. `JsonBody<T>`,
+`QueryParams<T>` and `PathParam<T>` deserialize with serde; a wrong type or a missing field
+is a 400. `Patch<T>` (`patch.rs`) tells "absent" from "null" in partial updates. Domain
+checks build a `ValidationError` (`validation.rs`), rendered as a 422 with
+`{"errors": {"field": ["message"]}}`. Every other failure is an `ApiError` (`error.rs`), and
+successes are wrapped as `{"data": ...}`.
+
+**Sessions and auth.** The cookie carries only a token, and the `users_tokens` row behind it
+grants access, so logging out or revocation ends a session everywhere. Passwords are bcrypt.
+Stored credentials (ManaVault API keys) and socket tokens are sealed with
+XChaCha20-Poly1305 (`crypto.rs`) under keys derived from `THE_GATHERING_SECRET_KEY`.
+
+**Realtime tables.** The webcam table speaks Socket.IO (socketioxide; the browser uses
+`socket.io-client`). `web/channels/` authenticates a socket while it connects (a sealed token
+from `GET /api/webcam-table/config`). Each socket's events go to one task, in order, and a
+`join` starts a table channel (`webcam_table.rs`). The channel validates events and rate-limits
+them per connection. It forwards game changes to the room task (`webcam/room.rs`: one tokio
+task per table, which saves before it broadcasts) and media signaling to the SFU
+(`crates/sfu`, str0m). Broadcasts go to a Socket.IO room per table, and `presence.rs` sends
+each table its roster whenever it changes.
+
+**Background tasks.** `serve` starts these:
+
+- the scheduled Scryfall catalog sync (`catalog/sync_server.rs`)
+- the decklist cache sweeper
+- the webcam pruner, which closes idle rooms and deletes expired sessions
+- the optional Discord bot and its `/newgame` scheduler
+
+Each is a tokio task that holds `AppState`; there is no job queue.
+
+## Compatibility constraints
+
+These keep existing installs working across upgrades and must not change casually:
+
+- **Migrations:** versions continue the numbering existing databases record in
+  `schema_migrations`. Never edit or renumber a migration that has shipped.
+- **Session cookies and credentials from releases up to 0.2:** `legacy.rs` reads them, so
+  upgrades keep people signed in and keep stored keys. It never writes them.
+- **Passwords:** bcrypt hashes at the configured cost. Existing hashes keep working.
+- **Stored identities:** imported games keep their `external_id` hashes (`imports/etf.rs`,
+  a frozen encoding), so re-imports recognize them. Saved table sessions keep their
+  `{"version": 2, ...}` JSON.
+- **Stored timestamps:** text columns. `UtcDateTime` reads every stored form (`Z`,
+  offsets, fractions, SQLite's `CURRENT_TIMESTAMP`) and writes `2026-10-06T21:21:40Z`.
+
 ## Layout
 
 - `crates/the-gathering/`: the server (library plus the `the-gathering` binary).
@@ -108,5 +178,6 @@ already record in `schema_migrations`, so they upgrade in place.
   columns decode as `UtcDateTime` (`AS "col: UtcDateTime"`).
 - Error messages, JSON shapes, and status codes are what the frontend depends on; change
   them together with the frontend and its tests.
-- Comments that mention "Elixir" record behavior of the earlier Elixir server that this one
-  keeps compatible with (cookies, stored identities) or bugs it fixed.
+- Comments that name an earlier release or the Elixir server explain an on-disk format this
+  server still reads (cookies, sealed credentials, stored identities, saved sessions); see
+  "Compatibility constraints".

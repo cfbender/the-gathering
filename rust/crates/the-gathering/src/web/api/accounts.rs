@@ -383,7 +383,7 @@ pub async fn admin_invite_create(State(state): State<AppState>) -> ApiResult<Res
     Ok(no_store(data(json!({ "token": token }))))
 }
 
-/// Phoenix's `redirect/2`: a 302 with a `location` header.
+/// A redirect: a 302 with a `location` header.
 pub fn found(location: &str) -> Response {
     let mut response = StatusCode::FOUND.into_response();
     if let Ok(value) = HeaderValue::from_str(location) {
@@ -458,7 +458,7 @@ pub async fn discord_request(
 
 /// Why the token exchange or profile request failed. The message names the step and the
 /// status or error class only: Discord's response body (and the request, which carries the
-/// code and client secret) never reach the log (`oauth_error_summary/1`).
+/// code and client secret) never reach the log.
 #[derive(Debug, thiserror::Error)]
 enum OauthError {
     #[error("Discord OAuth is not configured")]

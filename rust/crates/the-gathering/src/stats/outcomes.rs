@@ -6,7 +6,7 @@ use crate::games::{Game, Seat, WinCondition};
 
 use super::records::{float, float_i64, group_by, round};
 
-/// `kills/1`: totals over seats with recorded kills, per player most kills first.
+/// Totals over seats with recorded kills, per player most kills first.
 pub fn kills<'a>(seats: impl IntoIterator<Item = &'a Seat>) -> Value {
     let seats: Vec<&Seat> = seats.into_iter().collect();
     let recorded: Vec<&Seat> = seats
@@ -46,7 +46,7 @@ pub fn kills<'a>(seats: impl IntoIterator<Item = &'a Seat>) -> Value {
     })
 }
 
-/// `win_conditions/1`: games with a recorded (not unknown) condition, most common first.
+/// Games with a recorded (not unknown) condition, most common first.
 pub fn win_conditions<'a>(games: impl IntoIterator<Item = &'a Game>) -> Value {
     let games: Vec<&Game> = games.into_iter().collect();
     let recorded: Vec<WinCondition> = games

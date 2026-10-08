@@ -1,7 +1,7 @@
 //! The parts of a Discord interaction the bot reads, converted from twilight's model.
 //!
-//! Snowflakes are strings, as the Elixir code compared them (`to_string/1`). The invoking
-//! user comes from `user` in DMs and `member.user` in guilds.
+//! Snowflakes are strings, the form stored ids are compared in. The invoking user comes from
+//! `user` in DMs and `member.user` in guilds.
 
 use twilight_model::application::interaction::application_command::CommandOptionValue;
 use twilight_model::application::interaction::modal::ModalInteractionComponent;
@@ -101,7 +101,7 @@ pub enum OptionValue {
 }
 
 impl OptionValue {
-    /// The value as text (`to_string/1`): strings, integers, and user ids.
+    /// The value as text: strings, integers, and user ids.
     pub fn text(&self) -> Option<String> {
         match self {
             Self::String(value) | Self::User(value) => Some(value.clone()),
