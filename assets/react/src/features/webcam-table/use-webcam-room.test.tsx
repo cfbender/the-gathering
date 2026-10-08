@@ -259,6 +259,36 @@ it("late spectators never request a camera or publish life/counters", async () =
   expect(payloads("update_status")).toEqual([])
 })
 
+it("keeps the table in place while the connection is down and never shows this player twice", async () => {
+  const { result } = await joinedRoom()
+  const first = result.current.peerId
+  const theo = { ...saved, player_id: 19, player_name: "Theo", peer_id: "peer-theo" }
+  act(() => wire.presence([{ ...saved, peer_id: first }, theo]))
+
+  // The connection drops: same seat and roster until the rejoin is sent.
+  act(() => {
+    wire.socket!.connected = false
+    wire.socket!.fire("disconnect", "transport close")
+  })
+  expect(result.current.status).toMatch(/Reconnecting/)
+  expect(result.current.peerId).toBe(first)
+  expect(result.current.participants.map((seat) => seat.player_name)).toEqual(["Cody", "Theo"])
+
+  act(() => {
+    wire.socket!.connected = true
+    wire.socket!.fire("connect")
+  })
+  const second = result.current.peerId
+  expect(second).not.toBe(first)
+  expect(wire.joinParams().peer_id).toBe(second)
+  await act(async () => wire.joinPush().reply("ok", { participant: { ...saved, peer_id: second } }))
+  // Until the server replaces the dropped seat, the roster lists both of this player's seats.
+  act(() => wire.presence([{ ...saved, peer_id: first }, theo, { ...saved, peer_id: second }]))
+  expect(result.current.participants.map((seat) => seat.peer_id).sort()).toEqual(
+    ["peer-theo", second].sort(),
+  )
+})
+
 it("lists spectators from presence apart from the seats", async () => {
   const { result } = await joinedRoom()
   const self = { ...saved, peer_id: result.current.peerId }

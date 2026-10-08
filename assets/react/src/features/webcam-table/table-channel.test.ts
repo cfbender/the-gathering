@@ -77,6 +77,24 @@ it("rejoins with fresh params after the server drops the seat, backing off on re
   expect(room.state).toBe("joined")
 })
 
+it("drops signaling queued for the old connection when it rejoins, keeping other pushes", () => {
+  const room = channel()
+  room.join()
+  wire.joinPush().reply("ok", {})
+  wire.socket!.connected = false
+  wire.socket!.fire("disconnect", "transport close")
+  const candidate = vi.fn()
+  room.push("sfu_candidate", { candidate: {} }).receive("timeout", candidate)
+  room.push("update_status", { life: 12 })
+
+  wire.socket!.connected = true
+  wire.socket!.fire("connect")
+  expect(candidate).toHaveBeenCalledOnce()
+  wire.joinPush().reply("ok", {})
+  expect(wire.sent("sfu_candidate")).toEqual([])
+  expect(wire.sent("update_status").map(({ payload }) => payload)).toEqual([{ life: 12 }])
+})
+
 it("joins again on reconnect and ignores replies to superseded attempts", () => {
   const room = channel()
   const joined = vi.fn()

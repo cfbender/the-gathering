@@ -4,6 +4,14 @@ export type ReplyStatus = "ok" | "error" | "timeout"
 
 /** How long a push waits for its reply before it times out. */
 export const PUSH_TIMEOUT_MS = 10_000
+/** Signaling for one media connection; a rejoin starts a new one, so queued signals are stale. */
+const SIGNAL_EVENTS = new Set([
+  "sfu_offer",
+  "sfu_answer",
+  "sfu_candidate",
+  "sfu_layer",
+  "peer_message",
+])
 /** Delays between join attempts after the server drops the seat or refuses a join. */
 const REJOIN_DELAYS_MS = [1_000, 2_000, 5_000, 10_000]
 
@@ -59,6 +67,8 @@ export class TableChannel {
   private buffer: Buffered[] = []
   private attempt = 0
   private joinRef = 0
+  /** Set when the seat drops; the next join drops queued signals. */
+  private dropped = false
   private rejoinTimer: ReturnType<typeof setTimeout> | undefined
 
   constructor(
@@ -131,6 +141,15 @@ export class TableChannel {
   private sendJoin() {
     clearTimeout(this.rejoinTimer)
     this.state = "joining"
+    if (this.dropped) {
+      this.dropped = false
+      const stale = this.buffer.filter((entry) => SIGNAL_EVENTS.has(entry.event))
+      this.buffer = this.buffer.filter((entry) => !SIGNAL_EVENTS.has(entry.event))
+      for (const entry of stale) {
+        clearTimeout(entry.timer)
+        entry.push.settle("timeout", {})
+      }
+    }
     const ref = ++this.joinRef
     const reply = new Push()
       .receive("ok", (response) => {
@@ -164,6 +183,7 @@ export class TableChannel {
 
   private fail(reason: string) {
     this.state = "errored"
+    this.dropped = true
     this.joinRef++
     for (const callback of this.errorCallbacks) callback(reason)
   }

@@ -42,7 +42,9 @@ export interface RoomChannelHandlers {
   /** Every successful (re)join, after `link.spectator` is set. `owner` is the server's
    * decision that this seat holds the table controls (room creator or an admin). */
   onJoined: (participant: TableParticipant | undefined, owner: boolean) => void
-  /** The channel dropped; `link.peerId` is already a new media generation. */
+  /** The seat is about to rejoin after a drop; `link.peerId` is already a new media
+   * generation. Runs when the rejoin is sent, not when the connection drops, so a brief drop
+   * leaves the table on screen as it was. */
   onChannelError: () => void
   /** The room owner ended the table; the channel and socket are already closed. */
   onClosed: () => void
@@ -121,29 +123,48 @@ export function useRoomChannel(
             })
           }, wait)
         }
-        socket.on("disconnect", (reason) => {
+        socket.on("disconnect", (reason, details) => {
           // A disconnect is routine on leaving; a stream of them is why seats keep "Connecting…".
-          console.warn("Table socket disconnected", reason)
+          console.warn("Table socket disconnected", reason, details)
           if (reason === "io server disconnect") {
             on().setStatus("Reconnecting… Your game is saved.")
             reconnect()
           }
         })
         socket.on("connect_error", (error) => {
-          console.warn("Table socket error", error.message)
+          console.warn(
+            "Table socket error",
+            error.message,
+            (error as { description?: unknown }).description,
+          )
           on().setStatus("Reconnecting… Your game is saved.")
           if (current.active) void refreshToken()
           else reconnect()
         })
-        const room = new TableChannel(socket, () => ({
-          room_id: roomId,
-          peer_id: link.peerId,
-          player_id: playerId,
-          deck_id: deckId,
-        }))
+        // Set when the seat drops. The next join starts a new media generation: a retry that
+        // reused the peer ID could leave this browser offering to the old connection.
+        let dropped = false
+        const room = new TableChannel(socket, () => {
+          if (dropped) {
+            dropped = false
+            link.peerId = crypto.randomUUID()
+            on().onChannelError()
+          }
+          return { room_id: roomId, peer_id: link.peerId, player_id: playerId, deck_id: deckId }
+        })
         link.channel = room
         on().bind(room)
-        room.on("presence", (everyone: TableParticipant[]) => on().onPresence(everyone))
+        // A player holds one seat. Until the server has replaced this tab's previous seat (a
+        // connection that dropped without closing), the roster can still list it; never show it
+        // as another player.
+        room.on("presence", (everyone: TableParticipant[]) =>
+          on().onPresence(
+            everyone.filter(
+              (participant) =>
+                participant.player_id !== playerId || participant.peer_id === link.peerId,
+            ),
+          ),
+        )
         room.on("sfu_offer", (offer: SfuOffer) => on().onSfuOffer(offer))
         room.on("sfu_candidate", (payload: { candidate: RTCIceCandidateInit }) =>
           on().onSfuCandidate(payload),
@@ -166,10 +187,7 @@ export function useRoomChannel(
         })
         room.onError((reason) => {
           console.warn("Table channel error; rejoining with a new seat connection", reason)
-          // A channel retry is a new media generation. Reusing its peer ID can
-          // leave one browser offering to an old connection after presence resets.
-          link.peerId = crypto.randomUUID()
-          on().onChannelError()
+          dropped = true
           on().setStatus("Reconnecting… Your game is saved.")
         })
         room
