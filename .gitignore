@@ -1,6 +1,9 @@
 # Rust build output
 /rust/target/
 
+# Generated dependency files
+/deps/
+
 # JavaScript
 /node_modules/
 
