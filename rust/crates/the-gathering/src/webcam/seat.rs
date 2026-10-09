@@ -58,6 +58,9 @@ pub struct Seat {
     /// Join time (ms); the default seat order is join order.
     #[serde(default)]
     pub joined_at: i64,
+    /// Server-owned rematch generation; stale channel snapshots cannot cross a reset.
+    #[serde(default)]
+    pub generation: u64,
     /// Life total.
     #[serde(default = "starting_life")]
     pub life: i64,
@@ -113,6 +116,7 @@ impl Seat {
             player_id,
             player_name,
             joined_at,
+            generation: 0,
             life: STARTING_LIFE,
             camera_off: false,
             camera_height: None,
@@ -143,6 +147,7 @@ impl Seat {
     #[must_use]
     pub fn reset(self) -> Self {
         Self {
+            generation: self.generation + 1,
             life: STARTING_LIFE,
             poison: 0,
             rad: 0,

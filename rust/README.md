@@ -116,6 +116,8 @@ These keep existing installs working across upgrades and must not change casuall
 - `migrations/`: the schema, one SQL file per migration.
 - `schema.sql`: the schema those migrations produce (generated, committed for review).
 - `.sqlx/`: committed query metadata for offline builds.
+- `models/`: bounded TLA+/TLC models and [reproduction instructions](models/README.md)
+  for webcam rematch isolation, including original counterexamples and the fixed model.
 
 ## Commands
 

@@ -260,6 +260,7 @@ async fn a_rematch_resets_the_same_room_to_a_lobby_keeping_present_seats_connect
         .await;
     assert_eq!(t.snapshot().await.cards.len(), 1);
 
+    let previous_revision = t.snapshot().await.turns.revision;
     t.alice.ok("rematch", json!({})).await;
     let state = t
         .alice
@@ -277,7 +278,7 @@ async fn a_rematch_resets_the_same_room_to_a_lobby_keeping_present_seats_connect
             &state["turns"]["counts"],
             &state["turns"]["revision"]
         ),
-        (&Value::Null, &json!({}), &json!(0))
+        (&Value::Null, &json!({}), &json!(previous_revision + 1))
     );
     assert_eq!(state["monarch"]["holder"], Value::Null);
     assert_eq!(
@@ -372,6 +373,157 @@ async fn a_rematch_resets_the_same_room_to_a_lobby_keeping_present_seats_connect
         })
         .await;
     assert_eq!(order["shuffled"], false);
+}
+
+#[tokio::test]
+async fn tlc_rematch_rejects_a_pass_captured_in_the_previous_game() {
+    let mut t = Table::new().await;
+    let _bob = t.join_player(PEER_B, "Bob").await;
+    t.alice
+        .ok("arrange_seats", json!({ "peer_ids": [PEER_A, PEER_B] }))
+        .await;
+    t.alice
+        .ok("start_game", json!({ "randomize": false }))
+        .await;
+    let old_revision = t.snapshot().await.turns.revision;
+
+    // TLC: Start -> CapturePass -> Rematch -> Start -> DeliverPass.
+    // Delay the old request until the next game; no sleeps or timing race needed.
+    t.alice.ok("rematch", json!({})).await;
+    t.alice
+        .ok("start_game", json!({ "randomize": false }))
+        .await;
+    let before = t.snapshot().await.turns;
+    let (status, _) = t
+        .alice
+        .call("pass_turn", json!({ "revision": old_revision }))
+        .await;
+    let after = t.snapshot().await.turns;
+    assert_eq!(
+        (status.as_str(), after.active_player_id, after.counts),
+        ("error", before.active_player_id, before.counts),
+        "a previous game's pass must not advance the rematch"
+    );
+    // The guard must not disable legitimate passes or their undo in the new game.
+    t.alice
+        .ok("pass_turn", json!({ "revision": before.revision }))
+        .await;
+    let passed = t.snapshot().await.turns;
+    assert_ne!(passed.active_player_id, before.active_player_id);
+    t.alice
+        .ok("unpass_turn", json!({ "revision": passed.revision }))
+        .await;
+    assert_eq!(
+        t.snapshot().await.turns.active_player_id,
+        before.active_player_id
+    );
+}
+
+#[tokio::test]
+async fn tlc_rematch_preserves_reset_life_when_an_in_flight_seat_update_arrives() {
+    use the_gathering::webcam::room::{Conn, ConnEvent};
+    use the_gathering::webcam::seat::Seat;
+    use tokio::sync::mpsc;
+
+    let app = crate::support::TestApp::new().await;
+    let tables = &app.state.webcam_tables;
+    let room = room_id();
+    let mut inboxes = Vec::new();
+    for (id, conn_id, peer_id, name) in [(1, 1, PEER_A, "Alice"), (2, 2, PEER_B, "Bob")] {
+        let (tx, rx) = mpsc::unbounded_channel();
+        tables
+            .join(
+                &room,
+                Seat::new(peer_id.into(), id, name.into(), id),
+                Conn { id: conn_id, tx },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        inboxes.push(rx);
+    }
+    let mut bob = tables.snapshot(&room).await.unwrap().seats[1].clone();
+    bob.life = 17;
+    assert!(
+        tables
+            .remember_seat(&room, bob.clone(), 2, None)
+            .await
+            .unwrap()
+    );
+
+    // TLC: Damage -> PrepareSeat -> Rematch -> RememberSeat. A camera-only
+    // handler has captured the old seat. Polling rematch first deterministically
+    // queues the owner's command ahead of Bob's, without interrupting either.
+    bob.camera_off = true;
+    let (reset, update) = tokio::join!(
+        biased;
+        tables.rematch(&room),
+        tables.remember_seat(&room, bob.clone(), 2, None),
+    );
+    reset.unwrap();
+    assert!(!update.unwrap());
+
+    // Reject a stale update's elimination too, not just its life/counter snapshot.
+    bob.life = 0;
+    assert!(
+        !tables
+            .remember_seat(&room, bob, 2, Some(true))
+            .await
+            .unwrap()
+    );
+
+    // The channel consumes its queued reset after the in-flight handler returns.
+    let ConnEvent::SeatReset(reset) = inboxes[1].try_recv().unwrap() else {
+        panic!("expected a rematch reset");
+    };
+    assert_eq!(reset.life, 40);
+    let snapshot = tables.snapshot(&room).await.unwrap();
+    let saved = session::load(app.pool(), &room).await.unwrap().unwrap();
+    assert_eq!(
+        (snapshot.seats[1].life, saved.all_seats[&2].life),
+        (40, 40),
+        "an in-flight camera update must not restore the previous game's life"
+    );
+    assert!(!snapshot.seats[1].eliminated);
+    assert!(saved.eliminated_seats.is_empty());
+
+    // The reset generation accepts new updates, including an atomic elimination.
+    let mut bob = *reset;
+    bob.life = 0;
+    assert!(
+        tables
+            .remember_seat(&room, bob, 2, Some(true))
+            .await
+            .unwrap()
+    );
+    let saved = session::load(app.pool(), &room).await.unwrap().unwrap();
+    assert_eq!(saved.all_seats[&2].life, 0);
+    assert!(saved.all_seats[&2].eliminated);
+
+    // A saved generation survives a room restart and another rematch.
+    tables.kill(&room);
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let joined = tables
+        .join(
+            &room,
+            Seat::new(PEER_B.into(), 2, "Bob".into(), 2),
+            Conn { id: 3, tx },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(joined.participant.generation, 1);
+    tables.rematch(&room).await.unwrap();
+    assert!(
+        !tables
+            .remember_seat(&room, joined.participant, 3, None)
+            .await
+            .unwrap()
+    );
+    let mut bob = tables.snapshot(&room).await.unwrap().seats[0].clone();
+    bob.life = 29;
+    assert!(tables.remember_seat(&room, bob, 3, None).await.unwrap());
+    assert_eq!(tables.snapshot(&room).await.unwrap().seats[0].life, 29);
 }
 
 #[tokio::test]

@@ -557,9 +557,14 @@ impl Channel {
         self.socket.state.presence.has_key(&self.topic, peer_id)
     }
 
-    async fn remember_seat(&self) -> Result<(), RoomGone> {
+    async fn remember_seat(&self, eliminated: Option<bool>) -> Result<bool, RoomGone> {
         self.tables()
-            .remember_seat(&self.room_id, self.participant.clone(), self.conn_id)
+            .remember_seat(
+                &self.room_id,
+                self.participant.clone(),
+                self.conn_id,
+                eliminated,
+            )
             .await
     }
 
@@ -608,10 +613,12 @@ impl Channel {
     }
 
     /// Presence tells every seat who may see the board; the SFU enforces it on the media.
-    async fn put_reveal(&mut self, target: Option<String>) -> Result<(), RoomGone> {
+    async fn put_reveal(&mut self, target: Option<String>) -> Result<bool, RoomGone> {
         self.participant.reveal_to = target;
+        if !self.remember_seat(None).await? {
+            return Ok(false);
+        }
         self.update_presence();
-        self.remember_seat().await?;
         let _ = self
             .socket
             .state
@@ -622,7 +629,7 @@ impl Channel {
                 self.participant.reveal_to.as_deref(),
             )
             .await;
-        Ok(())
+        Ok(true)
     }
 
     async fn handle_in(&mut self, event: &str, payload: &Value) -> Handled {
@@ -889,6 +896,9 @@ impl Channel {
             Some(deck) if deck.player_id == self.participant.player_id => {
                 self.participant.deck_id = Some(deck.id);
                 self.participant.deck_name = Some(deck.name);
+                if !self.remember_seat(None).await? {
+                    return error("seat has changed; try again");
+                }
                 self.update_presence();
                 // Peers may have cached the deck list before this deck was created or edited.
                 let _ = state
@@ -896,7 +906,6 @@ impl Channel {
                     .to(self.topic.clone())
                     .emit("deck_selected", &json!({ "deck_id": deck.id }))
                     .await;
-                self.remember_seat().await?;
                 reply(Reply::ok())
             }
             _ => error("deck does not belong to player"),
@@ -916,7 +925,9 @@ impl Channel {
         if !allowed {
             return error("reveal target must be another seated player");
         }
-        self.put_reveal(target).await?;
+        if !self.put_reveal(target).await? {
+            return error("seat has changed; try again");
+        }
         reply(Reply::ok())
     }
 
@@ -935,13 +946,10 @@ impl Channel {
         }
         let eliminated = changes.eliminated;
         changes.apply(&mut self.participant);
-        self.update_presence();
-        self.remember_seat().await?;
-        if let Some(eliminated) = eliminated {
-            self.tables()
-                .eliminate(&self.room_id, &self.participant.peer_id, eliminated)
-                .await?;
+        if !self.remember_seat(eliminated).await? {
+            return error("seat has changed; try again");
         }
+        self.update_presence();
         reply(Reply::ok())
     }
 

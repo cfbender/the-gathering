@@ -299,15 +299,17 @@ impl WebcamTables {
             .await
     }
 
-    /// Records the calling connection's seat (life, counters, deck, reveal).
+    /// Records the calling connection's seat and optional elimination atomically.
+    /// Returns false when the connection or seat generation is stale, or the seat is gone.
     pub async fn remember_seat(
         &self,
         room: &str,
         participant: Seat,
         conn_id: u64,
-    ) -> Result<(), RoomGone> {
+        eliminated: Option<bool>,
+    ) -> Result<bool, RoomGone> {
         self.call(room, |reply| {
-            RoomMsg::RememberSeat(Box::new(participant), conn_id, reply)
+            RoomMsg::RememberSeat(Box::new(participant), conn_id, eliminated, reply)
         })
         .await
     }

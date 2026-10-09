@@ -315,8 +315,8 @@ pub enum RoomMsg {
     Rematch(Reply<()>),
     /// Whether the connection is the player's current one.
     Current(i64, u64, Reply<bool>),
-    /// Record the calling connection's seat.
-    RememberSeat(Box<Seat>, u64, Reply<()>),
+    /// Record the calling connection's seat and optional elimination atomically.
+    RememberSeat(Box<Seat>, u64, Option<bool>, Reply<bool>),
     /// Reorder mid-game (Commander).
     Order(Vec<String>, Reply<()>),
     /// Arrange the lobby.
@@ -675,9 +675,11 @@ impl Room {
                     }
                 }
             }
-            RoomMsg::RememberSeat(participant, conn_id, reply) => {
-                self.remember_seat(entry, *participant, conn_id).await?;
-                let _ = reply.send(());
+            RoomMsg::RememberSeat(participant, conn_id, eliminated, reply) => {
+                let accepted = self
+                    .remember_seat(entry, *participant, conn_id, eliminated)
+                    .await?;
+                let _ = reply.send(accepted);
             }
             RoomMsg::Order(peers, reply) => {
                 self.reorder(entry, peers, false).await?;
@@ -975,7 +977,11 @@ impl Room {
         let log = log::append(&[], log::rematch(), now());
         let entry = Entry {
             timer: Timer::new(),
-            turns: Turns::default(),
+            turns: Turns {
+                // Turn commands from any earlier game must stay stale.
+                revision: entry.turns.revision + 1,
+                ..Turns::default()
+            },
             team_life: BTreeMap::new(),
             monarch: None,
             // A higher revision, so clients drop the old crown rather than ignore a stale event.
@@ -1003,41 +1009,53 @@ impl Room {
         Ok(())
     }
 
-    /// Only the seat's current connection may update it, so a replaced tab's late updates
-    /// cannot overwrite the reloaded seat.
+    /// Only the seat's current connection and generation may update it. Apply an explicit
+    /// elimination in this same command so a rematch cannot split a status update in two.
     async fn remember_seat(
         &mut self,
         mut entry: Entry,
         mut participant: Seat,
         conn_id: u64,
-    ) -> Result<(), sqlx::Error> {
+        eliminated: Option<bool>,
+    ) -> Result<bool, sqlx::Error> {
         if self
             .connection(participant.player_id)
             .is_none_or(|conn| conn.id != conn_id)
         {
-            return Ok(());
+            return Ok(false);
         }
         // A missing seat leaves nothing to remember.
         let Some(previous) = entry.all_seats.get(&participant.player_id).cloned() else {
-            return Ok(());
+            return Ok(false);
         };
+        if participant.generation != previous.generation {
+            return Ok(false);
+        }
         participant.eliminated = previous.eliminated;
-        let mut eliminated_seats = entry.eliminated_seats.clone();
-        put_eliminated(&mut eliminated_seats, &participant);
-        let changed = eliminated_seats != entry.eliminated_seats;
-        entry.eliminated_seats = eliminated_seats;
+        let old_eliminated_seats = entry.eliminated_seats.clone();
+        put_eliminated(&mut entry.eliminated_seats, &participant);
         entry
             .all_seats
             .insert(participant.player_id, participant.clone());
-        let entry = entry.reconcile_turn();
         let seats: Vec<Seat> = entry.all_seats.values().cloned().collect();
         let entry = entry.log(log::seat_changes(&previous, &participant, &seats));
-        let events = if changed {
-            vec![eliminated_seats_event(&entry), Broadcast::TableState]
+        let entry = if let Some(eliminated) = eliminated {
+            let targets = if entry.mode == Mode::TwoHeadedGiant {
+                turns::team(&entry.ordered_seats(), participant.player_id).to_vec()
+            } else {
+                vec![participant]
+            };
+            self.eliminate_seats(entry, targets, eliminated)
         } else {
-            vec![Broadcast::TableState]
+            entry.reconcile_turn()
         };
-        self.commit(entry, events).await
+        let events = if old_eliminated_seats == entry.eliminated_seats {
+            vec![Broadcast::TableState]
+        } else {
+            vec![eliminated_seats_event(&entry), Broadcast::TableState]
+        };
+        self.commit(entry, events).await?;
+        Ok(true)
     }
 
     async fn team_life(
