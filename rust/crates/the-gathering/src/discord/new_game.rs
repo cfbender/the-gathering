@@ -116,8 +116,12 @@ fn error_message(error: &QueueError) -> &'static str {
         QueueError::Forbidden => {
             "Use this game's original server and channel. Only its host or a Discord Administrator can change its time or cancel it."
         }
-        QueueError::Invalid | QueueError::Database(_) => {
+        QueueError::Invalid => {
             "Use a minimum of 2–10 players and a title/format of at most 100 characters."
+        }
+        QueueError::Database(error) => {
+            tracing::error!("Discord newgame database operation failed: {error}");
+            "The game could not be saved because of a server error. Please try again later."
         }
     }
 }

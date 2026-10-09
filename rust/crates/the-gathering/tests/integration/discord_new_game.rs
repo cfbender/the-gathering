@@ -318,6 +318,50 @@ async fn public_command_persists_defaults_time_title_format_and_message_identity
 }
 
 #[tokio::test]
+async fn default_command_succeeds_and_database_failures_are_not_reported_as_invalid_options() {
+    let (_guard, logs) = support::capture_logs();
+    let ctx = setup().await;
+    ctx.respond(&newgame(vec![])).await.unwrap();
+    assert_eq!(
+        response(ctx.api.next()).kind,
+        ResponseKind::DeferredChannelMessage
+    );
+    let game = ctx.only_game().await;
+    assert_eq!(game.title, "Commander game");
+    assert_eq!(game.min_players, 3);
+    assert_eq!(game.format, None);
+    assert_eq!(game.start_at, None);
+    ctx.api.take();
+
+    sqlx::raw_sql(
+        "CREATE TRIGGER fail_newgame BEFORE INSERT ON discord_scheduled_games
+         BEGIN SELECT RAISE(ABORT, 'test storage failure'); END;",
+    )
+    .execute(ctx.app.pool())
+    .await
+    .unwrap();
+    logs.clear();
+    ctx.respond(&newgame(vec![])).await.unwrap();
+    let reply = response(ctx.api.next());
+    assert_eq!(reply.kind, ResponseKind::ChannelMessage);
+    let message = reply.message_data().unwrap();
+    assert_eq!(message.flags, Some(64));
+    assert_eq!(
+        message.content.as_deref(),
+        Some("The game could not be saved because of a server error. Please try again later.")
+    );
+    let log = logs.contents();
+    assert!(
+        log.contains("Discord newgame database operation failed"),
+        "{log}"
+    );
+    assert!(log.contains("test storage failure"), "{log}");
+    assert!(!log.contains("test-only-token"));
+    assert_eq!(ctx.only_game().await.id, game.id);
+    assert!(ctx.api.is_idle());
+}
+
+#[tokio::test]
 async fn invalid_time_bounds_dms_and_foreign_guilds_fail_privately_without_creating_queues() {
     let ctx = setup().await;
     let mut dm = newgame(vec![]);
