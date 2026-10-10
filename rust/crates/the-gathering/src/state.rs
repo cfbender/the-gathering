@@ -15,6 +15,7 @@ use crate::config::Config;
 use crate::db::Pool;
 use crate::decklists::Decklists;
 use crate::games::Games;
+use crate::logs::LogHub;
 use crate::rate_limit::RateLimiter;
 use crate::self_update::SelfUpdate;
 use crate::web::channels::presence::Presence;
@@ -64,6 +65,8 @@ pub struct Inner {
     pub webcam_tables: WebcamTables,
     /// Self-update from the admin UI.
     pub self_update: SelfUpdate,
+    /// Live server logs for administrators.
+    pub logs: LogHub,
 }
 
 impl Deref for AppState {
@@ -75,8 +78,13 @@ impl Deref for AppState {
 }
 
 impl AppState {
-    /// Builds the state around an open, migrated pool.
+    /// Builds the state around an open, migrated pool, with its own (unattached) log hub.
     pub fn new(config: Config, pool: Pool) -> anyhow::Result<Self> {
+        Self::new_with_logs(config, pool, LogHub::default())
+    }
+
+    /// Builds the state with the log hub the tracing subscriber already publishes into.
+    pub fn new_with_logs(config: Config, pool: Pool, logs: LogHub) -> anyhow::Result<Self> {
         let games = Games::new(
             pool.clone(),
             crate::games::DeckLinks::new(config.manavault_url.as_deref()),
@@ -133,6 +141,7 @@ impl AppState {
             presence,
             webcam_tables,
             self_update,
+            logs,
         }));
         crate::web::channels::serve(&state);
         Ok(state)

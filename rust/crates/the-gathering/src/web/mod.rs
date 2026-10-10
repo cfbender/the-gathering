@@ -6,6 +6,7 @@
 //! personal API keys.
 
 pub mod api;
+pub mod audit;
 pub mod auth;
 pub mod channels;
 pub mod extract;
@@ -22,7 +23,9 @@ use axum::routing::{any, delete, get, patch, post, put};
 use crate::error::ApiError;
 use crate::state::AppState;
 
-use self::api::{accounts, admin, cardid, cards, discord, games, imports, stats, webcam};
+use self::api::{
+    accounts, admin, cardid, cards, discord, games, imports, server_logs, stats, webcam,
+};
 use self::auth::{require_admin, require_authenticated_user, require_sudo_mode};
 
 /// The rate-limit bucket guarding a route group.
@@ -182,6 +185,12 @@ pub fn router(state: AppState) -> Router {
         .route_layer(from_fn(require_authenticated_user));
 
     let sudo_admins = Router::new()
+        .route("/api/admin/audit", get(api::audit::index))
+        .route("/api/admin/audit/{id}", get(api::audit::show))
+        .route(
+            "/api/admin/server-logs",
+            get(server_logs::server_logs_stream),
+        )
         .route("/api/imports/csv", post(imports::csv_create))
         .route(
             "/api/imports/mythic_track",
@@ -269,6 +278,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api", any(api_not_found))
         .route("/api/{*path}", any(api_not_found))
         .merge(browser)
+        .layer(from_fn_with_state(state.clone(), audit::layer))
         .layer(from_fn_with_state(state.clone(), auth::current_user_layer))
         .layer(from_fn(session::csrf_layer))
         .layer(from_fn_with_state(state.clone(), session::session_layer));

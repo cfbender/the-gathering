@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", entity, entity_id, before_json AS \"before: sqlx::types::Json<Value>\",\n                  after_json AS \"after: sqlx::types::Json<Value>\", inserted_at AS \"inserted_at: UtcDateTime\"\n           FROM audit_changes WHERE operation_id = ? ORDER BY id LIMIT ? OFFSET ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "audit_changes",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "entity",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_changes",
+            "name": "entity"
+          }
+        }
+      },
+      {
+        "name": "entity_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_changes",
+            "name": "entity_id"
+          }
+        }
+      },
+      {
+        "name": "before: sqlx::types::Json<Value>",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_changes",
+            "name": "before_json"
+          }
+        }
+      },
+      {
+        "name": "after: sqlx::types::Json<Value>",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_changes",
+            "name": "after_json"
+          }
+        }
+      },
+      {
+        "name": "inserted_at: UtcDateTime",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_changes",
+            "name": "inserted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "d7fb320570b7414fc99306f4e3a63a48484a0043eab03d7aebb32d82fbc72e21"
+}

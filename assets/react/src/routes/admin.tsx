@@ -9,7 +9,10 @@ export const Route = createFileRoute("/admin")({
 function AdminLayout() {
   return (
     <div className="flex flex-col gap-6">
-      <nav className="tabs tabs-box w-fit max-w-full" aria-label="Administration sections">
+      <nav
+        className="tabs tabs-box w-fit max-w-full flex-wrap"
+        aria-label="Administration sections"
+      >
         <Link to="/admin/users" className="tab" activeProps={{ className: "tab-active" }}>
           Users
         </Link>
@@ -24,6 +27,12 @@ function AdminLayout() {
         </Link>
         <Link to="/admin/discord" className="tab" activeProps={{ className: "tab-active" }}>
           Discord
+        </Link>
+        <Link to="/admin/audit" className="tab" activeProps={{ className: "tab-active" }}>
+          Audit log
+        </Link>
+        <Link to="/admin/server-logs" className="tab" activeProps={{ className: "tab-active" }}>
+          Server logs
         </Link>
       </nav>
       <Outlet />

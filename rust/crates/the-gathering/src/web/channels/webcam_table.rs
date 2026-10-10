@@ -648,6 +648,52 @@ impl Channel {
         if !self.owner && OWNER_EVENTS.contains(&event) {
             return error("only the room owner can change table controls");
         }
+        if signal || event == "timer_sync" {
+            return self.dispatch(event, payload).await;
+        }
+        if !OWNER_EVENTS.contains(&event)
+            && ![
+                "cards",
+                "choose_deck",
+                "reveal",
+                "update_status",
+                "take_monarch",
+                "set_eliminated",
+                "adjust_team_life",
+                "pass_turn",
+                "unpass_turn",
+                "begin_play",
+                "roll",
+            ]
+            .contains(&event)
+        {
+            return error("unknown event");
+        }
+        let state = self.socket.state.clone();
+        let id = crate::audit::start(
+            &state.pool,
+            Some(&self.socket.user),
+            &format!("TABLE {event}"),
+            &format!("/table/{}", self.room_id),
+            None,
+        )
+        .await?;
+        let result = crate::audit::scope(id, self.dispatch(event, payload)).await;
+        let status = match &result {
+            Ok(Some(Reply::Error(_))) => 422,
+            Ok(_) => 200,
+            Err(_) => 500,
+        };
+        if let Err(error) = crate::audit::finish(&state.pool, id, status).await {
+            tracing::error!(
+                operation_id = id,
+                "could not complete table audit operation: {error}"
+            );
+        }
+        result
+    }
+
+    async fn dispatch(&mut self, event: &str, payload: &Value) -> Handled {
         match event {
             "cards" => self.cards(payload).await,
             "sfu_offer" => self.sfu_offer(payload).await,

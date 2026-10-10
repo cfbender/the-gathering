@@ -2,11 +2,13 @@
 
 pub mod accounts;
 pub mod admin;
+pub mod audit;
 pub mod cardid;
 pub mod cards;
 pub mod discord;
 pub mod games;
 pub mod imports;
+pub mod server_logs;
 pub mod stats;
 pub mod webcam;
 

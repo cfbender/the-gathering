@@ -349,6 +349,45 @@ permissions and stops working when the account is disabled. See [Personal API ke
 See [Discord integration](docs/discord-integration.md) for bot creation, permissions, and current tracking behavior.
 See [CSV game import](docs/csv-import.md) for the spreadsheet format and admin import flow, and [Mythic Track import](docs/mythic-track-import.md) for moving an existing Mythic Track playgroup over.
 
+### Audit history and live logs
+
+**Administration → Audit log** records member and administrator operations, with the actor's
+identity at the time, target, request ID, response status, and paginated before/after snapshots.
+Both audit history and **Server logs** require an administrator with authentication in the last
+ten minutes. Search audit history by username, operation, or target, and filter by outcome.
+
+Known mutating HTTP API requests (after CSRF validation), Discord sign-in callbacks, handled
+Discord commands/components, and permitted, rate-limited webcam table controls are recorded.
+Ordinary reads, page views, socket presence, timer synchronization, media/signaling traffic,
+and unknown routes/events are excluded. Discord operations are marked **Accepted**, not a claim
+that a game was saved; inspect their committed changes. HTTP failures can also have partial
+commits; an unknown outcome means the request is still running or its final status was not saved.
+
+SQLite triggers record safe columns of users, players, decks, games, game seats, server settings,
+API-key metadata, sheet import receipts, pending Discord reports, and result drafts. Snapshots
+commit and roll back with the data, including cascaded deletions. Actor attribution is scoped to
+each write transaction; deleting or renaming an account does not erase its audit identity. Writes
+outside a user operation (such as background jobs or SQL maintenance) retain snapshots with a
+NULL `operation_id` in `audit_changes`, but are not listed as user operations in the panel.
+
+History starts at this migration, is retained indefinitely in the application database, and has
+no UI delete/clear action. For manual reconstruction, follow `audit_changes.id` order (requests
+can overlap), using the related IDs in each snapshot. There is no automatic undo, complete initial
+snapshot, or tamper-proof guarantee: database administrators can change this database. Keep database
+backups. Audit history is not included in portable game exports. Transient webcam state, scheduled
+Discord queues, card images/corrections, catalog/cache data, and external effects are not snapshotted.
+Passwords, credential hashes, session tokens, invitation secrets, raw request bodies, and query
+strings are excluded; credential changes record the action, not recoverable secret values.
+
+**Server logs** follows the Rust process's tracing events over Server-Sent Events, using the same
+`LOG_LEVEL`/`RUST_LOG` filter as stdout. It retains only the newest 200 messages in the browser,
+does not replay old messages, and reports dropped messages if a reader falls behind. **Clear** only
+clears that browser's buffer. Access is rechecked every five seconds and before each batch; logout,
+revocation, demotion, or expired authentication ends the stream. Reverse proxies must permit
+unbuffered, long-lived SSE responses. System service/container logs remain available separately.
+ANSI/control characters and secret-named structured fields are removed, but free-form log messages
+are not automatically redacted; application code must never log credentials.
+
 ### Card catalog
 
 The app downloads Scryfall's compressed `default_cards` JSONL feed when the catalog is empty and refreshes it weekly. The response is streamed to a temporary file and decoded incrementally, then a complete staged generation is published atomically. Search uses only SQLite after sync; run a refresh manually with:

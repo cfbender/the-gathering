@@ -4,9 +4,12 @@ use std::net::SocketAddr;
 
 use anyhow::Context;
 use the_gathering::config::Config;
+use the_gathering::logs::LogHub;
 use the_gathering::state::AppState;
 use the_gathering::{catalog, db, decklists, discord, web};
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 fn usage() -> anyhow::Error {
     anyhow::anyhow!(
@@ -25,13 +28,19 @@ async fn main() -> anyhow::Result<()> {
     } else {
         level
     };
-    tracing_subscriber::fmt()
-        .with_env_filter(
+    // One filter for stdout and the live log hub, so administrators see what the console does.
+    let logs = LogHub::default();
+    tracing_subscriber::registry()
+        .with(
             EnvFilter::try_from_env("RUST_LOG")
                 .unwrap_or_else(|_| EnvFilter::new(format!("{level},sqlx=warn"))),
         )
-        // Container and journald logs are not terminals; keep escape codes out of them.
-        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
+        .with(
+            tracing_subscriber::fmt::layer()
+                // Container and journald logs are not terminals; keep escape codes out of them.
+                .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout())),
+        )
+        .with(logs.layer())
         .init();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -46,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
     if !applied.is_empty() {
         tracing::info!("applied {} migration(s)", applied.len());
     }
-    let state = AppState::new(config, pool)?;
+    let state = AppState::new_with_logs(config, pool, logs)?;
     let reencrypted = state.accounts.reencrypt_legacy_secrets().await?;
     if reencrypted > 0 {
         tracing::info!("re-encrypted {reencrypted} stored credential(s) in the current format");
@@ -137,12 +146,13 @@ async fn serve(state: AppState) -> anyhow::Result<()> {
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown())
+    .with_graceful_shutdown(shutdown(state.logs.clone()))
     .await?;
     Ok(())
 }
 
-async fn shutdown() {
+/// Waits for Ctrl-C or SIGTERM, then ends live log streams so in-flight requests can finish.
+async fn shutdown(logs: LogHub) {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -160,4 +170,5 @@ async fn shutdown() {
         () = ctrl_c => {},
         () = terminate => {},
     }
+    logs.shut_down();
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE audit_operations SET actor_id = ?, actor_name = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "bc6ecf2b0e22e273bb8d7d78b9afcd9bf0885143e775d3dd34d56c61a90a28bc"
+}

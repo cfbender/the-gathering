@@ -123,11 +123,12 @@ pub async fn resolve_pending(
 
 /// `false` when there is no such game.
 pub async fn discard_pending(pool: &Pool, id: i64) -> Result<bool, sqlx::Error> {
-    let mut conn = pool.acquire().await?;
+    let mut conn = db::begin(pool).await?;
     if pending::get(&mut conn, id).await?.is_none() {
         return Ok(false);
     }
     pending::delete(&mut conn, id).await?;
+    conn.commit().await?;
     Ok(true)
 }
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE audit_operations SET status = ?, completed_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "e9298788142b62b438e340389c08c49ddecd31fcdc32115391cae8320b5d41fa"
+}

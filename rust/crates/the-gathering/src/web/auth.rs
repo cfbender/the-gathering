@@ -43,6 +43,9 @@ async fn create_or_extend_session(
         session.renew();
     }
     session.update(|data| data.user_token = Some(token));
+    if let Some(id) = crate::audit::current_operation() {
+        crate::audit::identify(&state.pool, id, user).await?;
+    }
     Ok(())
 }
 

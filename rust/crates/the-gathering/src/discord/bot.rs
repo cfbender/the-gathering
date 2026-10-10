@@ -107,6 +107,69 @@ impl Bot {
 
     /// `INTERACTION_CREATE`: routes commands and components.
     pub async fn handle_interaction(&self, interaction: &Interaction) {
+        let command = interaction
+            .command_name()
+            .filter(|name| ["summary", "newgame", "log", "won"].contains(name));
+        let component = interaction
+            .custom_id()
+            .and_then(|id| id.split(':').next())
+            .filter(|prefix| ["newgame", "won"].contains(prefix));
+        let Some(name) = command.or(component) else {
+            return;
+        };
+        let result = self.audited_interaction(interaction, name).await;
+        if let Err(error) = result {
+            tracing::error!("could not audit Discord interaction: {error}");
+        }
+    }
+
+    async fn audited_interaction(
+        &self,
+        interaction: &Interaction,
+        name: &str,
+    ) -> Result<(), sqlx::Error> {
+        let actor = self
+            .state
+            .accounts
+            .get_user_by_discord_id(&interaction.user_id())
+            .await?;
+        let action = format!(
+            "DISCORD {name}{}",
+            if interaction.command_name().is_some() {
+                ""
+            } else {
+                " component"
+            }
+        );
+        let target = format!(
+            "discord/channel/{}",
+            interaction.channel_id.as_deref().unwrap_or("dm")
+        );
+        let id = crate::audit::start(
+            &self.state.pool,
+            actor.as_ref(),
+            &action,
+            &target,
+            Some(&interaction.id),
+        )
+        .await?;
+        if actor.is_none() {
+            let name = format!("discord:{}", interaction.user_id());
+            sqlx::query!(
+                "UPDATE audit_operations SET actor_name = ? WHERE id = ?",
+                name,
+                id
+            )
+            .execute(&self.state.pool)
+            .await?;
+        }
+        crate::audit::scope(id, self.dispatch_interaction(interaction)).await;
+        // Discord handlers send their own responses; accepted is not a claim that the
+        // requested game was saved. Committed row snapshots show what actually changed.
+        crate::audit::finish(&self.state.pool, id, 202).await
+    }
+
+    async fn dispatch_interaction(&self, interaction: &Interaction) {
         let api = self.api.as_ref();
         let state = &self.state;
         if let Some(name) = interaction.command_name() {

@@ -3,20 +3,73 @@
 pub mod migrate;
 pub mod time;
 
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
-use sqlx::{Sqlite, SqlitePool, Transaction};
+use sqlx::{Sqlite, SqliteConnection, SqlitePool, Transaction};
 
 pub use self::time::{IsoDate, UtcDateTime};
 
 /// The pool type every query runs on.
 pub type Pool = SqlitePool;
 
-/// An open write transaction.
-pub type Tx = Transaction<'static, Sqlite>;
+/// An open write transaction from [`begin`].
+///
+/// It dereferences to the connection, so `&mut *tx` (or `&mut tx` where a
+/// `&mut SqliteConnection` is expected) runs queries in it, and `conn.begin()` on it opens a
+/// savepoint. While it is open, `audit_context` names the audit operation of the task that
+/// began it (see [`crate::audit`]); [`Tx::commit`] clears that before committing, and dropping
+/// it uncommitted rolls everything back, so the committed context is always empty.
+#[derive(Debug)]
+pub struct Tx {
+    inner: Transaction<'static, Sqlite>,
+    audited: bool,
+}
+
+impl Tx {
+    /// Clears the audit context, then commits.
+    pub async fn commit(mut self) -> Result<(), sqlx::Error> {
+        if self.audited {
+            set_audit_context(&mut self.inner, None).await?;
+        }
+        self.inner.commit().await
+    }
+
+    /// Rolls back every change, including the audit context.
+    pub async fn rollback(self) -> Result<(), sqlx::Error> {
+        self.inner.rollback().await
+    }
+}
+
+impl Deref for Tx {
+    type Target = SqliteConnection;
+
+    fn deref(&self) -> &SqliteConnection {
+        &self.inner
+    }
+}
+
+impl DerefMut for Tx {
+    fn deref_mut(&mut self) -> &mut SqliteConnection {
+        &mut self.inner
+    }
+}
+
+async fn set_audit_context(
+    conn: &mut SqliteConnection,
+    operation_id: Option<i64>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        "UPDATE audit_context SET operation_id = ? WHERE id = 1",
+        operation_id
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
 
 /// Opens (creating if missing) the database at `path` with WAL, foreign keys on,
 /// and a five-second busy timeout.
@@ -50,8 +103,20 @@ pub async fn connect_memory() -> Result<Pool, sqlx::Error> {
 /// Deferred transactions that read before writing fail at once with "database is locked"
 /// when another connection commits in between; `BEGIN IMMEDIATE` waits for the busy timeout
 /// instead.
+///
+/// Inside [`crate::audit::scope`], the transaction's row changes are attributed to that
+/// operation.
 pub async fn begin(pool: &Pool) -> Result<Tx, sqlx::Error> {
-    pool.begin_with("BEGIN IMMEDIATE").await
+    let mut inner = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let operation = crate::audit::current_operation();
+    if operation.is_some() {
+        // On failure `inner` drops and rolls back.
+        set_audit_context(&mut inner, operation).await?;
+    }
+    Ok(Tx {
+        inner,
+        audited: operation.is_some(),
+    })
 }
 
 /// Whether `error` is a unique-constraint violation, optionally on one of `columns`

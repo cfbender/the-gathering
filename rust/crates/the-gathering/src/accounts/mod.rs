@@ -536,6 +536,7 @@ impl Accounts {
         cs.inclusion("palette", palette.as_deref(), &user::PALETTES);
         cs.inclusion("theme_style", theme_style.as_deref(), &user::THEME_STYLES);
         cs.finish()?;
+        let mut tx = db::begin(&self.pool).await?;
         let now = UtcDateTime::now();
         sqlx::query!(
             "UPDATE users SET palette = ?, theme_style = ?, updated_at = ? WHERE id = ?",
@@ -544,8 +545,9 @@ impl Accounts {
             now,
             user.id
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         self.get_user(user.id).await?.ok_or(ApiError::NotFound)
     }
 
@@ -692,6 +694,7 @@ impl Accounts {
         let hash = api_key_hash(&token).unwrap_or_default();
         let prefix: String = token.chars().take(10).collect();
         let now = UtcDateTime::now();
+        let mut tx = db::begin(&self.pool).await?;
         let id = sqlx::query_scalar!(
             r#"INSERT INTO api_keys (user_id, name, token_hash, prefix, inserted_at) VALUES (?, ?, ?, ?, ?)
                RETURNING id AS "id!: i64""#,
@@ -701,8 +704,9 @@ impl Accounts {
             prefix,
             now
         )
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         let key = ApiKey {
             id,
             user_id,
@@ -716,17 +720,19 @@ impl Accounts {
 
     /// Deletes one of the user's keys.
     pub async fn delete_api_key(&self, user_id: i64, id: i64) -> Result<(), ApiError> {
+        let mut tx = db::begin(&self.pool).await?;
         let deleted = sqlx::query!(
             "DELETE FROM api_keys WHERE id = ? AND user_id = ?",
             id,
             user_id
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?
         .rows_affected();
         if deleted == 0 {
             Err(ApiError::NotFound)
         } else {
+            tx.commit().await?;
             Ok(())
         }
     }
@@ -949,14 +955,16 @@ impl Accounts {
         cs.required_value("registration_enabled", enabled.as_ref());
         cs.finish()?;
         let now = UtcDateTime::now();
+        let mut tx = db::begin(&self.pool).await?;
         sqlx::query!(
             "UPDATE server_settings SET registration_enabled = ?, detailed_stats_from = ?, updated_at = ? WHERE id = 1",
             enabled,
             from,
             now
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(self.get_settings().await?)
     }
 
@@ -965,13 +973,15 @@ impl Accounts {
         let token = crypto::url_encode64_unpadded(&crypto::random_bytes::<32>());
         let hash = crypto::sha256(token.as_bytes());
         let now = UtcDateTime::now();
+        let mut tx = db::begin(&self.pool).await?;
         sqlx::query!(
             "UPDATE server_settings SET registration_invite_hash = ?, updated_at = ? WHERE id = 1",
             hash,
             now
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(token)
     }
 

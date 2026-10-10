@@ -230,7 +230,8 @@ impl Games {
 
     /// Clears a player's linked identity.
     pub async fn unlink_player_identity(&self, player: &Player) -> Result<Player, sqlx::Error> {
-        player::unlink_player_identity(&mut *self.pool.acquire().await?, player).await
+        write_tx!(self, |conn| player::unlink_player_identity(conn, player)
+            .await)
     }
 
     /// Creates a player, optionally linked to an account.
@@ -542,7 +543,7 @@ impl Games {
 
     /// Deletes a game (seats cascade).
     pub async fn delete_game(&self, game: &Game) -> Result<(), sqlx::Error> {
-        record_game::delete(&mut *self.pool.acquire().await?, game.id).await
+        write_tx!(self, |conn| record_game::delete(conn, game.id).await)
     }
 
     /// Links a game's unlinked decks and its seats' MVP cards to catalog cards.

@@ -17,9 +17,11 @@ import { Route as InviteRouteImport } from "./routes/invite"
 import { Route as LoginRouteImport } from "./routes/login"
 import { Route as RegisterRouteImport } from "./routes/register"
 import { Route as SettingsRouteImport } from "./routes/settings"
+import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
 import { Route as AdminCatalogRouteImport } from "./routes/admin/catalog"
 import { Route as AdminDiscordRouteImport } from "./routes/admin/discord"
 import { Route as AdminPlayersRouteImport } from "./routes/admin/players"
+import { Route as AdminServerLogsRouteImport } from "./routes/admin/server-logs"
 import { Route as AdminSettingsRouteImport } from "./routes/admin/settings"
 import { Route as AdminUsersRouteImport } from "./routes/admin/users"
 import { Route as CommandersIndexRouteImport } from "./routes/commanders.index"
@@ -76,6 +78,11 @@ const SettingsRoute = SettingsRouteImport.update({
   path: "/settings",
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminAuditRoute = AdminAuditRouteImport.update({
+  id: "/audit",
+  path: "/audit",
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminCatalogRoute = AdminCatalogRouteImport.update({
   id: "/catalog",
   path: "/catalog",
@@ -89,6 +96,11 @@ const AdminDiscordRoute = AdminDiscordRouteImport.update({
 const AdminPlayersRoute = AdminPlayersRouteImport.update({
   id: "/players",
   path: "/players",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminServerLogsRoute = AdminServerLogsRouteImport.update({
+  id: "/server-logs",
+  path: "/server-logs",
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminSettingsRoute = AdminSettingsRouteImport.update({
@@ -176,9 +188,11 @@ export interface FileRoutesByFullPath {
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
+  "/admin/audit": typeof AdminAuditRoute
   "/admin/catalog": typeof AdminCatalogRoute
   "/admin/discord": typeof AdminDiscordRoute
   "/admin/players": typeof AdminPlayersRoute
+  "/admin/server-logs": typeof AdminServerLogsRoute
   "/admin/settings": typeof AdminSettingsRoute
   "/admin/users": typeof AdminUsersRoute
   "/commanders/$commanderId": typeof CommandersCommanderIdRoute
@@ -204,9 +218,11 @@ export interface FileRoutesByTo {
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
+  "/admin/audit": typeof AdminAuditRoute
   "/admin/catalog": typeof AdminCatalogRoute
   "/admin/discord": typeof AdminDiscordRoute
   "/admin/players": typeof AdminPlayersRoute
+  "/admin/server-logs": typeof AdminServerLogsRoute
   "/admin/settings": typeof AdminSettingsRoute
   "/admin/users": typeof AdminUsersRoute
   "/commanders/$commanderId": typeof CommandersCommanderIdRoute
@@ -233,9 +249,11 @@ export interface FileRoutesById {
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
   "/settings": typeof SettingsRoute
+  "/admin/audit": typeof AdminAuditRoute
   "/admin/catalog": typeof AdminCatalogRoute
   "/admin/discord": typeof AdminDiscordRoute
   "/admin/players": typeof AdminPlayersRoute
+  "/admin/server-logs": typeof AdminServerLogsRoute
   "/admin/settings": typeof AdminSettingsRoute
   "/admin/users": typeof AdminUsersRoute
   "/commanders/$commanderId": typeof CommandersCommanderIdRoute
@@ -263,9 +281,11 @@ export interface FileRouteTypes {
     | "/login"
     | "/register"
     | "/settings"
+    | "/admin/audit"
     | "/admin/catalog"
     | "/admin/discord"
     | "/admin/players"
+    | "/admin/server-logs"
     | "/admin/settings"
     | "/admin/users"
     | "/commanders/$commanderId"
@@ -291,9 +311,11 @@ export interface FileRouteTypes {
     | "/login"
     | "/register"
     | "/settings"
+    | "/admin/audit"
     | "/admin/catalog"
     | "/admin/discord"
     | "/admin/players"
+    | "/admin/server-logs"
     | "/admin/settings"
     | "/admin/users"
     | "/commanders/$commanderId"
@@ -319,9 +341,11 @@ export interface FileRouteTypes {
     | "/login"
     | "/register"
     | "/settings"
+    | "/admin/audit"
     | "/admin/catalog"
     | "/admin/discord"
     | "/admin/players"
+    | "/admin/server-logs"
     | "/admin/settings"
     | "/admin/users"
     | "/commanders/$commanderId"
@@ -421,6 +445,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin/audit": {
+      id: "/admin/audit"
+      path: "/audit"
+      fullPath: "/admin/audit"
+      preLoaderRoute: typeof AdminAuditRouteImport
+      parentRoute: typeof AdminRoute
+    }
     "/admin/catalog": {
       id: "/admin/catalog"
       path: "/catalog"
@@ -440,6 +471,13 @@ declare module "@tanstack/react-router" {
       path: "/players"
       fullPath: "/admin/players"
       preLoaderRoute: typeof AdminPlayersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    "/admin/server-logs": {
+      id: "/admin/server-logs"
+      path: "/server-logs"
+      fullPath: "/admin/server-logs"
+      preLoaderRoute: typeof AdminServerLogsRouteImport
       parentRoute: typeof AdminRoute
     }
     "/admin/settings": {
@@ -551,17 +589,21 @@ declare module "@tanstack/react-router" {
 }
 
 interface AdminRouteChildren {
+  AdminAuditRoute: typeof AdminAuditRoute
   AdminCatalogRoute: typeof AdminCatalogRoute
   AdminDiscordRoute: typeof AdminDiscordRoute
   AdminPlayersRoute: typeof AdminPlayersRoute
+  AdminServerLogsRoute: typeof AdminServerLogsRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminUsersRoute: typeof AdminUsersRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAuditRoute: AdminAuditRoute,
   AdminCatalogRoute: AdminCatalogRoute,
   AdminDiscordRoute: AdminDiscordRoute,
   AdminPlayersRoute: AdminPlayersRoute,
+  AdminServerLogsRoute: AdminServerLogsRoute,
   AdminSettingsRoute: AdminSettingsRoute,
   AdminUsersRoute: AdminUsersRoute,
 }
