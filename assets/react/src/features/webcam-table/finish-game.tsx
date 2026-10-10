@@ -246,10 +246,10 @@ export function FinishGame({
               ))}
             </select>
           </label>
-          <label className="form-control md:col-span-2">
-            <span className="label-text mb-1">Notes</span>
+          <label className="flex min-w-0 flex-col gap-2 md:col-span-2">
+            <span className="label-text">Notes</span>
             <textarea
-              className="textarea textarea-bordered"
+              className="textarea textarea-bordered min-h-24 w-full resize-y"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
             />
