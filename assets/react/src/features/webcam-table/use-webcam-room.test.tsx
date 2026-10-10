@@ -94,6 +94,24 @@ function boardCard(id: string, ownerPeerId: string, name: string): BoardCard {
   return { id, ownerPeerId, byPlayerName: "Theo", at: 1, card: { id, name, set: "lea" } }
 }
 
+it.each([
+  ["passTurn", "pass_turn", "turn has changed or the game has not started"],
+  ["unpassTurn", "unpass_turn", "there is no pass to undo"],
+] as const)(
+  "clears a rejected %s only after a later turn action succeeds",
+  async (action, event, reason) => {
+    const { result } = await joinedRoom()
+    act(() => result.current[action]())
+    act(() => wire.sent(event).at(-1)!.push.reply("error", { reason }))
+    expect(result.current.error).toBe(reason)
+
+    act(() => result.current[action]())
+    expect(result.current.error).toBe(reason)
+    act(() => wire.sent(event).at(-1)!.push.reply("ok"))
+    expect(result.current.error).toBeNull()
+  },
+)
+
 it("hydrates before editing and reconnects without republishing default life or counters", async () => {
   const { result } = await joinedRoom()
   expect(result.current.life).toBe(23)

@@ -273,12 +273,14 @@ export function useTableGameState(
   const passTurn = useCallback(() => {
     link.channel
       ?.push("pass_turn", { revision: turnRevision })
+      .receive("ok", () => setError(null))
       .receive("error", ({ reason }: ErrorReply) => setError(reason))
   }, [link, setError, turnRevision])
 
   const unpassTurn = useCallback(() => {
     link.channel
       ?.push("unpass_turn", { revision: turnRevision })
+      .receive("ok", () => setError(null))
       .receive("error", ({ reason }: ErrorReply) => setError(reason))
   }, [link, setError, turnRevision])
 
