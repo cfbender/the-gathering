@@ -100,7 +100,7 @@ export function AuditLogPage() {
       <PageHeader
         eyebrow="Administration"
         title="Audit log"
-        description="User operations and committed before-and-after changes. History starts when auditing is enabled; credentials and request bodies are never stored."
+        description="User operations and diffs of committed changes. History starts when auditing is enabled; credentials and request bodies are never stored."
         actions={
           <button
             type="button"

@@ -18,7 +18,7 @@ function mount() {
   )
 }
 
-it("shows ordered before/after changes and distinguishes deleted records from empty results", async () => {
+it("shows only changed fields as removals and additions, including created and deleted records", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
@@ -28,8 +28,8 @@ it("shows ordered before/after changes and distinguishes deleted records from em
               id: 10,
               entity: "players",
               entity_id: "5",
-              before: { id: 5, name: "Old name" },
-              after: { id: 5, name: "New name" },
+              before: { id: 5, name: "Old name", retired: false, nickname: null },
+              after: { id: 5, name: "New name", retired: true, score: 0 },
             },
             {
               id: 11,
@@ -37,6 +37,13 @@ it("shows ordered before/after changes and distinguishes deleted records from em
               entity_id: "9",
               before: { id: 9, name: "Deleted deck" },
               after: null,
+            },
+            {
+              id: 12,
+              entity: "decks",
+              entity_id: "10",
+              before: null,
+              after: { id: 10, name: "Created deck", description: null },
             },
           ]
         : [
@@ -48,7 +55,7 @@ it("shows ordered before/after changes and distinguishes deleted records from em
               target: "/api/players/5",
               status: 200,
               inserted_at: "2026-10-10T12:00:00Z",
-              change_count: 2,
+              change_count: 3,
             },
           ]
       return new Response(
@@ -61,12 +68,32 @@ it("shows ordered before/after changes and distinguishes deleted records from em
   expect(operation.getAttribute("aria-expanded")).toBe("false")
   fireEvent.click(operation)
   const player = await screen.findByRole("region", { name: "players 5" })
-  expect(within(player).getByText(/"name": "Old name"/)).toBeTruthy()
-  expect(within(player).getByText(/"name": "New name"/)).toBeTruthy()
-  expect(within(player).getByText("Changed fields: name")).toBeTruthy()
   expect(
-    within(screen.getByRole("region", { name: "decks 9" })).getByText("Record does not exist"),
-  ).toBeTruthy()
+    within(player)
+      .getAllByRole("deletion")
+      .map((line) => line.textContent?.trim()),
+  ).toEqual(['− "name": "Old name"', '− "retired": false', '− "nickname": null'])
+  expect(
+    within(player)
+      .getAllByRole("insertion")
+      .map((line) => line.textContent?.trim()),
+  ).toEqual(['+ "name": "New name"', '+ "retired": true', '+ "score": 0'])
+  expect(within(player).queryByText(/"id":/)).toBeNull()
+  const deleted = within(screen.getByRole("region", { name: "decks 9" }))
+  expect(deleted.getByText("Deleted")).toBeTruthy()
+  expect(deleted.getAllByRole("deletion").map((line) => line.textContent?.trim())).toEqual([
+    '− "id": 9',
+    '− "name": "Deleted deck"',
+  ])
+  expect(deleted.queryByRole("insertion")).toBeNull()
+  const created = within(screen.getByRole("region", { name: "decks 10" }))
+  expect(created.getByText("Created")).toBeTruthy()
+  expect(created.getAllByRole("insertion").map((line) => line.textContent?.trim())).toEqual([
+    '+ "id": 10',
+    '+ "name": "Created deck"',
+    '+ "description": null',
+  ])
+  expect(created.queryByRole("deletion")).toBeNull()
   fireEvent.click(operation)
   expect(screen.queryByRole("region", { name: "players 5" })).toBeNull()
 })

@@ -35,18 +35,45 @@ function ChangeRow({ change }: { change: Change }) {
       <p className="text-base-content/65 text-xs break-words">
         Changed fields: {changed.join(", ") || "none"}
       </p>
-      <div className="grid min-w-0 gap-3 lg:grid-cols-2">
-        {(["before", "after"] as const).map((side) => (
-          <div key={side} className="min-w-0">
-            <h4 className="mb-1 text-xs font-semibold uppercase">{side}</h4>
-            <pre className="bg-base-300/50 rounded-box max-h-96 overflow-auto p-3 font-mono text-xs break-all whitespace-pre-wrap">
-              {change[side] === null
-                ? "Record does not exist"
-                : JSON.stringify(change[side], null, 2)}
-            </pre>
-          </div>
-        ))}
-      </div>
+      {changed.length > 0 ? (
+        <div className="min-w-0">
+          <p className="text-base-content/65 mb-2 flex gap-4 text-xs">
+            <span>− Removed</span>
+            <span>+ Added</span>
+          </p>
+          <pre className="bg-base-300/50 rounded-box max-h-96 overflow-auto py-2 font-mono text-xs break-all whitespace-pre-wrap">
+            {changed.map((field) => (
+              <span key={field} className="block">
+                {(["before", "after"] as const).map((side) => {
+                  const record = change[side]
+                  if (!record || !Object.hasOwn(record, field)) return null
+                  const removed = side === "before"
+                  const Tag = removed ? "del" : "ins"
+                  const value = `${JSON.stringify(field)}: ${JSON.stringify(record[field], null, 2)}`
+                  return (
+                    <Tag
+                      key={side}
+                      className={
+                        removed
+                          ? "bg-error/10 text-error block px-3 no-underline"
+                          : "bg-success/10 text-success block px-3 no-underline"
+                      }
+                    >
+                      {value
+                        .split("\n")
+                        .map((line) => `${removed ? "−" : "+"} ${line}`)
+                        .join("\n")}
+                      {"\n"}
+                    </Tag>
+                  )
+                })}
+              </span>
+            ))}
+          </pre>
+        </div>
+      ) : (
+        <p className="text-base-content/65 text-sm">No field changes.</p>
+      )}
     </section>
   )
 }
