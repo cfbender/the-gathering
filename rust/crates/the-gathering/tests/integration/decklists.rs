@@ -1452,8 +1452,8 @@ mod sync {
                 .map(the_gathering::games::DecklistSource::as_str),
             Some("moxfield")
         );
-        assert_eq!(linked.commander_card_id.as_deref(), Some("krenko"));
-        assert_eq!(linked.color_identity, "R");
+        assert_eq!(linked.commander_card_id, mine.commander_card_id);
+        assert_eq!(linked.color_identity, mine.color_identity);
 
         // The second Krenko list must not steal the link; it becomes its own deck.
         let created: Vec<_> = decks(&ctx)
@@ -1532,35 +1532,77 @@ mod sync {
     }
 
     #[tokio::test]
-    async fn refreshes_a_deck_already_linked_by_url_from_the_host() {
+    async fn preserves_local_settings_when_matching_by_url_or_name() {
         let server = MockServer::start().await;
         let ctx = setup(&server).await;
-        let old = ctx
-            .app
-            .deck_with(json!({
-                "player_id": ctx.player.id,
-                "name": "Old name",
-                "commander_name": "Old commander",
-                "decklist_url": "https://moxfield.com/decks/a"
-            }))
-            .await;
+        for (id, name, colors) in [
+            ("tymna", "Tymna the Weaver", vec!["W", "B"]),
+            ("thrasios", "Thrasios, Triton Hero", vec!["U", "G"]),
+        ] {
+            ctx.app.card(id, name, &colors, json!({}), true).await;
+            ctx.app
+                .printing(&format!("{id}-art"), id, name, json!({}))
+                .await;
+        }
+        let mut originals = Vec::new();
+        for (name, url) in [
+            ("My local name", Some("https://moxfield.com/decks/a")),
+            ("MATCH BY NAME", None),
+            ("Linked elsewhere", Some("https://archidekt.com/decks/9")),
+        ] {
+            originals.push(
+                ctx.app
+                    .deck_with(json!({
+                        "player_id": ctx.player.id,
+                        "name": name,
+                        "commander_card_id": "tymna",
+                        "commander_name": "Tymna the Weaver",
+                        "commander_printing_id": "tymna-art",
+                        "partner_card_id": "thrasios",
+                        "partner_name": "Thrasios, Triton Hero",
+                        "partner_printing_id": "thrasios-art",
+                        "color_identity": "WUBRG",
+                        "included_for_play": false,
+                        "archived_at": "2026-09-20T12:00:00Z",
+                        "decklist_url": url
+                    }))
+                    .await,
+            );
+        }
         stub_moxfield(
             &server,
-            vec![moxfield_deck(
-                "a",
-                "New name",
-                &["Krenko, Mob Boss"],
-                &["R"],
-            )],
+            vec![
+                moxfield_deck("a", "Remote name", &["Krenko, Mob Boss"], &["R"]),
+                moxfield_deck("b", "Match by name", &["Krenko, Mob Boss"], &["R"]),
+                moxfield_deck("c", "Linked elsewhere", &["Krenko, Mob Boss"], &["R"]),
+            ],
         )
         .await;
-        let result = sync_remote_decks::run(&ctx.app.state, &ctx.user)
-            .await
-            .unwrap();
-        assert_eq!((result.created, result.updated), (0, 1));
-        let refreshed = deck(&ctx, old.id).await;
-        assert_eq!(refreshed.name, "New name");
-        assert_eq!(refreshed.commander_name, "Krenko, Mob Boss");
+        // A name match becomes a URL match on the next sync; neither may erase edits.
+        for _ in 0..2 {
+            let result = sync_remote_decks::run(&ctx.app.state, &ctx.user)
+                .await
+                .unwrap();
+            assert_eq!((result.created, result.updated), (0, 3));
+            for (original, expected_url) in originals.iter().zip([
+                "https://moxfield.com/decks/a",
+                "https://moxfield.com/decks/b",
+                "https://archidekt.com/decks/9",
+            ]) {
+                let saved = deck(&ctx, original.id).await;
+                assert_eq!(saved.commander_card_id, original.commander_card_id);
+                assert_eq!(saved.commander_name, original.commander_name);
+                assert_eq!(saved.commander_printing_id, original.commander_printing_id);
+                assert_eq!(saved.partner_card_id, original.partner_card_id);
+                assert_eq!(saved.partner_name, original.partner_name);
+                assert_eq!(saved.partner_printing_id, original.partner_printing_id);
+                assert_eq!(saved.name, original.name);
+                assert_eq!(saved.color_identity, original.color_identity);
+                assert_eq!(saved.included_for_play, original.included_for_play);
+                assert_eq!(saved.archived_at, original.archived_at);
+                assert_eq!(saved.decklist_url.as_deref(), Some(expected_url));
+            }
+        }
     }
 
     #[tokio::test]
@@ -1669,9 +1711,10 @@ mod sync {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(updated.name, "Atraxa counters");
-        assert_eq!(updated.commander_card_id.as_deref(), Some("atraxa"));
-        assert_eq!(updated.color_identity, "WUBG");
+        assert_eq!(updated.name, existing.name);
+        assert_eq!(updated.commander_name, existing.commander_name);
+        assert_eq!(updated.commander_card_id, existing.commander_card_id);
+        assert_eq!(updated.color_identity, existing.color_identity);
         let created: Vec<_> = app
             .state
             .games

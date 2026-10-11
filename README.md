@@ -209,12 +209,14 @@ skips.
 Hosted decks are not listed separately: **Sync hosted decks** (on your player profile
 and the chooser, shown once any deck host is configured) calls `POST
 /api/session/remote-decks/sync`, which folds every listed Moxfield, Archidekt, and
-ManaVault deck into your player's deck list. A remote deck refreshes the local deck
-with the same deck-list URL or name; otherwise it links the unlinked local deck with
-the same commander pair (filling in commander card, partner, and colors but keeping
-your name for it); otherwise it is added as a new deck. A deck that already links
-elsewhere is never re-pointed. Hosts that fail to list are skipped and reported in the
-response's `errors`.
+ManaVault deck into your player's deck list. A remote deck matches the local deck
+with the same deck-list URL or name, then an unlinked local deck with the same
+commander pair; otherwise it is added as a new deck using the host's details.
+Existing decks keep their local names, commanders, selected art, colors, archive
+status, and chooser inclusion. Sync only adds a missing deck-list link; it never
+re-points an existing link. The response's `updated` count includes all matched
+existing decks, even when nothing changed. Hosts that fail to list are skipped and
+reported in the response's `errors`.
 
 ### Webcam table
 

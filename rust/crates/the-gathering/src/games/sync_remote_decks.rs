@@ -3,11 +3,11 @@
 //!
 //! Each remote deck is matched against the player's decks in order:
 //!
-//! 1. the same `decklist_url`: an already-linked deck, refreshed from the host;
-//! 2. the same name (case-insensitive): linked and refreshed;
-//! 3. the same commander pair, when that local deck has no link yet: linked and filled
-//!    in, but its local name is kept.
+//! 1. the same `decklist_url`: an already-linked deck;
+//! 2. the same name (case-insensitive);
+//! 3. the same commander pair, when that local deck has no link yet.
 //!
+//! Matches receive a deck-list URL only if unlinked; local settings are never overwritten.
 //! Anything unmatched becomes a new deck. Hosts that failed to list are skipped and
 //! reported in `errors`; their decks are left alone rather than guessed at.
 
@@ -27,7 +27,6 @@ use crate::state::AppState;
 use super::input::DeckInput;
 use super::model::{Deck, select_decks};
 use super::{GamesError, deck, fold_name, player};
-use crate::patch::Patch;
 
 /// A host that could not be listed.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,7 +42,7 @@ pub struct SourceError {
 pub struct SyncResult {
     /// Decks created.
     pub created: i64,
-    /// Decks linked or refreshed.
+    /// Existing decks matched, including newly linked decks.
     pub updated: i64,
     /// Hosts skipped.
     pub errors: Vec<SourceError>,
@@ -175,22 +174,6 @@ fn deck_input(remote: &RemoteDeck, player_id: i64, summaries: &CardSummaries) ->
     }
 }
 
-/// Links an independently created deck: points it at the host and fills in what the owner
-/// never recorded, without renaming what they call it.
-fn link_input(deck: &Deck, input: &DeckInput) -> DeckInput {
-    let fill = |value: &Patch<String>, current_missing: bool| match value {
-        Patch::Set(Some(value)) if current_missing => Patch::Set(Some(value.clone())),
-        _ => Patch::Unchanged,
-    };
-    DeckInput {
-        decklist_url: input.decklist_url.clone(),
-        commander_card_id: fill(&input.commander_card_id, deck.commander_card_id.is_none()),
-        partner_card_id: fill(&input.partner_card_id, deck.partner_card_id.is_none()),
-        color_identity: fill(&input.color_identity, deck.color_identity.is_empty()),
-        ..DeckInput::default()
-    }
-}
-
 async fn sync(
     conn: &mut SqliteConnection,
     links: &DeckLinks,
@@ -227,24 +210,27 @@ async fn sync(
         updated: 0,
     };
     for remote in remote_decks {
-        let input = deck_input(remote, player_id, summaries);
         let (commander, partner) = commander_names(remote);
         let by_name = remote.name.as_deref().map(fold_name);
-        let saved = if let Some(found) = state.by_url.get(&remote.url).cloned() {
-            (deck::update_deck(conn, links, &found, &input).await?, false)
-        } else if let Some(found) = by_name.and_then(|name| state.by_name.get(&name).cloned()) {
-            (deck::update_deck(conn, links, &found, &input).await?, false)
-        } else if let Some(found) = state
-            .by_commanders
-            .get(&commander_key(commander, partner))
-            .cloned()
-        {
-            let linked = link_input(&found, &input);
-            (
-                deck::update_deck(conn, links, &found, &linked).await?,
-                false,
-            )
+        let found = state
+            .by_url
+            .get(&remote.url)
+            .or_else(|| by_name.and_then(|name| state.by_name.get(&name)))
+            .or_else(|| state.by_commanders.get(&commander_key(commander, partner)))
+            .cloned();
+        let saved = if let Some(found) = found {
+            let linked = if found.decklist_url.is_none() {
+                let input = DeckInput {
+                    decklist_url: Some(remote.url.clone()).into(),
+                    ..DeckInput::default()
+                };
+                deck::update_deck(conn, links, &found, &input).await?
+            } else {
+                found
+            };
+            (linked, false)
         } else {
+            let input = deck_input(remote, player_id, summaries);
             (deck::create_deck(conn, links, &input).await?, true)
         };
         state.remember(saved.0, saved.1);
