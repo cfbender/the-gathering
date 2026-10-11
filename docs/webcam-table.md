@@ -465,7 +465,10 @@ board is large, everyone else is small, and controls live in a collapsible colum
   shortcut dialog.
   All table actions, including Space, honor the enable preference and pause while typing,
   using a keyboard widget, or while an overlay/picker is open. Ctrl/Alt/Meta, composing and
-  repeat events are ignored; Space preserves native button/link activation. The card picker
+  repeat events are ignored; Space preserves native activation for keyboard-focused buttons/links.
+  Clicked controls release focus on a shortcut or after three seconds without pointer activity;
+  held pointers, text entry, overlays, and keyboard interaction retain focus. Idle blur only
+  runs with table shortcuts enabled and the card picker closed. The card picker
   retains `1`–`5` and `/` gallery search. Escape closes overlays even with shortcuts disabled.
 - **Settings** stacks collapsible Keyboard shortcuts, View, Camera, Sound and Card scan sections.
   View switches between following the active turn and the all-cameras grid; clicking or cycling

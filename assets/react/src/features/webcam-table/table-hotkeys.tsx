@@ -257,34 +257,73 @@ export function useTableHotkeys(
     onAction(action)
     return true
   })
+  const releaseIdleFocus = useEffectEvent((target: EventTarget | null) => {
+    if (
+      enabled &&
+      !pickerOpen &&
+      !overlayOwnsKeyboard() &&
+      target instanceof HTMLElement &&
+      target === document.activeElement &&
+      !target.closest(TEXT_ENTRY)
+    )
+      target.blur()
+  })
 
   useEffect(() => {
     let pointerInteraction = false
+    let pointerHeld = false
     let pointerFocus: EventTarget | null = null
-    const onPointerDown = () => {
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    const resetIdle = () => {
+      clearTimeout(idleTimer)
+      if (pointerFocus && !pointerHeld)
+        idleTimer = setTimeout(() => releaseIdleFocus(pointerFocus), 3000)
+    }
+    const onPointerDown = (event: PointerEvent) => {
       pointerInteraction = true
+      pointerHeld = true
+      // Clicking an already-focused control does not emit another focusin event.
+      if (event.target instanceof Node && document.activeElement?.contains(event.target))
+        pointerFocus = document.activeElement
+      resetIdle()
+    }
+    const onPointerUp = () => {
+      pointerHeld = false
+      resetIdle()
     }
     const onFocusIn = (event: FocusEvent) => {
       pointerFocus = pointerInteraction ? event.target : null
+      resetIdle()
     }
     const clickedFocus = (event: KeyboardEvent) =>
       event.target !== document.body && event.target === pointerFocus
     const claim = (event: KeyboardEvent) => {
       pointerInteraction = false
-      if (!clickedFocus(event)) return
       // Releasing focus stops the control's keyup from activating it and lets later keys
       // reach the table directly.
-      if (dispatch(event, true) && event.target instanceof HTMLElement) event.target.blur()
+      if (clickedFocus(event) && dispatch(event, true) && event.target instanceof HTMLElement)
+        event.target.blur()
+      else if (!["Shift", "Control", "Alt", "Meta"].includes(event.key)) pointerFocus = null
+      resetIdle()
     }
     const handle = (event: KeyboardEvent) => {
       if (!clickedFocus(event)) dispatch(event, false)
     }
     window.addEventListener("pointerdown", onPointerDown, true)
+    window.addEventListener("pointerup", onPointerUp, true)
+    window.addEventListener("pointercancel", onPointerUp, true)
+    window.addEventListener("pointermove", resetIdle, true)
+    window.addEventListener("wheel", resetIdle, { capture: true, passive: true })
     window.addEventListener("focusin", onFocusIn, true)
     window.addEventListener("keydown", claim, true)
     window.addEventListener("keydown", handle)
     return () => {
+      clearTimeout(idleTimer)
       window.removeEventListener("pointerdown", onPointerDown, true)
+      window.removeEventListener("pointerup", onPointerUp, true)
+      window.removeEventListener("pointercancel", onPointerUp, true)
+      window.removeEventListener("pointermove", resetIdle, true)
+      window.removeEventListener("wheel", resetIdle, true)
       window.removeEventListener("focusin", onFocusIn, true)
       window.removeEventListener("keydown", claim, true)
       window.removeEventListener("keydown", handle)

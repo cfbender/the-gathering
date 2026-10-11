@@ -50,8 +50,10 @@ it("clicked controls release the keyboard; keyboard-focused ones keep theirs", (
   // A focused control claiming the key in its own handler must not beat the table.
   button.addEventListener("keydown", (event) => event.preventDefault())
 
+  button.focus()
   fireEvent.pointerDown(button)
   button.focus()
+  fireEvent.pointerUp(button)
   fireEvent.keyDown(button, { key: " " })
   expect(onAction).toHaveBeenLastCalledWith("passTurn")
   expect(document.activeElement).toBe(document.body)
@@ -62,6 +64,13 @@ it("clicked controls release the keyboard; keyboard-focused ones keep theirs", (
   fireEvent.keyDown(button, { key: " " })
   expect(onAction).not.toHaveBeenCalled()
   expect(document.activeElement).toBe(button)
+
+  fireEvent.pointerDown(button)
+  fireEvent.pointerUp(button)
+  fireEvent.keyDown(button, { key: "Shift", shiftKey: true })
+  fireEvent.keyDown(button, { key: " ", shiftKey: true })
+  expect(onAction).toHaveBeenCalledExactlyOnceWith("unpassTurn")
+  expect(document.activeElement).toBe(document.body)
 
   const handle = document.body.appendChild(document.createElement("div"))
   handle.setAttribute("role", "separator")
@@ -75,6 +84,63 @@ it("clicked controls release the keyboard; keyboard-focused ones keep theirs", (
   handle.remove()
   hook.unmount()
 })
+
+it("releases clicked controls after three idle seconds, not during movement or a held pointer", () => {
+  vi.useFakeTimers()
+  const onAction = vi.fn()
+  const hook = renderHook(() => useTableHotkeys(true, false, onAction))
+  const button = document.body.appendChild(document.createElement("button"))
+  try {
+    fireEvent.pointerDown(button)
+    button.focus()
+    vi.advanceTimersByTime(4000)
+    expect(document.activeElement).toBe(button)
+    fireEvent.pointerUp(button)
+    vi.advanceTimersByTime(2500)
+    fireEvent.pointerMove(button)
+    vi.advanceTimersByTime(2999)
+    expect(document.activeElement).toBe(button)
+    vi.advanceTimersByTime(1)
+    expect(document.activeElement).toBe(document.body)
+    expect(onAction).not.toHaveBeenCalled()
+    fireEvent.keyDown(document.activeElement!, { key: " " })
+    expect(onAction).toHaveBeenCalledExactlyOnceWith("passTurn")
+  } finally {
+    hook.unmount()
+    button.remove()
+    vi.useRealTimers()
+  }
+})
+
+it.each(["typing", "keyboard", "overlay", "disabled", "picker", "unmounted"])(
+  "does not steal idle focus from %s",
+  (guard) => {
+    vi.useFakeTimers()
+    const hook = renderHook(
+      ({ enabled, pickerOpen }) => useTableHotkeys(enabled, pickerOpen, () => {}),
+      { initialProps: { enabled: true, pickerOpen: false } },
+    )
+    const control = document.body.appendChild(
+      document.createElement(guard === "typing" ? "input" : "button"),
+    )
+    try {
+      fireEvent.pointerDown(control)
+      control.focus()
+      fireEvent.pointerUp(control)
+      if (guard === "keyboard") fireEvent.keyDown(control, { key: "Tab" })
+      if (guard === "overlay") control.setAttribute("aria-modal", "true")
+      if (guard === "disabled") hook.rerender({ enabled: false, pickerOpen: false })
+      if (guard === "picker") hook.rerender({ enabled: true, pickerOpen: true })
+      if (guard === "unmounted") hook.unmount()
+      vi.advanceTimersByTime(3000)
+      expect(document.activeElement).toBe(control)
+    } finally {
+      hook.unmount()
+      control.remove()
+      vi.useRealTimers()
+    }
+  },
+)
 
 it("H closes help without leaking the key through to table actions", () => {
   const close = vi.fn()
