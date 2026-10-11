@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM audit_operations WHERE id = ?\n         AND NOT EXISTS (SELECT 1 FROM audit_changes WHERE operation_id = audit_operations.id)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "546c7cce3e3ab19b56ad759c673a1831b692dd4e7ee810313968adb106f6e0fa"
+}

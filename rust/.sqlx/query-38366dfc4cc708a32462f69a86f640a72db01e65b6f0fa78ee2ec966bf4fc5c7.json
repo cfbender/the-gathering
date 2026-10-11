@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT count(*) FROM audit_operations o\n           WHERE (coalesce(o.actor_name, '') LIKE ?1 OR o.action LIKE ?1 OR o.target LIKE ?1)\n             AND EXISTS (SELECT 1 FROM audit_changes c WHERE c.operation_id = o.id)\n             AND (?2 = '' OR (?2 = 'success' AND o.status BETWEEN 200 AND 399)\n                  OR (?2 = 'failed' AND o.status >= 400) OR (?2 = 'unknown' AND o.status IS NULL))",
+  "describe": {
+    "columns": [
+      {
+        "name": "count(*)",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "38366dfc4cc708a32462f69a86f640a72db01e65b6f0fa78ee2ec966bf4fc5c7"
+}

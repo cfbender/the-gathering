@@ -56,6 +56,7 @@ pub async fn index(
                   (SELECT count(*) FROM audit_changes c WHERE c.operation_id = o.id) AS "change_count!: i64"
            FROM audit_operations o
            WHERE (coalesce(o.actor_name, '') LIKE ?1 OR o.action LIKE ?1 OR o.target LIKE ?1)
+             AND EXISTS (SELECT 1 FROM audit_changes c WHERE c.operation_id = o.id)
              AND (?2 = '' OR (?2 = 'success' AND o.status BETWEEN 200 AND 399)
                   OR (?2 = 'failed' AND o.status >= 400) OR (?2 = 'unknown' AND o.status IS NULL))
            ORDER BY o.id DESC LIMIT ?3 OFFSET ?4"#,
@@ -64,6 +65,7 @@ pub async fn index(
     let total = sqlx::query_scalar!(
         r#"SELECT count(*) FROM audit_operations o
            WHERE (coalesce(o.actor_name, '') LIKE ?1 OR o.action LIKE ?1 OR o.target LIKE ?1)
+             AND EXISTS (SELECT 1 FROM audit_changes c WHERE c.operation_id = o.id)
              AND (?2 = '' OR (?2 = 'success' AND o.status BETWEEN 200 AND 399)
                   OR (?2 = 'failed' AND o.status >= 400) OR (?2 = 'unknown' AND o.status IS NULL))"#,
         search, outcome

@@ -669,28 +669,7 @@ impl Channel {
         {
             return error("unknown event");
         }
-        let state = self.socket.state.clone();
-        let id = crate::audit::start(
-            &state.pool,
-            Some(&self.socket.user),
-            &format!("TABLE {event}"),
-            &format!("/table/{}", self.room_id),
-            None,
-        )
-        .await?;
-        let result = crate::audit::scope(id, self.dispatch(event, payload)).await;
-        let status = match &result {
-            Ok(Some(Reply::Error(_))) => 422,
-            Ok(_) => 200,
-            Err(_) => 500,
-        };
-        if let Err(error) = crate::audit::finish(&state.pool, id, status).await {
-            tracing::error!(
-                operation_id = id,
-                "could not complete table audit operation: {error}"
-            );
-        }
-        result
+        self.dispatch(event, payload).await
     }
 
     async fn dispatch(&mut self, event: &str, payload: &Value) -> Handled {

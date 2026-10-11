@@ -356,12 +356,14 @@ identity at the time, target, request ID, response status, and paginated before/
 Both audit history and **Server logs** require an administrator with authentication in the last
 ten minutes. Search audit history by username, operation, or target, and filter by outcome.
 
-Known mutating HTTP API requests (after CSRF validation), Discord sign-in callbacks, handled
-Discord commands/components, and permitted, rate-limited webcam table controls are recorded.
-Ordinary reads, page views, socket presence, timer synchronization, media/signaling traffic,
-and unknown routes/events are excluded. Discord operations are marked **Accepted**, not a claim
-that a game was saved; inspect their committed changes. HTTP failures can also have partial
-commits; an unknown outcome means the request is still running or its final status was not saved.
+History includes only operations with committed changes to the audited records below. HTTP API
+mutations, Discord sign-in callbacks, and handled Discord commands/components carry attribution,
+but completed operations without row snapshots are discarded. Routine sign-ins, webcam table
+controls, deck-chooser calculations, no-op saves, and rejected requests without changes are not
+listed; existing zero-change history is also hidden without deleting it. A sign-in that creates
+or updates an account still appears. Discord operations are marked **Accepted**; inspect their
+committed changes. HTTP failures with partial commits remain visible; an unknown outcome means
+the request is still running or its final status was not saved.
 
 SQLite triggers record safe columns of users, players, decks, games, game seats, server settings,
 API-key metadata, sheet import receipts, pending Discord reports, and result drafts. Snapshots
@@ -377,7 +379,8 @@ snapshot, or tamper-proof guarantee: database administrators can change this dat
 backups. Audit history is not included in portable game exports. Transient webcam state, scheduled
 Discord queues, card images/corrections, catalog/cache data, and external effects are not snapshotted.
 Passwords, credential hashes, session tokens, invitation secrets, raw request bodies, and query
-strings are excluded; credential changes record the action, not recoverable secret values.
+strings are excluded. Secret-only rotations that change no safe snapshot field are not retained
+as audit operations; API-key creation/deletion and changes to whether a credential is set are.
 
 **Server logs** follows the Rust process's tracing events over Server-Sent Events, using the same
 `LOG_LEVEL`/`RUST_LOG` filter as stdout. It retains only the newest 200 messages in the browser,

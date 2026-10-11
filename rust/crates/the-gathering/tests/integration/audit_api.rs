@@ -22,11 +22,36 @@ async fn member_changes_can_be_reconstructed_after_deletion_and_actor_removal() 
     )
     .await
     .assert_json(200);
+    app.patch(&path, json!({"name":"Revised player"}))
+        .await
+        .assert_json(200);
     app.patch(&path, json!({"name":""})).await.assert_json(422);
     assert_eq!(app.delete(&path).await.status, 204);
     app.get("/api/admin/audit").await.assert_json(403);
     app.get("/api/admin/audit/1").await.assert_json(403);
 
+    let stored: i64 = sqlx::query_scalar("SELECT count(*) FROM audit_operations")
+        .fetch_one(app.pool())
+        .await
+        .unwrap();
+    assert_eq!(stored, 3, "no-op and rejected writes are not retained");
+    // Existing installations contain completed operations without any row changes.
+    for action in [
+        "TABLE update_status",
+        "GET /auth/discord/callback",
+        "POST /api/deck-chooser/{id}/outcomes",
+    ] {
+        sqlx::query(
+            "INSERT INTO audit_operations (actor_id, actor_name, action, target, status, inserted_at, completed_at)
+             VALUES (?, ?, ?, '/legacy', 200, '2026-10-10T18:00:00Z', '2026-10-10T18:00:00Z')",
+        )
+        .bind(member.id)
+        .bind(&member.username)
+        .bind(action)
+        .execute(app.pool())
+        .await
+        .unwrap();
+    }
     app.log_in_sudo(&admin).await;
     assert_eq!(
         app.delete(&format!("/api/admin/users/{}", member.id))
@@ -38,7 +63,7 @@ async fn member_changes_can_be_reconstructed_after_deletion_and_actor_removal() 
     assert_eq!(response.header("cache-control"), Some("no-store"));
     let history = response.assert_json(200);
     let operations = history["data"].as_array().unwrap();
-    assert_eq!(operations.len(), 4);
+    assert_eq!(operations.len(), 3);
     assert!(
         operations
             .iter()
@@ -50,9 +75,6 @@ async fn member_changes_can_be_reconstructed_after_deletion_and_actor_removal() 
             .get(&format!("/api/admin/audit/{}", operation["id"]))
             .await
             .assert_json(200);
-        if operation["status"] == 422 {
-            assert_eq!(changes["data"], json!([]));
-        }
         for change in changes["data"].as_array().unwrap() {
             assert_eq!(change["entity"], "players");
             assert_eq!(change["entity_id"], player_id.to_string());
@@ -75,8 +97,18 @@ async fn member_changes_can_be_reconstructed_after_deletion_and_actor_removal() 
         .get("/api/admin/audit?search=audited_member&outcome=failed")
         .await
         .assert_json(200);
+    assert_eq!(failed["pagination"]["total"], 0);
+    // A failure after a commit must still expose the committed changes.
+    the_gathering::audit::finish(app.pool(), updated["id"].as_i64().unwrap(), 500)
+        .await
+        .unwrap();
+    let failed = app
+        .get("/api/admin/audit?search=audited_member&outcome=failed")
+        .await
+        .assert_json(200);
     assert_eq!(failed["pagination"]["total"], 1);
-    assert_eq!(failed["data"][0]["status"], 422);
+    assert_eq!(failed["data"][0]["status"], 500);
+    assert_eq!(failed["data"][0]["change_count"], 1);
     let first = app
         .get("/api/admin/audit?search=audited_member&per_page=1")
         .await
@@ -85,7 +117,7 @@ async fn member_changes_can_be_reconstructed_after_deletion_and_actor_removal() 
         .get("/api/admin/audit?search=audited_member&per_page=1&page=2")
         .await
         .assert_json(200);
-    assert_eq!(first["pagination"]["total"], 4);
+    assert_eq!(first["pagination"]["total"], 3);
     assert_ne!(first["data"][0]["id"], second["data"][0]["id"]);
     app.expire_sudo(601).await;
     assert_eq!(
@@ -129,9 +161,8 @@ async fn login_settings_and_key_changes_are_attributed_without_secrets() {
     for operation in history["data"].as_array().unwrap() {
         assert_eq!(operation["actor_id"], admin.id);
         assert_eq!(operation["actor_name"], admin.username);
-        if operation["action"] != "POST /api/session" {
-            assert_eq!(operation["change_count"], 1);
-        }
+        assert_ne!(operation["action"], "POST /api/session");
+        assert_eq!(operation["change_count"], 1);
         let changes = app
             .get(&format!("/api/admin/audit/{}", operation["id"]))
             .await
@@ -144,8 +175,8 @@ async fn login_settings_and_key_changes_are_attributed_without_secrets() {
     assert!(!text.contains("hashed_password"));
     assert!(!text.contains("registration_invite_hash"));
     assert_eq!(
-        history["pagination"]["total"], 5,
-        "reads do not create audit operations"
+        history["pagination"]["total"], 4,
+        "reads and sign-ins do not create audit history"
     );
 }
 

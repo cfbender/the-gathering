@@ -64,8 +64,15 @@ pub async fn start(
     Ok(row.id)
 }
 
-/// Records the response status and completion time of operation `id`.
+/// Completes an operation, discarding attempts that changed no audited rows.
 pub async fn finish(pool: &Pool, id: i64, status: u16) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        "DELETE FROM audit_operations WHERE id = ?
+         AND NOT EXISTS (SELECT 1 FROM audit_changes WHERE operation_id = audit_operations.id)",
+        id
+    )
+    .execute(pool)
+    .await?;
     let status = i64::from(status);
     let now = UtcDateTime::now();
     sqlx::query!(
@@ -210,6 +217,20 @@ mod tests {
         identify(&pool, id, &user(7))
             .await
             .unwrap_or_else(|error| unreachable!("{error}"));
+        scope(id, async {
+            let mut tx = db::begin(&pool)
+                .await
+                .unwrap_or_else(|error| unreachable!("{error}"));
+            exec(
+                &mut tx,
+                "INSERT INTO players (name, inserted_at, updated_at) VALUES ('Ada', 'x', 'x')",
+            )
+            .await;
+            tx.commit()
+                .await
+                .unwrap_or_else(|error| unreachable!("{error}"));
+        })
+        .await;
         finish(&pool, id, 201)
             .await
             .unwrap_or_else(|error| unreachable!("{error}"));
