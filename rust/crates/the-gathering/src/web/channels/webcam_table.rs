@@ -457,8 +457,10 @@ impl Channel {
         let topic = webcam::topic(&room_id);
         let leaves = state.presence.leaves();
         socket.socket.join(topic.clone());
-        let response =
-            json!({ "participant": participant, "table_state": admitted.snapshot, "owner": owner });
+        let response = json!({
+            "participant": participant, "table_state": admitted.snapshot, "owner": owner,
+            "can_moderate": owner || user.is_admin(),
+        });
         let channel = Self {
             socket: socket.clone(),
             topic,
@@ -586,6 +588,10 @@ impl Channel {
                 self.push("seat_replaced", &json!({}));
                 return Err(Stop::Close("the seat was taken by another connection"));
             }
+            ConnEvent::Removed => {
+                self.push("removed", &json!({}));
+                return Err(Stop::Close("removed from the table"));
+            }
             ConnEvent::SeatEliminated(eliminated) => {
                 self.participant.eliminated = eliminated;
                 self.update_presence();
@@ -642,7 +648,20 @@ impl Channel {
         if !bucket.take() {
             return error("rate limited");
         }
-        if self.participant.spectator && !signal && event != "timer_sync" {
+        if !self
+            .tables()
+            .current(&self.room_id, self.participant.player_id, self.conn_id)
+            .await?
+        {
+            return error("this connection is no longer at the table");
+        }
+        if event == "remove_participant" && !self.owner && !self.socket.user.is_admin() {
+            return error("only the host or an admin can remove participants");
+        }
+        if self.participant.spectator
+            && !signal
+            && !["timer_sync", "remove_participant"].contains(&event)
+        {
             return error("spectators cannot change the game");
         }
         if !self.owner && OWNER_EVENTS.contains(&event) {
@@ -664,6 +683,7 @@ impl Channel {
                 "unpass_turn",
                 "begin_play",
                 "roll",
+                "remove_participant",
             ]
             .contains(&event)
         {
@@ -685,6 +705,21 @@ impl Channel {
             "update_status" => self.update_status(payload).await,
             "take_monarch" => self.take_monarch(payload).await,
             "set_eliminated" => self.set_eliminated(payload).await,
+            "remove_participant" => {
+                let Some(peer_id) =
+                    exactly(payload, 1).and_then(|map| map.get("peer_id")?.as_str())
+                else {
+                    return error("invalid participant");
+                };
+                if peer_id == self.participant.peer_id {
+                    return error("use Leave table to leave your own seat");
+                }
+                reply(
+                    self.tables()
+                        .remove_participant(&self.room_id, peer_id)
+                        .await?,
+                )
+            }
             "seat_order" | "arrange_seats" => self.seat_order(event, payload).await,
             "set_mode" => self.set_mode(payload).await,
             "adjust_team_life" => self.adjust_team_life(payload).await,

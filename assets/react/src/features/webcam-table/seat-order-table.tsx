@@ -11,10 +11,12 @@ import { useTimerElapsed } from "./use-timer-elapsed"
 import type { TableParticipant } from "./use-webcam-room"
 import type { GameFormat } from "@/features/games/game-format"
 import { turnId, unattackableSeats } from "./game-modes"
+import { RemoveParticipant } from "./remove-participant"
 
 export interface SeatOrderTableProps {
   mode?: GameFormat
   onMoveSeat?: (peerId: string, delta: -1 | 1) => void
+  onRemoveParticipant?: (peerId: string) => void
   readOnly?: boolean
   participants: TableParticipant[]
   localParticipant: TableParticipant
@@ -28,6 +30,7 @@ export interface SeatOrderTableProps {
 export function SeatOrderTable({
   mode = "commander",
   onMoveSeat,
+  onRemoveParticipant,
   readOnly = false,
   participants,
   localParticipant,
@@ -116,6 +119,11 @@ export function SeatOrderTable({
                     {seat.player_name}
                     {seat.peer_id === localParticipant.peer_id ? " (you)" : ""}
                   </span>
+                  {onRemoveParticipant &&
+                    !seat.departed &&
+                    seat.peer_id !== localParticipant.peer_id && (
+                      <RemoveParticipant participant={seat} onRemove={onRemoveParticipant} />
+                    )}
                 </span>
                 <span className="block text-[0.6rem] text-white/45" title={commander}>
                   {mode === "two_headed_giant"

@@ -53,11 +53,16 @@ function useInviteLink() {
 
 /** Sends a seat back to the games list after the room owner ends the table. A full page load,
  * so the games list does not inherit the table's cross-origin isolation; the toast rides along. */
-function TableEndedRedirect() {
+function TableEndedRedirect({ removed = false }: { removed?: boolean }) {
   useEffect(() => {
-    flashToast({ message: "The room owner ended the game.", tone: "info" })
+    flashToast({
+      message: removed
+        ? "You were removed from the table by the host or an admin."
+        : "The room owner ended the game.",
+      tone: "info",
+    })
     window.location.assign("/games")
-  }, [])
+  }, [removed])
   return null
 }
 
@@ -200,6 +205,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           onTabChange={setPanelTab}
           participants={view.seated}
           spectators={room.spectators}
+          onRemoveParticipant={room.canModerate ? room.removeParticipant : undefined}
           localParticipant={view.localParticipant}
           maxPlayers={MAX_PLAYERS}
           playerDecks={decksFor(view, view.localParticipant)}
@@ -242,7 +248,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         />
 
         <TableDialogs view={view} dialog={dialog} onDialogChange={setDialog} />
-        {room.closedByOwner && <TableEndedRedirect />}
+        {(room.closedByOwner || room.removed) && <TableEndedRedirect removed={room.removed} />}
       </div>
     </WatchTileContext>
   )

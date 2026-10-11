@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vite-plus/test"
 import type { TimerSample } from "./game-timer"
 import { SeatOrderTable, type SeatOrderTableProps } from "./seat-order-table"
@@ -105,6 +105,23 @@ it("shows reorder arrows to the owner and disables the ends of the order", () =>
 it("hides the arrows from non-owners", () => {
   render(<SeatOrderTable {...seats()} readOnly />)
   expect(screen.queryByRole("button", { name: /^Move / })).toBeNull()
+})
+
+it("requires moderation permission and confirmation to remove another participant", () => {
+  const props = seats()
+  const remove = vi.fn()
+  const view = render(<SeatOrderTable {...props} readOnly />)
+  expect(screen.queryByRole("button", { name: /from table/ })).toBeNull()
+  // A spectating admin can moderate without getting turn controls.
+  view.rerender(<SeatOrderTable {...props} readOnly onRemoveParticipant={remove} />)
+  expect(screen.queryByRole("button", { name: "Remove Alice from table" })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Remove Bob from table" }))
+  expect(screen.getByRole("alertdialog", { name: "Remove Bob from the table?" })).toBeTruthy()
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+  expect(remove).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Remove Bob from table" }))
+  fireEvent.click(screen.getByRole("button", { name: "Remove from table" }))
+  expect(remove).toHaveBeenCalledExactlyOnceWith("b")
 })
 
 it("keeps arrows mid-game in Commander but locks team formats once started", () => {

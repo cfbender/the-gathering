@@ -265,6 +265,30 @@ it("a rematch keeps the seat connected and resets its local life, counters and t
   expect(payloads("update_status").at(-1)).toEqual({ life: 39 })
 })
 
+it.each(["removed", "join denied"])("stops media and reconnects when %s", async (source) => {
+  const { result, connection } = await roomWithTheo()
+  const stream = result.current.localStream!
+  const stops = stream.getTracks().map((track) => vi.spyOn(track, "stop"))
+  vi.useFakeTimers()
+  act(() => {
+    if (source === "removed") wire.emit("removed", {})
+    else {
+      wire.reconnect()
+      wire.joinPush().reply("error", { reason: "You were removed from this table." })
+    }
+  })
+  expect(result.current.removed).toBe(true)
+  expect(wire.socket!.connected).toBe(false)
+  expect(connection.connectionState).toBe("closed")
+  for (const stop of stops) expect(stop).toHaveBeenCalled()
+  const joins = wire.sent("join").length
+  act(() => {
+    vi.advanceTimersByTime(60_000)
+  })
+  expect(wire.sent("join")).toHaveLength(joins)
+  expect(wire.connects).toBe(0)
+})
+
 it("late spectators never request a camera or publish life/counters", async () => {
   const { result } = await joinedRoom({ ...saved, spectator: true })
   expect(result.current.spectating).toBe(true)

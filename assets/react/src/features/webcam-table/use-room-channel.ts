@@ -48,12 +48,14 @@ export interface RoomChannelHandlers {
   onChannelError: () => void
   /** The room owner ended the table; the channel and socket are already closed. */
   onClosed: () => void
+  onRemoved: () => void
   onDispose: () => void
 }
 
 interface JoinReply {
   participant?: TableParticipant
   owner?: boolean
+  can_moderate?: boolean
 }
 
 /** The table socket, this seat's channel, and the presence roster for one seat. */
@@ -67,6 +69,7 @@ export function useRoomChannel(
   const handlersRef = useRef(handlers)
   handlersRef.current = handlers
   const [spectating, setSpectating] = useState(false)
+  const [canModerate, setCanModerate] = useState(false)
 
   useEffect(() => {
     let disposed = false
@@ -178,6 +181,15 @@ export function useRoomChannel(
           socket?.disconnect()
           on().onClosed()
         })
+        const removed = () => {
+          disposed = true
+          clearTimeout(retryTimer)
+          room.leave()
+          socket?.disconnect()
+          setCanModerate(false)
+          on().onRemoved()
+        }
+        room.on("removed", removed)
         room.on("seat_replaced", () => {
           on().setError(
             "This seat is now open in another tab. Close this tab to keep playing there.",
@@ -192,14 +204,18 @@ export function useRoomChannel(
         })
         room
           .join()
-          .receive("ok", ({ participant, owner = false }: JoinReply) => {
+          .receive("ok", ({ participant, owner = false, can_moderate = false }: JoinReply) => {
             on().setError(null)
+            setCanModerate(can_moderate)
             link.spectator = participant?.spectator ?? false
             setSpectating(link.spectator)
             on().setStatus(liveStatus(link.spectator))
             on().onJoined(participant, owner)
           })
-          .receive("error", ({ reason }: { reason: string }) => on().setError(reason))
+          .receive("error", ({ reason }: { reason: string }) => {
+            if (reason === "You were removed from this table.") removed()
+            else on().setError(reason)
+          })
       } catch (reason) {
         on().setError(reason instanceof Error ? reason.message : "Could not start the webcam table")
       }
@@ -216,5 +232,5 @@ export function useRoomChannel(
     }
   }, [deckId, link, playerId, roomId])
 
-  return { spectating }
+  return { spectating, canModerate }
 }

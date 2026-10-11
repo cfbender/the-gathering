@@ -361,6 +361,16 @@ impl WebcamTables {
             .await
     }
 
+    /// Removes a participant and refuses future joins to this table.
+    pub async fn remove_participant(
+        &self,
+        room: &str,
+        peer_id: &str,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::Remove(peer_id.to_owned(), reply))
+            .await
+    }
+
     /// Pauses or resumes the clock.
     pub async fn timer(&self, room: &str, action: Action) -> Result<TimerState, RoomGone> {
         self.call(room, |reply| RoomMsg::Timer(action, reply)).await

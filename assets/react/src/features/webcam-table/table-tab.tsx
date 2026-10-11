@@ -30,6 +30,7 @@ import type { TimerSample } from "./game-timer"
 import { PanelSection } from "./panel-section"
 import type { RecognizerState } from "./recognition/use-recognizer"
 import { RevealControl } from "./reveal-control"
+import { RemoveParticipant } from "./remove-participant"
 import type { TableParticipant } from "./room-types"
 import { SeatOrderTable } from "./seat-order-table"
 import { describeIceServers, describeRecognizer } from "./side-panel-labels"
@@ -42,6 +43,7 @@ export interface TableTabProps {
   mode?: GameFormat
   onModeChange?: (mode: GameFormat) => void
   onMoveSeat?: (peerId: string, delta: -1 | 1) => void
+  onRemoveParticipant?: (peerId: string) => void
   spectating?: boolean
   isOwner?: boolean
   participants: TableParticipant[]
@@ -284,6 +286,7 @@ function SetupSection(props: TableTabProps) {
       <SeatOrderTable
         mode={props.mode}
         onMoveSeat={props.onMoveSeat}
+        onRemoveParticipant={props.onRemoveParticipant}
         participants={participants}
         localParticipant={local}
         decks={props.decks}
@@ -298,7 +301,11 @@ function SetupSection(props: TableTabProps) {
         {props.mode !== "commander" ? " until the match starts" : ""}. Once playing, eliminate or
         restore a player from their seat menu; out players skip turns but keep their recorded seat.
       </p>
-      <SpectatorList spectators={props.spectators} localPeerId={local.peer_id} />
+      <SpectatorList
+        spectators={props.spectators}
+        localPeerId={local.peer_id}
+        onRemove={props.onRemoveParticipant}
+      />
 
       <div className="mt-3 grid gap-1.5">
         <MatchControls {...props} />
@@ -395,9 +402,11 @@ function ConnectionSection(props: TableTabProps) {
 function SpectatorList({
   spectators,
   localPeerId,
+  onRemove,
 }: {
   spectators: TableParticipant[]
   localPeerId: string
+  onRemove?: (peerId: string) => void
 }) {
   if (spectators.length === 0) return null
   return (
@@ -407,10 +416,13 @@ function SpectatorList({
       </h3>
       <ul className="grid gap-0.5 text-[0.7rem]" aria-label="Spectators">
         {spectators.map((spectator) => (
-          <li key={spectator.peer_id} className="truncate pl-2">
-            {spectator.player_name}
+          <li key={spectator.peer_id} className="flex items-center gap-1 pl-2">
+            <span className="truncate">{spectator.player_name}</span>
             {spectator.peer_id === localPeerId && (
               <span className="text-base-content/50"> (you)</span>
+            )}
+            {onRemove && spectator.peer_id !== localPeerId && (
+              <RemoveParticipant participant={spectator} onRemove={onRemove} />
             )}
           </li>
         ))}
@@ -428,7 +440,11 @@ export function TableTab(props: TableTabProps) {
         </p>
         <TimerBadge sample={props.timer} />
         <SeatOrderTable {...props} readOnly />
-        <SpectatorList spectators={props.spectators} localPeerId={props.localParticipant.peer_id} />
+        <SpectatorList
+          spectators={props.spectators}
+          localPeerId={props.localParticipant.peer_id}
+          onRemove={props.onRemoveParticipant}
+        />
       </PanelSection>
     )
 

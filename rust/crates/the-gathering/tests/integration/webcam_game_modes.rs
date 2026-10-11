@@ -88,6 +88,162 @@ async fn join_admin(t: &Table, peer: &str) -> Client {
 }
 
 #[tokio::test]
+async fn hosts_remove_players_and_spectating_admins_remove_spectators() {
+    let mut t = Table::new().await;
+    let (user, player) = t.server.linked_player("Removed player").await;
+    let mut target = t.server.join_as(&user, player, &t.room, PEER_B).await;
+    target
+        .refused(
+            "remove_participant",
+            json!({"peer_id": PEER_A}),
+            "only the host or an admin can remove participants",
+        )
+        .await;
+    t.alice
+        .err("remove_participant", json!({"peer_id": PEER_A}))
+        .await;
+    t.alice
+        .err("remove_participant", json!({"player_id": player}))
+        .await;
+    t.alice
+        .err("remove_participant", json!({"peer_id": PEER_F}))
+        .await;
+    t.alice
+        .ok("remove_participant", json!({"peer_id": PEER_B}))
+        .await;
+    target.expect("removed").await;
+    assert!(
+        !t.snapshot()
+            .await
+            .seats
+            .iter()
+            .any(|seat| seat.player_id == player)
+    );
+    webcam_support::wait_until(|| async {
+        !t.server
+            .state()
+            .presence
+            .has_key(&the_gathering::webcam::topic(&t.room), PEER_B)
+    })
+    .await;
+    let (status, response, _) = t.server.try_join(&user, player, &t.room, PEER_C).await;
+    assert_eq!(status, "error");
+    assert_eq!(response["reason"], "You were removed from this table.");
+    let saved = session::load(t.server.app.pool(), &t.room)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(saved.removed_players.contains(&player));
+
+    t.alice.ok("start_game", json!({})).await;
+    let mut spectator = t.join_seat(PEER_D).await;
+    assert_eq!(spectator.participant["spectator"], true);
+    spectator
+        .err("remove_participant", json!({"peer_id": PEER_A}))
+        .await;
+    let mut admin = join_admin(&t, PEER_E).await;
+    assert!(
+        !admin.owner,
+        "a spectating admin must not gain game controls"
+    );
+    admin
+        .ok("remove_participant", json!({"peer_id": PEER_D}))
+        .await;
+    spectator.expect("removed").await;
+    admin.err("start_game", json!({})).await;
+    t.alice.ok("rematch", json!({})).await;
+    let (status, _, _) = t.server.try_join(&user, player, &t.room, PEER_F).await;
+    assert_eq!(status, "error", "rematching must not undo removal");
+    t.server.state().webcam_tables.kill(&t.room);
+    t.alice.expect("rejoin").await;
+    let (status, response, _) = t.server.try_join(&user, player, &t.room, PEER_F).await;
+    assert_eq!(status, "error");
+    assert_eq!(response["reason"], "You were removed from this table.");
+    let other_room = webcam_support::room_id();
+    let (status, _, _) = t.server.try_join(&user, player, &other_room, PEER_F).await;
+    assert_eq!(status, "ok", "removal is table-scoped, not an account ban");
+}
+
+#[tokio::test]
+async fn removing_the_active_player_keeps_their_result_and_advances_the_turn() {
+    let mut t = Table::new().await;
+    let mut bob = t.join_seat(PEER_B).await;
+    let _carol = t.join_seat(PEER_C).await;
+    t.alice
+        .ok(
+            "arrange_seats",
+            json!({"peer_ids": [PEER_B, PEER_C, PEER_A]}),
+        )
+        .await;
+    t.alice.ok("start_game", json!({"randomize": false})).await;
+    assert_eq!(
+        t.snapshot().await.turns.active_player_id,
+        Some(bob.player_id())
+    );
+    t.alice
+        .ok("remove_participant", json!({"peer_id": PEER_B}))
+        .await;
+    bob.expect("removed").await;
+    let snapshot = t.snapshot().await;
+    assert_eq!(snapshot.seats.len(), 3);
+    assert!(
+        snapshot
+            .eliminated_seats
+            .iter()
+            .any(|seat| seat.player_id == bob.player_id())
+    );
+    let carol = snapshot
+        .seats
+        .iter()
+        .find(|seat| seat.peer_id == PEER_C)
+        .unwrap();
+    assert_eq!(snapshot.turns.active_player_id, Some(carol.player_id));
+    assert_eq!(snapshot.peer_ids, [PEER_B, PEER_C, PEER_A]);
+}
+
+#[tokio::test]
+async fn removing_a_teammate_preserves_teams_and_cannot_be_undone_by_restoring_the_team() {
+    let mut t = Table::new().await;
+    let mut bob = t.join_seat(PEER_B).await;
+    let _carol = t.join_seat(PEER_C).await;
+    let _dave = t.join_seat(PEER_D).await;
+    t.alice
+        .ok("set_mode", json!({"mode": "two_headed_giant"}))
+        .await;
+    t.alice
+        .ok(
+            "arrange_seats",
+            json!({"peer_ids": [PEER_A, PEER_B, PEER_C, PEER_D]}),
+        )
+        .await;
+    t.alice.ok("start_game", json!({"randomize": false})).await;
+    t.alice
+        .ok("remove_participant", json!({"peer_id": PEER_B}))
+        .await;
+    bob.expect("removed").await;
+    let snapshot = t.snapshot().await;
+    assert_eq!(snapshot.eliminated_seats.len(), 1);
+    assert_eq!(snapshot.eliminated_seats[0].player_id, bob.player_id());
+    t.alice
+        .ok(
+            "set_eliminated",
+            json!({"peer_id": PEER_A, "eliminated": true}),
+        )
+        .await;
+    t.alice
+        .ok(
+            "set_eliminated",
+            json!({"peer_id": PEER_A, "eliminated": false}),
+        )
+        .await;
+    let restored = t.snapshot().await;
+    assert_eq!(restored.peer_ids, snapshot.peer_ids);
+    assert_eq!(restored.team_life, snapshot.team_life);
+    assert_eq!(restored.eliminated_seats.len(), 1);
+    assert_eq!(restored.eliminated_seats[0].player_id, bob.player_id());
+}
+
+#[tokio::test]
 async fn admins_hold_table_controls_in_rooms_they_did_not_open() {
     let t = Table::new().await;
     let mut admin = join_admin(&t, PEER_B).await;

@@ -9,6 +9,12 @@ and ends the game with a result form that records through `Games.create_game/2`.
 indistinguishable from a manually logged game, so existing history and statistics need no
 special cases.
 
+Hosts and admins can remove players or spectators using the remove icon next to their name
+in the Table panel. Confirmation disconnects them and blocks rejoining that table, including
+rematches and server restarts. Before the game starts, removal frees the seat; during a game,
+the player's seat remains eliminated for turn order and result recording without removing
+their teammate. Admins can moderate while spectating without gaining game controls.
+
 The owner selects a game mode before starting. Commander is the default. Two-Headed Giant
 Commander requires an even roster of at least four: adjacent seats form teams, randomization
 shuffles whole pairs, each team starts at 60 shared life, and turns/counts/timing are shared.

@@ -45,8 +45,9 @@ export function useWebcamRoom(
   // Set while this seat ends the table, so its own `table_closed` is not reported back to it.
   const endingRef = useRef(false)
   const [closedByOwner, setClosedByOwner] = useState(false)
+  const [removed, setRemoved] = useState(false)
 
-  const { spectating } = useRoomChannel(link, roomId, playerId, deckId, {
+  const { spectating, canModerate } = useRoomChannel(link, roomId, playerId, deckId, {
     setStatus,
     setError,
     onConfig(iceServers, sfu) {
@@ -93,6 +94,13 @@ export function useWebcamRoom(
       setStatus("This table has ended.")
       // The seat that ended it navigates on its own; everyone else is told.
       if (!endingRef.current) setClosedByOwner(true)
+    },
+    onRemoved() {
+      captures.cancelAll()
+      peers.closeAll()
+      camera.stop()
+      setRemoved(true)
+      setStatus("You were removed from this table.")
     },
     onDispose() {
       peers.closeAll()
@@ -142,8 +150,23 @@ export function useWebcamRoom(
     return cards.announceCard(ownerPeerId, byPlayerName, card, !hidden)
   }
 
+  function removeParticipant(peerId: string) {
+    if (link.channel?.state !== "joined") {
+      setError("Reconnect to the table before removing someone")
+      return
+    }
+    link.channel
+      .push("remove_participant", { peer_id: peerId })
+      .receive("ok", () => setError(null))
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+      .receive("timeout", () => setError("Removal request timed out; try again"))
+  }
+
   return {
     spectating,
+    canModerate,
+    removed,
+    removeParticipant,
     isOwner: game.isOwner,
     peerId: link.peerId,
     participants: game.participants,

@@ -11,7 +11,7 @@
 //! channel: [`RoomExit::Closed`] means the owner ended the table; a sender dropped without a
 //! value means the room crashed.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -48,6 +48,9 @@ pub struct Entry {
     /// Every seat by player id.
     #[serde(default)]
     pub all_seats: BTreeMap<i64, Seat>,
+    /// Players removed from this table, including spectators; retained across rematches.
+    #[serde(default)]
+    pub removed_players: BTreeSet<i64>,
     /// Turn accounting.
     #[serde(default)]
     pub turns: Turns,
@@ -87,6 +90,7 @@ impl Entry {
             peer_ids: Vec::new(),
             eliminated_seats: BTreeMap::new(),
             all_seats: BTreeMap::new(),
+            removed_players: BTreeSet::new(),
             turns: Turns::default(),
             mode: Mode::Commander,
             team_life: BTreeMap::new(),
@@ -247,6 +251,8 @@ pub enum RoomExit {
 pub enum ConnEvent {
     /// A newer connection took this seat.
     SeatReplaced,
+    /// A host or admin removed this participant.
+    Removed,
     /// The seat was knocked out or restored.
     SeatEliminated(bool),
     /// A rematch reset the seat.
@@ -327,6 +333,8 @@ pub enum RoomMsg {
     TeamLife(Actor, i64, i64, Reply<Outcome>),
     /// Eliminate or restore a seat (by peer id).
     Eliminate(String, bool, Reply<()>),
+    /// Remove a participant by peer id.
+    Remove(String, Reply<Outcome>),
     /// Pause or resume.
     Timer(Action, Reply<TimerState>),
     /// End the mulligan window.
@@ -366,6 +374,7 @@ enum Flow {
 struct Connection {
     conn: Conn,
     monitor: u64,
+    peer_id: String,
 }
 
 pub(super) struct Room {
@@ -644,6 +653,44 @@ impl Room {
                 self.rematch(entry).await?;
                 let _ = reply.send(());
             }
+            RoomMsg::Remove(peer_id, reply) => {
+                let target = self
+                    .connections
+                    .iter()
+                    .find_map(|(id, connection)| (connection.peer_id == peer_id).then_some(*id));
+                let target = target.or_else(|| {
+                    entry
+                        .all_seats
+                        .values()
+                        .find(|seat| seat.peer_id == peer_id)
+                        .map(|seat| seat.player_id)
+                });
+                if let Some(player_id) = target.filter(|id| !entry.removed_players.contains(id)) {
+                    entry.removed_players.insert(player_id);
+                    if let Some(mut seat) = entry.all_seats.get(&player_id).cloned() {
+                        if entry.timer.started_at.is_some() {
+                            // Keep team positions and the result, but skip this player's turns.
+                            seat.eliminated = true;
+                            put_eliminated(&mut entry.eliminated_seats, &seat);
+                            entry.all_seats.insert(player_id, seat);
+                            entry = entry.reconcile_turn();
+                        } else {
+                            entry.all_seats.remove(&player_id);
+                            entry.peer_ids.retain(|id| id != &peer_id);
+                        }
+                    }
+                    let events = vec![eliminated_seats_event(&entry), Broadcast::TableState];
+                    self.commit(entry, events).await?;
+                    self.departing.remove(&player_id);
+                    if let Some(connection) = self.connections.remove(&player_id) {
+                        self.monitors.remove(&connection.monitor);
+                        let _ = connection.conn.tx.send(ConnEvent::Removed);
+                    }
+                    let _ = reply.send(Ok(()));
+                } else {
+                    let _ = reply.send(Err("participant is not at this table".into()));
+                }
+            }
             RoomMsg::Monarch(holder, actor, reply) => {
                 if entry.monarch.as_ref() != Some(&holder) {
                     entry.monarch = Some(holder.clone());
@@ -850,6 +897,9 @@ impl Room {
             .entry
             .clone()
             .unwrap_or_else(|| Entry::new(participant.player_id));
+        if entry.removed_players.contains(&participant.player_id) {
+            return Ok(Err("You were removed from this table.".into()));
+        }
         let previous = entry.all_seats.get(&participant.player_id).cloned();
         let duplicate = entry
             .all_seats
@@ -929,8 +979,14 @@ impl Room {
             monitor,
             (participant.player_id, participant.player_name.clone()),
         );
-        self.connections
-            .insert(participant.player_id, Connection { conn, monitor });
+        self.connections.insert(
+            participant.player_id,
+            Connection {
+                conn,
+                monitor,
+                peer_id: participant.peer_id.clone(),
+            },
+        );
     }
 
     fn down(&mut self, monitor: u64) {
@@ -1195,6 +1251,8 @@ impl Room {
     /// active seat just left. Callers commit the returned entry.
     fn eliminate_seats(&self, mut entry: Entry, seats: Vec<Seat>, eliminated: bool) -> Entry {
         for seat in seats {
+            // Restoring a teammate cannot put a removed player's seat back into play.
+            let eliminated = eliminated || entry.removed_players.contains(&seat.player_id);
             if seat.eliminated != eliminated {
                 entry = entry.log(vec![log::elimination(&seat, eliminated)]);
             }
