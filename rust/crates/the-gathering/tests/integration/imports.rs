@@ -365,7 +365,7 @@ fn update_rows(game: &Game, game_id: &str, identity: &str, conflicting: Option<&
     };
     [
         ("Bob", "Goblins", "Krenko", 1, "loss", ""),
-        ("Alice", "Angels", "Giada", 2, "win", "0"),
+        ("Alice", "Angels", "Giada", 2, "win", "1"),
         ("Dave", "Dragons", "Miirym", 3, "loss", "0"),
     ]
     .iter()
@@ -453,6 +453,23 @@ async fn preview_is_a_dry_run_with_a_revision_and_material_changes() {
     assert_eq!(count(&app, "players").await, players);
     assert_eq!(count(&app, "decks").await, decks);
     assert_eq!(count(&app, "game_players").await, 3);
+
+    // A count-only correction must not contradict attribution retained from the game.
+    let conflicting = csv.replace("Alice,Angels,Giada,2,win,1", "Alice,Angels,Giada,2,win,0");
+    assert_invalid(&app, &conflicting, "kill totals cannot be less").await;
+    assert!(
+        import_csv(&app, &conflicting, None, preview.revision.as_deref())
+            .await
+            .is_err()
+    );
+    let unchanged = game(&app, ctx.game.id).await;
+    assert_eq!(unchanged.seats[0].kills, Some(2));
+    assert_eq!(
+        unchanged.seats[1].eliminated_by_player_id,
+        Some(ctx.alice.id)
+    );
+    assert_eq!(count(&app, "players").await, players);
+    assert_eq!(count(&app, "decks").await, decks);
 }
 
 #[tokio::test]
@@ -522,8 +539,9 @@ async fn commit_preserves_identity_and_retained_seat_metadata_while_replacing_sw
             alice.mvp_card_name.as_deref(),
             alice.notes.as_deref()
         ),
-        (2, Some(0), Some("Swan Song"), Some("Alice note"))
+        (2, Some(1), Some("Swan Song"), Some("Alice note"))
     );
+    assert_eq!(seats["Dave"].kills, Some(0));
     assert!(!seats.contains_key("Carol"));
     assert!(!old.values().any(|id| *id == seats["Dave"].id));
     let alice_deck = alice.deck.as_ref().unwrap();

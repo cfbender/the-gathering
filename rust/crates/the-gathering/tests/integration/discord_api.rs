@@ -231,7 +231,7 @@ fn payload() -> Value {
                     "color_identity": "RG"
                 }
             },
-            {"discord_id": "111", "result": "loss", "kills": 0}
+            {"discord_id": "111", "result": "loss", "kills": 0, "eliminated_by_discord_id": "222"}
         ]
     })
 }
@@ -397,6 +397,10 @@ async fn saving_creates_the_discord_identities_and_game_atomically_ignores_forge
     assert_eq!(
         game.seats[0].deck.as_ref().unwrap().commander_name,
         "Bello, Bard of the Brambles"
+    );
+    assert_eq!(
+        game.seats[1].eliminated_by_player_id,
+        Some(game.seats[0].player_id)
     );
     assert!(
         !exists(

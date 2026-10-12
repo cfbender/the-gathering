@@ -15,6 +15,19 @@ A self-hosted tracker for Commander (Magic: The Gathering) games. Record who pla
 - Deck-list links for Moxfield, Archidekt, and manavault.
 - Playgroup, player, commander, and deck statistics.
 
+## Kill tracking
+
+When logging or editing a game, use each player's **Kills** dropdown to select who they
+killed. **Total kills** includes those selections; enter a larger total (or only a total)
+when some names are unknown. Leave it blank when the total is unknown; zero means no kills.
+Game details show named victims and any unknown remainder. A victim can have only one killer.
+Totals, including CSV corrections, cannot be lower than the number of named victims.
+
+On upgrade, existing games with a sole winner who recorded exactly one kill per opponent
+are attributed to that winner, unless existing attribution contradicts it. Other totals
+remain unchanged and unattributed. This inference runs once on historical games, not on
+new count-only entries. Portable exports retain both totals and attribution.
+
 ## Self-hosting
 
 Requirements: Docker with Compose.

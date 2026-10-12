@@ -58,79 +58,93 @@ function GameDetailPage() {
         )}
       </PageHeader>
       <section className="grid gap-4 sm:grid-cols-2">
-        {game.seats.map((seat) => (
-          <article
-            key={seat.id}
-            className={`card relative overflow-hidden border ${seat.result === "win" ? "border-success bg-success/10" : "border-base-300 bg-base-200"}`}
-          >
-            <CardArtBackground
-              imageUrl={seat.deck?.commander_art_crop_url}
-              partnerImageUrl={seat.deck?.partner_art_crop_url}
-            />
-            <div className="card-body text-base-content relative z-10 gap-2 p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="badge badge-neutral">Seat {seat.seat}</span>
-                  <span className="badge badge-neutral">
-                    {seat.kills === null
-                      ? "Kills unknown"
-                      : `${seat.kills} ${seat.kills === 1 ? "kill" : "kills"}`}
-                  </span>
+        {game.seats.map((seat) => {
+          const victims = game.seats.filter(
+            (victim) => victim.eliminated_by_player_id === seat.player_id,
+          )
+          const unknown = seat.kills === null ? null : Math.max(0, seat.kills - victims.length)
+          const victimNames = [
+            ...victims.map((victim) => victim.player.name),
+            ...(unknown ? [`${unknown} unknown`] : []),
+            ...(victims.length && unknown === null ? ["other kills unknown"] : []),
+          ].join(", ")
+          return (
+            <article
+              key={seat.id}
+              className={`card relative overflow-hidden border ${seat.result === "win" ? "border-success bg-success/10" : "border-base-300 bg-base-200"}`}
+            >
+              <CardArtBackground
+                imageUrl={seat.deck?.commander_art_crop_url}
+                partnerImageUrl={seat.deck?.partner_art_crop_url}
+              />
+              <div className="card-body text-base-content relative z-10 gap-2 p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="badge badge-neutral">Seat {seat.seat}</span>
+                    <span className="badge badge-neutral">
+                      {seat.kills === null
+                        ? "Kills unknown"
+                        : `${seat.kills} ${seat.kills === 1 ? "kill" : "kills"}`}
+                    </span>
+                  </div>
+                  {seat.result === "win" && (
+                    <span className="bg-base-100 text-accent flex items-center gap-1 rounded-full px-2 py-1 text-sm font-bold">
+                      <Trophy className="size-4" /> Winner
+                    </span>
+                  )}
+                  {seat.result === "draw" && <span className="badge badge-info">Draw</span>}
                 </div>
-                {seat.result === "win" && (
-                  <span className="bg-base-100 text-accent flex items-center gap-1 rounded-full px-2 py-1 text-sm font-bold">
-                    <Trophy className="size-4" /> Winner
-                  </span>
-                )}
-                {seat.result === "draw" && <span className="badge badge-info">Draw</span>}
-              </div>
-              <Link
-                to="/players/$playerId"
-                params={{ playerId: String(seat.player.id) }}
-                className="link-hover mt-2 text-xl font-bold"
-              >
-                {seat.player.name}
-              </Link>
-              {seat.deck ? (
                 <Link
-                  to="/decks/$deckId"
-                  params={{ deckId: String(seat.deck.id) }}
-                  className="link-hover"
+                  to="/players/$playerId"
+                  params={{ playerId: String(seat.player.id) }}
+                  className="link-hover mt-2 text-xl font-bold"
                 >
-                  <span className="flex items-center justify-between gap-2">
-                    <strong>{seat.deck.name}</strong>
-                    <ColorIdentity colors={seat.deck.color_identity} />
-                  </span>
-                  <span className="text-base-content/85 block text-sm">
-                    <DeckCommanders deck={seat.deck} hover />
-                  </span>
+                  {seat.player.name}
                 </Link>
-              ) : (
-                <p className="text-base-content/50">No deck recorded</p>
-              )}
-              {seat.mvp_card_name && (
-                <div className="border-accent/40 relative mt-2 overflow-hidden rounded-lg border px-3 py-2 text-sm">
-                  <CardArtBackground imageUrl={seat.mvp_art_crop_url} />
-                  <p className="text-accent relative z-10">
-                    <strong>MVP:</strong>{" "}
-                    <CardHover
-                      id={seat.mvp_image_url ? null : seat.mvp_card_id}
-                      name={seat.mvp_card_name}
-                      gameChanger={seat.mvp_game_changer}
-                      imageUrl={seat.mvp_image_url}
-                      artCropUrl={seat.mvp_art_crop_url}
-                    >
-                      <span className="decoration-accent/50 cursor-help underline decoration-dotted underline-offset-2">
-                        {seat.mvp_card_name}
-                      </span>
-                    </CardHover>{" "}
-                    <GameChangerBadge gameChanger={seat.mvp_game_changer} />
-                  </p>
-                </div>
-              )}
-            </div>
-          </article>
-        ))}
+                {victimNames && (
+                  <p className="text-sm text-base-content/70">Killed: {victimNames}</p>
+                )}
+                {seat.deck ? (
+                  <Link
+                    to="/decks/$deckId"
+                    params={{ deckId: String(seat.deck.id) }}
+                    className="link-hover"
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <strong>{seat.deck.name}</strong>
+                      <ColorIdentity colors={seat.deck.color_identity} />
+                    </span>
+                    <span className="text-base-content/85 block text-sm">
+                      <DeckCommanders deck={seat.deck} hover />
+                    </span>
+                  </Link>
+                ) : (
+                  <p className="text-base-content/50">No deck recorded</p>
+                )}
+                {seat.mvp_card_name && (
+                  <div className="border-accent/40 relative mt-2 overflow-hidden rounded-lg border px-3 py-2 text-sm">
+                    <CardArtBackground imageUrl={seat.mvp_art_crop_url} />
+                    <p className="text-accent relative z-10">
+                      <strong>MVP:</strong>{" "}
+                      <CardHover
+                        id={seat.mvp_image_url ? null : seat.mvp_card_id}
+                        name={seat.mvp_card_name}
+                        gameChanger={seat.mvp_game_changer}
+                        imageUrl={seat.mvp_image_url}
+                        artCropUrl={seat.mvp_art_crop_url}
+                      >
+                        <span className="decoration-accent/50 cursor-help underline decoration-dotted underline-offset-2">
+                          {seat.mvp_card_name}
+                        </span>
+                      </CardHover>{" "}
+                      <GameChangerBadge gameChanger={seat.mvp_game_changer} />
+                    </p>
+                  </div>
+                )}
+              </div>
+            </article>
+          )
+        })}
       </section>
       {game.win_condition && (
         <section className="card border-base-300 bg-base-200 border">

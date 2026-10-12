@@ -24,6 +24,7 @@ import {
 } from "@/features/games/games"
 import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { SeatEditor } from "@/features/games/seat-editor"
+import { KillPicker } from "./kill-picker"
 import {
   SELECT_NONE_VALUE,
   Select,
@@ -119,6 +120,12 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
       const payloadSeats = []
       const knownPlayers = [...(playersQuery.data ?? [])]
       const knownDecks = [...(decksQuery.data ?? [])]
+      const playerIds = new Map<string, number>()
+      if (!discordDraft) {
+        for (const draft of seats) {
+          playerIds.set(draft.draftId, await ensurePlayer(draft, knownPlayers))
+        }
+      }
 
       for (const [index, draft] of seats.entries()) {
         if (discordDraft) {
@@ -139,12 +146,14 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
                 : null,
             result: results[index],
             kills: draft.kills === "" ? null : Number(draft.kills),
+            eliminated_by_discord_id:
+              seats.find((seat) => seat.draftId === draft.eliminatedByDraftId)?.discordId ?? null,
             mvp_card_id: draft.mvpCard?.catalog_id ?? null,
             mvp_card_name: draft.mvpCard?.name ?? null,
           })
           continue
         }
-        const playerId = await ensurePlayer(draft, knownPlayers)
+        const playerId = playerIds.get(draft.draftId)!
         const deckId = await ensureDeck(draft, playerId, knownDecks)
         payloadSeats.push({
           id: draft.id,
@@ -153,6 +162,7 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
           seat: index + 1,
           result: results[index],
           kills: draft.kills === "" ? null : Number(draft.kills),
+          eliminated_by_player_id: playerIds.get(draft.eliminatedByDraftId ?? "") ?? null,
           mvp_card_id: draft.mvpCard?.catalog_id ?? null,
           mvp_card_name: draft.mvpCard?.name ?? null,
         })
@@ -182,6 +192,25 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
       void navigate({ to: "/games/$gameId", params: { gameId: String(saved.id) } })
     },
   })
+
+  function selectVictim(killerId: string, victimId: string, checked: boolean) {
+    setSeats((current) => {
+      const known = current.filter((seat) => seat.eliminatedByDraftId === killerId).length
+      return current.map((seat) => {
+        if (seat.draftId === victimId) {
+          return { ...seat, eliminatedByDraftId: checked ? killerId : null }
+        }
+        if (seat.draftId === killerId) {
+          const total = Number(seat.kills) || known
+          return {
+            ...seat,
+            kills: String(checked ? Math.max(total, known + 1) : Math.max(0, total - 1)),
+          }
+        }
+        return seat
+      })
+    })
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -260,7 +289,13 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
                   onChooseWinner={() => setWinnerSeatId(seat.draftId)}
                   onMove={(direction) => setSeats((value) => moveSeat(value, index, direction))}
                   onRemove={() => {
-                    const remaining = seats.filter((_, seatIndex) => seatIndex !== index)
+                    const remaining = seats
+                      .filter((_, seatIndex) => seatIndex !== index)
+                      .map((remainingSeat) =>
+                        remainingSeat.eliminatedByDraftId === seat.draftId
+                          ? { ...remainingSeat, eliminatedByDraftId: null }
+                          : remainingSeat,
+                      )
                     setSeats(remaining)
                     if (winnerSeatId === seat.draftId) {
                       setWinnerSeatId(remaining[0]?.draftId ?? null)
@@ -345,18 +380,14 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
                       value={seat.mvpCard}
                       onChange={(mvpCard) => updateSeat(index, { mvpCard })}
                     />
-                    <label className="form-control">
-                      <span className="label-text mb-1 text-xs font-medium">Kills (optional)</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="5"
-                        step="1"
-                        className="input input-bordered input-sm w-full"
-                        value={seat.kills}
-                        onChange={(event) => updateSeat(index, { kills: event.target.value })}
-                      />
-                    </label>
+                    <KillPicker
+                      seat={seat}
+                      seats={seats}
+                      onVictimChange={(victimId, checked) =>
+                        selectVictim(seat.draftId, victimId, checked)
+                      }
+                      onTotalChange={(kills) => updateSeat(index, { kills })}
+                    />
                   </div>
                   {!discordDraft && seat.playerName && seat.playerId === null && !player && (
                     <p className="text-info mt-2 text-xs">

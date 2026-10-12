@@ -232,6 +232,9 @@ pub struct DraftSeat {
     /// Kills.
     #[serde(default)]
     pub kills: Patch<i64>,
+    /// The seated Discord player who eliminated this player.
+    #[serde(default)]
+    pub eliminated_by_discord_id: Option<String>,
     /// Most valuable card.
     #[serde(default)]
     pub mvp_card_id: Patch<String>,
@@ -328,6 +331,7 @@ async fn seats(
     if given != expected {
         return Err(GamesError::BadRequest);
     }
+    let mut player_ids = HashMap::new();
     let mut resolved = Vec::with_capacity(seats.len());
     for (index, seat) in seats.iter().enumerate() {
         let identity = by_id
@@ -345,6 +349,7 @@ async fn seats(
             ResolveError::Database(error) => GamesError::Database(error),
             ResolveError::DiscordIdentityConflict => GamesError::BadRequest,
         })?;
+        player_ids.insert(seat.discord_id.as_str(), player.id);
         let deck_id = deck(conn, links, player.id, seat).await?;
         resolved.push(SeatInput {
             player_id: Some(player.id).into(),
@@ -356,6 +361,14 @@ async fn seats(
             mvp_card_name: seat.mvp_card_name.clone(),
             ..SeatInput::default()
         });
+    }
+    for (input, seat) in resolved.iter_mut().zip(seats) {
+        input.eliminated_by_player_id = seat
+            .eliminated_by_discord_id
+            .as_deref()
+            .map(|id| player_ids.get(id).copied().ok_or(GamesError::BadRequest))
+            .transpose()?
+            .into();
     }
     Ok(resolved)
 }

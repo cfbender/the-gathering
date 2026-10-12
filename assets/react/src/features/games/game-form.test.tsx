@@ -63,6 +63,7 @@ function gameFixture(): Game {
       seat: index + 1,
       result: index === 1 ? "win" : "loss",
       kills: index === 0 ? 0 : null,
+      eliminated_by_player_id: null,
       mvp_card_id: index === 0 ? "rhystic-study" : null,
       mvp_card_name: index === 0 ? "Rhystic Study" : null,
       mvp_art_crop_url: null,
@@ -157,6 +158,7 @@ async function submitPayload(fetch: ReturnType<typeof vi.fn>) {
       seat: number
       result: "win" | "loss" | "draw"
       kills: number | null
+      eliminated_by_player_id: number | null
       mvp_card_id: string | null
       mvp_card_name: string | null
     }>
@@ -292,7 +294,7 @@ describe("GameForm submissions", () => {
 
   it("preserves explicit zero kills and submits a blank count as unknown", async () => {
     const { fetch } = renderGame()
-    const killInputs = screen.getAllByRole("spinbutton", { name: "Kills (optional)" })
+    const killInputs = screen.getAllByRole("spinbutton", { name: "Total kills" })
 
     expect((killInputs[0] as HTMLInputElement).value).toBe("0")
     expect((killInputs[1] as HTMLInputElement).value).toBe("")
@@ -303,7 +305,7 @@ describe("GameForm submissions", () => {
 
   it("clears a recorded zero to unknown when the input is emptied", async () => {
     const { fetch } = renderGame()
-    fireEvent.change(screen.getAllByRole("spinbutton", { name: "Kills (optional)" })[0]!, {
+    fireEvent.change(screen.getAllByRole("spinbutton", { name: "Total kills" })[0]!, {
       target: { value: "" },
     })
     const payload = await submitPayload(fetch)
@@ -315,7 +317,7 @@ describe("GameForm submissions", () => {
     ["1.5", "stepMismatch"],
   ])("rejects an invalid kill count of %s", (value, validityFlag) => {
     const { fetch } = renderGame()
-    const input = screen.getAllByRole("spinbutton", { name: "Kills (optional)" })[0]
+    const input = screen.getAllByRole("spinbutton", { name: "Total kills" })[0]
     expect(input).toBeTruthy()
 
     fireEvent.change(input as HTMLInputElement, { target: { value } })
@@ -327,6 +329,101 @@ describe("GameForm submissions", () => {
         ([request, init]) => request === "/api/games/44" && init?.method === "PATCH",
       ),
     ).toBe(false)
+  })
+
+  it("attributes victims without doubling count-only kills and keeps them attached after reordering", async () => {
+    const game = gameFixture()
+    game.seats[1]!.kills = 2
+    const { fetch } = renderGame(game)
+    fireEvent.click(screen.getByRole("button", { name: "Kills for Bob" }))
+    expect(screen.queryByRole("checkbox", { name: "Bob" })).toBeNull()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alice" }))
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })
+    expect(screen.getByRole("button", { name: "Kills for Bob" }).textContent).toContain(
+      "Alice, 1 unknown",
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Kills for Cara" }))
+    expect(screen.getByRole("checkbox", { name: "Alice" }).hasAttribute("disabled")).toBe(true)
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })
+    const bobSeat = screen.getByDisplayValue("Bob").closest("article") as HTMLElement
+    fireEvent.click(within(bobSeat).getByRole("button", { name: "Move seat down" }))
+    const payload = await submitPayload(fetch)
+    expect(payload.seats.find((seat) => seat.player_id === 1)?.eliminated_by_player_id).toBe(2)
+    expect(payload.seats.find((seat) => seat.player_id === 2)?.kills).toBe(2)
+  })
+
+  it.each(["remove", "replace"])(
+    "clears attribution when a killer is changed (%s)",
+    async (action) => {
+      const game = gameFixture()
+      game.seats[0]!.eliminated_by_player_id = 2
+      game.seats[1]!.kills = 2
+      const { fetch, queryClient } = renderGame(game)
+      queryClient.setQueryData(["players"], [alice, cara, player(4, "Dana")])
+      expect(screen.getByRole("button", { name: "Kills for Bob" }).textContent).toContain(
+        "Alice, 1 unknown",
+      )
+      const bobSeat = screen.getByDisplayValue("Bob").closest("article") as HTMLElement
+      if (action === "remove") {
+        fireEvent.click(within(bobSeat).getByRole("button", { name: "Remove seat" }))
+      } else {
+        fireEvent.change(within(bobSeat).getByRole("combobox", { name: "Player" }), {
+          target: { value: "Dana" },
+        })
+      }
+      const payload = await submitPayload(fetch)
+      expect(payload.seats.find((seat) => seat.player_id === 1)?.eliminated_by_player_id).toBeNull()
+    },
+  )
+
+  it("allows deselection and prevents totals below the named victim count", async () => {
+    const game = gameFixture()
+    game.seats[0]!.eliminated_by_player_id = 2
+    game.seats[1]!.kills = 1
+    const { fetch } = renderGame(game)
+    const total = screen.getAllByRole("spinbutton", { name: "Total kills" })[1] as HTMLInputElement
+    fireEvent.change(total, { target: { value: "0" } })
+    expect(total.validity.rangeUnderflow).toBe(true)
+    fireEvent.change(total, { target: { value: "1" } })
+    fireEvent.click(screen.getByRole("button", { name: "Kills for Bob" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alice" }))
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })
+    const payload = await submitPayload(fetch)
+    expect(payload.seats[0]?.eliminated_by_player_id).toBeNull()
+    expect(payload.seats[1]?.kills).toBe(0)
+  })
+
+  it("resolves a newly created killer even when their victim is in an earlier seat", async () => {
+    const { fetch, rerender } = renderGame()
+    rerender(<GameForm />)
+    fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (input === "/api/players" && init?.method === "POST") return response(player(8, "Dana"))
+      if (input === "/api/games" && init?.method === "POST") return response(gameFixture())
+      throw new Error(`Unexpected request: ${input}`)
+    })
+    const inputs = screen.getAllByRole("combobox", { name: "Player" })
+    fireEvent.change(inputs[0]!, { target: { value: "Alice" } })
+    fireEvent.change(inputs[1]!, { target: { value: "Dana" } })
+    fireEvent.click(screen.getByRole("radio", { name: "Dana won" }))
+    fireEvent.click(screen.getByRole("button", { name: "Kills for Dana" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alice" }))
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })
+    fireEvent.click(screen.getByRole("button", { name: "Log game" }))
+    await waitFor(() => expect(navigate).toHaveBeenCalled())
+    const call = fetch.mock.calls.find(
+      ([url, init]) => url === "/api/games" && init?.method === "POST",
+    )
+    const payload = JSON.parse(String(call?.[1]?.body))
+    expect(payload.seats[0]).toMatchObject({
+      player_id: 1,
+      eliminated_by_player_id: 8,
+      kills: null,
+    })
+    expect(payload.seats[1]).toMatchObject({
+      player_id: 8,
+      eliminated_by_player_id: null,
+      kills: 1,
+    })
   })
 
   it("invalidates stats after saving", async () => {
@@ -379,6 +476,9 @@ describe("GameForm Discord handoff", () => {
       target: { value: "Retired artifacts" },
     })
     fireEvent.click(within(bobSeat).getByRole("button", { name: "Move seat down" }))
+    fireEvent.click(screen.getByRole("button", { name: "Kills for Cara" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alice" }))
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })
     fireEvent.click(screen.getByRole("button", { name: "Log game" }))
     await waitFor(() => expect(navigate).toHaveBeenCalled())
 
@@ -404,6 +504,8 @@ describe("GameForm Discord handoff", () => {
       deck_id: 22,
       deck: null,
     })
+    expect(payload.seats[0].eliminated_by_discord_id).toBe("discord-cara")
+    expect(payload.seats[1].kills).toBe(1)
     expect(
       fetch.mock.calls.some(
         ([url, request]) =>

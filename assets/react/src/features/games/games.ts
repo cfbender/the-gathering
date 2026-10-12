@@ -28,6 +28,7 @@ export interface Seat {
   seat: number
   result: "win" | "loss" | "draw"
   kills: number | null
+  eliminated_by_player_id: number | null
   mvp_card_id: string | null
   mvp_card_name: string | null
   mvp_game_changer?: boolean

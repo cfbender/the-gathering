@@ -202,6 +202,31 @@ fn validate_seats(errors: &mut ValidationError, seats: &[SeatFields], format: Op
     if !(winner_and_losses || all_draw) {
         errors.add("seats", message);
     }
+    for seat in seats {
+        if let Some(killer) = seat.eliminated_by_player_id
+            && (Some(killer) == seat.player_id || !player_ids.contains(&Some(killer)))
+        {
+            errors.add("seats", "a killer must be another player in this game");
+            break;
+        }
+    }
+    for seat in seats {
+        let known_kills = seats
+            .iter()
+            .filter(|victim| {
+                seat.player_id.is_some() && victim.eliminated_by_player_id == seat.player_id
+            })
+            .count();
+        if let Some(total) = seat.kills
+            && i64::try_from(known_kills).is_ok_and(|known| total < known)
+        {
+            errors.add(
+                "seats",
+                "kill totals cannot be less than the number of selected victims",
+            );
+            break;
+        }
+    }
 }
 
 async fn exists(conn: &mut SqliteConnection, table: &str, id: i64) -> Result<bool, sqlx::Error> {

@@ -232,6 +232,187 @@ async fn keeps_unknown_kills_distinct_from_zero_and_validates_kill_counts() {
 }
 
 #[tokio::test]
+async fn records_edits_and_validates_kill_attribution() {
+    let app = TestApp::new().await;
+    let players = players(&app, 4).await;
+    let refs: Vec<&Player> = players.iter().take(3).collect();
+    let mut attrs = game_attrs(&refs);
+    attrs["seats"][0]["kills"] = json!(2);
+    attrs["seats"][1]["eliminated_by_player_id"] = json!(players[0].id);
+    let game = app
+        .state
+        .games
+        .create_game(&support::input(attrs.clone()), None)
+        .await
+        .unwrap();
+    assert_eq!(game.seats[0].kills, Some(2)); // One named victim, one unknown.
+    assert_eq!(game.seats[1].eliminated_by_player_id, Some(players[0].id));
+    assert_eq!(game.seats[2].eliminated_by_player_id, None);
+
+    for killer in [players[1].id, players[3].id] {
+        let mut invalid_attrs = attrs.clone();
+        invalid_attrs["seats"][1]["eliminated_by_player_id"] = json!(killer);
+        let errors = invalid(
+            app.state
+                .games
+                .create_game(&support::input(invalid_attrs), None)
+                .await,
+        );
+        assert!(
+            errors
+                .messages("seats")
+                .contains(&"a killer must be another player in this game".into())
+        );
+    }
+    let mut invalid_attrs = attrs.clone();
+    invalid_attrs["seats"][0]["kills"] = json!(0);
+    let errors = invalid(
+        app.state
+            .games
+            .create_game(&support::input(invalid_attrs), None)
+            .await,
+    );
+    assert!(
+        errors
+            .messages("seats")
+            .contains(&"kill totals cannot be less than the number of selected victims".into())
+    );
+
+    // Missing fields preserve attribution, including when seat order changes.
+    let updated = app
+        .state
+        .games
+        .update_game(
+            &game,
+            &support::input(json!({"seats": [
+                {"id": game.seats[2].id, "seat": 1},
+                {"id": game.seats[0].id, "seat": 2},
+                {"id": game.seats[1].id, "seat": 3}
+            ]})),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        updated
+            .seats
+            .iter()
+            .find(|seat| seat.player_id == players[1].id)
+            .unwrap()
+            .eliminated_by_player_id,
+        Some(players[0].id)
+    );
+    // Explicit null removes attribution without erasing the killer's total.
+    let cleared = app
+        .state
+        .games
+        .update_game(
+            &updated,
+            &support::input(json!({"seats": [
+                {"id": game.seats[0].id},
+                {"id": game.seats[1].id, "eliminated_by_player_id": null},
+                {"id": game.seats[2].id}
+            ]})),
+        )
+        .await
+        .unwrap();
+    assert!(
+        cleared
+            .seats
+            .iter()
+            .all(|seat| seat.eliminated_by_player_id.is_none())
+    );
+    assert_eq!(
+        cleared
+            .seats
+            .iter()
+            .find(|seat| seat.player_id == players[0].id)
+            .unwrap()
+            .kills,
+        Some(2)
+    );
+}
+
+#[tokio::test]
+async fn backfills_only_unambiguous_sole_winner_sweeps() {
+    let app = TestApp::new().await;
+    let players = players(&app, 3).await;
+    let refs: Vec<&Player> = players.iter().collect();
+    let mut games = Vec::new();
+    for (winner_kills, loser_kills, second_winner, conflict) in [
+        (Some(2), None, false, false),
+        (Some(1), None, false, false),
+        (None, None, false, false),
+        (Some(0), Some(2), false, false),
+        (Some(2), None, true, false),
+        (Some(2), Some(1), false, true),
+    ] {
+        let mut attrs = game_attrs(&refs);
+        attrs["seats"][0]["kills"] = json!(winner_kills);
+        attrs["seats"][1]["kills"] = json!(loser_kills);
+        if second_winner {
+            attrs["format"] = json!("two_headed_giant");
+            attrs["seats"][1]["result"] = json!("win");
+        }
+        if conflict {
+            attrs["seats"][2]["eliminated_by_player_id"] = json!(players[1].id);
+        }
+        games.push(
+            app.state
+                .games
+                .create_game(&support::input(attrs), None)
+                .await
+                .unwrap(),
+        );
+    }
+    sqlx::query("DELETE FROM schema_migrations WHERE version = 20261012050542")
+        .execute(app.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        the_gathering::db::migrate::run(app.pool()).await.unwrap(),
+        [20_261_012_050_542]
+    );
+    for (index, before) in games.iter().enumerate() {
+        let after = app.state.games.get_game(before.id).await.unwrap().unwrap();
+        assert_eq!(
+            after
+                .seats
+                .iter()
+                .map(|seat| seat.kills)
+                .collect::<Vec<_>>(),
+            before
+                .seats
+                .iter()
+                .map(|seat| seat.kills)
+                .collect::<Vec<_>>()
+        );
+        let killers: Vec<_> = after
+            .seats
+            .iter()
+            .map(|seat| seat.eliminated_by_player_id)
+            .collect();
+        if index == 0 {
+            assert_eq!(killers, [None, Some(players[0].id), Some(players[0].id)]);
+        } else {
+            assert_eq!(
+                killers,
+                before
+                    .seats
+                    .iter()
+                    .map(|seat| seat.eliminated_by_player_id)
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+    assert!(
+        the_gathering::db::migrate::run(app.pool())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn rejects_a_duplicate_player_even_when_seat_numbers_differ() {
     let app = TestApp::new().await;
     let alice = app.player("Alice").await;

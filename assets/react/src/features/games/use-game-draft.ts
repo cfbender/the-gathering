@@ -17,6 +17,7 @@ export interface DraftSeat {
   colorIdentity: string
   decklistUrl: string
   kills: string
+  eliminatedByDraftId: string | null
   mvpCard: SelectedCard | null
 }
 
@@ -46,6 +47,7 @@ export const blankSeat = (): DraftSeat => ({
   colorIdentity: "",
   decklistUrl: "",
   kills: "",
+  eliminatedByDraftId: null,
   mvpCard: null,
 })
 
@@ -87,6 +89,7 @@ function localDateTime(value?: string) {
 }
 
 function draftsFromGame(game: Game): DraftSeat[] {
+  const draftIds = new Map(game.seats.map((seat) => [seat.player_id, `persisted-seat-${seat.id}`]))
   return game.seats.map((seat) => ({
     draftId: `persisted-seat-${seat.id}`,
     id: seat.id,
@@ -99,6 +102,7 @@ function draftsFromGame(game: Game): DraftSeat[] {
     colorIdentity: seat.deck?.color_identity ?? "",
     decklistUrl: seat.deck?.decklist_url ?? "",
     kills: seat.kills?.toString() ?? "",
+    eliminatedByDraftId: draftIds.get(seat.eliminated_by_player_id ?? -1) ?? null,
     mvpCard: cardSnapshot(seat.mvp_card_id, seat.mvp_card_name),
   }))
 }
@@ -142,9 +146,18 @@ export function useGameDraft(game?: Game, discordDraft?: DiscordResultDraft) {
   const [notes, setNotes] = useState(game?.notes ?? "")
 
   function updateSeat(index: number, patch: Partial<DraftSeat>) {
-    setSeats((current) =>
-      current.map((seat, seatIndex) => (seatIndex === index ? { ...seat, ...patch } : seat)),
-    )
+    setSeats((current) => {
+      const replaced = current[index]
+      const identityChanged =
+        patch.playerName !== undefined && patch.playerName !== replaced?.playerName
+      return current.map((seat, seatIndex) => {
+        const updated = seatIndex === index ? { ...seat, ...patch } : seat
+        return identityChanged &&
+          (seatIndex === index || seat.eliminatedByDraftId === replaced?.draftId)
+          ? { ...updated, eliminatedByDraftId: null }
+          : updated
+      })
+    })
   }
 
   return {
