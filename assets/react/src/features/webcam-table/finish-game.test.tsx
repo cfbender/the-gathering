@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import { ToastProvider } from "@/components/ui/toast"
 import { FinishGame } from "./finish-game"
@@ -19,6 +19,7 @@ function mount(
   onEndTable: () => Promise<boolean>,
   turns: TurnState = EMPTY_TURNS,
   onRematch: () => Promise<boolean> = () => Promise.resolve(true),
+  seats = participants,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -28,7 +29,7 @@ function mount(
     <QueryClientProvider client={client}>
       <ToastProvider>
         <FinishGame
-          participants={participants}
+          participants={seats}
           playedAt={new Date("2026-09-26T19:00:00Z")}
           timer={{ started_at: null, paused_at: null, paused_ms: 0, server_now: 0 }}
           turns={turns}
@@ -51,6 +52,140 @@ afterEach(() => {
 })
 
 describe("FinishGame", () => {
+  it.each(["Record result", "Record and rematch"])(
+    "saves named kills, unknown totals and MVP cards with %s",
+    async (action) => {
+      const posted: unknown[] = []
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: string, init?: RequestInit) => {
+          if (url.startsWith("/api/cards?"))
+            return Promise.resolve(
+              Response.json({
+                data: [
+                  {
+                    id: "sol-ring",
+                    oracle_id: "sol-ring",
+                    name: "Sol Ring",
+                    mana_cost: "{1}",
+                    type_line: "Artifact",
+                    color_identity: [],
+                    image_uris: {},
+                    can_be_commander: false,
+                    commander_pairing: null,
+                  },
+                ],
+              }),
+            )
+          if (url === "/api/games" && typeof init?.body === "string") {
+            posted.push(JSON.parse(init.body))
+            return savedGame()
+          }
+          throw new Error(`Unexpected request: ${url}`)
+        }),
+      )
+      const { onOpenChange } = mount(
+        () => Promise.resolve(true),
+        EMPTY_TURNS,
+        () => Promise.resolve(true),
+        [
+          ...participants,
+          { ...seat, peer_id: "peer-c", player_id: 81, player_name: "Cara", eliminated: true },
+        ],
+      )
+      const alice = within(screen.getByRole("group", { name: "Alice" }))
+      const bob = within(screen.getByRole("group", { name: "Bob" }))
+      // Number-only kills are not guessed from the winner; naming Bob consumes one of Alice's two.
+      expect(alice.getByRole<HTMLInputElement>("spinbutton", { name: "Total kills" }).value).toBe(
+        "",
+      )
+      fireEvent.change(alice.getByRole("spinbutton", { name: "Total kills" }), {
+        target: { value: "2" },
+      })
+      fireEvent.click(alice.getByRole("button", { name: "Kills for Alice" }))
+      fireEvent.click(screen.getByRole("checkbox", { name: "Bob" }))
+      fireEvent.keyDown(screen.getByRole("checkbox", { name: "Bob" }), { key: "Escape" })
+      expect(alice.getByRole<HTMLInputElement>("spinbutton", { name: "Total kills" }).value).toBe(
+        "2",
+      )
+      expect(alice.getByText("1 named · 1 unknown")).toBeTruthy()
+      fireEvent.change(bob.getByRole("spinbutton", { name: "Total kills" }), {
+        target: { value: "0" },
+      })
+      fireEvent.change(alice.getByRole("combobox", { name: "MVP card (optional)" }), {
+        target: { value: "Sol" },
+      })
+      fireEvent.click(await screen.findByRole("option", { name: /Sol Ring/ }))
+      if (action === "Record and rematch")
+        fireEvent.click(screen.getByRole("radio", { name: /End and rematch/ }))
+      fireEvent.click(screen.getByRole("button", { name: action }))
+      await waitFor(() => expect(posted).toHaveLength(1))
+      expect(posted[0]).toMatchObject({
+        seats: [
+          {
+            player_id: 12,
+            result: "win",
+            kills: 2,
+            eliminated_by_player_id: null,
+            mvp_card_id: "sol-ring",
+            mvp_card_name: "Sol Ring",
+          },
+          {
+            player_id: 27,
+            result: "loss",
+            kills: 0,
+            eliminated_by_player_id: 12,
+            mvp_card_id: null,
+            mvp_card_name: null,
+          },
+          {
+            player_id: 81,
+            result: "loss",
+            kills: null,
+            eliminated_by_player_id: null,
+            mvp_card_id: null,
+            mvp_card_name: null,
+          },
+        ],
+      })
+      await waitFor(() =>
+        action === "Record result"
+          ? expect(navigate).toHaveBeenCalledWith({
+              to: "/games/$gameId",
+              params: { gameId: "42" },
+            })
+          : expect(onOpenChange).toHaveBeenCalledWith(false),
+      )
+    },
+  )
+
+  it("shows seat validation errors without discarding entered totals", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          Response.json(
+            {
+              errors: { seats: [{ kills: ["must include all named victims"] }] },
+            },
+            { status: 422 },
+          ),
+        ),
+      ),
+    )
+    const onEndTable = vi.fn(() => Promise.resolve(true))
+    mount(onEndTable)
+    const alice = within(screen.getByRole("group", { name: "Alice" }))
+    fireEvent.change(alice.getByRole("spinbutton", { name: "Total kills" }), {
+      target: { value: "2" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Record result" }))
+    expect(await screen.findByText("Seat 1: kills must include all named victims")).toBeTruthy()
+    expect(alice.getByRole<HTMLInputElement>("spinbutton", { name: "Total kills" }).value).toBe("2")
+    expect(onEndTable).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
   it("ends the table without posting a game once confirmed", async () => {
     const fetch = vi.fn()
     vi.stubGlobal("fetch", fetch)

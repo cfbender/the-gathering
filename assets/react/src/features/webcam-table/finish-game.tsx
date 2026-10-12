@@ -13,7 +13,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { invalidateGameRelated, WIN_CONDITIONS, type Game } from "@/features/games/games"
 import { api, ApiError } from "@/lib/api"
 import { cn } from "@/lib/cn"
-import { buildGamePayload, suggestedWinner } from "./game-result"
+import { buildGamePayload, suggestedWinner, type PlayerResult } from "./game-result"
+import { FinishGamePlayers } from "./finish-game-players"
 import { durationMinutes, type GameTimerState } from "./game-timer"
 import type { TableParticipant } from "./use-webcam-room"
 import type { GameFormat } from "@/features/games/game-format"
@@ -76,6 +77,16 @@ export function FinishGame({
   })
   const [winCondition, setWinCondition] = useState("")
   const [notes, setNotes] = useState("")
+  const [players, setPlayers] = useState<PlayerResult[]>(() =>
+    participants.map((seat) => ({
+      draftId: String(seat.player_id),
+      playerId: seat.player_id,
+      playerName: seat.player_name,
+      kills: "",
+      eliminatedByDraftId: null,
+      mvpCard: null,
+    })),
+  )
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const mutation = useMutation({
     mutationFn: (_after: AfterGame) =>
@@ -91,6 +102,7 @@ export function FinishGame({
               turns,
               winCondition,
               notes,
+              players,
             },
             mode,
           ),
@@ -129,14 +141,17 @@ export function FinishGame({
     },
   })
   const busy = mutation.isPending || discard.isPending
-  const error =
-    mutation.error instanceof ApiError
-      ? mutation.error.detail
-      : discard.data === false
-        ? discard.variables === "rematch"
-          ? "Could not start the rematch. Check your connection to the table and try again."
-          : "Could not end the game. Check your connection to the table and try again."
-        : null
+  const saveError = mutation.error instanceof ApiError ? mutation.error : null
+  const error = saveError
+    ? saveError.detail ||
+      Object.keys(saveError.errors)
+        .flatMap((field) => saveError.fieldErrors(field))
+        .join(" · ")
+    : discard.data === false
+      ? discard.variables === "rematch"
+        ? "Could not start the rematch. Check your connection to the table and try again."
+        : "Could not end the game. Check your connection to the table and try again."
+      : null
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
@@ -246,6 +261,7 @@ export function FinishGame({
               ))}
             </select>
           </label>
+          <FinishGamePlayers players={players} setPlayers={setPlayers} disabled={busy} />
           <label className="flex min-w-0 flex-col gap-2 md:col-span-2">
             <span className="label-text">Notes</span>
             <textarea

@@ -2,6 +2,13 @@ import type { TableParticipant } from "./use-webcam-room"
 import { activeTurnOrder } from "./table-events"
 import type { GameFormat } from "@/features/games/game-format"
 import { teams } from "./game-modes"
+import type { KillSeat } from "@/features/games/kill-picker"
+import type { SelectedCard } from "@/lib/cards"
+
+export interface PlayerResult extends KillSeat {
+  playerId: number
+  mvpCard: SelectedCard | null
+}
 
 export function suggestedWinner(
   participants: TableParticipant[],
@@ -22,6 +29,7 @@ interface ResultDetails {
   turns: string
   winCondition: string
   notes: string
+  players?: PlayerResult[]
 }
 
 export function buildGamePayload(
@@ -42,16 +50,32 @@ export function buildGamePayload(
     turns: details.turns ? Number(details.turns) : null,
     win_condition: details.winCondition || null,
     notes: details.notes.trim() || null,
-    seats: participants.map((participant, index) => ({
-      player_id: participant.player_id,
-      deck_id: participant.deck_id ?? null,
-      seat: index + 1,
-      result:
-        details.winner === "draw"
-          ? ("draw" as const)
-          : winners.includes(participant.peer_id)
-            ? ("win" as const)
-            : ("loss" as const),
-    })),
+    seats: participants.map((participant, index) => {
+      const recorded = details.players?.find((seat) => seat.playerId === participant.player_id)
+      const killer = details.players?.find((seat) => seat.draftId === recorded?.eliminatedByDraftId)
+      return {
+        player_id: participant.player_id,
+        deck_id: participant.deck_id ?? null,
+        seat: index + 1,
+        result:
+          details.winner === "draw"
+            ? ("draw" as const)
+            : winners.includes(participant.peer_id)
+              ? ("win" as const)
+              : ("loss" as const),
+        ...(recorded
+          ? {
+              kills: recorded.kills === "" ? null : Number(recorded.kills),
+              eliminated_by_player_id: participants.some(
+                (seat) => seat.player_id === killer?.playerId,
+              )
+                ? killer?.playerId
+                : null,
+              mvp_card_id: recorded.mvpCard?.catalog_id ?? null,
+              mvp_card_name: recorded.mvpCard?.name ?? null,
+            }
+          : {}),
+      }
+    }),
   }
 }

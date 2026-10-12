@@ -24,7 +24,7 @@ import {
 } from "@/features/games/games"
 import { getDecks, type DeckSummary } from "@/features/decks/decks"
 import { SeatEditor } from "@/features/games/seat-editor"
-import { KillPicker } from "./kill-picker"
+import { assignKill, KillPicker } from "./kill-picker"
 import {
   SELECT_NONE_VALUE,
   Select,
@@ -194,22 +194,7 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
   })
 
   function selectVictim(killerId: string, victimId: string, checked: boolean) {
-    setSeats((current) => {
-      const known = current.filter((seat) => seat.eliminatedByDraftId === killerId).length
-      return current.map((seat) => {
-        if (seat.draftId === victimId) {
-          return { ...seat, eliminatedByDraftId: checked ? killerId : null }
-        }
-        if (seat.draftId === killerId) {
-          const total = Number(seat.kills) || known
-          return {
-            ...seat,
-            kills: String(checked ? Math.max(total, known + 1) : Math.max(0, total - 1)),
-          }
-        }
-        return seat
-      })
-    })
+    setSeats((current) => assignKill(current, killerId, victimId, checked))
   }
 
   function submit(event: FormEvent) {

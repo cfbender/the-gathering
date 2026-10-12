@@ -1,10 +1,38 @@
 import { ChevronDown } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import type { DraftSeat } from "./use-game-draft"
+
+export interface KillSeat {
+  draftId: string
+  playerName: string
+  kills: string
+  eliminatedByDraftId: string | null
+}
+
+/** Named victims consume an unknown kill before increasing the total. */
+export function assignKill<T extends KillSeat>(
+  seats: T[],
+  killerId: string,
+  victimId: string,
+  checked: boolean,
+): T[] {
+  const known = seats.filter((seat) => seat.eliminatedByDraftId === killerId).length
+  return seats.map((seat) => {
+    if (seat.draftId === victimId)
+      return { ...seat, eliminatedByDraftId: checked ? killerId : null }
+    if (seat.draftId === killerId) {
+      const total = Number(seat.kills) || known
+      return {
+        ...seat,
+        kills: String(checked ? Math.max(total, known + 1) : Math.max(0, total - 1)),
+      }
+    }
+    return seat
+  })
+}
 
 interface KillPickerProps {
-  seat: DraftSeat
-  seats: DraftSeat[]
+  seat: KillSeat
+  seats: KillSeat[]
   onVictimChange: (victimId: string, checked: boolean) => void
   onTotalChange: (value: string) => void
 }

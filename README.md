@@ -22,6 +22,8 @@ killed. **Total kills** includes those selections; enter a larger total (or only
 when some names are unknown. Leave it blank when the total is unknown; zero means no kills.
 Game details show named victims and any unknown remainder. A victim can have only one killer.
 Totals, including CSV corrections, cannot be lower than the number of named victims.
+The live table's **Record game result** modal also offers optional kills and MVP cards for
+each player, saved with either **Record result** or **Record and rematch**.
 Player rivalries show who you killed most, who killed you most, and directional kill counts
 for each opponent in the selected date range. These count named victims only; number-only
 kills stay unattributed, and win/loss rivalry rankings are unchanged.
