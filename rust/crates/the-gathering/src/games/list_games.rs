@@ -46,6 +46,14 @@ pub struct GameFilters {
     pub winner_seat: Option<i64>,
     /// Another player at the table.
     pub opponent_id: Option<i64>,
+    /// Commander played by an opponent of `player_id`, not the player's own deck.
+    pub opponent_commander: Option<String>,
+    /// Result of that same opponent seat.
+    pub opponent_result: Option<String>,
+    /// Player who made a named elimination.
+    pub killer_id: Option<i64>,
+    /// Player eliminated in that same attribution (or by anyone when `killer_id` is unset).
+    pub victim_id: Option<i64>,
     /// A deck played in the game.
     pub deck_id: Option<i64>,
     /// How the game was won.
@@ -74,6 +82,9 @@ pub struct GameFilters {
 #[derive(Clone, Debug)]
 enum Cond {
     Player(i64, Option<&'static str>),
+    NotPlayer(i64),
+    Result(&'static str),
+    EliminatedBy(Option<i64>),
     Winning(Box<Cond>),
     Deck(i64),
     SeatNumber(i64),
@@ -100,6 +111,18 @@ fn push(qb: &mut QueryBuilder<Sqlite>, cond: &Cond) {
             qb.push("(s.result = 'win' AND ");
             push(qb, inner);
             qb.push(")");
+        }
+        Cond::NotPlayer(id) => {
+            qb.push("s.player_id != ").push_bind(*id);
+        }
+        Cond::Result(result) => {
+            qb.push("s.result = ").push_bind(*result);
+        }
+        Cond::EliminatedBy(Some(id)) => {
+            qb.push("s.eliminated_by_player_id = ").push_bind(*id);
+        }
+        Cond::EliminatedBy(None) => {
+            qb.push("s.eliminated_by_player_id IS NOT NULL");
         }
         Cond::Deck(id) => {
             qb.push("s.deck_id = ").push_bind(*id);
@@ -220,14 +243,34 @@ fn seat_conditions(opts: &GameFilters) -> Vec<Cond> {
     .into_iter()
     .flatten()
     .collect();
+    let mut opponent_seat: Vec<Cond> = [
+        positive(opts.opponent_id).map(|id| Cond::Player(id, None)),
+        commander(opts.opponent_commander.as_deref()),
+        result(opts.opponent_result.as_deref()).map(Cond::Result),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if (opts.opponent_commander.is_some() || opts.opponent_result.is_some())
+        && let Some(id) = positive(opts.player_id)
+    {
+        opponent_seat.push(Cond::NotPlayer(id));
+    }
     let mut conds: Vec<Cond> = [
         all(winner_seat).map(|cond| Cond::Winning(Box::new(cond))),
-        positive(opts.opponent_id).map(|id| Cond::Player(id, None)),
+        all(opponent_seat),
         positive(opts.deck_id).map(Cond::Deck),
     ]
     .into_iter()
     .flatten()
     .collect();
+    if positive(opts.killer_id).is_some() || positive(opts.victim_id).is_some() {
+        let mut attribution = vec![Cond::EliminatedBy(positive(opts.killer_id))];
+        if let Some(id) = positive(opts.victim_id) {
+            attribution.push(Cond::Player(id, None));
+        }
+        conds.extend(all(attribution));
+    }
     conds.extend(player_seat);
     conds
 }

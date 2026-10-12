@@ -43,6 +43,17 @@ export function favoriteVictim<T extends PlayerRivalRow>(rows: T[]): T | undefin
   )
 }
 
+export function killRival<T extends NamedRow & { games: number; kills: number; killed_by: number }>(
+  rows: T[],
+  direction: "kills" | "killed_by",
+): T | undefined {
+  return byCount(
+    rows.filter((row) => row[direction] > 0),
+    (row) => row[direction],
+    (row) => row.games,
+  )
+}
+
 export function nemesisCommander<T extends CommanderRivalRow>(rows: T[]): T | undefined {
   return byCount(
     rows,

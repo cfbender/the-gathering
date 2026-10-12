@@ -29,6 +29,10 @@ export interface HeadToHead {
   wins: number
   losses: number
   draws: number
+  /** Times this player killed the opponent, from named victim attribution only. */
+  kills: number
+  /** Times the opponent killed this player, from named victim attribution only. */
+  killed_by: number
 }
 
 export interface ColorExposure extends RecordCounts {

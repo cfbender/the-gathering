@@ -11,6 +11,30 @@ import {
 } from "./game-filters"
 
 describe("parseGamesSearch", () => {
+  it("retains directional attribution and opposing-seat filters in links and chips", () => {
+    const search = parseGamesSearch({
+      killer_id: "3",
+      victim_id: "9",
+      opponent_commander: " Kangee ",
+      opponent_result: "win",
+    })
+    expect(search).toEqual({
+      killer_id: 3,
+      victim_id: 9,
+      opponent_commander: "Kangee",
+      opponent_result: "win",
+    })
+    expect(
+      gameFilterChips(search, {
+        player: (id) => (id === 3 ? "Cal" : "Alice"),
+        winCondition: String,
+      }).map((chip) => chip.label),
+    ).toEqual(["Killer: Cal", "Victim: Alice", "Opposing commander: Kangee", "Opponent won"])
+    expect(
+      patchGamesSearch(search, { killer_id: "", opponent_commander: "", opponent_result: "" }),
+    ).toEqual({ victim_id: 9 })
+  })
+
   it("keeps known filters, trims them, and drops empty or unknown keys", () => {
     expect(
       parseGamesSearch({

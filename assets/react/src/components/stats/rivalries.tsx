@@ -4,12 +4,20 @@ import { CardArtBackground } from "@/components/card-art-background"
 import { CardHover } from "@/components/card-hover"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { PlayerAvatar } from "@/components/player-avatar"
-import { favoritePrey, favoriteVictim, nemesisCommander, nemesisPlayer } from "@/lib/rivals"
+import {
+  favoritePrey,
+  favoriteVictim,
+  killRival,
+  nemesisCommander,
+  nemesisPlayer,
+} from "@/lib/rivals"
 import type { CommanderStats, HeadToHead, RivalCommander } from "@/lib/stats"
+import { gamesLink, type GamesLinkScope } from "@/features/games/game-filters"
 
 type RivalryLink =
   | { to: "/players/$playerId"; params: { playerId: string } }
   | { to: "/commanders/$commanderId"; params: { commanderId: string } }
+  | ReturnType<typeof gamesLink>
 
 export function RivalryCallout({
   label,
@@ -42,7 +50,7 @@ export function RivalryCallout({
           {colorIdentity && <ColorIdentity colors={colorIdentity} />}
         </div>
         <div className="border-base-300/70 bg-base-100/75 rounded-box flex items-center gap-3 border px-3 py-2 shadow-sm backdrop-blur">
-          {link.to === "/players/$playerId" && (
+          {avatarUrl !== undefined && (
             <PlayerAvatar name={name} avatarUrl={avatarUrl} size="sm" className="shrink-0" />
           )}
           <div className="min-w-0">
@@ -55,7 +63,9 @@ export function RivalryCallout({
           </div>
         </div>
       </div>
-      {link.to === "/players/$playerId" ? (
+      {link.to === "/games" ? (
+        <Link {...link} className={linkClassName} aria-label={accessibleName} />
+      ) : link.to === "/players/$playerId" ? (
         <Link
           to="/players/$playerId"
           params={link.params}
@@ -77,14 +87,18 @@ export function RivalryCallout({
 export function Rivalries({
   headToHead,
   commanders,
+  games,
 }: {
   headToHead: HeadToHead[]
   commanders: RivalCommander[]
+  games: GamesLinkScope & { player_id: number }
 }) {
   const nemesis = nemesisPlayer(headToHead)
   const victim = favoriteVictim(headToHead)
   const commanderNemesis = nemesisCommander(commanders)
   const commanderPrey = favoritePrey(commanders)
+  const mostKilled = killRival(headToHead, "kills")
+  const killedByMost = killRival(headToHead, "killed_by")
   const callouts = [
     {
       label: "Nemesis",
@@ -92,6 +106,7 @@ export function Rivalries({
       value: nemesis?.losses,
       result: ["loss", "losses"],
       kind: "player",
+      filters: { player_id: games.player_id, winner_id: nemesis?.id },
     },
     {
       label: "Favorite victim",
@@ -99,6 +114,7 @@ export function Rivalries({
       value: victim?.wins,
       result: ["win", "wins"],
       kind: "player",
+      filters: { player_id: games.player_id, opponent_id: victim?.id, player_result: "win" },
     },
     {
       label: "Nemesis commander",
@@ -106,6 +122,11 @@ export function Rivalries({
       value: commanderNemesis?.beat_me,
       result: ["loss", "losses"],
       kind: "commander",
+      filters: {
+        player_id: games.player_id,
+        opponent_commander: commanderNemesis?.name,
+        opponent_result: "win",
+      },
     },
     {
       label: "Favorite prey",
@@ -113,6 +134,11 @@ export function Rivalries({
       value: commanderPrey?.beaten,
       result: ["win", "wins"],
       kind: "commander",
+      filters: {
+        player_id: games.player_id,
+        opponent_commander: commanderPrey?.name,
+        player_result: "win",
+      },
     },
   ] as const
 
@@ -125,9 +151,10 @@ export function Rivalries({
         <h3 id="rivalries-heading" className="text-xl font-bold">
           Rivalries
         </h3>
+        <p className="text-base-content/60 text-sm">Select a rivalry or count to see its games.</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {callouts.map(({ label, row, value, result, kind }) => {
+        {callouts.map(({ label, row, value, result, kind, filters }) => {
           if (!row || value === undefined) return null
           const commander = kind === "commander" ? row : null
           return (
@@ -138,17 +165,60 @@ export function Rivalries({
               count={value}
               detail={value === 1 ? result[0] : result[1]}
               artCropUrl={commander?.art_crop_url}
-              avatarUrl={kind === "player" ? row.avatar_url : null}
+              avatarUrl={kind === "player" ? row.avatar_url : undefined}
               colorIdentity={commander?.color_identity}
-              link={
-                kind === "player"
-                  ? { to: "/players/$playerId", params: { playerId: String(row.id) } }
-                  : { to: "/commanders/$commanderId", params: { commanderId: String(row.id) } }
-              }
+              link={gamesLink(games, filters)}
             />
           )
         })}
       </div>
+      <section className="space-y-3" aria-label="Kill rivalries">
+        <div>
+          <h4 className="font-bold">Kill rivalries</h4>
+          <p className="text-base-content/60 text-sm">
+            Named victims only, in the selected date range. Number-only kills are not attributed.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[
+            {
+              label: "Most killed",
+              row: mostKilled,
+              count: mostKilled?.kills,
+              detail: "killed by you",
+              killer: games.player_id,
+              victim: mostKilled?.id,
+            },
+            {
+              label: "Killed by most",
+              row: killedByMost,
+              count: killedByMost?.killed_by,
+              detail: "killed you",
+              killer: killedByMost?.id,
+              victim: games.player_id,
+            },
+          ].map(({ label, row, count, detail, killer, victim }) =>
+            row && count !== undefined ? (
+              <RivalryCallout
+                key={label}
+                label={label}
+                name={row.name}
+                count={count}
+                detail={`${count === 1 ? "time" : "times"} ${detail}`}
+                avatarUrl={row.avatar_url}
+                link={gamesLink(games, { killer_id: killer, victim_id: victim })}
+              />
+            ) : (
+              <div key={label} className="border-base-300 rounded-xl border border-dashed p-4">
+                <p className="text-primary text-xs font-bold tracking-wide uppercase">{label}</p>
+                <p className="text-base-content/60 mt-3 text-sm">
+                  No named {label === "Most killed" ? "victims" : "killers"} in this date range.
+                </p>
+              </div>
+            ),
+          )}
+        </div>
+      </section>
       {commanders.length > 0 && (
         <div className="border-base-300 bg-base-200/60 overflow-hidden rounded-xl border">
           <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,3.25rem)] gap-2 border-b border-base-300 px-4 py-2 text-right text-xs font-bold uppercase text-base-content/50 sm:grid-cols-[minmax(0,1fr)_repeat(3,4rem)]">
@@ -158,10 +228,8 @@ export function Rivalries({
             <span>Beaten</span>
           </div>
           {commanders.slice(0, 6).map((commander) => (
-            <Link
+            <div
               key={commander.id}
-              to="/commanders/$commanderId"
-              params={{ commanderId: commander.id }}
               className="grid grid-cols-[minmax(0,1fr)_repeat(3,3.25rem)] items-center gap-2 border-b border-base-300/70 px-4 py-2.5 text-right text-sm last:border-b-0 hover:bg-base-300/40 sm:grid-cols-[minmax(0,1fr)_repeat(3,4rem)]"
             >
               <span className="flex min-w-0 items-center gap-2 text-left font-medium">
@@ -180,10 +248,33 @@ export function Rivalries({
                 </CardHover>
                 <GameChangerBadge gameChanger={commander.game_changer} compact />
               </span>
-              <span>{commander.faced}</span>
-              <span>{commander.beat_me}</span>
-              <span>{commander.beaten}</span>
-            </Link>
+              {[
+                { count: commander.faced, label: "faced", filters: {} },
+                {
+                  count: commander.beat_me,
+                  label: "beat you",
+                  filters: { opponent_result: "win" },
+                },
+                {
+                  count: commander.beaten,
+                  label: "beaten by you",
+                  filters: { player_result: "win" },
+                },
+              ].map(({ count, label, filters }) => (
+                <Link
+                  key={label}
+                  {...gamesLink(games, {
+                    player_id: games.player_id,
+                    opponent_commander: commander.name,
+                    ...filters,
+                  })}
+                  aria-label={`${commander.name}: ${count} ${label}. Show games`}
+                  className="hover:text-primary rounded py-1 underline decoration-dotted underline-offset-4"
+                >
+                  {count}
+                </Link>
+              ))}
+            </div>
           ))}
         </div>
       )}

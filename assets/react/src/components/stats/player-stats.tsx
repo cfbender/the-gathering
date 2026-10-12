@@ -115,7 +115,11 @@ export function PlayerStats({ playerId }: { playerId: string }) {
         <ColorWheel rows={stats.color_exposure} eyebrow="Their color mix" games={games} />
       </div>
       <ColorRadar rows={stats.color_exposure} games={games} />
-      <Rivalries headToHead={stats.head_to_head} commanders={stats.rival_commanders} />
+      <Rivalries
+        headToHead={stats.head_to_head}
+        commanders={stats.rival_commanders}
+        games={games}
+      />
       <GameLengths
         gameLengths={stats.game_lengths}
         averageDuration={stats.average_duration_minutes}
@@ -157,23 +161,59 @@ export function PlayerStats({ playerId }: { playerId: string }) {
         </div>
       )}
       <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-        <h3 className="mb-3 font-bold">Head to head</h3>
+        <h3 className="font-bold">Head to head</h3>
+        <p className="text-base-content/60 mb-3 text-sm">
+          Kills count named victims only; zero means none attributed.
+        </p>
         <div className="grid gap-2 sm:grid-cols-2">
           {stats.head_to_head.map((opponent) => (
-            <Link
+            <div
               key={opponent.id}
-              to="/players/$playerId"
-              params={{ playerId: String(opponent.id) }}
-              className="border-base-300 flex items-center justify-between rounded-lg border p-3"
+              className="border-base-300 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
             >
-              <span>
+              <Link
+                {...gamesLink(games, { player_id: games.player_id, opponent_id: opponent.id })}
+                className="hover:text-primary min-w-0 break-words"
+              >
                 {opponent.name}
                 <small className="text-base-content/50 block">{opponent.games} shared games</small>
+              </Link>
+              <span className="text-sm tabular-nums">
+                <span className="flex flex-wrap gap-x-2 gap-y-1">
+                  {[
+                    {
+                      label: `${opponent.wins} wins`,
+                      filters: {
+                        player_id: games.player_id,
+                        opponent_id: opponent.id,
+                        player_result: "win",
+                      },
+                    },
+                    {
+                      label: `${opponent.losses} losses`,
+                      filters: { player_id: games.player_id, winner_id: opponent.id },
+                    },
+                    {
+                      label: `Killed ${opponent.kills}`,
+                      filters: { killer_id: games.player_id, victim_id: opponent.id },
+                    },
+                    {
+                      label: `Killed by ${opponent.killed_by}`,
+                      filters: { killer_id: opponent.id, victim_id: games.player_id },
+                    },
+                  ].map(({ label, filters }) => (
+                    <Link
+                      key={label}
+                      {...gamesLink(games, filters)}
+                      aria-label={`${opponent.name}: ${label}. Show games`}
+                      className="hover:text-primary rounded underline decoration-dotted underline-offset-4"
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                </span>
               </span>
-              <strong>
-                {opponent.wins}–{opponent.losses}
-              </strong>
-            </Link>
+            </div>
           ))}
         </div>
       </div>

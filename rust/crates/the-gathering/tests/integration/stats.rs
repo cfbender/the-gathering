@@ -495,6 +495,73 @@ async fn player_stats_compute_ordered_current_and_longest_streaks_plus_head_to_h
 }
 
 #[tokio::test]
+async fn player_rivalries_count_named_kills_in_each_direction_and_date_range() {
+    let app = TestApp::new().await;
+    let players = [
+        app.player("Alice").await,
+        app.player("Bob").await,
+        app.player("Cara").await,
+    ];
+    // Winner, totals, and killer indices are deliberately independent.
+    for (played_at, winner, totals, killers) in [
+        (
+            "2026-01-31T23:59:00Z",
+            2,
+            [Some(1), Some(0), Some(1)],
+            [Some(2), Some(0), None],
+        ),
+        (
+            "2026-02-01T00:00:00Z",
+            0,
+            [Some(2), Some(0), Some(0)],
+            [None, None, None],
+        ),
+        (
+            "2026-02-01T18:00:00Z",
+            1,
+            [None, Some(1), Some(0)],
+            [Some(1), None, Some(0)],
+        ),
+        (
+            "2026-02-02T00:00:00Z",
+            0,
+            [Some(1), Some(0), Some(0)],
+            [None, Some(0), None],
+        ),
+    ] {
+        let seats: Vec<_> = players.iter().enumerate().map(|(index, player)| json!({
+            "player_id": player.id,
+            "seat": index + 1,
+            "result": if index == winner { "win" } else { "loss" },
+            "kills": totals[index],
+            "eliminated_by_player_id": killers[index].map(|killer: usize| players[killer].id),
+        })).collect();
+        app.game(json!({"played_at": played_at, "seats": seats}), None)
+            .await;
+    }
+
+    for (player, params, expected) in [
+        (0, json!({}), vec![(1, 2, 1), (2, 1, 1)]),
+        (1, json!({}), vec![(0, 1, 2), (2, 0, 0)]),
+        (
+            0,
+            json!({"date_from": "2026-02-01", "date_to": "2026-02-01", "tz": "UTC"}),
+            vec![(1, 0, 1), (2, 1, 0)],
+        ),
+    ] {
+        let stats = stats::player(app.pool(), players[player].id, &support::input(params))
+            .await
+            .unwrap()
+            .unwrap();
+        for (opponent, kills, killed_by) in expected {
+            let row = find(&stats["head_to_head"], "id", json!(players[opponent].id));
+            assert_eq!(row["kills"], kills);
+            assert_eq!(row["killed_by"], killed_by);
+        }
+    }
+}
+
+#[tokio::test]
 async fn rival_players_carry_their_linked_users_avatar() {
     let f = setup().await;
     let user = f.app.unique_member().await;

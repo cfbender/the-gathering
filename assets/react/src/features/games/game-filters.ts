@@ -8,6 +8,8 @@ const numericKeys = [
   "player_id",
   "winner_id",
   "opponent_id",
+  "killer_id",
+  "victim_id",
   "winner_seat",
   "player_count",
   "min_turns",
@@ -19,6 +21,8 @@ const numericKeys = [
 const clockKeys = { weekday: 6, hour: 23 } as const
 const textKeys = [
   "commander",
+  "opponent_commander",
+  "opponent_result",
   "colors",
   "winner_colors",
   "color",
@@ -183,6 +187,10 @@ const chipOrder = [
   "player_result",
   "winner_id",
   "opponent_id",
+  "killer_id",
+  "victim_id",
+  "opponent_commander",
+  "opponent_result",
   "commander",
   "colors",
   "winner_colors",
@@ -225,6 +233,14 @@ export function gameFilterChips(
         return `Winner: ${player(Number(value))}`
       case "opponent_id":
         return `With ${player(Number(value))}`
+      case "killer_id":
+        return `Killer: ${player(Number(value))}`
+      case "victim_id":
+        return `Victim: ${player(Number(value))}`
+      case "opponent_commander":
+        return `Opposing commander: ${value}`
+      case "opponent_result":
+        return resultVerbs[String(value)] ? `Opponent ${resultVerbs[String(value)]}` : undefined
       case "commander":
         return `Commander: ${value}`
       case "colors":

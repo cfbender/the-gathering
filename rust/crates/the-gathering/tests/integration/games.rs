@@ -1214,6 +1214,87 @@ async fn ids(app: &TestApp, opts: Value) -> Vec<i64> {
 }
 
 #[tokio::test]
+async fn rivalry_filters_match_the_same_victim_and_opponent_seat() {
+    let app = TestApp::new().await;
+    let alice = app.player("Alice").await;
+    let bob = app.player("Bob").await;
+    let cara = app.player("Cara").await;
+    let birds = app.deck(alice.id, "Birds", "Kangee").await;
+    let partners = app.deck_with(json!({"player_id": bob.id, "name": "Partners", "commander_name": "Kraum", "partner_name": "Tymna"})).await;
+    let own_commander = app.game(json!({"played_at": "2026-02-01T00:00:00Z", "seats": [
+        {"player_id": alice.id, "deck_id": birds.id, "seat": 1, "result": "win", "kills": 2},
+        {"player_id": bob.id, "seat": 2, "result": "loss"},
+        {"player_id": cara.id, "seat": 3, "result": "loss"},
+    ]}), None).await;
+    let third_party_wins = app.game(json!({"played_at": "2026-02-02T00:00:00Z", "seats": [
+        {"player_id": alice.id, "seat": 1, "result": "loss", "eliminated_by_player_id": cara.id},
+        {"player_id": bob.id, "deck_id": partners.id, "seat": 2, "result": "loss", "eliminated_by_player_id": alice.id},
+        {"player_id": cara.id, "seat": 3, "result": "win"},
+    ]}), None).await;
+    let opponent_wins = app.game(json!({"played_at": "2026-02-03T00:00:00Z", "seats": [
+        {"player_id": alice.id, "seat": 1, "result": "loss", "eliminated_by_player_id": bob.id},
+        {"player_id": bob.id, "deck_id": partners.id, "seat": 2, "result": "win"},
+        {"player_id": cara.id, "seat": 3, "result": "loss"},
+    ]}), None).await;
+    let player_wins = app.game(json!({"played_at": "2026-02-04T00:00:00Z", "seats": [
+        {"player_id": alice.id, "seat": 1, "result": "win"},
+        {"player_id": bob.id, "deck_id": partners.id, "seat": 2, "result": "loss", "eliminated_by_player_id": alice.id},
+        {"player_id": cara.id, "seat": 3, "result": "loss"},
+    ]}), None).await;
+
+    for (filters, expected) in [
+        (
+            json!({"killer_id": alice.id, "victim_id": bob.id}),
+            vec![player_wins.id, third_party_wins.id],
+        ),
+        (
+            json!({"killer_id": bob.id, "victim_id": alice.id}),
+            vec![opponent_wins.id],
+        ),
+        (json!({"killer_id": cara.id, "victim_id": bob.id}), vec![]),
+        (
+            json!({"killer_id": alice.id, "victim_id": bob.id, "date_to": "2026-02-03"}),
+            vec![third_party_wins.id],
+        ),
+        (
+            json!({"victim_id": alice.id}),
+            vec![opponent_wins.id, third_party_wins.id],
+        ),
+        (json!({"killer_id": cara.id}), vec![third_party_wins.id]),
+        (
+            json!({"player_id": alice.id, "winner_id": bob.id}),
+            vec![opponent_wins.id],
+        ),
+        (
+            json!({"player_id": alice.id, "opponent_id": bob.id, "player_result": "win"}),
+            vec![player_wins.id, own_commander.id],
+        ),
+        (
+            json!({"player_id": alice.id, "opponent_commander": "Kangee"}),
+            vec![],
+        ),
+        (
+            json!({"player_id": alice.id, "opponent_commander": "Tymna"}),
+            vec![player_wins.id, opponent_wins.id, third_party_wins.id],
+        ),
+        (
+            json!({"player_id": alice.id, "opponent_commander": "Tymna", "opponent_result": "win"}),
+            vec![opponent_wins.id],
+        ),
+        (
+            json!({"player_id": alice.id, "opponent_commander": "Tymna", "player_result": "win"}),
+            vec![player_wins.id],
+        ),
+        (
+            json!({"player_id": alice.id, "opponent_id": cara.id, "opponent_commander": "Tymna"}),
+            vec![],
+        ),
+    ] {
+        assert_eq!(ids(&app, filters.clone()).await, expected, "{filters}");
+    }
+}
+
+#[tokio::test]
 async fn list_games_combines_filters_paginates_and_orders_newest_first() {
     let app = TestApp::new().await;
     let alice = app.player("Alice").await;

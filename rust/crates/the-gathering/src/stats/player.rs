@@ -242,11 +242,11 @@ async fn head_to_head(
         .map(|player| (player.id, player.avatar_url))
         .collect();
     let rows = games.iter().flat_map(|game| {
-        let my_result = mine(game, player_id).map(|seat| seat.result);
+        let my_seat = mine(game, player_id);
         game.seats
             .iter()
             .filter(|seat| seat.player_id != player_id)
-            .map(move |opponent| (opponent, my_result))
+            .map(move |opponent| (opponent, my_seat))
     });
     let mut entries: Vec<(usize, String, Value)> =
         group_by(rows, |(opponent, _)| opponent.player_id)
@@ -255,7 +255,7 @@ async fn head_to_head(
                 let opponent = &rows.first()?.0.player;
                 let wins = rows
                     .iter()
-                    .filter(|(_, mine)| *mine == Some(GameResult::Win))
+                    .filter(|(_, mine)| mine.is_some_and(|seat| seat.result == GameResult::Win))
                     .count();
                 let losses = rows
                     .iter()
@@ -263,7 +263,19 @@ async fn head_to_head(
                     .count();
                 let draws = rows
                     .iter()
-                    .filter(|(_, mine)| *mine == Some(GameResult::Draw))
+                    .filter(|(_, mine)| mine.is_some_and(|seat| seat.result == GameResult::Draw))
+                    .count();
+                let kills = rows
+                    .iter()
+                    .filter(|(theirs, _)| theirs.eliminated_by_player_id == Some(player_id))
+                    .count();
+                let killed_by = rows
+                    .iter()
+                    .filter(|(theirs, mine)| {
+                        mine.is_some_and(|seat| {
+                            seat.eliminated_by_player_id == Some(theirs.player_id)
+                        })
+                    })
                     .count();
                 let value = json!({
                     "id": opponent.id,
@@ -273,6 +285,8 @@ async fn head_to_head(
                     "wins": wins,
                     "losses": losses,
                     "draws": draws,
+                    "kills": kills,
+                    "killed_by": killed_by,
                 });
                 Some((rows.len(), opponent.name.clone(), value))
             })
