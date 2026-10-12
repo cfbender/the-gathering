@@ -10,6 +10,7 @@
 //! Matches receive a deck-list URL only if unlinked; local settings are never overwritten.
 //! Anything unmatched becomes a new deck. Hosts that failed to list are skipped and
 //! reported in `errors`; their decks are left alone rather than guessed at.
+//! Only decks explicitly marked as Commander by their host are synced.
 
 use std::collections::HashMap;
 
@@ -79,6 +80,7 @@ pub async fn run(state: &AppState, user: &User) -> Result<SyncResult, GamesError
     let decks: Vec<&RemoteDeck> = remote
         .decks
         .iter()
+        .filter(|deck| deck.is_commander)
         .filter(|deck| !failed.iter().any(|failure| failure.source == deck.source))
         .collect();
     let refs: Vec<(Option<String>, Option<String>)> = decks

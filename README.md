@@ -229,8 +229,11 @@ skips.
 
 Hosted decks are not listed separately: **Sync hosted decks** (on your player profile
 and the chooser, shown once any deck host is configured) calls `POST
-/api/session/remote-decks/sync`, which folds every listed Moxfield, Archidekt, and
-ManaVault deck into your player's deck list. A remote deck matches the local deck
+/api/session/remote-decks/sync`, which folds only decks explicitly marked as Commander
+by Moxfield, Archidekt, or ManaVault into your player's deck list. Other formats and
+decks with missing or unknown formats are skipped, even if they have commanders.
+Previously imported decks are not removed, and individual deck-link imports are
+unaffected. A remote deck matches the local deck
 with the same deck-list URL or name, then an unlinked local deck with the same
 commander pair; otherwise it is added as a new deck using the host's details.
 Existing decks keep their local names, commanders, selected art, colors, archive

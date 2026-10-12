@@ -70,6 +70,9 @@ pub struct RemoteDeck {
     pub source: Source,
     /// When the host last saw the deck change; `None` when it sent no readable time.
     pub updated_at: Option<UtcDateTime>,
+    /// Whether the host explicitly identifies this as a Commander deck, for hosted sync.
+    #[serde(skip)]
+    pub is_commander: bool,
 }
 
 /// How one source fared.
@@ -235,6 +238,7 @@ fn moxfield_deck(row: &Value) -> RemoteDeck {
             .unwrap_or_else(|| format!("{PUBLIC_MOXFIELD}/decks/{}", id_text(public_id))),
         source: Source::Moxfield,
         updated_at: timestamp(row.get("lastUpdatedAtUtc")),
+        is_commander: row.get("format").and_then(Value::as_str) == Some("commander"),
     }
 }
 
@@ -247,6 +251,7 @@ fn manavault_deck(row: &Value, origin: &str) -> RemoteDeck {
             .unwrap_or_else(|| format!("{origin}/decks/{}", id_text(row.get("id")))),
         source: Source::ManaVault,
         updated_at: timestamp(row.get("updated_at")),
+        is_commander: row.get("format").and_then(Value::as_str) == Some("commander"),
     }
 }
 
@@ -747,6 +752,7 @@ impl RemoteDecks {
                     url: format!("{PUBLIC_ARCHIDEKT}/decks/{id}"),
                     source: Source::Archidekt,
                     updated_at: timestamp(row.get("updatedAt")),
+                    is_commander: body.get("deckFormat").and_then(Value::as_u64) == Some(3),
                 })
             }
             Err(error @ (HttpError::ByteLimit | HttpError::DurationLimit)) => {

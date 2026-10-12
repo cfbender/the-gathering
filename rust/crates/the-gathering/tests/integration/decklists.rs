@@ -1364,6 +1364,7 @@ mod sync {
         json!({
             "publicId": id,
             "name": name,
+            "format": "commander",
             "publicUrl": format!("https://moxfield.com/decks/{id}"),
             "commanders": commanders.iter().map(|name| json!({"card": {"name": name}})).collect::<Vec<_>>(),
             "colorIdentity": colors,
@@ -1412,6 +1413,115 @@ mod sync {
 
     async fn deck(ctx: &Ctx, id: i64) -> the_gathering::games::Deck {
         ctx.app.state.games.get_deck(id).await.unwrap().unwrap()
+    }
+
+    #[tokio::test]
+    async fn imports_only_explicit_commander_format_from_every_host() {
+        let server = MockServer::start().await;
+        let (app, user, origin) = vault_app(&server).await;
+        let player = app
+            .player_with(json!({"name": "Brewer"}), Some(user.id))
+            .await;
+        let existing = app
+            .deck(player.id, "Existing", "Atraxa, Praetors' Voice")
+            .await;
+        set_profile(
+            &app,
+            &user,
+            json!({
+                "moxfield_username": "brewer", "archidekt_username": "brewer",
+                "manavault_url": origin, "manavault_api_key": "mvk_test_key"
+            }),
+        )
+        .await;
+
+        let mut moxfield = Vec::new();
+        let mut archidekt = Vec::new();
+        let mut manavault = Vec::new();
+        for (id, format, arch_format) in [
+            (1, Some(json!("commander")), Some(json!(3))),
+            (2, Some(json!("modern")), Some(json!(2))),
+            (3, Some(json!("brawl")), Some(json!(10))),
+            (4, Some(json!("unknown")), Some(json!(999))),
+            (5, Some(Value::Null), Some(Value::Null)),
+            (6, None, None),
+        ] {
+            // Rejected decks have a commander and match a local name: neither is proof of format.
+            let name = if id == 1 { "Commander" } else { "Existing" };
+            let mut row = json!({
+                "id": id, "publicId": id.to_string(), "name": name,
+                "commanders": ["Krenko, Mob Boss"], "commanderColorIdentity": ["R"]
+            });
+            if let Some(format) = format {
+                row["format"] = format;
+            }
+            moxfield.push(row.clone());
+            manavault.push(row.clone());
+            archidekt.push(row);
+            let mut detail = json!({"cards": [{
+                "categories": ["Commander"],
+                "card": {"oracleCard": {"name": "Krenko, Mob Boss", "colorIdentity": ["Red"]}}
+            }]});
+            if let Some(format) = arch_format {
+                detail["deckFormat"] = format;
+            }
+            Mock::given(method("GET"))
+                .and(path(format!("/api/decks/{id}/")))
+                .respond_with(ResponseTemplate::new(200).set_body_json(detail))
+                .mount(&server)
+                .await;
+        }
+        // Give accepted decks distinct names so sync cannot merge them with each other.
+        for (rows, name) in [
+            (&mut moxfield, "Mox"),
+            (&mut archidekt, "Arch"),
+            (&mut manavault, "Vault"),
+        ] {
+            rows[0]["name"] = json!(name);
+        }
+        stub_moxfield(&server, moxfield).await;
+        for (endpoint, body) in [
+            (
+                "/api/decks/v3/",
+                json!({"results": archidekt, "next": null}),
+            ),
+            (
+                "/api/v1/decks",
+                json!({"data": manavault, "pagination": {"total_pages": 1}}),
+            ),
+        ] {
+            Mock::given(method("GET"))
+                .and(path(endpoint))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&server)
+                .await;
+        }
+
+        let result = app
+            .post("/api/session/remote-decks/sync", json!({}))
+            .await
+            .assert_json(200);
+        assert_eq!(
+            result,
+            json!({"data": {"created": 3, "updated": 0, "errors": []}})
+        );
+        let saved = app
+            .state
+            .games
+            .list_decks(false, Some(player.id))
+            .await
+            .unwrap();
+        let mut names: Vec<_> = saved.iter().map(|(deck, _)| deck.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, ["Arch", "Existing", "Mox", "Vault"]);
+        let untouched = app
+            .state
+            .games
+            .get_deck(existing.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(untouched.decklist_url, None);
     }
 
     #[tokio::test]
@@ -1685,9 +1795,9 @@ mod sync {
             .and(header("authorization", "Bearer mvk_test_key"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "data": [
-                    {"id": 1, "name": "Atraxa counters", "commanders": ["Atraxa, Praetors' Voice"],
+                    {"id": 1, "name": "Atraxa counters", "format": "commander", "commanders": ["Atraxa, Praetors' Voice"],
                      "commanderColorIdentity": ["W", "U", "B", "G"], "updated_at": "2026-09-20T12:00:00Z"},
-                    {"id": 2, "name": "Goblin rush", "commanders": ["Krenko, Mob Boss"],
+                    {"id": 2, "name": "Goblin rush", "format": "commander", "commanders": ["Krenko, Mob Boss"],
                      "commanderColorIdentity": ["R"], "updated_at": "2026-09-20T12:00:00Z"}
                 ],
                 "pagination": {"total_pages": 1}
