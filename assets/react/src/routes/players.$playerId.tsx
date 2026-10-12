@@ -47,7 +47,7 @@ function PlayerDetailPage() {
           </div>
         </div>
       </PageHeader>
-      <PlayerStats playerId={playerId} />
+      <PlayerStats player={player} />
       <PlayerDecks player={player} />
       <section>
         <h2 className="mb-3 text-xl font-bold">Recent games</h2>

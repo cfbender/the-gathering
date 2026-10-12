@@ -13,6 +13,8 @@ import {
 } from "@/lib/rivals"
 import type { CommanderStats, HeadToHead, RivalCommander } from "@/lib/stats"
 import { gamesLink, type GamesLinkScope } from "@/features/games/game-filters"
+import type { PlayerSummary } from "@/features/games/games"
+import { useCurrentUser } from "@/lib/auth"
 
 type RivalryLink =
   | { to: "/players/$playerId"; params: { playerId: string } }
@@ -85,14 +87,19 @@ export function RivalryCallout({
 }
 
 export function Rivalries({
+  player,
   headToHead,
   commanders,
   games,
 }: {
+  player: Pick<PlayerSummary, "name" | "user_id">
   headToHead: HeadToHead[]
   commanders: RivalCommander[]
   games: GamesLinkScope & { player_id: number }
 }) {
+  const viewer = useCurrentUser()
+  const isOwnProfile = viewer.data !== undefined && viewer.data.id === player.user_id
+  const playerLabel = isOwnProfile ? "you" : player.name
   const nemesis = nemesisPlayer(headToHead)
   const victim = favoriteVictim(headToHead)
   const commanderNemesis = nemesisCommander(commanders)
@@ -185,7 +192,7 @@ export function Rivalries({
               label: "Most killed",
               row: mostKilled,
               count: mostKilled?.kills,
-              detail: "killed by you",
+              detail: `killed by ${playerLabel}`,
               killer: games.player_id,
               victim: mostKilled?.id,
             },
@@ -193,7 +200,7 @@ export function Rivalries({
               label: "Killed by most",
               row: killedByMost,
               count: killedByMost?.killed_by,
-              detail: "killed you",
+              detail: `killed ${playerLabel}`,
               killer: killedByMost?.id,
               victim: games.player_id,
             },
@@ -224,7 +231,7 @@ export function Rivalries({
           <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,3.25rem)] gap-2 border-b border-base-300 px-4 py-2 text-right text-xs font-bold uppercase text-base-content/50 sm:grid-cols-[minmax(0,1fr)_repeat(3,4rem)]">
             <span className="text-left">Rival commander</span>
             <span>Faced</span>
-            <span>Beat me</span>
+            <span>{isOwnProfile ? "Beat me" : "Wins"}</span>
             <span>Beaten</span>
           </div>
           {commanders.slice(0, 6).map((commander) => (
@@ -252,12 +259,12 @@ export function Rivalries({
                 { count: commander.faced, label: "faced", filters: {} },
                 {
                   count: commander.beat_me,
-                  label: "beat you",
+                  label: `beat ${playerLabel}`,
                   filters: { opponent_result: "win" },
                 },
                 {
                   count: commander.beaten,
-                  label: "beaten by you",
+                  label: `beaten by ${playerLabel}`,
                   filters: { player_result: "win" },
                 },
               ].map(({ count, label, filters }) => (

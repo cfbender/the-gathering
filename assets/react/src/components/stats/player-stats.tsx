@@ -17,8 +17,14 @@ import { PlayerWinConditions } from "./win-conditions"
 import { byWinRateThenName, getPlayerStats, sinceLabel, statsQueryKey } from "@/lib/stats"
 import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
 import { detailedScope, gamesLink } from "@/features/games/game-filters"
+import type { PlayerSummary } from "@/features/games/games"
 
-export function PlayerStats({ playerId }: { playerId: string }) {
+export function PlayerStats({
+  player,
+}: {
+  player: Pick<PlayerSummary, "id" | "name" | "user_id">
+}) {
+  const playerId = String(player.id)
   const { range, params } = useStatsRange()
   const query = useQuery({
     queryKey: statsQueryKey(params, "players", playerId),
@@ -116,6 +122,7 @@ export function PlayerStats({ playerId }: { playerId: string }) {
       </div>
       <ColorRadar rows={stats.color_exposure} games={games} />
       <Rivalries
+        player={player}
         headToHead={stats.head_to_head}
         commanders={stats.rival_commanders}
         games={games}
