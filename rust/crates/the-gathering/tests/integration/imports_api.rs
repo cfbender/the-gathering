@@ -374,12 +374,15 @@ async fn download_is_versioned_private_and_can_be_previewed_and_reimported() {
 }
 
 #[tokio::test]
-async fn export_and_preview_are_admin_only_and_committing_also_requires_sudo() {
+async fn any_member_can_export_but_preview_is_admin_only_and_committing_also_requires_sudo() {
     let app = TestApp::new().await;
     app.get("/api/exports/portable").await.assert_json(401);
     let member = app.unique_member().await;
     app.log_in(&member).await;
-    app.get("/api/exports/portable").await.assert_json(403);
+    let export = app.get("/api/exports/portable").await;
+    assert_eq!(export.status, 200);
+    let data: Value = serde_json::from_str(&export.text()).unwrap();
+    assert_eq!(data["format"], "the-gathering");
     app.post("/api/imports/portable/preview", json!({"json": "{}"}))
         .await
         .assert_json(403);

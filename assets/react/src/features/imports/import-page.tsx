@@ -26,11 +26,11 @@ export function ImportPage() {
   const [mode, setMode] = useState<"file" | "portable">("file")
   return (
     <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-4">
-      <nav aria-label="Import and export tools" className="flex flex-wrap gap-2">
+      <nav aria-label="Import tools" className="flex flex-wrap gap-2">
         {(
           [
             ["file", "Import games"],
-            ["portable", "Export / transfer"],
+            ["portable", "Transfer"],
           ] as const
         ).map(([value, label]) => (
           <button

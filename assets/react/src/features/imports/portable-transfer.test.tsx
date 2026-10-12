@@ -32,44 +32,6 @@ async function chooseFile(text: string) {
   )
 }
 
-it("downloads the full document as a JSON file and reports export errors", async () => {
-  const archive = { format: "the-gathering", version: 1, games: [{ notes: "Keep this", kills: 0 }] }
-  const fetch = vi
-    .fn()
-    .mockResolvedValueOnce(new Response(JSON.stringify(archive), { status: 200 }))
-    .mockResolvedValueOnce(
-      new Response(JSON.stringify({ errors: { detail: "Unavailable" } }), { status: 503 }),
-    )
-  vi.stubGlobal("fetch", fetch)
-  let blob: Blob | undefined
-  const create = vi.fn((value: Blob | MediaSource) => {
-    if (value instanceof Blob) blob = value
-    return "blob:export"
-  })
-  vi.spyOn(URL, "createObjectURL").mockImplementation(create)
-  const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
-  let filename = ""
-  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
-    this: HTMLAnchorElement,
-  ) {
-    filename = this.download
-  })
-  mount()
-  fireEvent.click(screen.getByRole("button", { name: "Download JSON export" }))
-  await screen.findByText(/Export prepared/)
-  expect(filename).toMatch(/^the-gathering-\d{4}-\d{2}-\d{2}\.json$/)
-  expect(blob?.type).toBe("application/json")
-  const contents = await new Promise<string>((resolve) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.readAsText(blob!)
-  })
-  expect(JSON.parse(contents)).toEqual(archive)
-  expect(revoke).toHaveBeenCalledWith("blob:export")
-  fireEvent.click(screen.getByRole("button", { name: "Download JSON export" }))
-  expect(await screen.findByRole("alert")).toBeTruthy()
-})
-
 it("previews counts, invalidates a preview when a file changes, and confirms the reviewed file", async () => {
   const counts = {
     players: { created: 2, reused: 1 },

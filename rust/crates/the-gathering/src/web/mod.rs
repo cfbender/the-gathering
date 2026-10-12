@@ -161,6 +161,7 @@ pub fn router(state: AppState) -> Router {
                 .delete(games::games_delete),
         )
         .route("/api/decklists/resolve", post(games::decklist_resolve))
+        .route("/api/exports/portable", get(imports::portable_export))
         .route_layer(from_fn(require_authenticated_user));
 
     let sudo = Router::new()
@@ -176,7 +177,6 @@ pub fn router(state: AppState) -> Router {
             post(imports::mythic_track_preview),
         )
         .route("/api/imports/sheet/preview", post(imports::sheet_preview))
-        .route("/api/exports/portable", get(imports::portable_export))
         .route(
             "/api/imports/portable/preview",
             post(imports::portable_preview),

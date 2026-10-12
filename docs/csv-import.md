@@ -9,7 +9,7 @@ The API routes are `POST /api/imports/csv/preview`, `POST /api/imports/csv`, and
 
 ## Transfer between The Gathering instances
 
-Use **Import → Export / transfer → Download JSON export** to download a versioned JSON file. On another instance running a version that supports portable transfers, open the same page, choose the file, and select **Preview transfer**. Review the new/existing player, deck and game counts, then confirm. No CSV conversion or manual ID mapping is needed.
+Any signed-in member can open the **…** menu on the **Games** page and choose **Export history (JSON)** to download a versioned JSON file. On another instance running a version that supports portable transfers, an administrator opens **Import → Transfer**, chooses the file, and selects **Preview transfer**. Review the new/existing player, deck and game counts, then confirm. No CSV conversion or manual ID mapping is needed.
 
 The export includes all players, decks and games, including unused/archived records, deck selection settings, notes, kills (preserving zero versus unknown), results, seat order, eliminations, duration, turns and MVPs. It also includes referenced card metadata, selected printings and Google Sheet reconciliation receipts. Artwork URLs are preserved; image files are not embedded.
 
@@ -21,7 +21,7 @@ Imports are additive and atomic. Preview validates the entire file in a rolled-b
 - Games retain a stable portable UUID, so repeat transfers do not duplicate games, even if they were edited afterward. Original CSV/Mythic Track/Discord identities are also checked to recognize games already imported independently. Manual games recorded independently on both instances cannot be automatically recognized as the same game.
 - Selected card metadata is restored locally without fetching Scryfall. Existing cached metadata is retained. Sheet receipts prevent unchanged sheet rows from being applied again after transfer.
 
-All routes require admin access: `GET /api/exports/portable` downloads the document; `POST /api/imports/portable/preview` and `POST /api/imports/portable` accept `{"json":"<export file text>"}`. Confirmation also requires recent reauthentication. Files declare `format: "the-gathering"` and `version: 1`; unknown format versions are rejected rather than guessed.
+`GET /api/exports/portable` downloads the document for any signed-in user. `POST /api/imports/portable/preview` and `POST /api/imports/portable` require admin access and accept `{"json":"<export file text>"}`; confirmation also requires recent reauthentication. Files declare `format: "the-gathering"` and `version: 1`; unknown format versions are rejected rather than guessed.
 
 ## Native format
 

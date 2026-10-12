@@ -6,6 +6,7 @@ import { useState } from "react"
 import { getGames } from "@/features/games/games"
 import { GameCard } from "@/features/games/game-card"
 import { GameTable } from "@/features/games/game-table"
+import { GamesMenu } from "@/features/games/games-menu"
 import { GameViewToggle, type GameView } from "@/features/games/game-view-toggle"
 import { PlayActions } from "@/features/webcam-table/play-actions"
 import {
@@ -55,6 +56,7 @@ function GamesPage() {
             <Link to="/games/new" className="btn btn-primary">
               <Plus className="size-4" /> Log game
             </Link>
+            <GamesMenu />
           </>
         }
       />
