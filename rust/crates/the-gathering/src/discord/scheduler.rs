@@ -66,54 +66,86 @@ impl NewGameScheduler {
         })
     }
 
-    /// Applies a queue action, then delivers its edits.
+    /// Applies a queue action, then delivers its edits. A start time moved to another day
+    /// renames the game's thread.
     pub async fn act(
         &self,
         id: i64,
         action: &QueueAction,
         actor: &QueueActor,
     ) -> Result<ScheduledGame, QueueError> {
-        let _guard = self.lock.lock().await;
-        let game = scheduled::act(&self.state, id, action, actor, (self.clock)()).await?;
-        let listed = game.players.contains_key(&actor.discord_id)
-            || game.maybe.contains_key(&actor.discord_id);
-        if let (Some(thread), QueueAction::Join | QueueAction::Maybe, true) =
-            (&game.thread_id, action, listed)
-        {
-            self.add_to_thread(game.id, thread, &actor.discord_id).await;
+        let (game, old_name) = {
+            let _guard = self.lock.lock().await;
+            let old_name = match action {
+                QueueAction::Time(_) => scheduled::get(&mut *self.state.pool.acquire().await?, id)
+                    .await?
+                    .map(|game| self.thread_name(&game)),
+                _ => None,
+            };
+            let game = scheduled::act(&self.state, id, action, actor, (self.clock)()).await?;
+            let listed = game.players.contains_key(&actor.discord_id)
+                || game.maybe.contains_key(&actor.discord_id);
+            if let (Some(thread), QueueAction::Join | QueueAction::Maybe, true) =
+                (&game.thread_id, action, listed)
+            {
+                self.add_to_thread(game.id, thread, &actor.discord_id).await;
+            }
+            let _ = self.deliver(&game).await;
+            (game, old_name)
+        };
+        if old_name.is_some_and(|old| old != self.thread_name(&game)) {
+            self.rename_thread(&game).await;
         }
-        let _ = self.deliver(&game).await;
         Ok(game)
     }
 
-    /// Publishes a queue from its `/newgame` reply. When Discord allows a thread on the
-    /// reply, the queue goes in the thread and the reply points to it; otherwise the reply
-    /// itself shows the queue.
-    pub async fn attach(&self, game: &ScheduledGame, reply_id: &str) -> Result<(), sqlx::Error> {
-        let _guard = self.lock.lock().await;
-        let pool = &self.state.pool;
-        let message_id = match self.open_thread(game, reply_id).await {
-            Some(queue_id) => {
-                scheduled::set_thread(pool, game.id, reply_id).await?;
-                queue_id
+    /// Publishes a queue from its `/newgame` reply. Run inside a game thread, the reply is
+    /// the queue and joins that thread. Otherwise, when Discord allows a thread on the
+    /// reply, the queue goes in the new thread and the reply points to it; without one the
+    /// reply itself shows the queue.
+    pub async fn attach(
+        &self,
+        game: &ScheduledGame,
+        reply_id: &str,
+        existing_thread: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        let game = {
+            let _guard = self.lock.lock().await;
+            let pool = &self.state.pool;
+            let (thread, message_id) = match existing_thread {
+                Some(thread) => {
+                    self.add_to_thread(game.id, thread, &game.host_discord_id)
+                        .await;
+                    (Some(thread), reply_id.to_owned())
+                }
+                None => match self.open_thread(game, reply_id).await {
+                    Some(queue_id) => (Some(reply_id), queue_id),
+                    None => (None, reply_id.to_owned()),
+                },
+            };
+            if let Some(thread) = thread {
+                scheduled::set_thread(pool, game.id, thread).await?;
             }
-            None => reply_id.to_owned(),
+            scheduled::attach_message(pool, game.id, &message_id).await?;
+            let game = scheduled::settle_id(pool, game.id, (self.clock)()).await?;
+            let _ = self.deliver(&game).await;
+            if thread.is_some() && existing_thread.is_none() {
+                let pointer = new_game_message::pointer(&game);
+                if let Err(error) = self
+                    .api
+                    .edit_message(&game.channel_id, reply_id, &pointer)
+                    .await
+                {
+                    tracing::warn!(
+                        "Discord newgame {} reply could not be edited: {error}",
+                        game.id
+                    );
+                }
+            }
+            game
         };
-        scheduled::attach_message(pool, game.id, &message_id).await?;
-        let game = scheduled::settle_id(pool, game.id, (self.clock)()).await?;
-        let _ = self.deliver(&game).await;
-        if game.thread_id.is_some() {
-            let pointer = new_game_message::pointer(&game);
-            if let Err(error) = self
-                .api
-                .edit_message(&game.channel_id, reply_id, &pointer)
-                .await
-            {
-                tracing::warn!(
-                    "Discord newgame {} reply could not be edited: {error}",
-                    game.id
-                );
-            }
+        if existing_thread.is_some() {
+            self.rename_thread(&game).await;
         }
         Ok(())
     }
@@ -124,7 +156,7 @@ impl NewGameScheduler {
     async fn open_thread(&self, game: &ScheduledGame, reply_id: &str) -> Option<String> {
         let started = self
             .api
-            .start_thread(&game.channel_id, reply_id, &game.title)
+            .start_thread(&game.channel_id, reply_id, &self.thread_name(game))
             .await;
         let posted = match started {
             Ok(()) => {
@@ -150,12 +182,36 @@ impl NewGameScheduler {
         }
     }
 
-    /// Cancels the queue if it is still open (`/close`).
-    pub async fn close(&self, id: i64) -> Result<ScheduledGame, sqlx::Error> {
+    /// Cancels the open games in a thread (`/close`); returns how many.
+    pub async fn close(&self, thread_id: &str) -> Result<usize, sqlx::Error> {
         let _guard = self.lock.lock().await;
-        let game = scheduled::cancel_open(&self.state.pool, id, (self.clock)()).await?;
-        let _ = self.deliver(&game).await;
-        Ok(game)
+        let games = scheduled::cancel_thread(&self.state.pool, thread_id, (self.clock)()).await?;
+        for game in &games {
+            let _ = self.deliver(game).await;
+        }
+        Ok(games.len())
+    }
+
+    fn thread_name(&self, game: &ScheduledGame) -> String {
+        new_game_message::thread_name(game, &self.state.config.discord_default_timezone)
+    }
+
+    /// Names the game's thread after it. Runs outside the lock: Discord rate-limits channel
+    /// renames tightly, so a rename can wait out a long rate limit.
+    async fn rename_thread(&self, game: &ScheduledGame) {
+        let Some(thread) = &game.thread_id else {
+            return;
+        };
+        if let Err(error) = self
+            .api
+            .rename_thread(thread, &self.thread_name(game))
+            .await
+        {
+            tracing::warn!(
+                "Discord newgame {} thread could not be renamed: {error}",
+                game.id
+            );
+        }
     }
 
     async fn add_to_thread(&self, id: i64, thread_id: &str, discord_id: &str) {

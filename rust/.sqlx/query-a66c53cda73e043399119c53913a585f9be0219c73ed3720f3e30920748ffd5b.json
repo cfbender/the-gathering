@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE discord_scheduled_games SET status = 'cancelled', message_dirty = 1, updated_at = ?\n           WHERE thread_id = ? AND status = 'open' RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "discord_scheduled_games",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a66c53cda73e043399119c53913a585f9be0219c73ed3720f3e30920748ffd5b"
+}

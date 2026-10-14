@@ -1,6 +1,9 @@
 //! The public `/newgame` queue message, ready announcement, and maybe ping
 //! (`NewGameMessage`).
 
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
+
 use crate::db::UtcDateTime;
 
 use super::api::{
@@ -107,6 +110,23 @@ pub fn render(public_url: &str, game: &ScheduledGame) -> MessagePayload {
         ])]),
         ..MessagePayload::default()
     }
+}
+
+/// The game's thread name: its title and local date, for example `Friday pod · Oct 16`.
+/// Games that start when filled use the day they were posted.
+pub fn thread_name(game: &ScheduledGame, zone: &str) -> String {
+    let at = game.start_at.unwrap_or(game.inserted_at);
+    let tz = TimeZone::get(zone).unwrap_or(TimeZone::UTC);
+    let Ok(local) = Timestamp::from_second(at.unix()).map(|at| at.to_zoned(tz)) else {
+        return game.title.clone();
+    };
+    let suffix = format!(" · {}", local.strftime("%b %-d"));
+    // Discord caps thread names at 100 characters.
+    let title = super::api::slice(
+        &game.title,
+        100_usize.saturating_sub(suffix.chars().count()),
+    );
+    format!("{title}{suffix}")
 }
 
 /// The queue message before its first render, which has no buttons yet.

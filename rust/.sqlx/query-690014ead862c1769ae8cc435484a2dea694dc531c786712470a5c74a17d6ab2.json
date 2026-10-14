@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT channel_id FROM discord_scheduled_games WHERE thread_id = ? AND guild_id = ?\n         ORDER BY id DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "channel_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discord_scheduled_games",
+            "name": "channel_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "690014ead862c1769ae8cc435484a2dea694dc531c786712470a5c74a17d6ab2"
+}

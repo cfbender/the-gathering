@@ -196,7 +196,21 @@ async fn create(
         start_at,
         min_players,
     };
-    let game = match scheduled::create(state, &queue, &actor(interaction)).await {
+    // Inside a game thread, the new game joins that thread and keeps its parent channel.
+    let mut actor = actor(interaction);
+    let thread =
+        match scheduled::thread_parent(&state.pool, &actor.guild_id, &actor.channel_id).await {
+            Ok(parent) => parent.map(|parent| std::mem::replace(&mut actor.channel_id, parent)),
+            Err(error) => {
+                api.create_response(
+                    &target,
+                    &private_response(error_message(&QueueError::from(error))),
+                )
+                .await?;
+                return Ok(());
+            }
+        };
+    let game = match scheduled::create(state, &queue, &actor).await {
         Ok(game) => game,
         Err(error) => {
             api.create_response(&target, &private_response(error_message(&error)))
@@ -216,7 +230,10 @@ async fn create(
     };
     match published {
         Ok(message) => {
-            if let Err(error) = scheduler.attach(&game, &message.id).await {
+            if let Err(error) = scheduler
+                .attach(&game, &message.id, thread.as_deref())
+                .await
+            {
                 tracing::error!("Discord newgame {} could not be attached: {error}", game.id);
             }
             Ok(())
@@ -306,8 +323,7 @@ pub fn close_definition() -> CommandDefinition {
     }
 }
 
-/// `/close`: closes (archives) the game thread it runs in, cancelling the game if it is
-/// still open.
+/// `/close`: closes (archives) the game thread it runs in, cancelling its open games.
 pub async fn close(
     state: &AppState,
     api: &dyn DiscordApi,
@@ -325,7 +341,7 @@ pub async fn close(
         }
         Err(QueueError::Forbidden) => {
             let reply = private_response(
-                "Only this game's host or a Discord Administrator can close its thread.",
+                "Only this thread's latest game host or a Discord Administrator can close it.",
             );
             return api.create_response(&target, &reply).await;
         }
@@ -336,10 +352,16 @@ pub async fn close(
         }
     };
     // Reply before closing: a message in a closed thread would reopen it.
-    let cancelled = if game.status == Status::Open {
-        " The game was still open, so it is cancelled."
-    } else {
-        ""
+    api.create_response(&target, &InteractionResponse::deferred(false))
+        .await?;
+    let cancelled = match scheduler.close(&actor.channel_id).await {
+        Ok(0) => "",
+        Ok(1) => " Its open game is cancelled.",
+        Ok(_) => " Its open games are cancelled.",
+        Err(error) => {
+            tracing::error!("Discord newgame thread games could not be cancelled: {error}");
+            ""
+        }
     };
     let closed = MessagePayload {
         content: Some(format!(
@@ -349,17 +371,7 @@ pub async fn close(
         allowed_mentions: Some(super::api::AllowedMentions::none()),
         ..MessagePayload::default()
     };
-    api.create_response(
-        &target,
-        &InteractionResponse::message(ResponseKind::ChannelMessage, closed),
-    )
-    .await?;
-    if let Err(error) = scheduler.close(game.id).await {
-        tracing::error!(
-            "Discord newgame {} could not be cancelled: {error}",
-            game.id
-        );
-    }
+    api.edit_response(&target, &closed).await?;
     if let Err(error) = api.close_thread(&actor.channel_id).await {
         tracing::warn!(
             "Discord newgame {} thread could not be closed: {error}",

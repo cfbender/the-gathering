@@ -285,6 +285,16 @@ impl DiscordApi for RestApi {
         })
     }
 
+    fn rename_thread<'a>(&'a self, thread_id: &'a str, name: &'a str) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            let path = format!("/channels/{}", encode_segment(thread_id));
+            let body = serde_json::json!({"name": name});
+            self.send_bot(Method::PATCH, &path, Some(&body))
+                .await
+                .map(|_| ())
+        })
+    }
+
     fn close_thread<'a>(&'a self, thread_id: &'a str) -> ApiFuture<'a, ()> {
         Box::pin(async move {
             let path = format!("/channels/{}", encode_segment(thread_id));

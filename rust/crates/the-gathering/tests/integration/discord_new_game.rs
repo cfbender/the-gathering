@@ -1265,8 +1265,10 @@ fn in_thread(id: &str) -> QueueActor {
 #[tokio::test]
 async fn newgame_moves_its_queue_into_a_thread_on_the_reply_where_players_sign_up() {
     let ctx = setup().await;
+    // 10pm in New York on September 24 is already September 25 in UTC.
     ctx.respond(&newgame(vec![
         ("title", text("Friday pod")),
+        ("start", text("<t:1790301600:F>")),
         ("min_players", OptionValue::Integer(2)),
     ]))
     .await
@@ -1279,7 +1281,7 @@ async fn newgame_moves_its_queue_into_a_thread_on_the_reply_where_players_sign_u
     );
     assert_eq!(
         calls[2],
-        Call::StartThread("222".into(), "555".into(), "Friday pod".into())
+        Call::StartThread("222".into(), "555".into(), "Friday pod · Sep 24".into())
     );
     let Call::Create(thread, placeholder) = &calls[3] else {
         panic!("{calls:?}")
@@ -1328,11 +1330,13 @@ async fn newgame_moves_its_queue_into_a_thread_on_the_reply_where_players_sign_u
         [("555", "11"), ("555", "12")]
     );
 
-    let started = ctx
-        .act(game.id, QueueAction::Join, &in_thread("13"))
+    ctx.act(game.id, QueueAction::Join, &in_thread("13"))
         .await
         .unwrap();
-    assert_eq!(started.status, Status::Started);
+    ctx.api.take();
+    ctx.set_now(utc("2026-09-25T02:00:00Z"));
+    ctx.scheduler.sweep().await;
+    assert_eq!(ctx.game(game.id).await.status, Status::Started);
     let calls = ctx.api.take();
     assert_eq!(post_channels(&calls), ["555"]);
     assert!(calls.iter().any(
@@ -1403,7 +1407,7 @@ async fn close_archives_the_game_thread_for_its_host_or_an_administrator_and_can
         ),
         (
             close_in("555", "12", Some(MANAGE_GUILD)),
-            "Only this game's host or a Discord Administrator can close its thread.",
+            "Only this thread's latest game host or a Discord Administrator can close it.",
         ),
     ] {
         new_game::close(&ctx.app.state, ctx.api.as_ref(), &ctx.scheduler, &event)
@@ -1427,12 +1431,20 @@ async fn close_archives_the_game_thread_for_its_host_or_an_administrator_and_can
     .await
     .unwrap();
     let calls = ctx.api.take();
-    let closed = response(calls[0].clone());
-    assert_eq!(closed.kind, ResponseKind::ChannelMessage);
-    assert_eq!(closed.message_data().unwrap().flags, None);
     assert_eq!(
-        closed.content(),
-        "<@111> closed this game thread. The game was still open, so it is cancelled."
+        response(calls[0].clone()),
+        InteractionResponse::deferred(false)
+    );
+    let closed = calls
+        .iter()
+        .find_map(|call| match call {
+            Call::EditResponse(payload) => payload.content.clone(),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        closed,
+        "<@111> closed this game thread. Its open game is cancelled."
     );
     let Some(Call::Edit(_, _, edit)) = calls.iter().find(|call| matches!(call, Call::Edit(..)))
     else {
@@ -1463,8 +1475,8 @@ async fn close_archives_the_game_thread_for_its_host_or_an_administrator_and_can
     .unwrap();
     let calls = ctx.api.take();
     assert_eq!(
-        response(calls[0].clone()).content(),
-        "<@42> closed this game thread."
+        edit_response(calls[1].clone()).content.as_deref(),
+        Some("<@42> closed this game thread.")
     );
     assert_eq!(calls.last(), Some(&Call::CloseThread("555".into())));
 }
@@ -1523,4 +1535,114 @@ async fn queues_that_started_their_thread_stay_on_the_channel_message() {
         ctx.act(game.id, QueueAction::Join, &in_thread("12")).await,
         Err(QueueError::Forbidden)
     ));
+}
+
+#[tokio::test]
+async fn a_new_day_renames_the_thread_and_newgame_in_a_game_thread_adds_its_queue_there() {
+    let ctx = setup().await;
+    ctx.respond(&newgame(vec![
+        ("title", text("Pod")),
+        ("start", text("<t:1790301600>")),
+    ]))
+    .await
+    .unwrap();
+    let first = ctx.only_game().await;
+    ctx.api.take();
+
+    // 7pm on the same New York day keeps the name; a later day renames the thread.
+    let same_day = QueueAction::Time(Some(utc("2026-09-24T23:00:00Z")));
+    ctx.act(first.id, same_day, &in_thread("111"))
+        .await
+        .unwrap();
+    let next_day = QueueAction::Time(Some(utc("2026-09-26T23:00:00Z")));
+    ctx.act(first.id, next_day, &in_thread("111"))
+        .await
+        .unwrap();
+    let renames: Vec<Call> = ctx
+        .api
+        .take()
+        .into_iter()
+        .filter(|call| matches!(call, Call::RenameThread(..)))
+        .collect();
+    assert_eq!(
+        renames,
+        [Call::RenameThread("555".into(), "Pod · Sep 26".into())]
+    );
+
+    // `/newgame` inside the thread: the reply is the new queue, in the same thread.
+    let mut rematch = newgame(vec![
+        ("title", text("Rematch")),
+        ("start", text("<t:1790550000>")),
+    ]);
+    rematch.channel_id = Some("555".into());
+    rematch.user.as_mut().unwrap().id = "12".into();
+    ctx.api
+        .set_edit_response_result(Ok(the_gathering::discord::api::SentMessage {
+            id: "1001".into(),
+        }));
+    ctx.respond(&rematch).await.unwrap();
+    let calls = ctx.api.take();
+    assert!(
+        !calls
+            .iter()
+            .any(|call| matches!(call, Call::StartThread(..) | Call::Create(..)))
+    );
+    assert_eq!(thread_members(&calls), [("555", "12")]);
+    let edits: Vec<(&str, &str)> = calls
+        .iter()
+        .filter_map(|call| match call {
+            Call::Edit(channel, message, _) => Some((channel.as_str(), message.as_str())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(edits, [("555", "1001")]);
+    assert_eq!(
+        calls.last(),
+        Some(&Call::RenameThread("555".into(), "Rematch · Sep 27".into()))
+    );
+    let games = scheduled::all(ctx.app.pool()).await.unwrap();
+    let second = &games[1];
+    assert_eq!(
+        (
+            second.channel_id.as_str(),
+            second.thread_id.as_deref(),
+            second.message_id.as_deref(),
+            second.host_discord_id.as_str()
+        ),
+        ("222", Some("555"), Some("1001"), "12")
+    );
+    let joiner = QueueActor {
+        message_id: "1001".into(),
+        ..in_thread("13")
+    };
+    ctx.act(second.id, QueueAction::Join, &joiner)
+        .await
+        .unwrap();
+    assert_eq!(keys(&ctx.game(second.id).await.players), ["13"]);
+
+    // The newest game's host closes the thread, cancelling both open games.
+    new_game::close(
+        &ctx.app.state,
+        ctx.api.as_ref(),
+        &ctx.scheduler,
+        &close_in("555", "12", None),
+    )
+    .await
+    .unwrap();
+    let closed = ctx
+        .api
+        .take()
+        .into_iter()
+        .find_map(|call| match call {
+            Call::EditResponse(payload) => payload.content,
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        closed,
+        "<@12> closed this game thread. Its open games are cancelled."
+    );
+    for id in [first.id, second.id] {
+        assert_eq!(ctx.game(id).await.status, Status::Cancelled);
+    }
 }

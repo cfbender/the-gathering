@@ -405,8 +405,8 @@ pub async fn manageable(
     }))
 }
 
-/// The game whose thread `actor` is in, if `actor` may close it (host or administrator).
-/// `None` when the channel is not a game thread.
+/// The newest game in the thread `actor` is in, if `actor` may close the thread (its host
+/// or an administrator). `None` when the channel is not a game thread.
 pub async fn thread_game(
     state: &AppState,
     actor: &QueueActor,
@@ -414,7 +414,7 @@ pub async fn thread_game(
     authorize(state, actor)?;
     let mut conn = state.pool.acquire().await?;
     let game = select_games!(
-        "WHERE thread_id = ? AND guild_id = ?",
+        "WHERE thread_id = ? AND guild_id = ? ORDER BY id DESC LIMIT 1",
         actor.channel_id,
         actor.guild_id
     )
@@ -427,22 +427,42 @@ pub async fn thread_game(
     }
 }
 
-/// Cancels a queue if it is still open.
-pub async fn cancel_open(
+/// The channel a game thread was started in, when `thread_id` holds a game.
+pub async fn thread_parent(
     pool: &Pool,
-    id: i64,
-    now: UtcDateTime,
-) -> Result<ScheduledGame, sqlx::Error> {
-    let mut conn = pool.acquire().await?;
-    sqlx::query!(
-        "UPDATE discord_scheduled_games SET status = 'cancelled', message_dirty = 1, updated_at = ?
-         WHERE id = ? AND status = 'open'",
-        now,
-        id
+    guild_id: &str,
+    thread_id: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar!(
+        "SELECT channel_id FROM discord_scheduled_games WHERE thread_id = ? AND guild_id = ?
+         ORDER BY id DESC LIMIT 1",
+        thread_id,
+        guild_id
     )
-    .execute(&mut *conn)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Cancels the open games in a thread.
+pub async fn cancel_thread(
+    pool: &Pool,
+    thread_id: &str,
+    now: UtcDateTime,
+) -> Result<Vec<ScheduledGame>, sqlx::Error> {
+    let mut conn = pool.acquire().await?;
+    let ids = sqlx::query_scalar!(
+        r#"UPDATE discord_scheduled_games SET status = 'cancelled', message_dirty = 1, updated_at = ?
+           WHERE thread_id = ? AND status = 'open' RETURNING id AS "id!: i64""#,
+        now,
+        thread_id
+    )
+    .fetch_all(&mut *conn)
     .await?;
-    get_required(&mut conn, id).await
+    let mut games = Vec::with_capacity(ids.len());
+    for id in ids {
+        games.push(get_required(&mut conn, id).await?);
+    }
+    Ok(games)
 }
 
 /// Records the thread holding the queue message.

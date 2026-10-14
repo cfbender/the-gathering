@@ -105,6 +105,9 @@ pub trait DiscordApi: Send + Sync {
     /// Adds a member to a thread (a no-op when they already are one).
     fn add_thread_member<'a>(&'a self, thread_id: &'a str, user_id: &'a str) -> ApiFuture<'a, ()>;
 
+    /// Renames a thread.
+    fn rename_thread<'a>(&'a self, thread_id: &'a str, name: &'a str) -> ApiFuture<'a, ()>;
+
     /// Closes (archives) a thread; a new message in it reopens it.
     fn close_thread<'a>(&'a self, thread_id: &'a str) -> ApiFuture<'a, ()>;
 

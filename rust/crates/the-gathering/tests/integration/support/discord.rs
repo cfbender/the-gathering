@@ -31,6 +31,8 @@ pub enum Call {
     StartThread(String, String, String),
     /// `add_thread_member(thread, user)`.
     AddThreadMember(String, String),
+    /// `rename_thread(thread, name)`.
+    RenameThread(String, String),
     /// `close_thread(thread)`.
     CloseThread(String),
     /// `create_command(guild, command)`.
@@ -228,6 +230,15 @@ impl DiscordApi for RecordingApi {
         let result = self.record(
             None,
             Call::AddThreadMember(thread_id.to_owned(), user_id.to_owned()),
+            (),
+        );
+        Box::pin(async move { result })
+    }
+
+    fn rename_thread<'a>(&'a self, thread_id: &'a str, name: &'a str) -> ApiFuture<'a, ()> {
+        let result = self.record(
+            None,
+            Call::RenameThread(thread_id.to_owned(), name.to_owned()),
             (),
         );
         Box::pin(async move { result })

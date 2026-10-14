@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id AS \"id!: i64\", guild_id, channel_id, message_id, thread_id, host_discord_id, title, format,\n                      start_at AS \"start_at: UtcDateTime\", min_players, status, room_id, players, maybe,\n                      maybe_pinged_at AS \"maybe_pinged_at: UtcDateTime\", maybe_ping_id, announcement_id,\n                      message_dirty AS \"message_dirty: bool\",\n                      inserted_at AS \"inserted_at: UtcDateTime\", updated_at AS \"updated_at: UtcDateTime\"\n               FROM discord_scheduled_games WHERE thread_id = ? AND guild_id = ?",
+  "query": "SELECT id AS \"id!: i64\", guild_id, channel_id, message_id, thread_id, host_discord_id, title, format,\n                      start_at AS \"start_at: UtcDateTime\", min_players, status, room_id, players, maybe,\n                      maybe_pinged_at AS \"maybe_pinged_at: UtcDateTime\", maybe_ping_id, announcement_id,\n                      message_dirty AS \"message_dirty: bool\",\n                      inserted_at AS \"inserted_at: UtcDateTime\", updated_at AS \"updated_at: UtcDateTime\"\n               FROM discord_scheduled_games WHERE thread_id = ? AND guild_id = ? ORDER BY id DESC LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -250,5 +250,5 @@
       false
     ]
   },
-  "hash": "3a3abd669bcee04fcb29376eff2d0a52fa26a984054d5ffb665d3f0c97d279bb"
+  "hash": "02c6771e2e33f9a2c72c23e3f4212bd3422abac95c704f23e7065c019e61b19e"
 }
