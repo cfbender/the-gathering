@@ -127,7 +127,12 @@ pub struct ScheduledGame {
 impl ScheduledGame {
     /// The channel holding the queue message: its thread, else the `/newgame` channel.
     pub fn queue_channel(&self) -> &str {
-        self.thread_id.as_deref().unwrap_or(&self.channel_id)
+        match &self.thread_id {
+            // A queue message that started the thread shares the thread's id but stays in
+            // the channel (queues published before they moved into their thread).
+            Some(thread) if self.message_id.as_ref() != Some(thread) => thread,
+            _ => &self.channel_id,
+        }
     }
 }
 

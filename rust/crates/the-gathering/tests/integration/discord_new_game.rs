@@ -1506,3 +1506,21 @@ async fn rest_client_starts_joins_and_closes_threads_with_discords_routes() {
     api.add_thread_member("555", "111").await.unwrap();
     api.close_thread("555").await.unwrap();
 }
+
+#[tokio::test]
+async fn queues_that_started_their_thread_stay_on_the_channel_message() {
+    let ctx = setup().await;
+    let game = ctx.queue(NewQueue::default()).await;
+    scheduled::set_thread(ctx.app.pool(), game.id, "555")
+        .await
+        .unwrap();
+    ctx.api.take();
+    ctx.act(game.id, QueueAction::Join, &actor("11"))
+        .await
+        .unwrap();
+    assert_eq!(ctx.edits().len(), 1);
+    assert!(matches!(
+        ctx.act(game.id, QueueAction::Join, &in_thread("12")).await,
+        Err(QueueError::Forbidden)
+    ));
+}
