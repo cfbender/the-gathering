@@ -93,6 +93,21 @@ pub trait DiscordApi: Send + Sync {
         message: &'a MessagePayload,
     ) -> ApiFuture<'a, SentMessage>;
 
+    /// Starts a public thread on a channel message. Discord gives the thread the
+    /// message's id.
+    fn start_thread<'a>(
+        &'a self,
+        channel_id: &'a str,
+        message_id: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, ()>;
+
+    /// Adds a member to a thread (a no-op when they already are one).
+    fn add_thread_member<'a>(&'a self, thread_id: &'a str, user_id: &'a str) -> ApiFuture<'a, ()>;
+
+    /// Closes (archives) a thread; a new message in it reopens it.
+    fn close_thread<'a>(&'a self, thread_id: &'a str) -> ApiFuture<'a, ()>;
+
     /// Creates (or overwrites by name) a guild command, or a global one without a guild.
     fn create_command<'a>(
         &'a self,

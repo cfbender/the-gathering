@@ -27,6 +27,12 @@ pub enum Call {
     Create(String, MessagePayload),
     /// `edit_message(channel, message, payload)`.
     Edit(String, String, MessagePayload),
+    /// `start_thread(channel, message, name)`.
+    StartThread(String, String, String),
+    /// `add_thread_member(thread, user)`.
+    AddThreadMember(String, String),
+    /// `close_thread(thread)`.
+    CloseThread(String),
     /// `create_command(guild, command)`.
     CreateCommand(Option<String>, CommandDefinition),
     /// `delete_command(guild, id)`.
@@ -44,13 +50,17 @@ pub enum Op {
     Create,
     /// `edit_message`.
     Edit,
+    /// `start_thread`.
+    StartThread,
+    /// `close_thread`.
+    CloseThread,
 }
 
 /// The recording fake.
 #[derive(Default)]
 pub struct RecordingApi {
     calls: Mutex<VecDeque<Call>>,
-    failures: Mutex<Vec<Op>>,
+    failures: Mutex<Vec<(Op, DiscordError)>>,
     edit_response_result: Mutex<Option<Result<SentMessage, DiscordError>>>,
     /// Commands `list_commands` returns.
     pub registered: Vec<RegisteredCommand>,
@@ -72,7 +82,21 @@ impl RecordingApi {
 
     /// Makes each operation fail once with a network error.
     pub fn fail(&self, operations: &[Op]) {
-        self.failures.lock().unwrap().extend_from_slice(operations);
+        self.fail_with(operations, &DiscordError::Network);
+    }
+
+    /// Makes each operation fail once with Discord's Missing Permissions (403).
+    pub fn refuse(&self, operations: &[Op]) {
+        let error = DiscordError::Http {
+            status: 403,
+            code: Some(50_013),
+        };
+        self.fail_with(operations, &error);
+    }
+
+    fn fail_with(&self, operations: &[Op], error: &DiscordError) {
+        let mut failures = self.failures.lock().unwrap();
+        failures.extend(operations.iter().map(|op| (*op, error.clone())));
     }
 
     /// The result every `edit_response` returns from now on.
@@ -114,11 +138,8 @@ impl RecordingApi {
     fn record<T>(&self, op: Option<Op>, call: Call, success: T) -> Result<T, DiscordError> {
         self.calls.lock().unwrap().push_back(call);
         let mut failures = self.failures.lock().unwrap();
-        match op.and_then(|op| failures.iter().position(|failing| *failing == op)) {
-            Some(index) => {
-                failures.remove(index);
-                Err(DiscordError::Network)
-            }
+        match op.and_then(|op| failures.iter().position(|(failing, _)| *failing == op)) {
+            Some(index) => Err(failures.remove(index).1),
             None => Ok(success),
         }
     }
@@ -181,6 +202,42 @@ impl DiscordApi for RecordingApi {
                 message.clone(),
             ),
             sent(message_id),
+        );
+        Box::pin(async move { result })
+    }
+
+    fn start_thread<'a>(
+        &'a self,
+        channel_id: &'a str,
+        message_id: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, ()> {
+        let result = self.record(
+            Some(Op::StartThread),
+            Call::StartThread(
+                channel_id.to_owned(),
+                message_id.to_owned(),
+                name.to_owned(),
+            ),
+            (),
+        );
+        Box::pin(async move { result })
+    }
+
+    fn add_thread_member<'a>(&'a self, thread_id: &'a str, user_id: &'a str) -> ApiFuture<'a, ()> {
+        let result = self.record(
+            None,
+            Call::AddThreadMember(thread_id.to_owned(), user_id.to_owned()),
+            (),
+        );
+        Box::pin(async move { result })
+    }
+
+    fn close_thread<'a>(&'a self, thread_id: &'a str) -> ApiFuture<'a, ()> {
+        let result = self.record(
+            Some(Op::CloseThread),
+            Call::CloseThread(thread_id.to_owned()),
+            (),
         );
         Box::pin(async move { result })
     }

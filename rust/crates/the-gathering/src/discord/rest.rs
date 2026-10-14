@@ -84,6 +84,9 @@ impl RestApi {
             let mut request = self.bot(method.clone(), path);
             if let Some(body) = body {
                 request = request.json(body);
+            } else if method == Method::PUT {
+                // Discord's edge rejects a bodyless PUT without an explicit length (411).
+                request = request.header(reqwest::header::CONTENT_LENGTH, 0);
             }
             let response = request.send().await.map_err(transport)?;
             if response.status() == StatusCode::TOO_MANY_REQUESTS && attempt < RATE_LIMIT_RETRIES {
@@ -245,6 +248,50 @@ impl DiscordApi for RestApi {
                 encode_segment(message_id)
             );
             self.bot_json(Method::PATCH, &path, Some(message)).await
+        })
+    }
+
+    fn start_thread<'a>(
+        &'a self,
+        channel_id: &'a str,
+        message_id: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            let path = format!(
+                "/channels/{}/messages/{}/threads",
+                encode_segment(channel_id),
+                encode_segment(message_id)
+            );
+            // Seven days of inactivity, Discord's longest, so the thread stays listed until
+            // `/close` closes it.
+            let body = serde_json::json!({"name": name, "auto_archive_duration": 10_080});
+            self.send_bot(Method::POST, &path, Some(&body))
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn add_thread_member<'a>(&'a self, thread_id: &'a str, user_id: &'a str) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            let path = format!(
+                "/channels/{}/thread-members/{}",
+                encode_segment(thread_id),
+                encode_segment(user_id)
+            );
+            self.send_bot::<()>(Method::PUT, &path, None)
+                .await
+                .map(|_| ())
+        })
+    }
+
+    fn close_thread<'a>(&'a self, thread_id: &'a str) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            let path = format!("/channels/{}", encode_segment(thread_id));
+            let body = serde_json::json!({"archived": true});
+            self.send_bot(Method::PATCH, &path, Some(&body))
+                .await
+                .map(|_| ())
         })
     }
 

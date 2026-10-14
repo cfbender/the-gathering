@@ -300,6 +300,88 @@ async fn button(
     Ok(())
 }
 
+/// The `/close` definition.
+pub fn close_definition() -> CommandDefinition {
+    CommandDefinition {
+        name: "close".into(),
+        description: "Close this /newgame thread (host or Discord Administrator)".into(),
+        dm_permission: false,
+        options: Vec::new(),
+    }
+}
+
+/// `/close`: closes (archives) the game thread it runs in, cancelling the game if it is
+/// still open.
+pub async fn close(
+    state: &AppState,
+    api: &dyn DiscordApi,
+    scheduler: &NewGameScheduler,
+    interaction: &Interaction,
+) -> Result<(), DiscordError> {
+    let target = interaction.target();
+    let mut actor = actor(interaction);
+    actor.admin = interaction.administrator();
+    let game = match scheduled::thread_game(state, &actor).await {
+        Ok(Some(game)) => game,
+        Ok(None) => {
+            let reply = private_response("Use /close inside a /newgame game thread.");
+            return api.create_response(&target, &reply).await;
+        }
+        Err(QueueError::Forbidden) => {
+            let reply = private_response(
+                "Only this game's host or a Discord Administrator can close its thread.",
+            );
+            return api.create_response(&target, &reply).await;
+        }
+        Err(error) => {
+            return api
+                .create_response(&target, &private_response(error_message(&error)))
+                .await;
+        }
+    };
+    // Reply before closing: a message in a closed thread would reopen it.
+    let cancelled = if game.status == Status::Open {
+        " The game was still open, so it is cancelled."
+    } else {
+        ""
+    };
+    let closed = MessagePayload {
+        content: Some(format!(
+            "<@{}> closed this game thread.{cancelled}",
+            actor.discord_id
+        )),
+        allowed_mentions: Some(super::api::AllowedMentions::none()),
+        ..MessagePayload::default()
+    };
+    api.create_response(
+        &target,
+        &InteractionResponse::message(ResponseKind::ChannelMessage, closed),
+    )
+    .await?;
+    if let Err(error) = scheduler.close(game.id).await {
+        tracing::error!(
+            "Discord newgame {} could not be cancelled: {error}",
+            game.id
+        );
+    }
+    if let Err(error) = api.close_thread(&actor.channel_id).await {
+        tracing::warn!(
+            "Discord newgame {} thread could not be closed: {error}",
+            game.id
+        );
+        let failed = MessagePayload {
+            content: Some(
+                "This thread could not be closed. Give the bot the Manage Threads permission, then run /close again."
+                    .into(),
+            ),
+            allowed_mentions: Some(super::api::AllowedMentions::none()),
+            ..MessagePayload::default()
+        };
+        api.edit_response(&target, &failed).await?;
+    }
+    Ok(())
+}
+
 fn time_modal(id: i64) -> InteractionResponse {
     InteractionResponse::modal(Modal {
         custom_id: format!("newgame:{id}:time"),

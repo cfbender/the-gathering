@@ -291,6 +291,25 @@ and Discord Manage Guild alone do not grant these permissions. Administrator is 
 permissions Discord computes for each interaction, so no guild cache is needed. All buttons are bound to the original
 guild, channel and message, and disabled once started, cancelled or expired.
 
+The bot starts a thread on the queue post, named after the game title, so the
+game stays listed under the channel while chat moves on. The host is added to
+the thread, and so is anyone who clicks Join or Maybe; Leave does not remove
+anyone. The ready announcement and maybe ping are posted in the thread, which
+also adds any mentioned member who is not already in it. The queue embed and
+its buttons stay on the original channel message. The thread archives itself
+after seven days without messages.
+
+Run **`/close`** inside a game thread to close (archive) it; a new message in
+it reopens it. Only the host or a Discord **Administrator** can close it, and
+an open game is cancelled at the same time. `/close` anywhere else replies
+privately. Discord requires **Manage Threads** for the bot to close a thread.
+
+Threads are best effort. Without the thread permissions (step 3 below), or when
+`/newgame` runs in a channel that cannot hold threads, the queue works without
+one and posts its pings in the channel. A ping the thread refuses (for example,
+after a moderator deleted the thread) is posted in the channel instead. If the
+bot cannot close the thread, `/close` says so and can be run again.
+
 Any member of the server can queue, without first linking an app account. To
 enter the actual table, players must sign in with Discord; normal registration
 and disabled-account restrictions still apply. The roster is coordination, not
@@ -380,7 +399,7 @@ also subject to the render cap. No summary request modifies the game.
 | `DISCORD_CLIENT_ID` | yes for member sign-in | Discord application ID. |
 | `DISCORD_CLIENT_SECRET` | yes for member sign-in | OAuth2 client secret. |
 | `DISCORD_BOT_TOKEN` | yes to enable | Secret bot token. Unset/empty means no Discord process starts. |
-| `DISCORD_GUILD_ID` | no | Register `/log`, `/summary`, and `/newgame` immediately in one server; omit for global commands, which can take up to an hour to appear. Also restricts invocation to that server. |
+| `DISCORD_GUILD_ID` | no | Register `/log`, `/summary`, `/newgame`, and `/close` immediately in one server; omit for global commands, which can take up to an hour to appear. Also restricts invocation to that server. |
 | `DISCORD_DEFAULT_TIMEZONE` | no | IANA timezone for `/newgame` clock times; defaults to `America/New_York`. |
 | `DISCORD_SPELLBOT_USER_ID` | no | Trusted SpellBot bot user ID; defaults to production SpellBot (`725510263251402832`). |
 
@@ -389,11 +408,15 @@ also subject to the render cap. No summary request modifies the game.
 2. On **Bot**, enable **Message Content Intent**. No Guild Members or Presence
    intent is needed.
 3. On **OAuth2 → URL Generator**, select `bot` and `applications.commands`.
-   Grant **View Channels**, **Send Messages**, **Embed Links**, and **Attach Files**
-   (`permissions=52224`) for queues and public image summaries. Ensure the bot can view the
+   Grant **View Channels**, **Send Messages**, **Embed Links**, **Attach Files**,
+   **Create Public Threads**, **Send Messages in Threads**, and **Manage Threads**
+   (`permissions=326417566720`) for queues, their threads and `/close`, and public
+   image summaries. Ensure the bot can view the
    specific channel where SpellBot posts games. It does not need Read Message History.
 4. Invite the bot with a URL shaped like
-   `https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=52224`.
+   `https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=326417566720`.
+   A bot invited before game threads keeps its old permissions: re-invite it with
+   this URL, or grant the three thread permissions to its role.
 5. Put the token and optional IDs in `.env`, then restart the container. Never
    paste the token into logs or support messages.
 6. Start a SpellBot game and confirm the container logs
@@ -429,8 +452,9 @@ how far it got. Read the log from the top of the last start:
 | `Shard websocket closed (errno 4014, …)` repeating, no `READY` | Discord rejected the requested intents. Enable **Message Content Intent** on the **Bot** page. |
 | `Discord bot connected as <bot> in 0 guild(s)` | The bot was never invited to the server. Use the invite URL from step 4. |
 | `Discord bot connected …` but the bot looks offline in Discord | The bot sets an online presence ("Watching the battlefield") right after this line. If the member list still shows it offline, the gateway session dropped afterwards; look for `Shard websocket closed` lines below it. |
-| `Discord registered /log, /summary, and /newgame in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
-| `Discord registered /log, /summary, and /newgame globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
+| `Discord registered /log, /summary, /newgame, and /close in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
+| `Discord registered /log, /summary, /newgame, and /close globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
+| `Discord newgame N thread could not be started: HTTP 403, Discord code 50013` | The bot lacks **Create Public Threads** in that channel; the queue still works without a thread. Grant the thread permissions from step 3. |
 | `Could not register Discord commands: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |
 | No `Discord observed SpellBot game …` line when a game starts | The line appears only once the post reads **Your game is ready!** (see the message flow above). Otherwise the bot cannot see the channel (grant **View Channels** there), or the message is from a different SpellBot deployment: set `DISCORD_SPELLBOT_USER_ID` to that bot's user ID. Set `LOG_LEVEL=debug` to log why each SpellBot message was ignored. |
 

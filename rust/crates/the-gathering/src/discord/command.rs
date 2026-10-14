@@ -24,7 +24,7 @@ pub fn definition() -> CommandDefinition {
     }
 }
 
-/// Registers `/log`, `/summary`, and `/newgame` (in the configured
+/// Registers `/log`, `/summary`, `/newgame`, and `/close` (in the configured
 /// guild, else globally) and removes only the replaced `/won` command. Returns a
 /// description for the log.
 pub async fn register(
@@ -32,7 +32,12 @@ pub async fn register(
     application_id: &str,
     guild_id: Option<&str>,
 ) -> Result<String, DiscordError> {
-    for command in [definition(), summary::definition(), new_game::definition()] {
+    for command in [
+        definition(),
+        summary::definition(),
+        new_game::definition(),
+        new_game::close_definition(),
+    ] {
         api.create_command(application_id, guild_id, &command)
             .await?;
     }
@@ -42,7 +47,7 @@ pub async fn register(
             .await?;
     }
     Ok(match guild_id {
-        Some(guild) => format!("registered /log, /summary, and /newgame in guild {guild}"),
-        None => "registered /log, /summary, and /newgame globally; new commands can take up to an hour to appear".into(),
+        Some(guild) => format!("registered /log, /summary, /newgame, and /close in guild {guild}"),
+        None => "registered /log, /summary, /newgame, and /close globally; new commands can take up to an hour to appear".into(),
     })
 }

@@ -109,7 +109,7 @@ impl Bot {
     pub async fn handle_interaction(&self, interaction: &Interaction) {
         let command = interaction
             .command_name()
-            .filter(|name| ["summary", "newgame", "log", "won"].contains(name));
+            .filter(|name| ["summary", "newgame", "close", "log", "won"].contains(name));
         let component = interaction
             .custom_id()
             .and_then(|id| id.split(':').next())
@@ -186,6 +186,9 @@ impl Bot {
                         UtcDateTime::now(),
                     )
                     .await;
+                }
+                "close" => {
+                    let _ = new_game::close(state, api, &self.scheduler, interaction).await;
                 }
                 "log" | "won" => log_command::respond(state, api, interaction).await,
                 _ => {}

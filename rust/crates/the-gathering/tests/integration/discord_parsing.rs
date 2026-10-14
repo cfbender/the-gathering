@@ -246,7 +246,7 @@ async fn registers_log_with_an_optional_winner_and_removes_only_won_in_each_scop
             },
         ]);
         let description = command::register(&api, "888", guild).await.unwrap();
-        assert!(description.contains("/log, /summary, and /newgame"));
+        assert!(description.contains("/log, /summary, /newgame, and /close"));
         let calls = api.take();
         let guild = guild.map(str::to_owned);
         let Call::CreateCommand(scope, log) = &calls[0] else {
@@ -272,8 +272,13 @@ async fn registers_log_with_an_optional_winner_and_removes_only_won_in_each_scop
             (min.kind, min.min_value, min.max_value, min.required),
             (OptionKind::Integer, Some(2), Some(10), false)
         );
-        assert_eq!(calls[3], Call::DeleteCommand(guild.clone(), "123".into()));
-        assert_eq!(calls.len(), 4);
+        let Call::CreateCommand(_, close) = &calls[3] else {
+            panic!()
+        };
+        assert_eq!(close.name, "close");
+        assert!(!close.dm_permission && close.options.is_empty());
+        assert_eq!(calls[4], Call::DeleteCommand(guild.clone(), "123".into()));
+        assert_eq!(calls.len(), 5);
     }
 }
 

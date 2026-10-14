@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id AS \"id!: i64\", guild_id, channel_id, message_id, host_discord_id, title, format,\n                      start_at AS \"start_at: UtcDateTime\", min_players, status, room_id, players, maybe,\n                      maybe_pinged_at AS \"maybe_pinged_at: UtcDateTime\", maybe_ping_id, announcement_id,\n                      message_dirty AS \"message_dirty: bool\",\n                      inserted_at AS \"inserted_at: UtcDateTime\", updated_at AS \"updated_at: UtcDateTime\"\n               FROM discord_scheduled_games WHERE id = ?",
+  "query": "SELECT id AS \"id!: i64\", guild_id, channel_id, message_id, thread_id, host_discord_id, title, format,\n                      start_at AS \"start_at: UtcDateTime\", min_players, status, room_id, players, maybe,\n                      maybe_pinged_at AS \"maybe_pinged_at: UtcDateTime\", maybe_ping_id, announcement_id,\n                      message_dirty AS \"message_dirty: bool\",\n                      inserted_at AS \"inserted_at: UtcDateTime\", updated_at AS \"updated_at: UtcDateTime\"\n               FROM discord_scheduled_games ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -48,8 +48,19 @@
         }
       },
       {
-        "name": "host_discord_id",
+        "name": "thread_id",
         "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discord_scheduled_games",
+            "name": "thread_id"
+          }
+        }
+      },
+      {
+        "name": "host_discord_id",
+        "ordinal": 5,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -60,7 +71,7 @@
       },
       {
         "name": "title",
-        "ordinal": 5,
+        "ordinal": 6,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -71,7 +82,7 @@
       },
       {
         "name": "format",
-        "ordinal": 6,
+        "ordinal": 7,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -82,7 +93,7 @@
       },
       {
         "name": "start_at: UtcDateTime",
-        "ordinal": 7,
+        "ordinal": 8,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -93,7 +104,7 @@
       },
       {
         "name": "min_players",
-        "ordinal": 8,
+        "ordinal": 9,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -104,7 +115,7 @@
       },
       {
         "name": "status",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -115,7 +126,7 @@
       },
       {
         "name": "room_id",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -126,7 +137,7 @@
       },
       {
         "name": "players",
-        "ordinal": 11,
+        "ordinal": 12,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -137,7 +148,7 @@
       },
       {
         "name": "maybe",
-        "ordinal": 12,
+        "ordinal": 13,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -148,7 +159,7 @@
       },
       {
         "name": "maybe_pinged_at: UtcDateTime",
-        "ordinal": 13,
+        "ordinal": 14,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -159,7 +170,7 @@
       },
       {
         "name": "maybe_ping_id",
-        "ordinal": 14,
+        "ordinal": 15,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -170,7 +181,7 @@
       },
       {
         "name": "announcement_id",
-        "ordinal": 15,
+        "ordinal": 16,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -181,7 +192,7 @@
       },
       {
         "name": "message_dirty: bool",
-        "ordinal": 16,
+        "ordinal": 17,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -192,7 +203,7 @@
       },
       {
         "name": "inserted_at: UtcDateTime",
-        "ordinal": 17,
+        "ordinal": 18,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -203,7 +214,7 @@
       },
       {
         "name": "updated_at: UtcDateTime",
-        "ordinal": 18,
+        "ordinal": 19,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -214,12 +225,13 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       false,
       false,
       false,
+      true,
       true,
       false,
       false,
@@ -238,5 +250,5 @@
       false
     ]
   },
-  "hash": "6cb4f8a4c8c28cb2f58d93dbf495e5bff7872da1cabd213e2c8bd52caf75c2e1"
+  "hash": "70dada4fef71f60dabb4c2dd7dff92fa4bc32a35dc18ad13425aa7625a2b4f88"
 }

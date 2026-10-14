@@ -89,6 +89,8 @@ pub struct ScheduledGame {
     pub channel_id: String,
     /// The public queue message, once posted.
     pub message_id: Option<String>,
+    /// The thread started on the queue message, if Discord allowed one.
+    pub thread_id: Option<String>,
     /// Who ran `/newgame`.
     pub host_discord_id: String,
     /// Title.
@@ -126,6 +128,7 @@ struct Row {
     guild_id: String,
     channel_id: String,
     message_id: Option<String>,
+    thread_id: Option<String>,
     host_discord_id: String,
     title: String,
     format: Option<String>,
@@ -150,6 +153,7 @@ impl From<Row> for ScheduledGame {
             guild_id: row.guild_id,
             channel_id: row.channel_id,
             message_id: row.message_id,
+            thread_id: row.thread_id,
             host_discord_id: row.host_discord_id,
             title: row.title,
             format: row.format,
@@ -238,7 +242,7 @@ macro_rules! select_games {
     ($tail:literal $(, $arg:expr)* $(,)?) => {
         sqlx::query_as!(
             Row,
-            r#"SELECT id AS "id!: i64", guild_id, channel_id, message_id, host_discord_id, title, format,
+            r#"SELECT id AS "id!: i64", guild_id, channel_id, message_id, thread_id, host_discord_id, title, format,
                       start_at AS "start_at: UtcDateTime", min_players, status, room_id, players, maybe,
                       maybe_pinged_at AS "maybe_pinged_at: UtcDateTime", maybe_ping_id, announcement_id,
                       message_dirty AS "message_dirty: bool",
@@ -386,6 +390,58 @@ pub async fn manageable(
     Ok(game.is_some_and(|game| {
         game.status == Status::Open && same_message(&game, actor) && host_or_admin(&game, actor)
     }))
+}
+
+/// The game whose thread `actor` is in, if `actor` may close it (host or administrator).
+/// `None` when the channel is not a game thread.
+pub async fn thread_game(
+    state: &AppState,
+    actor: &QueueActor,
+) -> Result<Option<ScheduledGame>, QueueError> {
+    authorize(state, actor)?;
+    let mut conn = state.pool.acquire().await?;
+    let game = select_games!(
+        "WHERE thread_id = ? AND guild_id = ?",
+        actor.channel_id,
+        actor.guild_id
+    )
+    .fetch_optional(&mut *conn)
+    .await?
+    .map(ScheduledGame::from);
+    match game {
+        Some(game) if !host_or_admin(&game, actor) => Err(QueueError::Forbidden),
+        game => Ok(game),
+    }
+}
+
+/// Cancels a queue if it is still open.
+pub async fn cancel_open(
+    pool: &Pool,
+    id: i64,
+    now: UtcDateTime,
+) -> Result<ScheduledGame, sqlx::Error> {
+    let mut conn = pool.acquire().await?;
+    sqlx::query!(
+        "UPDATE discord_scheduled_games SET status = 'cancelled', message_dirty = 1, updated_at = ?
+         WHERE id = ? AND status = 'open'",
+        now,
+        id
+    )
+    .execute(&mut *conn)
+    .await?;
+    get_required(&mut conn, id).await
+}
+
+/// Records the thread started on the queue message.
+pub async fn set_thread(pool: &Pool, id: i64, thread_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        "UPDATE discord_scheduled_games SET thread_id = ? WHERE id = ?",
+        thread_id,
+        id
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 /// Applies an action and settles the queue. A queue that is no

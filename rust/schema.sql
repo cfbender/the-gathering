@@ -63,7 +63,7 @@ CREATE TABLE "discord_result_drafts" ("id" TEXT PRIMARY KEY, "pending_game_id" I
 CREATE INDEX "discord_result_drafts_pending_game_id_index" ON "discord_result_drafts" ("pending_game_id");
 CREATE INDEX "discord_result_drafts_expires_at_index" ON "discord_result_drafts" ("expires_at");
 CREATE TABLE "card_rulings_cache" ("id" TEXT PRIMARY KEY, "rulings" TEXT NOT NULL, "fetched_at" TEXT NOT NULL);
-CREATE TABLE "discord_scheduled_games" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "guild_id" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "message_id" TEXT, "host_discord_id" TEXT NOT NULL, "title" TEXT NOT NULL, "format" TEXT, "start_at" TEXT, "min_players" INTEGER DEFAULT 3 NOT NULL, "status" TEXT DEFAULT 'open' NOT NULL, "room_id" TEXT, "players" TEXT DEFAULT ('{}') NOT NULL, "announcement_id" TEXT, "message_dirty" INTEGER DEFAULT true NOT NULL, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL, "maybe" TEXT DEFAULT ('{}') NOT NULL, "maybe_pinged_at" TEXT, "maybe_ping_id" TEXT);
+CREATE TABLE "discord_scheduled_games" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "guild_id" TEXT NOT NULL, "channel_id" TEXT NOT NULL, "message_id" TEXT, "host_discord_id" TEXT NOT NULL, "title" TEXT NOT NULL, "format" TEXT, "start_at" TEXT, "min_players" INTEGER DEFAULT 3 NOT NULL, "status" TEXT DEFAULT 'open' NOT NULL, "room_id" TEXT, "players" TEXT DEFAULT ('{}') NOT NULL, "announcement_id" TEXT, "message_dirty" INTEGER DEFAULT true NOT NULL, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL, "maybe" TEXT DEFAULT ('{}') NOT NULL, "maybe_pinged_at" TEXT, "maybe_ping_id" TEXT, "thread_id" TEXT);
 CREATE INDEX "discord_scheduled_games_status_start_at_index" ON "discord_scheduled_games" ("status", "start_at");
 CREATE INDEX "discord_scheduled_games_message_dirty_index" ON "discord_scheduled_games" ("message_dirty");
 CREATE TABLE "webcam_table_sessions" ("id" TEXT PRIMARY KEY, "snapshot" BLOB NOT NULL, "expires_at" TEXT NOT NULL);
@@ -972,6 +972,7 @@ BEGIN
     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
   );
 END;
+CREATE INDEX "discord_scheduled_games_thread_id_index" ON "discord_scheduled_games" ("thread_id");
 INSERT INTO schema_migrations VALUES(20260919195831,NULL);
 INSERT INTO schema_migrations VALUES(20260919195952,NULL);
 INSERT INTO schema_migrations VALUES(20260919200035,NULL);
@@ -1006,3 +1007,4 @@ INSERT INTO schema_migrations VALUES(20261007074539,NULL);
 INSERT INTO schema_migrations VALUES(20261007125350,NULL);
 INSERT INTO schema_migrations VALUES(20261010063504,NULL);
 INSERT INTO schema_migrations VALUES(20261012050542,NULL);
+INSERT INTO schema_migrations VALUES(20261014020504,NULL);

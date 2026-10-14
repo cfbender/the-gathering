@@ -5,8 +5,8 @@
 //! - `/log` hands a staged game to the web form ([`log_command`], [`web_draft`]); the
 //!   legacy `/won` form ([`won`], [`won_form`], [`won_report`]) finishes it in Discord.
 //! - `/summary` posts a rendered recap ([`summary`]).
-//! - `/newgame` gathers players for a webcam table ([`new_game`], [`scheduled`],
-//!   [`scheduler`]).
+//! - `/newgame` gathers players for a webcam table in a thread on its post, and `/close`
+//!   closes that thread ([`new_game`], [`scheduled`], [`scheduler`]).
 //!
 //! The gateway is `twilight-gateway`, with `twilight-model` types for inbound events.
 //! Outbound calls go through the [`api::DiscordApi`] trait ([`rest::RestApi`] in

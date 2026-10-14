@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 use crate::db::UtcDateTime;
 use crate::state::AppState;
 
-use super::api::DiscordApi;
+use super::api::{DiscordApi, DiscordError, MessagePayload, SentMessage};
 use super::new_game_message;
 use super::scheduled::{self, QueueAction, QueueActor, QueueError, ScheduledGame, Status};
 
@@ -75,17 +75,75 @@ impl NewGameScheduler {
     ) -> Result<ScheduledGame, QueueError> {
         let _guard = self.lock.lock().await;
         let game = scheduled::act(&self.state, id, action, actor, (self.clock)()).await?;
+        let listed = game.players.contains_key(&actor.discord_id)
+            || game.maybe.contains_key(&actor.discord_id);
+        if let (Some(thread), QueueAction::Join | QueueAction::Maybe, true) =
+            (&game.thread_id, action, listed)
+        {
+            self.add_to_thread(game.id, thread, &actor.discord_id).await;
+        }
         let _ = self.deliver(&game).await;
         Ok(game)
     }
 
-    /// Publishes a queue on its placeholder message.
+    /// Publishes a queue on its placeholder message and starts its thread there.
     pub async fn attach(&self, id: i64, message_id: &str) -> Result<(), sqlx::Error> {
         let _guard = self.lock.lock().await;
         scheduled::attach_message(&self.state.pool, id, message_id).await?;
         let game = scheduled::settle_id(&self.state.pool, id, (self.clock)()).await?;
         let _ = self.deliver(&game).await;
+        // Best effort: without the thread permissions the queue works as before.
+        match self
+            .api
+            .start_thread(&game.channel_id, message_id, &game.title)
+            .await
+        {
+            Ok(()) => {
+                scheduled::set_thread(&self.state.pool, id, message_id).await?;
+                self.add_to_thread(id, message_id, &game.host_discord_id)
+                    .await;
+            }
+            Err(error) => {
+                tracing::warn!("Discord newgame {id} thread could not be started: {error}");
+            }
+        }
         Ok(())
+    }
+
+    /// Cancels the queue if it is still open (`/close`).
+    pub async fn close(&self, id: i64) -> Result<ScheduledGame, sqlx::Error> {
+        let _guard = self.lock.lock().await;
+        let game = scheduled::cancel_open(&self.state.pool, id, (self.clock)()).await?;
+        let _ = self.deliver(&game).await;
+        Ok(game)
+    }
+
+    async fn add_to_thread(&self, id: i64, thread_id: &str, discord_id: &str) {
+        if let Err(error) = self.api.add_thread_member(thread_id, discord_id).await {
+            tracing::warn!("Discord newgame {id} could not add a member to its thread: {error}");
+        }
+    }
+
+    /// Posts in the game's thread, or in its channel when it has none or Discord refuses
+    /// the thread post (deleted, or locked by a moderator).
+    async fn post(
+        &self,
+        game: &ScheduledGame,
+        payload: &MessagePayload,
+    ) -> Result<SentMessage, DiscordError> {
+        if let Some(thread) = &game.thread_id {
+            match self.api.create_message(thread, payload).await {
+                Err(DiscordError::Http {
+                    status: 400..=428 | 430..=499,
+                    ..
+                }) => tracing::warn!(
+                    "Discord newgame {} thread refused a post; posting in the channel",
+                    game.id
+                ),
+                result => return result,
+            }
+        }
+        self.api.create_message(&game.channel_id, payload).await
     }
 
     /// Settles due queues and retries dirty messages.
@@ -143,8 +201,7 @@ impl NewGameScheduler {
         if game.status == Status::Started && game.announcement_id.is_none() {
             let payload = new_game_message::announcement(public_url, &game);
             let sent = self
-                .api
-                .create_message(&game.channel_id, &payload)
+                .post(&game, &payload)
                 .await
                 .map_err(|_| DeliveryFailed)?;
             scheduled::set_announcement(pool, game.id, &sent.id)
@@ -159,8 +216,7 @@ impl NewGameScheduler {
         {
             let payload = new_game_message::maybe_ping(&game);
             let sent = self
-                .api
-                .create_message(&game.channel_id, &payload)
+                .post(&game, &payload)
                 .await
                 .map_err(|_| DeliveryFailed)?;
             scheduled::set_maybe_ping(pool, game.id, &sent.id)

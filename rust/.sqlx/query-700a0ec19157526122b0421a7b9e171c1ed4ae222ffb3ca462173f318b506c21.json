@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE discord_scheduled_games SET thread_id = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "700a0ec19157526122b0421a7b9e171c1ed4ae222ffb3ca462173f318b506c21"
+}

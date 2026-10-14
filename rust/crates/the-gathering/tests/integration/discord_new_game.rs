@@ -16,6 +16,7 @@ use support::TestApp;
 use support::discord::{Call, Op, RecordingApi};
 use the_gathering::config::DiscordBotConfig;
 use the_gathering::db::UtcDateTime;
+use the_gathering::discord::api::DiscordApi;
 use the_gathering::discord::api::{
     Button, Component, Embed, EmbedField, InteractionResponse, MessagePayload, ResponseKind,
 };
@@ -25,10 +26,13 @@ use the_gathering::discord::interaction::{
 };
 use the_gathering::discord::new_game::{self, RespondError};
 use the_gathering::discord::new_game_message;
+use the_gathering::discord::rest::RestApi;
 use the_gathering::discord::scheduled::{
     self, MAYBE_GRACE_SECONDS, NewQueue, QueueAction, QueueActor, QueueError, ScheduledGame, Status,
 };
 use the_gathering::discord::scheduler::NewGameScheduler;
+use wiremock::matchers::{body_json, header, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const NOW: &str = "2026-09-23T18:00:00Z";
 const ADMINISTRATOR: u64 = 8;
@@ -1209,4 +1213,250 @@ async fn invalid_buttons_are_rejected_privately() {
         response(ctx.api.next()).content(),
         "This game button is invalid."
     );
+}
+
+fn close_in(channel: &str, user: &str, permissions: Option<u64>) -> Interaction {
+    let mut event = event(
+        InteractionData::Command(CommandData {
+            name: "close".into(),
+            options: Vec::new(),
+        }),
+        user,
+        permissions,
+    );
+    event.channel_id = Some(channel.into());
+    event.message_id = None;
+    event
+}
+
+fn thread_members(calls: &[Call]) -> Vec<(&str, &str)> {
+    calls
+        .iter()
+        .filter_map(|call| match call {
+            Call::AddThreadMember(thread, user) => Some((thread.as_str(), user.as_str())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn post_channels(calls: &[Call]) -> Vec<&str> {
+    calls
+        .iter()
+        .filter_map(|call| match call {
+            Call::Create(channel, _) => Some(channel.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn newgame_gathers_its_players_and_ready_ping_in_a_thread_on_its_post() {
+    let ctx = setup().await;
+    ctx.respond(&newgame(vec![
+        ("title", text("Friday pod")),
+        ("min_players", OptionValue::Integer(2)),
+    ]))
+    .await
+    .unwrap();
+    let calls = ctx.api.take();
+    assert!(calls.contains(&Call::StartThread(
+        "222".into(),
+        "555".into(),
+        "Friday pod".into()
+    )));
+    assert_eq!(thread_members(&calls), [("555", "111")]);
+    let game = ctx.only_game().await;
+    assert_eq!(game.thread_id.as_deref(), Some("555"));
+
+    ctx.act(game.id, QueueAction::Maybe, &actor("11"))
+        .await
+        .unwrap();
+    ctx.act(game.id, QueueAction::Leave, &actor("11"))
+        .await
+        .unwrap();
+    ctx.act(game.id, QueueAction::Join, &actor("12"))
+        .await
+        .unwrap();
+    assert_eq!(
+        thread_members(&ctx.api.take()),
+        [("555", "11"), ("555", "12")]
+    );
+
+    let started = ctx
+        .act(game.id, QueueAction::Join, &actor("13"))
+        .await
+        .unwrap();
+    assert_eq!(started.status, Status::Started);
+    let calls = ctx.api.take();
+    assert_eq!(post_channels(&calls), ["555"]);
+    // The queue embed itself stays on the channel message.
+    assert!(
+        calls
+            .iter()
+            .any(|call| matches!(call, Call::Edit(channel, message, _) if channel == "222" && message == "555"))
+    );
+}
+
+#[tokio::test]
+async fn queues_work_without_a_thread_and_refused_thread_posts_fall_back_to_the_channel() {
+    let ctx = setup().await;
+    ctx.api.refuse(&[Op::StartThread]);
+    ctx.respond(&newgame(vec![("min_players", OptionValue::Integer(2))]))
+        .await
+        .unwrap();
+    let calls = ctx.api.take();
+    assert!(thread_members(&calls).is_empty());
+    let game = ctx.only_game().await;
+    assert_eq!(game.thread_id, None);
+    assert!(!game.message_dirty);
+    for id in ["11", "12"] {
+        ctx.act(game.id, QueueAction::Join, &actor(id))
+            .await
+            .unwrap();
+    }
+    let calls = ctx.api.take();
+    assert!(thread_members(&calls).is_empty());
+    assert_eq!(post_channels(&calls), ["222"]);
+
+    // A thread a moderator deleted or locked refuses the ping; the channel gets it once.
+    let game = ctx
+        .queue(NewQueue {
+            min_players: Some(2),
+            ..NewQueue::default()
+        })
+        .await;
+    scheduled::set_thread(ctx.app.pool(), game.id, "556")
+        .await
+        .unwrap();
+    ctx.act(game.id, QueueAction::Join, &actor("11"))
+        .await
+        .unwrap();
+    ctx.api.take();
+    ctx.api.refuse(&[Op::Create]);
+    ctx.act(game.id, QueueAction::Join, &actor("12"))
+        .await
+        .unwrap();
+    assert_eq!(post_channels(&ctx.api.take()), ["556", "222"]);
+    let stored = ctx.game(game.id).await;
+    assert_eq!(stored.announcement_id.as_deref(), Some("999"));
+    assert!(!stored.message_dirty);
+}
+
+#[tokio::test]
+async fn close_archives_the_game_thread_for_its_host_or_an_administrator_and_cancels_an_open_game()
+{
+    let ctx = setup().await;
+    ctx.respond(&newgame(vec![])).await.unwrap();
+    let game = ctx.only_game().await;
+    ctx.api.take();
+
+    for (event, reply) in [
+        (
+            close_in("222", "111", None),
+            "Use /close inside a /newgame game thread.",
+        ),
+        (
+            close_in("555", "12", Some(MANAGE_GUILD)),
+            "Only this game's host or a Discord Administrator can close its thread.",
+        ),
+    ] {
+        new_game::close(&ctx.app.state, ctx.api.as_ref(), &ctx.scheduler, &event)
+            .await
+            .unwrap();
+        let calls = ctx.api.take();
+        assert_eq!(calls.len(), 1, "{calls:?}");
+        let refused = response(calls[0].clone());
+        assert_eq!(refused.message_data().unwrap().flags, Some(64));
+        assert_eq!(refused.content(), reply);
+    }
+    assert_eq!(ctx.game(game.id).await.status, Status::Open);
+
+    ctx.api.fail(&[Op::CloseThread]);
+    new_game::close(
+        &ctx.app.state,
+        ctx.api.as_ref(),
+        &ctx.scheduler,
+        &close_in("555", "111", None),
+    )
+    .await
+    .unwrap();
+    let calls = ctx.api.take();
+    let closed = response(calls[0].clone());
+    assert_eq!(closed.kind, ResponseKind::ChannelMessage);
+    assert_eq!(closed.message_data().unwrap().flags, None);
+    assert_eq!(
+        closed.content(),
+        "<@111> closed this game thread. The game was still open, so it is cancelled."
+    );
+    let Some(Call::Edit(_, _, edit)) = calls.iter().find(|call| matches!(call, Call::Edit(..)))
+    else {
+        panic!("{calls:?}")
+    };
+    assert_eq!(embed(edit).description, "This game was cancelled.");
+    assert!(calls.contains(&Call::CloseThread("555".into())));
+    let Some(Call::EditResponse(failed)) = calls.last() else {
+        panic!("{calls:?}")
+    };
+    assert!(
+        failed
+            .content
+            .as_deref()
+            .unwrap()
+            .contains("Manage Threads")
+    );
+    assert_eq!(ctx.game(game.id).await.status, Status::Cancelled);
+
+    // An administrator can retry; the game is already cancelled.
+    new_game::close(
+        &ctx.app.state,
+        ctx.api.as_ref(),
+        &ctx.scheduler,
+        &close_in("555", "42", Some(ADMINISTRATOR)),
+    )
+    .await
+    .unwrap();
+    let calls = ctx.api.take();
+    assert_eq!(
+        response(calls[0].clone()).content(),
+        "<@42> closed this game thread."
+    );
+    assert_eq!(calls.last(), Some(&Call::CloseThread("555".into())));
+}
+
+#[tokio::test]
+async fn rest_client_starts_joins_and_closes_threads_with_discords_routes() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v10/channels/222/messages/555/threads"))
+        .and(header("authorization", "Bot bot-token"))
+        .and(body_json(
+            json!({"name": "Friday pod", "auto_archive_duration": 10_080}),
+        ))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"id": "555"})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/api/v10/channels/555/thread-members/111"))
+        .and(header("content-length", "0"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PATCH"))
+        .and(path("/api/v10/channels/555"))
+        .and(body_json(json!({"archived": true})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": "555"})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let api = RestApi::with_base(
+        "bot-token",
+        &format!("{}/api/v10", server.uri()),
+        std::time::Duration::from_secs(5),
+    )
+    .unwrap();
+    api.start_thread("222", "555", "Friday pod").await.unwrap();
+    api.add_thread_member("555", "111").await.unwrap();
+    api.close_thread("555").await.unwrap();
 }
