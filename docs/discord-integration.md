@@ -288,16 +288,17 @@ cancel. The same people can click **Change time**, which opens a form that
 accepts the `start` syntax below; leave it blank to start as soon as the minimum
 joins (immediately, if the roster is already full enough). The app's admin role
 and Discord Manage Guild alone do not grant these permissions. Administrator is read from the member
-permissions Discord computes for each interaction, so no guild cache is needed. All buttons are bound to the original
-guild, channel and message, and disabled once started, cancelled or expired.
+permissions Discord computes for each interaction, so no guild cache is needed. All buttons are bound to the queue's
+guild, thread (or channel) and message, and disabled once started, cancelled or expired.
 
-The bot starts a thread on the queue post, named after the game title, so the
-game stays listed under the channel while chat moves on. The host is added to
-the thread, and so is anyone who clicks Join or Maybe; Leave does not remove
-anyone. The ready announcement and maybe ping are posted in the thread, which
-also adds any mentioned member who is not already in it. The queue embed and
-its buttons stay on the original channel message. The thread archives itself
-after seven days without messages.
+The bot starts a thread on its `/newgame` reply, named after the game title, and
+posts the queue embed and its buttons inside the thread; the reply in the
+channel becomes a short "sign up in the thread below" pointer. The thread stays
+listed under the channel while chat moves on. The host is added to the thread,
+and so is anyone who clicks Join or Maybe; Leave does not remove anyone. The
+ready announcement and maybe ping are posted in the thread, which also adds any
+mentioned member who is not already in it. The thread archives itself after
+seven days without messages.
 
 Run **`/close`** inside a game thread to close (archive) it; a new message in
 it reopens it. Only the host or a Discord **Administrator** can close it, and
@@ -306,7 +307,7 @@ privately. Discord requires **Manage Threads** for the bot to close a thread.
 
 Threads are best effort. Without the thread permissions (step 3 below), or when
 `/newgame` runs in a channel that cannot hold threads, the queue works without
-one and posts its pings in the channel. A ping the thread refuses (for example,
+one: the reply shows the queue and its pings are posted in the channel. A ping the thread refuses (for example,
 after a moderator deleted the thread) is posted in the channel instead. If the
 bot cannot close the thread, `/close` says so and can be run again.
 

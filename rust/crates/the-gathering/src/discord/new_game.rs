@@ -12,7 +12,7 @@ use super::scheduled::{
     self, NewQueue, QueueAction, QueueActor, QueueError, ScheduledGame, Status,
 };
 use super::scheduler::NewGameScheduler;
-use super::start_time;
+use super::{new_game_message, start_time};
 
 /// The `/newgame` definition.
 pub fn definition() -> CommandDefinition {
@@ -206,11 +206,7 @@ async fn create(
     };
     // Persist the placeholder's id before exposing buttons. Once attached, even a failed
     // first queue edit is durable work the scheduler retries after boot.
-    let placeholder = MessagePayload {
-        content: Some("Preparing your game…".into()),
-        allowed_mentions: Some(super::api::AllowedMentions::none()),
-        ..MessagePayload::default()
-    };
+    let placeholder = new_game_message::placeholder();
     let published = match api
         .create_response(&target, &InteractionResponse::deferred(false))
         .await
@@ -220,7 +216,7 @@ async fn create(
     };
     match published {
         Ok(message) => {
-            if let Err(error) = scheduler.attach(game.id, &message.id).await {
+            if let Err(error) = scheduler.attach(&game, &message.id).await {
                 tracing::error!("Discord newgame {} could not be attached: {error}", game.id);
             }
             Ok(())

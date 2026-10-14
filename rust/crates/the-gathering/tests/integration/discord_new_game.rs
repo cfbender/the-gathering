@@ -287,6 +287,8 @@ fn edit_response(call: Call) -> MessagePayload {
 #[tokio::test]
 async fn public_command_persists_defaults_time_title_format_and_message_identity() {
     let ctx = setup().await;
+    // Without thread permissions the `/newgame` reply itself is the queue.
+    ctx.api.refuse(&[Op::StartThread]);
     let interaction = newgame(vec![
         ("start", text("tomorrow 7pm")),
         ("title", text("Wednesday pod")),
@@ -1020,6 +1022,8 @@ async fn queue_rendering_suppresses_free_text_mentions() {
 #[tokio::test]
 async fn first_public_queue_edit_can_be_recovered_after_restart() {
     let mut ctx = setup().await;
+    // Without thread permissions the `/newgame` reply itself is the queue.
+    ctx.api.refuse(&[Op::StartThread]);
     ctx.api.fail(&[Op::Edit]);
     ctx.respond(&newgame(vec![])).await.unwrap();
     let game = ctx.only_game().await;
@@ -1249,8 +1253,17 @@ fn post_channels(calls: &[Call]) -> Vec<&str> {
         .collect()
 }
 
+/// A player clicking the queue in its thread (thread 555, queue message 999).
+fn in_thread(id: &str) -> QueueActor {
+    QueueActor {
+        channel_id: "555".into(),
+        message_id: "999".into(),
+        ..actor(id)
+    }
+}
+
 #[tokio::test]
-async fn newgame_gathers_its_players_and_ready_ping_in_a_thread_on_its_post() {
+async fn newgame_moves_its_queue_into_a_thread_on_the_reply_where_players_sign_up() {
     let ctx = setup().await;
     ctx.respond(&newgame(vec![
         ("title", text("Friday pod")),
@@ -1259,22 +1272,55 @@ async fn newgame_gathers_its_players_and_ready_ping_in_a_thread_on_its_post() {
     .await
     .unwrap();
     let calls = ctx.api.take();
-    assert!(calls.contains(&Call::StartThread(
-        "222".into(),
-        "555".into(),
-        "Friday pod".into()
-    )));
-    assert_eq!(thread_members(&calls), [("555", "111")]);
+    assert_eq!(calls.len(), 7, "{calls:?}");
+    assert_eq!(
+        edit_response(calls[1].clone()).content.as_deref(),
+        Some("Preparing your game…")
+    );
+    assert_eq!(
+        calls[2],
+        Call::StartThread("222".into(), "555".into(), "Friday pod".into())
+    );
+    let Call::Create(thread, placeholder) = &calls[3] else {
+        panic!("{calls:?}")
+    };
+    assert_eq!(thread, "555");
+    assert!(placeholder.components.is_none());
+    assert_eq!(calls[4], Call::AddThreadMember("555".into(), "111".into()));
+    let Call::Edit(channel, message, queue) = &calls[5] else {
+        panic!("{calls:?}")
+    };
+    assert_eq!((channel.as_str(), message.as_str()), ("555", "999"));
+    assert_eq!(buttons(queue).len(), 5);
+    let Call::Edit(channel, message, pointer) = &calls[6] else {
+        panic!("{calls:?}")
+    };
+    assert_eq!((channel.as_str(), message.as_str()), ("222", "555"));
+    assert_eq!(
+        pointer.content.as_deref(),
+        Some("**Friday pod**: sign up in the thread below.")
+    );
+    assert!(pointer.components.is_none());
     let game = ctx.only_game().await;
-    assert_eq!(game.thread_id.as_deref(), Some("555"));
+    assert_eq!(
+        (game.thread_id.as_deref(), game.message_id.as_deref()),
+        (Some("555"), Some("999"))
+    );
 
-    ctx.act(game.id, QueueAction::Maybe, &actor("11"))
+    // Buttons are clicked in the thread; the channel reply has none to click.
+    let mut click = button(game.id, "maybe", "11", None);
+    click.channel_id = Some("555".into());
+    click.message_id = Some("999".into());
+    ctx.respond(&click).await.unwrap();
+    assert_eq!(keys(&ctx.game(game.id).await.maybe), ["11"]);
+    assert!(matches!(
+        ctx.act(game.id, QueueAction::Join, &actor("11")).await,
+        Err(QueueError::Forbidden)
+    ));
+    ctx.act(game.id, QueueAction::Leave, &in_thread("11"))
         .await
         .unwrap();
-    ctx.act(game.id, QueueAction::Leave, &actor("11"))
-        .await
-        .unwrap();
-    ctx.act(game.id, QueueAction::Join, &actor("12"))
+    ctx.act(game.id, QueueAction::Join, &in_thread("12"))
         .await
         .unwrap();
     assert_eq!(
@@ -1283,18 +1329,15 @@ async fn newgame_gathers_its_players_and_ready_ping_in_a_thread_on_its_post() {
     );
 
     let started = ctx
-        .act(game.id, QueueAction::Join, &actor("13"))
+        .act(game.id, QueueAction::Join, &in_thread("13"))
         .await
         .unwrap();
     assert_eq!(started.status, Status::Started);
     let calls = ctx.api.take();
     assert_eq!(post_channels(&calls), ["555"]);
-    // The queue embed itself stays on the channel message.
-    assert!(
-        calls
-            .iter()
-            .any(|call| matches!(call, Call::Edit(channel, message, _) if channel == "222" && message == "555"))
-    );
+    assert!(calls.iter().any(
+        |call| matches!(call, Call::Edit(channel, message, _) if channel == "555" && message == "999")
+    ));
 }
 
 #[tokio::test]
@@ -1325,18 +1368,21 @@ async fn queues_work_without_a_thread_and_refused_thread_posts_fall_back_to_the_
             ..NewQueue::default()
         })
         .await;
-    scheduled::set_thread(ctx.app.pool(), game.id, "556")
+    scheduled::set_thread(ctx.app.pool(), game.id, "555")
         .await
         .unwrap();
-    ctx.act(game.id, QueueAction::Join, &actor("11"))
+    scheduled::attach_message(ctx.app.pool(), game.id, "999")
+        .await
+        .unwrap();
+    ctx.act(game.id, QueueAction::Join, &in_thread("11"))
         .await
         .unwrap();
     ctx.api.take();
     ctx.api.refuse(&[Op::Create]);
-    ctx.act(game.id, QueueAction::Join, &actor("12"))
+    ctx.act(game.id, QueueAction::Join, &in_thread("12"))
         .await
         .unwrap();
-    assert_eq!(post_channels(&ctx.api.take()), ["556", "222"]);
+    assert_eq!(post_channels(&ctx.api.take()), ["555", "222"]);
     let stored = ctx.game(game.id).await;
     assert_eq!(stored.announcement_id.as_deref(), Some("999"));
     assert!(!stored.message_dirty);

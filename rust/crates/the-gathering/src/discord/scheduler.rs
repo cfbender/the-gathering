@@ -86,28 +86,68 @@ impl NewGameScheduler {
         Ok(game)
     }
 
-    /// Publishes a queue on its placeholder message and starts its thread there.
-    pub async fn attach(&self, id: i64, message_id: &str) -> Result<(), sqlx::Error> {
+    /// Publishes a queue from its `/newgame` reply. When Discord allows a thread on the
+    /// reply, the queue goes in the thread and the reply points to it; otherwise the reply
+    /// itself shows the queue.
+    pub async fn attach(&self, game: &ScheduledGame, reply_id: &str) -> Result<(), sqlx::Error> {
         let _guard = self.lock.lock().await;
-        scheduled::attach_message(&self.state.pool, id, message_id).await?;
-        let game = scheduled::settle_id(&self.state.pool, id, (self.clock)()).await?;
-        let _ = self.deliver(&game).await;
-        // Best effort: without the thread permissions the queue works as before.
-        match self
-            .api
-            .start_thread(&game.channel_id, message_id, &game.title)
-            .await
-        {
-            Ok(()) => {
-                scheduled::set_thread(&self.state.pool, id, message_id).await?;
-                self.add_to_thread(id, message_id, &game.host_discord_id)
-                    .await;
+        let pool = &self.state.pool;
+        let message_id = match self.open_thread(game, reply_id).await {
+            Some(queue_id) => {
+                scheduled::set_thread(pool, game.id, reply_id).await?;
+                queue_id
             }
-            Err(error) => {
-                tracing::warn!("Discord newgame {id} thread could not be started: {error}");
+            None => reply_id.to_owned(),
+        };
+        scheduled::attach_message(pool, game.id, &message_id).await?;
+        let game = scheduled::settle_id(pool, game.id, (self.clock)()).await?;
+        let _ = self.deliver(&game).await;
+        if game.thread_id.is_some() {
+            let pointer = new_game_message::pointer(&game);
+            if let Err(error) = self
+                .api
+                .edit_message(&game.channel_id, reply_id, &pointer)
+                .await
+            {
+                tracing::warn!(
+                    "Discord newgame {} reply could not be edited: {error}",
+                    game.id
+                );
             }
         }
         Ok(())
+    }
+
+    /// Starts a thread on the `/newgame` reply (Discord gives it the reply's id), posts the
+    /// queue's placeholder in it, and adds the host. `None` when Discord refuses, for
+    /// example without the thread permissions.
+    async fn open_thread(&self, game: &ScheduledGame, reply_id: &str) -> Option<String> {
+        let started = self
+            .api
+            .start_thread(&game.channel_id, reply_id, &game.title)
+            .await;
+        let posted = match started {
+            Ok(()) => {
+                self.api
+                    .create_message(reply_id, &new_game_message::placeholder())
+                    .await
+            }
+            Err(error) => Err(error),
+        };
+        match posted {
+            Ok(message) => {
+                self.add_to_thread(game.id, reply_id, &game.host_discord_id)
+                    .await;
+                Some(message.id)
+            }
+            Err(error) => {
+                tracing::warn!(
+                    "Discord newgame {} thread could not be opened: {error}",
+                    game.id
+                );
+                None
+            }
+        }
     }
 
     /// Cancels the queue if it is still open (`/close`).
@@ -226,7 +266,7 @@ impl NewGameScheduler {
         }
         let payload = new_game_message::render(public_url, &game);
         self.api
-            .edit_message(&game.channel_id, message_id, &payload)
+            .edit_message(game.queue_channel(), message_id, &payload)
             .await
             .map_err(|_| DeliveryFailed)?;
         scheduled::mark_clean(pool, game.id)

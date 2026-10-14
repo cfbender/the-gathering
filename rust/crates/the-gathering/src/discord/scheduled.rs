@@ -89,7 +89,8 @@ pub struct ScheduledGame {
     pub channel_id: String,
     /// The public queue message, once posted.
     pub message_id: Option<String>,
-    /// The thread started on the queue message, if Discord allowed one.
+    /// The thread holding the queue message, started on the `/newgame` reply. Without
+    /// one, the reply itself is the queue message.
     pub thread_id: Option<String>,
     /// Who ran `/newgame`.
     pub host_discord_id: String,
@@ -121,6 +122,13 @@ pub struct ScheduledGame {
     pub inserted_at: UtcDateTime,
     /// Updated.
     pub updated_at: UtcDateTime,
+}
+
+impl ScheduledGame {
+    /// The channel holding the queue message: its thread, else the `/newgame` channel.
+    pub fn queue_channel(&self) -> &str {
+        self.thread_id.as_deref().unwrap_or(&self.channel_id)
+    }
 }
 
 struct Row {
@@ -368,7 +376,7 @@ pub async fn cancel_unpublished(pool: &Pool, id: i64) -> Result<(), sqlx::Error>
 
 fn same_message(game: &ScheduledGame, actor: &QueueActor) -> bool {
     game.guild_id == actor.guild_id
-        && game.channel_id == actor.channel_id
+        && game.queue_channel() == actor.channel_id
         && game.message_id.as_deref() == Some(actor.message_id.as_str())
 }
 
@@ -432,7 +440,7 @@ pub async fn cancel_open(
     get_required(&mut conn, id).await
 }
 
-/// Records the thread started on the queue message.
+/// Records the thread holding the queue message.
 pub async fn set_thread(pool: &Pool, id: i64, thread_id: &str) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "UPDATE discord_scheduled_games SET thread_id = ? WHERE id = ?",

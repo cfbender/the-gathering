@@ -109,6 +109,24 @@ pub fn render(public_url: &str, game: &ScheduledGame) -> MessagePayload {
     }
 }
 
+/// The queue message before its first render, which has no buttons yet.
+pub fn placeholder() -> MessagePayload {
+    MessagePayload {
+        content: Some("Preparing your game…".into()),
+        allowed_mentions: Some(AllowedMentions::none()),
+        ..MessagePayload::default()
+    }
+}
+
+/// The `/newgame` reply once the queue has moved into the thread started on it.
+pub fn pointer(game: &ScheduledGame) -> MessagePayload {
+    MessagePayload {
+        content: Some(format!("**{}**: sign up in the thread below.", game.title)),
+        allowed_mentions: Some(AllowedMentions::none()),
+        ..MessagePayload::default()
+    }
+}
+
 fn mentions(ids: &[String]) -> String {
     ids.iter()
         .map(|id| format!("<@{id}>"))
@@ -144,7 +162,7 @@ pub fn maybe_ping(game: &ScheduledGame) -> MessagePayload {
             game.title,
             if missing == 1 { "player" } else { "players" },
             game.guild_id,
-            game.channel_id,
+            game.queue_channel(),
             game.message_id.as_deref().unwrap_or_default()
         )),
         allowed_mentions: Some(AllowedMentions::users(ids)),
