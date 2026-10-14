@@ -263,6 +263,9 @@ pub struct AllowedMentions {
     /// Users who may be pinged.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub users: Option<Vec<String>>,
+    /// Roles that may be pinged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub roles: Option<Vec<String>>,
 }
 
 impl AllowedMentions {
@@ -274,8 +277,16 @@ impl AllowedMentions {
     /// Only these users (`{"parse": [], "users": ids}`).
     pub fn users(ids: Vec<String>) -> Self {
         Self {
-            parse: Vec::new(),
             users: Some(ids),
+            ..Self::default()
+        }
+    }
+
+    /// Only these roles (`{"parse": [], "roles": ids}`).
+    pub fn roles(ids: Vec<String>) -> Self {
+        Self {
+            roles: Some(ids),
+            ..Self::default()
         }
     }
 }

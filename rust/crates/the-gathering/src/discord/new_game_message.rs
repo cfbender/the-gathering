@@ -129,6 +129,23 @@ pub fn thread_name(game: &ScheduledGame, zone: &str) -> String {
     format!("{title}{suffix}")
 }
 
+/// Announces a game in its thread to the opt-in role. Mentioning a role in a thread adds
+/// the role's members to it (Discord does this only for roles under 100 members).
+pub fn role_ping(game: &ScheduledGame, role_id: &str) -> MessagePayload {
+    MessagePayload {
+        content: Some(format!(
+            "<@&{role_id}> New game: **{}**, starting {}.",
+            game.title,
+            match game.start_at {
+                Some(start) => format!("<t:{}:F>", start.unix()),
+                None => "as soon as the minimum joins".into(),
+            }
+        )),
+        allowed_mentions: Some(AllowedMentions::roles(vec![role_id.to_owned()])),
+        ..MessagePayload::default()
+    }
+}
+
 /// The queue message before its first render, which has no buttons yet.
 pub fn placeholder() -> MessagePayload {
     MessagePayload {

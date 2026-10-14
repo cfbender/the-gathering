@@ -269,6 +269,8 @@ pub struct Config {
     pub discord_bot: Option<DiscordBotConfig>,
     /// Time zone for Discord start times without one.
     pub discord_default_timezone: String,
+    /// Role mentioned in each `/newgame` thread, which adds its members to the thread.
+    pub discord_newgame_role_id: Option<String>,
     /// Bearer token for the card-recognition corrections export.
     pub cardid_corrections_token: Option<String>,
     /// Administrator the export token acts for.
@@ -568,6 +570,7 @@ impl Config {
             discord_default_timezone: vars
                 .get("DISCORD_DEFAULT_TIMEZONE")
                 .unwrap_or_else(|| "America/New_York".into()),
+            discord_newgame_role_id: vars.get("DISCORD_NEWGAME_ROLE_ID"),
             cardid_corrections_token: vars.get("CARDID_CORRECTIONS_TOKEN"),
             cardid_corrections_admin_id: corrections_admin_id,
             catalog_sync_enabled: env != Env::Test
@@ -645,6 +648,7 @@ impl Config {
             }),
             discord_bot: None,
             discord_default_timezone: "America/New_York".into(),
+            discord_newgame_role_id: None,
             cardid_corrections_token: None,
             cardid_corrections_admin_id: None,
             catalog_sync_enabled: false,

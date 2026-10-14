@@ -129,6 +129,13 @@ impl NewGameScheduler {
             scheduled::attach_message(pool, game.id, &message_id).await?;
             let game = scheduled::settle_id(pool, game.id, (self.clock)()).await?;
             let _ = self.deliver(&game).await;
+            if let (Some(thread), Some(role)) = (thread, &self.state.config.discord_newgame_role_id)
+            {
+                let ping = new_game_message::role_ping(&game, role);
+                if let Err(error) = self.api.create_message(thread, &ping).await {
+                    tracing::warn!("Discord newgame {} role ping failed: {error}", game.id);
+                }
+            }
             if thread.is_some() && existing_thread.is_none() {
                 let pointer = new_game_message::pointer(&game);
                 if let Err(error) = self

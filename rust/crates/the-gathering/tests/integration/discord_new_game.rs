@@ -151,6 +151,10 @@ fn scheduler(
 }
 
 async fn setup() -> Ctx {
+    setup_with_role(None).await
+}
+
+async fn setup_with_role(role: Option<&str>) -> Ctx {
     let app = TestApp::with_config(|config| {
         config.discord_bot = Some(DiscordBotConfig {
             token: "test-token".into(),
@@ -158,6 +162,7 @@ async fn setup() -> Ctx {
             spellbot_user_id: "725510263251402832".into(),
         });
         config.discord_default_timezone = "America/New_York".into();
+        config.discord_newgame_role_id = role.map(str::to_owned);
     })
     .await;
     let api = RecordingApi::new();
@@ -1645,4 +1650,58 @@ async fn a_new_day_renames_the_thread_and_newgame_in_a_game_thread_adds_its_queu
     for id in [first.id, second.id] {
         assert_eq!(ctx.game(id).await.status, Status::Cancelled);
     }
+}
+
+#[tokio::test]
+async fn the_opt_in_role_is_mentioned_in_each_game_thread_and_nowhere_else() {
+    let ctx = setup_with_role(Some("4242")).await;
+    ctx.respond(&newgame(vec![
+        ("title", text("Pod")),
+        ("start", text("<t:1790301600>")),
+    ]))
+    .await
+    .unwrap();
+    let calls = ctx.api.take();
+    let posts: Vec<(&str, &MessagePayload)> = calls
+        .iter()
+        .filter_map(|call| match call {
+            Call::Create(channel, payload) => Some((channel.as_str(), payload)),
+            _ => None,
+        })
+        .collect();
+    // The queue's placeholder, then the role mention, both in the thread.
+    assert_eq!(posts.len(), 2, "{calls:?}");
+    let (channel, ping) = posts[1];
+    assert_eq!(channel, "555");
+    assert_eq!(
+        ping.content.as_deref(),
+        Some("<@&4242> New game: **Pod**, starting <t:1790301600:F>.")
+    );
+    assert_eq!(mentions(ping), json!({"parse": [], "roles": ["4242"]}));
+
+    // A second game in the thread mentions the role again.
+    let mut rematch = newgame(vec![("title", text("Rematch"))]);
+    rematch.channel_id = Some("555".into());
+    ctx.api
+        .set_edit_response_result(Ok(the_gathering::discord::api::SentMessage {
+            id: "1001".into(),
+        }));
+    ctx.respond(&rematch).await.unwrap();
+    let calls = ctx.api.take();
+    let Some(Call::Create(channel, ping)) =
+        calls.iter().find(|call| matches!(call, Call::Create(..)))
+    else {
+        panic!("{calls:?}")
+    };
+    assert_eq!(channel, "555");
+    assert_eq!(
+        ping.content.as_deref(),
+        Some("<@&4242> New game: **Rematch**, starting as soon as the minimum joins.")
+    );
+
+    // Without a thread there is nothing to add the role to, so it is not pinged.
+    let ctx = setup_with_role(Some("4242")).await;
+    ctx.api.refuse(&[Op::StartThread]);
+    ctx.respond(&newgame(vec![])).await.unwrap();
+    assert!(post_channels(&ctx.api.take()).is_empty());
 }

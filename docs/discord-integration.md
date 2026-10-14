@@ -306,6 +306,16 @@ Leave does not remove anyone. The ready announcement and maybe ping are posted
 in the thread, which also adds any mentioned member who is not already in it.
 The thread archives itself after seven days without messages.
 
+Discord lists a thread in someone's channel sidebar only once they are a
+member of it; everyone else reaches it from the pointer post or the channel's
+Threads button. To add interested members up front, create an opt-in role
+(for example "Game alerts"), turn on **Allow anyone to @mention this role** in
+its settings (or give the bot **Mention @everyone, @here, and All Roles**), and
+set `DISCORD_NEWGAME_ROLE_ID` to its ID. The bot then mentions the role in the
+thread each time a game is posted there, which adds the role's members to the
+thread and notifies them. Discord does this only for roles with fewer than 100
+members, and a thread holds at most 1,000.
+
 Run **`/close`** inside a game thread to close (archive) it; a new message in
 it reopens it. Only the host of the thread's newest game or a Discord
 **Administrator** can close it, and its open games are cancelled at the same
@@ -410,6 +420,7 @@ also subject to the render cap. No summary request modifies the game.
 | `DISCORD_BOT_TOKEN` | yes to enable | Secret bot token. Unset/empty means no Discord process starts. |
 | `DISCORD_GUILD_ID` | no | Register `/log`, `/summary`, `/newgame`, and `/close` immediately in one server; omit for global commands, which can take up to an hour to appear. Also restricts invocation to that server. |
 | `DISCORD_DEFAULT_TIMEZONE` | no | IANA timezone for `/newgame` clock times; defaults to `America/New_York`. |
+| `DISCORD_NEWGAME_ROLE_ID` | no | Role mentioned in each `/newgame` thread so its members are added to it. See below. |
 | `DISCORD_SPELLBOT_USER_ID` | no | Trusted SpellBot bot user ID; defaults to production SpellBot (`725510263251402832`). |
 
 1. In the [Discord Developer Portal](https://discord.com/developers/applications),
