@@ -285,6 +285,25 @@ impl DiscordApi for RestApi {
         })
     }
 
+    fn set_member_role<'a>(
+        &'a self,
+        guild_id: &'a str,
+        user_id: &'a str,
+        role_id: &'a str,
+        has: bool,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            let path = format!(
+                "/guilds/{}/members/{}/roles/{}",
+                encode_segment(guild_id),
+                encode_segment(user_id),
+                encode_segment(role_id)
+            );
+            let method = if has { Method::PUT } else { Method::DELETE };
+            self.send_bot::<()>(method, &path, None).await.map(|_| ())
+        })
+    }
+
     fn rename_thread<'a>(&'a self, thread_id: &'a str, name: &'a str) -> ApiFuture<'a, ()> {
         Box::pin(async move {
             let path = format!("/channels/{}", encode_segment(thread_id));

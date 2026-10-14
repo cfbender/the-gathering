@@ -298,7 +298,7 @@ see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONT
 | `DISCORD_BOT_TOKEN` | unset | Enables the optional Discord bot: SpellBot tracking, `/log`, `/summary`, and `/newgame` webcam-table queues. |
 | `DISCORD_GUILD_ID` | unset | Optional server ID for immediate guild-scoped `/log`, `/summary`, `/newgame`, and `/close` registration; without it commands are global. Restricts invocation to that server when set. |
 | `DISCORD_DEFAULT_TIMEZONE` | `America/New_York` | IANA timezone for `/newgame start:8pm` and `tomorrow 7pm`. Discord displays parsed timestamps in each viewer's local time. |
-| `DISCORD_NEWGAME_ROLE_ID` | unset | Optional role ID mentioned in each `/newgame` thread, which adds the role's members to the thread so it shows in their sidebar. |
+| `DISCORD_NEWGAME_ROLE_ID` | unset | Optional role ID mentioned in each `/newgame` thread, which adds the role's members to the thread so it shows in their sidebar. Members toggle it with `/alerts`. |
 | `DISCORD_SPELLBOT_USER_ID` | `725510263251402832` | Discord user ID accepted as SpellBot, useful when running a private SpellBot deployment. |
 | `THE_GATHERING_ADMIN_USERNAME` | unset | Creates this admin on container startup when paired with the password. |
 | `THE_GATHERING_ADMIN_PASSWORD` | unset | Password for container or Mix-task admin bootstrap. |

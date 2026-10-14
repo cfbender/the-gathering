@@ -314,7 +314,10 @@ its settings (or give the bot **Mention @everyone, @here, and All Roles**), and
 set `DISCORD_NEWGAME_ROLE_ID` to its ID. The bot then mentions the role in the
 thread each time a game is posted there, which adds the role's members to the
 thread and notifies them. Discord does this only for roles with fewer than 100
-members, and a thread holds at most 1,000.
+members, and a thread holds at most 1,000. Members run **`/alerts`** to give
+themselves the role, and again to remove it; the reply is private. For that,
+the bot needs **Manage Roles**, and its own role must sit above the alerts role
+in the server's role list.
 
 Run **`/close`** inside a game thread to close (archive) it; a new message in
 it reopens it. Only the host of the thread's newest game or a Discord
@@ -429,14 +432,14 @@ also subject to the render cap. No summary request modifies the game.
    intent is needed.
 3. On **OAuth2 → URL Generator**, select `bot` and `applications.commands`.
    Grant **View Channels**, **Send Messages**, **Embed Links**, **Attach Files**,
-   **Create Public Threads**, **Send Messages in Threads**, and **Manage Threads**
-   (`permissions=326417566720`) for queues, their threads and `/close`, and public
-   image summaries. Ensure the bot can view the
+   **Create Public Threads**, **Send Messages in Threads**, **Manage Threads**, and
+   **Manage Roles** (`permissions=326686002176`) for queues, their threads,
+   `/close` and `/alerts`, and public image summaries. Ensure the bot can view the
    specific channel where SpellBot posts games. It does not need Read Message History.
 4. Invite the bot with a URL shaped like
-   `https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=326417566720`.
+   `https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=326686002176`.
    A bot invited before game threads keeps its old permissions: re-invite it with
-   this URL, or grant the three thread permissions to its role.
+   this URL, or grant the thread permissions and Manage Roles to its role.
 5. Put the token and optional IDs in `.env`, then restart the container. Never
    paste the token into logs or support messages.
 6. Start a SpellBot game and confirm the container logs
@@ -472,8 +475,8 @@ how far it got. Read the log from the top of the last start:
 | `Shard websocket closed (errno 4014, …)` repeating, no `READY` | Discord rejected the requested intents. Enable **Message Content Intent** on the **Bot** page. |
 | `Discord bot connected as <bot> in 0 guild(s)` | The bot was never invited to the server. Use the invite URL from step 4. |
 | `Discord bot connected …` but the bot looks offline in Discord | The bot sets an online presence ("Watching the battlefield") right after this line. If the member list still shows it offline, the gateway session dropped afterwards; look for `Shard websocket closed` lines below it. |
-| `Discord registered /log, /summary, /newgame, and /close in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
-| `Discord registered /log, /summary, /newgame, and /close globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
+| `Discord registered /log, /summary, /newgame, /close, and /alerts in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
+| `Discord registered /log, /summary, /newgame, /close, and /alerts globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
 | `Discord newgame N thread could not be started: HTTP 403, Discord code 50013` | The bot lacks **Create Public Threads** in that channel; the queue still works without a thread. Grant the thread permissions from step 3. |
 | `Could not register Discord commands: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |
 | No `Discord observed SpellBot game …` line when a game starts | The line appears only once the post reads **Your game is ready!** (see the message flow above). Otherwise the bot cannot see the channel (grant **View Channels** there), or the message is from a different SpellBot deployment: set `DISCORD_SPELLBOT_USER_ID` to that bot's user ID. Set `LOG_LEVEL=debug` to log why each SpellBot message was ignored. |

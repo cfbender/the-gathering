@@ -1,7 +1,7 @@
 //! Slash command definitions and registration (`Discord.Command`).
 
 use super::api::{CommandDefinition, CommandOption, DiscordApi, DiscordError, OptionKind};
-use super::{new_game, summary};
+use super::{alerts, new_game, summary};
 
 /// The `/log` definition.
 pub fn definition() -> CommandDefinition {
@@ -24,7 +24,7 @@ pub fn definition() -> CommandDefinition {
     }
 }
 
-/// Registers `/log`, `/summary`, `/newgame`, and `/close` (in the configured
+/// Registers `/log`, `/summary`, `/newgame`, `/close`, and `/alerts` (in the configured
 /// guild, else globally) and removes only the replaced `/won` command. Returns a
 /// description for the log.
 pub async fn register(
@@ -37,6 +37,7 @@ pub async fn register(
         summary::definition(),
         new_game::definition(),
         new_game::close_definition(),
+        alerts::definition(),
     ] {
         api.create_command(application_id, guild_id, &command)
             .await?;
@@ -47,7 +48,7 @@ pub async fn register(
             .await?;
     }
     Ok(match guild_id {
-        Some(guild) => format!("registered /log, /summary, /newgame, and /close in guild {guild}"),
-        None => "registered /log, /summary, /newgame, and /close globally; new commands can take up to an hour to appear".into(),
+        Some(guild) => format!("registered /log, /summary, /newgame, /close, and /alerts in guild {guild}"),
+        None => "registered /log, /summary, /newgame, /close, and /alerts globally; new commands can take up to an hour to appear".into(),
     })
 }

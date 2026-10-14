@@ -105,6 +105,15 @@ pub trait DiscordApi: Send + Sync {
     /// Adds a member to a thread (a no-op when they already are one).
     fn add_thread_member<'a>(&'a self, thread_id: &'a str, user_id: &'a str) -> ApiFuture<'a, ()>;
 
+    /// Gives a guild member a role (`has`), or takes it away.
+    fn set_member_role<'a>(
+        &'a self,
+        guild_id: &'a str,
+        user_id: &'a str,
+        role_id: &'a str,
+        has: bool,
+    ) -> ApiFuture<'a, ()>;
+
     /// Renames a thread.
     fn rename_thread<'a>(&'a self, thread_id: &'a str, name: &'a str) -> ApiFuture<'a, ()>;
 

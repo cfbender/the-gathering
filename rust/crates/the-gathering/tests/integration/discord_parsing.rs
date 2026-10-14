@@ -246,7 +246,7 @@ async fn registers_log_with_an_optional_winner_and_removes_only_won_in_each_scop
             },
         ]);
         let description = command::register(&api, "888", guild).await.unwrap();
-        assert!(description.contains("/log, /summary, /newgame, and /close"));
+        assert!(description.contains("/log, /summary, /newgame, /close, and /alerts"));
         let calls = api.take();
         let guild = guild.map(str::to_owned);
         let Call::CreateCommand(scope, log) = &calls[0] else {
@@ -277,8 +277,13 @@ async fn registers_log_with_an_optional_winner_and_removes_only_won_in_each_scop
         };
         assert_eq!(close.name, "close");
         assert!(!close.dm_permission && close.options.is_empty());
-        assert_eq!(calls[4], Call::DeleteCommand(guild.clone(), "123".into()));
-        assert_eq!(calls.len(), 5);
+        let Call::CreateCommand(_, alerts) = &calls[4] else {
+            panic!()
+        };
+        assert_eq!(alerts.name, "alerts");
+        assert!(!alerts.dm_permission && alerts.options.is_empty());
+        assert_eq!(calls[5], Call::DeleteCommand(guild.clone(), "123".into()));
+        assert_eq!(calls.len(), 6);
     }
 }
 
@@ -304,7 +309,7 @@ fn converts_twilight_interactions() {
             "member": {
                 "user": {"id": "111", "username": "name", "discriminator": "0", "avatar": null},
                 "nick": "Nick",
-                "roles": [],
+                "roles": ["4242"],
                 "joined_at": "2025-01-01T00:00:00.000000+00:00",
                 "deaf": false,
                 "mute": false,
@@ -326,6 +331,7 @@ fn converts_twilight_interactions() {
     assert_eq!(interaction.guild_id.as_deref(), Some("333"));
     assert_eq!(interaction.channel_id.as_deref(), Some("444"));
     assert!(interaction.administrator());
+    assert_eq!(interaction.member.as_ref().unwrap().roles, ["4242"]);
     assert_eq!(interaction.command_name(), Some("log"));
     assert_eq!(
         interaction.option("winner"),

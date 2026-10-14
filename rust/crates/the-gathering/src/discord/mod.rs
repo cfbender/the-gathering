@@ -6,12 +6,14 @@
 //!   legacy `/won` form ([`won`], [`won_form`], [`won_report`]) finishes it in Discord.
 //! - `/summary` posts a rendered recap ([`summary`]).
 //! - `/newgame` gathers players for a webcam table in a thread on its post, and `/close`
-//!   closes that thread ([`new_game`], [`scheduled`], [`scheduler`]).
+//!   closes that thread ([`new_game`], [`scheduled`], [`scheduler`]); `/alerts` toggles
+//!   the role mentioned in those threads ([`alerts`]).
 //!
 //! The gateway is `twilight-gateway`, with `twilight-model` types for inbound events.
 //! Outbound calls go through the [`api::DiscordApi`] trait ([`rest::RestApi`] in
 //! production), so every handler runs in tests without a gateway.
 
+pub mod alerts;
 pub mod api;
 pub mod bot;
 pub mod card_choice;

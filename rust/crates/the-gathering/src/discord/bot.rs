@@ -22,7 +22,7 @@ use super::scheduler::{INTERVAL, NewGameScheduler};
 use super::sink::{GamesSink, Sink};
 use super::spellbot::{self, ParseError, SpellBotMessage};
 use super::tracker::Tracker;
-use super::{command, configured_guild, log_command, new_game, summary, won};
+use super::{alerts, command, configured_guild, log_command, new_game, summary, won};
 
 /// SpellBot's user id when `DISCORD_SPELLBOT_USER_ID` is unset.
 pub const DEFAULT_SPELLBOT_USER_ID: &str = "725510263251402832";
@@ -109,7 +109,7 @@ impl Bot {
     pub async fn handle_interaction(&self, interaction: &Interaction) {
         let command = interaction
             .command_name()
-            .filter(|name| ["summary", "newgame", "close", "log", "won"].contains(name));
+            .filter(|name| ["summary", "newgame", "close", "alerts", "log", "won"].contains(name));
         let component = interaction
             .custom_id()
             .and_then(|id| id.split(':').next())
@@ -189,6 +189,9 @@ impl Bot {
                 }
                 "close" => {
                     let _ = new_game::close(state, api, &self.scheduler, interaction).await;
+                }
+                "alerts" => {
+                    let _ = alerts::respond(state, api, interaction).await;
                 }
                 "log" | "won" => log_command::respond(state, api, interaction).await,
                 _ => {}

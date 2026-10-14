@@ -53,6 +53,8 @@ pub struct InteractionMember {
     pub nick: Option<String>,
     /// Computed permissions in the channel (Discord grants the guild owner all of them).
     pub permissions: Option<u64>,
+    /// Role ids.
+    pub roles: Vec<String>,
 }
 
 /// What was invoked.
@@ -230,6 +232,7 @@ impl From<TwilightInteraction> for Interaction {
         let member = interaction.member.as_ref().map(|member| InteractionMember {
             nick: member.nick.clone(),
             permissions: member.permissions.map(|permissions| permissions.bits()),
+            roles: member.roles.iter().map(ToString::to_string).collect(),
         });
         let data = match interaction.data {
             Some(TwilightData::ApplicationCommand(command)) => {

@@ -31,6 +31,8 @@ pub enum Call {
     StartThread(String, String, String),
     /// `add_thread_member(thread, user)`.
     AddThreadMember(String, String),
+    /// `set_member_role(guild, user, role, has)`.
+    SetMemberRole(String, String, String, bool),
     /// `rename_thread(thread, name)`.
     RenameThread(String, String),
     /// `close_thread(thread)`.
@@ -56,6 +58,8 @@ pub enum Op {
     StartThread,
     /// `close_thread`.
     CloseThread,
+    /// `set_member_role`.
+    SetMemberRole,
 }
 
 /// The recording fake.
@@ -235,6 +239,26 @@ impl DiscordApi for RecordingApi {
         Box::pin(async move { result })
     }
 
+    fn set_member_role<'a>(
+        &'a self,
+        guild_id: &'a str,
+        user_id: &'a str,
+        role_id: &'a str,
+        has: bool,
+    ) -> ApiFuture<'a, ()> {
+        let result = self.record(
+            Some(Op::SetMemberRole),
+            Call::SetMemberRole(
+                guild_id.to_owned(),
+                user_id.to_owned(),
+                role_id.to_owned(),
+                has,
+            ),
+            (),
+        );
+        Box::pin(async move { result })
+    }
+
     fn rename_thread<'a>(&'a self, thread_id: &'a str, name: &'a str) -> ApiFuture<'a, ()> {
         let result = self.record(
             None,
@@ -307,6 +331,7 @@ pub fn interaction(channel: &str, user: &str, data: InteractionData) -> Interact
         member: Some(InteractionMember {
             nick: None,
             permissions: None,
+            roles: Vec::new(),
         }),
         message_id: None,
         data,

@@ -203,6 +203,7 @@ fn event(data: InteractionData, user: &str, permissions: Option<u64>) -> Interac
         member: Some(InteractionMember {
             nick: Some("Nickname".into()),
             permissions,
+            roles: Vec::new(),
         }),
         message_id: Some("555".into()),
         data,
@@ -1487,7 +1488,7 @@ async fn close_archives_the_game_thread_for_its_host_or_an_administrator_and_can
 }
 
 #[tokio::test]
-async fn rest_client_starts_joins_and_closes_threads_with_discords_routes() {
+async fn rest_client_uses_discords_thread_and_role_routes() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/api/v10/channels/222/messages/555/threads"))
@@ -1519,6 +1520,20 @@ async fn rest_client_starts_joins_and_closes_threads_with_discords_routes() {
         std::time::Duration::from_secs(5),
     )
     .unwrap();
+    for verb in ["PUT", "DELETE"] {
+        Mock::given(method(verb))
+            .and(path("/api/v10/guilds/333/members/111/roles/4242"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    api.set_member_role("333", "111", "4242", true)
+        .await
+        .unwrap();
+    api.set_member_role("333", "111", "4242", false)
+        .await
+        .unwrap();
     api.start_thread("222", "555", "Friday pod").await.unwrap();
     api.add_thread_member("555", "111").await.unwrap();
     api.close_thread("555").await.unwrap();
@@ -1704,4 +1719,83 @@ async fn the_opt_in_role_is_mentioned_in_each_game_thread_and_nowhere_else() {
     ctx.api.refuse(&[Op::StartThread]);
     ctx.respond(&newgame(vec![])).await.unwrap();
     assert!(post_channels(&ctx.api.take()).is_empty());
+}
+
+fn alerts(user: &str, roles: &[&str]) -> Interaction {
+    let mut event = event(
+        InteractionData::Command(CommandData {
+            name: "alerts".into(),
+            options: Vec::new(),
+        }),
+        user,
+        None,
+    );
+    event.message_id = None;
+    event.member.as_mut().unwrap().roles = roles.iter().map(|role| (*role).to_owned()).collect();
+    event
+}
+
+#[tokio::test]
+async fn alerts_toggles_the_new_game_role_for_the_member() {
+    let ctx = setup_with_role(Some("4242")).await;
+    let respond = |event: Interaction| {
+        let ctx = &ctx;
+        async move {
+            the_gathering::discord::alerts::respond(&ctx.app.state, ctx.api.as_ref(), &event)
+                .await
+                .unwrap();
+            ctx.api.take()
+        }
+    };
+
+    let calls = respond(alerts("11", &["1"])).await;
+    assert_eq!(
+        response(calls[0].clone()),
+        InteractionResponse::deferred(true)
+    );
+    assert_eq!(
+        calls[1],
+        Call::SetMemberRole("333".into(), "11".into(), "4242".into(), true)
+    );
+    let reply = edit_response(calls[2].clone());
+    assert_eq!(reply.flags, Some(64));
+    assert!(reply.content.unwrap().starts_with("Game alerts are on"));
+
+    let calls = respond(alerts("11", &["1", "4242"])).await;
+    assert_eq!(
+        calls[1],
+        Call::SetMemberRole("333".into(), "11".into(), "4242".into(), false)
+    );
+    assert!(
+        edit_response(calls[2].clone())
+            .content
+            .unwrap()
+            .starts_with("Game alerts are off")
+    );
+
+    ctx.api.refuse(&[Op::SetMemberRole]);
+    let calls = respond(alerts("11", &[])).await;
+    assert!(
+        edit_response(calls[2].clone())
+            .content
+            .unwrap()
+            .contains("Manage Roles")
+    );
+
+    let unset = setup().await;
+    the_gathering::discord::alerts::respond(
+        &unset.app.state,
+        unset.api.as_ref(),
+        &alerts("11", &[]),
+    )
+    .await
+    .unwrap();
+    let calls = unset.api.take();
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    let reply = response(calls[0].clone());
+    assert_eq!(reply.message_data().unwrap().flags, Some(64));
+    assert_eq!(
+        reply.content(),
+        "Game alerts are not set up on this server."
+    );
 }
