@@ -14,8 +14,12 @@ use std::time::Duration;
 use axum::http::{HeaderMap, HeaderValue, Method};
 use base64::Engine;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use support::{TestApp, fixture};
-use the_gathering::config::WindowLimit;
+use the_gathering::card_id::update;
+use the_gathering::config::{CardIdBundleSource, WindowLimit};
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // ---- card id bundle controller ----
 
@@ -176,6 +180,188 @@ async fn bundle_requires_authentication() {
     app.get("/api/cardid/bundles/v1/detector.onnx")
         .await
         .assert_json(401);
+}
+
+// ---- card id bundle updater ----
+
+const BUNDLE: [(&str, &str); 4] = [
+    ("arts.json", "[]"),
+    ("detector.onnx", "detector"),
+    ("embed.onnx", "embed"),
+    ("search.onnx", "search"),
+];
+
+/// A manifest the way `cardid.export` writes it, sized and hashed for `BUNDLE`.
+fn bundle_manifest(version: &str) -> Value {
+    let files: serde_json::Map<String, Value> = BUNDLE
+        .iter()
+        .map(|(name, body)| {
+            let sha256 = format!("{:x}", Sha256::digest(body));
+            (
+                (*name).to_owned(),
+                json!({"bytes": body.len(), "sha256": sha256}),
+            )
+        })
+        .collect();
+    json!({"version": version, "created": "2026-10-01T00:00:00+00:00", "gallery": {}, "constants": {}, "files": files})
+}
+
+/// Serves a bundle's files under `prefix`, with `bodies` in place of `BUNDLE`'s.
+async fn serve_bundle(
+    server: &MockServer,
+    prefix: &str,
+    manifest: &Value,
+    bodies: &[(&str, &str)],
+) {
+    let manifest = manifest.to_string();
+    let mut files = bodies.to_vec();
+    files.extend([("manifest.json", manifest.as_str()), ("SHA256SUMS", "sums")]);
+    for (name, body) in files {
+        Mock::given(method("GET"))
+            .and(path(format!("{prefix}/{name}")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(server)
+            .await;
+    }
+}
+
+async fn updater_app(server: &MockServer, source: CardIdBundleSource) -> TestApp {
+    let releases = format!("{}/releases", server.uri());
+    TestApp::with_config(|config| {
+        config.cardid_bundle_source = source;
+        config.cardid_bundle_releases = releases;
+    })
+    .await
+}
+
+fn incoming_is_empty(app: &TestApp) -> bool {
+    std::fs::read_dir(bundle_root(app).join(".incoming"))
+        .map_or(true, |mut entries| entries.next().is_none())
+}
+
+#[tokio::test]
+async fn installs_the_newest_bundle_release_through_asset_redirects() {
+    let server = MockServer::start().await;
+    serve_bundle(&server, "/storage", &bundle_manifest("v2"), &BUNDLE).await;
+    // Release assets answer with a redirect to object storage, as GitHub's do.
+    let mut names = vec!["manifest.json", "SHA256SUMS"];
+    names.extend(BUNDLE.iter().map(|(name, _)| *name));
+    for name in &names {
+        Mock::given(method("GET"))
+            .and(path(format!("/assets/{name}")))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("location", format!("{}/storage/{name}", server.uri())),
+            )
+            .mount(&server)
+            .await;
+    }
+    let assets: Vec<Value> = names
+        .iter()
+        .map(|name| json!({"name": name, "browser_download_url": format!("{}/assets/{name}", server.uri())}))
+        .collect();
+    Mock::given(method("GET"))
+        .and(path("/releases"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"tag_name": "scanner-bundle-v1", "draft": false, "published_at": "2026-01-01T00:00:00Z", "assets": []},
+            {"tag_name": "scanner-bundle-v2", "draft": false, "published_at": "2026-02-01T00:00:00Z", "assets": assets},
+            {"tag_name": "scanner-bundle-v3", "draft": true, "published_at": "2026-04-01T00:00:00Z", "assets": []},
+            {"tag_name": "nightly", "draft": false, "published_at": "2026-03-01T00:00:00Z", "assets": []},
+        ])))
+        .mount(&server)
+        .await;
+    let app = updater_app(&server, CardIdBundleSource::Github).await;
+    let user = app.member("member").await;
+    app.log_in(&user).await;
+
+    let status = update::check_for_update(&app.state).await.unwrap();
+    assert_eq!(status, update::Status::Installed("v2".into()));
+    let data = app.get("/api/cardid/bundle").await.assert_json(200)["data"].clone();
+    assert_eq!(data["version"], "v2");
+    let detector = app.get("/api/cardid/bundles/v2/detector.onnx").await;
+    assert_eq!(detector.text(), "detector");
+    assert!(incoming_is_empty(&app));
+
+    let status = update::check_for_update(&app.state).await.unwrap();
+    assert_eq!(status, update::Status::Current);
+}
+
+#[tokio::test]
+async fn a_repository_without_bundle_releases_has_nothing_to_install() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/releases"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"tag_name": "v1.3.0", "draft": false, "published_at": "2026-01-01T00:00:00Z", "assets": []},
+        ])))
+        .mount(&server)
+        .await;
+    let app = updater_app(&server, CardIdBundleSource::Github).await;
+    let status = update::check_for_update(&app.state).await.unwrap();
+    assert_eq!(status, update::Status::NoRelease);
+    assert_eq!(
+        the_gathering::card_id::current_manifest(&app.state.config.data_dir).await,
+        None
+    );
+}
+
+#[tokio::test]
+async fn a_bundle_that_fails_verification_leaves_current_alone() {
+    let server = MockServer::start().await;
+    let mut bodies = BUNDLE;
+    bodies[2] = ("embed.onnx", "tampered");
+    serve_bundle(&server, "/v3", &bundle_manifest("v3"), &bodies).await;
+    let url = format!("{}/v3/manifest.json", server.uri())
+        .parse()
+        .unwrap();
+    let app = updater_app(&server, CardIdBundleSource::Manifest(url)).await;
+    let root = bundle_root(&app);
+    publish(&root, "v2");
+
+    let error = update::check_for_update(&app.state).await.unwrap_err();
+    assert!(
+        matches!(&error, update::UpdateError::InvalidFile(name) if name == "embed.onnx"),
+        "{error}"
+    );
+    assert_eq!(
+        std::fs::read_link(root.join("current")).unwrap(),
+        PathBuf::from("v2")
+    );
+    assert!(!root.join("v3").exists());
+    assert!(incoming_is_empty(&app));
+}
+
+#[tokio::test]
+async fn installing_keeps_the_old_current_as_previous_and_prunes_other_versions() {
+    let server = MockServer::start().await;
+    serve_bundle(&server, "/bundles/v3", &bundle_manifest("v3"), &BUNDLE).await;
+    let url = format!("{}/bundles/v3/manifest.json", server.uri())
+        .parse()
+        .unwrap();
+    let app = updater_app(&server, CardIdBundleSource::Manifest(url)).await;
+    let root = bundle_root(&app);
+    // Copied in with `cardid.publish --to host:...`, next to stored corrections.
+    publish(&root, "v1");
+    publish(&root, "v2");
+    std::fs::create_dir_all(root.join("corrections/capture")).unwrap();
+
+    let status = update::check_for_update(&app.state).await.unwrap();
+    assert_eq!(status, update::Status::Installed("v3".into()));
+    assert_eq!(
+        std::fs::read_link(root.join("current")).unwrap(),
+        PathBuf::from("v3")
+    );
+    assert_eq!(
+        std::fs::read_link(root.join("previous")).unwrap(),
+        PathBuf::from("v2")
+    );
+    assert!(root.join("v2/manifest.json").is_file());
+    assert!(!root.join("v1").exists());
+    assert!(root.join("corrections/capture").is_dir());
+    assert_eq!(
+        std::fs::read_to_string(root.join("v3/SHA256SUMS")).unwrap(),
+        "sums"
+    );
 }
 
 // ---- card id correction controller ----

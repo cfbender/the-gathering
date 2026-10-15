@@ -711,7 +711,8 @@ can still save or share what they saw; this feature cannot revoke frames already
   sessions, warm-up, identify and search), `pipeline.ts` (pure port of Oracle's `cardid/bundle.py`:
   window resample, detector refine pass, upright vote, gallery search parsing; unit-tested in
   `pipeline.test.ts`), and `messages.ts` (worker protocol types).
-- `card_id/` and `web/api/cardid.rs` serve the published bundle from
+- `card_id/update.rs` downloads new bundles (see **Recognition**); `card_id/` and
+  `web/api/cardid.rs` serve the published bundle from
   `DATA_DIR/cardid/current` (`GET /api/cardid/bundle` for the manifest and file URLs,
   `GET /api/cardid/bundles/:version/:name` for the immutable files). `404` means no bundle is
   published and the UI falls back to deck suggestions.
@@ -753,16 +754,28 @@ render every participant in the shared order.
 ## Recognition
 
 The recognizer ships as a **bundle** exported and published from [Oracle](https://github.com/cfbender/oracle) (`cardid.export`,
-`cardid.publish`; see its README, "Shipping"). The server serves whatever
-`DATA_DIR/cardid/current` points at; nothing model-related is committed to this repository or
-baked into the container image, so a new bundle (new model, or the same model with a refreshed
-gallery after a set release: `mise run new-set` in Oracle) is a `publish` away and browsers pick it up on their next table
-because they cache bundle files by version.
+`cardid.publish`; see its README, "Shipping"). Publishing works the way ManaVault's does:
+`cardid.publish <bundle> --to github:cfbender/the-gathering` creates a `scanner-bundle-<version>`
+release (never marked latest, so it does not affect self-update) with each bundle file as an
+asset. At boot and every six hours the server (`card_id/update.rs`, `CARDID_BUNDLE_SOURCE`, on by
+default in production) reads the newest published, non-draft `scanner-bundle-*` release; when its
+manifest's version differs from `current`, it downloads every file into `DATA_DIR/cardid/.incoming`,
+checks each against the manifest's size and SHA-256, moves it to `DATA_DIR/cardid/<version>`, and
+swaps `current` to it. The old `current` becomes `previous`, other versions are removed, and
+`corrections/` is never touched. Rolling back means unpublishing or deleting the newest release.
+`CARDID_BUNDLE_SOURCE` can instead name a bundle's `https://.../manifest.json`, or be `off` to serve
+only bundles copied in over ssh with `--to host:DATA_DIR/cardid`.
+
+Nothing model-related is committed to this repository or baked into the container image, so a new
+bundle (new model, or the same model with a refreshed gallery after a set release: `mise run
+new-set` in Oracle) is a `publish` away and browsers pick it up on their next table because they
+cache bundle files by version.
 
 To train a better model, try one at a local table, or contribute crops and Shift+click outlines,
 see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONTRIBUTING.md).
 A bundle published with `--to ../the-gathering/data/cardid` from a sibling Oracle checkout is
-served by a local dev server as-is.
+served by a local dev server as-is; development leaves the updater off unless
+`CARDID_BUNDLE_SOURCE=github` is set.
 
 Gallery coverage includes paper artwork in any language (including Japanese-only alternate
 art), prepare cards, meld cards, and both scanned sides of transform/MDFC/reversible cards

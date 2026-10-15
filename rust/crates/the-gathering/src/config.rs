@@ -15,6 +15,10 @@ use std::time::Duration;
 
 use anyhow::{Context, bail};
 
+/// This repository's releases, where Oracle publishes the webcam table's bundles.
+const RELEASES_API: &str =
+    "https://api.github.com/repos/cfbender/the-gathering/releases?per_page=30";
+
 /// Which defaults apply.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Env {
@@ -232,6 +236,38 @@ pub struct SelfUpdateConfig {
     pub github_api: String,
 }
 
+/// Where new card-recognition bundles come from (`CARDID_BUNDLE_SOURCE`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CardIdBundleSource {
+    /// No downloads; bundles are copied in with `cardid.publish --to host:...`.
+    Off,
+    /// The newest `scanner-bundle-*` release on GitHub.
+    Github,
+    /// A bundle's `.../manifest.json`, with the other files beside it.
+    Manifest(url::Url),
+}
+
+impl CardIdBundleSource {
+    fn parse(value: &str) -> anyhow::Result<Self> {
+        match value.trim() {
+            "off" | "disabled" => Ok(Self::Off),
+            "github" => Ok(Self::Github),
+            other => url::Url::parse(other)
+                .ok()
+                .filter(|url| {
+                    matches!(url.scheme(), "http" | "https")
+                        && url.path().ends_with("/manifest.json")
+                })
+                .map(Self::Manifest)
+                .with_context(|| {
+                    format!(
+                        "CARDID_BUNDLE_SOURCE must be github, off, or an http(s) URL ending in /manifest.json, got {other:?}"
+                    )
+                }),
+        }
+    }
+}
+
 /// Everything the server reads at boot.
 #[derive(Clone, Debug)]
 #[allow(clippy::struct_excessive_bools)] // Independent on/off settings.
@@ -275,6 +311,10 @@ pub struct Config {
     pub cardid_corrections_token: Option<String>,
     /// Administrator the export token acts for.
     pub cardid_corrections_admin_id: Option<i64>,
+    /// Where the background updater downloads card-recognition bundles from.
+    pub cardid_bundle_source: CardIdBundleSource,
+    /// The GitHub releases listing searched for bundles (tests point it at a stub).
+    pub cardid_bundle_releases: String,
     /// Scheduled Scryfall sync.
     pub catalog_sync_enabled: bool,
     /// Interval between scheduled syncs.
@@ -573,6 +613,13 @@ impl Config {
             discord_newgame_role_id: vars.get("DISCORD_NEWGAME_ROLE_ID"),
             cardid_corrections_token: vars.get("CARDID_CORRECTIONS_TOKEN"),
             cardid_corrections_admin_id: corrections_admin_id,
+            cardid_bundle_source: match vars.get("CARDID_BUNDLE_SOURCE") {
+                Some(value) => CardIdBundleSource::parse(&value)?,
+                // Development keeps bundles published locally from an Oracle checkout.
+                None if env == Env::Prod => CardIdBundleSource::Github,
+                None => CardIdBundleSource::Off,
+            },
+            cardid_bundle_releases: RELEASES_API.into(),
             catalog_sync_enabled: env != Env::Test
                 && vars.get("CATALOG_SYNC_ENABLED").as_deref() != Some("false"),
             catalog_sync_interval: Duration::from_secs(catalog_sync_hours.saturating_mul(3600)),
@@ -651,6 +698,8 @@ impl Config {
             discord_newgame_role_id: None,
             cardid_corrections_token: None,
             cardid_corrections_admin_id: None,
+            cardid_bundle_source: CardIdBundleSource::Off,
+            cardid_bundle_releases: RELEASES_API.into(),
             catalog_sync_enabled: false,
             catalog_sync_interval: Duration::from_hours(168),
             webcam_table_pruning_enabled: false,
@@ -763,6 +812,39 @@ mod tests {
             warnings,
             ["PHX_HOST ignored because THE_GATHERING_PUBLIC_URL is set; remove them"]
         );
+    }
+
+    #[test]
+    fn reads_the_card_id_bundle_source() {
+        let source =
+            |vars: &[(&str, &str)]| read(vars).map(|(config, _)| config.cardid_bundle_source);
+        let prod = ("THE_GATHERING_SECRET_KEY", SECRET);
+        assert_eq!(source(&[prod]).unwrap(), CardIdBundleSource::Github);
+        for env in ["dev", "test"] {
+            assert_eq!(
+                source(&[("THE_GATHERING_ENV", env)]).unwrap(),
+                CardIdBundleSource::Off
+            );
+        }
+        assert_eq!(
+            source(&[prod, ("CARDID_BUNDLE_SOURCE", "off")]).unwrap(),
+            CardIdBundleSource::Off
+        );
+        let url = "https://bundles.example.com/v3/manifest.json";
+        assert_eq!(
+            source(&[prod, ("CARDID_BUNDLE_SOURCE", url)]).unwrap(),
+            CardIdBundleSource::Manifest(url.parse().unwrap())
+        );
+        for invalid in [
+            "https://bundles.example.com/v3/",
+            "file:///srv/manifest.json",
+            "gihtub",
+        ] {
+            assert!(
+                source(&[prod, ("CARDID_BUNDLE_SOURCE", invalid)]).is_err(),
+                "{invalid}"
+            );
+        }
     }
 
     #[test]

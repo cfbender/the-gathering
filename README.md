@@ -253,8 +253,9 @@ configured TURN servers instead (see `docs/webcam-table.md`).
 **Reveal hand to** privately sends your camera to one chosen player; everyone else receives no
 video until you end the reveal or the target leaves. Clicking a card on
 any board identifies it with the recognizer bundle published from [Oracle](https://github.com/cfbender/oracle) (see
-its README, "Shipping"): The server serves `DATA_DIR/cardid/current/*` at `/api/cardid/*`
-and the browser runs the models itself. A recognized card opens with its rules text (fetched
+its README, "Shipping"): the server downloads the newest `scanner-bundle-*` release of this
+repository at boot and every six hours (`CARDID_BUNDLE_SOURCE`), serves `DATA_DIR/cardid/current/*`
+at `/api/cardid/*`, and the browser runs the models itself. A recognized card opens with its rules text (fetched
 from Scryfall per printing and cached) and lands in that board's card tray for every seat.
 Without a published bundle the table still works and offers the player's commanders as
 suggestions instead. When a seated player's chosen deck links to a list, every seat loads it
@@ -283,6 +284,7 @@ see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONT
 | `TRUST_PROXY_HEADERS` | unset | Set to `true` behind a reverse proxy so rate limiting identifies clients by `x-real-ip` / `x-forwarded-for` instead of the proxy address. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, or `error`. `debug` explains why the Discord bot ignored a message. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
+| `CARDID_BUNDLE_SOURCE` | `github` (`off` in development) | Where the card-recognition bundle is downloaded from, at boot and every six hours: `github` installs the newest published `scanner-bundle-*` release of this repository, an `https://.../manifest.json` URL installs the bundle beside it, and `off` only serves bundles copied in with `cardid.publish --to host:DATA_DIR/cardid`. |
 | `WEBRTC_SFU_PORT_RANGE` | `50000-50100` | UDP ports the built-in webcam-table SFU listens on, one per connected browser. Forward the same range from your router to the host (Docker: publish it as `/udp`). |
 | `WEBRTC_SFU_PUBLIC_IP` | unset | Public address browsers reach the SFU ports at, announced as an ICE candidate. Required for players outside your LAN unless `WEBRTC_SFU_RELAY_ONLY` is set. |
 | `WEBRTC_SFU_IPV6` | unset | Set to `true` to also offer the host's IPv6 addresses as media candidates. Off by default: the port forward above is IPv4, and LAN browsers that pick an IPv6 path have lost their video on it. |

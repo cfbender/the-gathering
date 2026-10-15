@@ -1,17 +1,22 @@
 //! The published card-recognition bundle the webcam table loads in the browser.
 //!
 //! Bundles are built by Oracle (<https://github.com/cfbender/oracle>, `python -m cardid.export`)
-//! and copied to the server with `python -m cardid.publish <bundle> --to host:DATA_DIR/cardid`,
-//! which leaves this layout:
+//! and published with `python -m cardid.publish <bundle> --to github:cfbender/the-gathering`
+//! as a `scanner-bundle-<version>` release, which [`update`] downloads (the same releases
+//! ManaVault installs from its own repository). `--to host:DATA_DIR/cardid` copies a bundle in
+//! directly instead. Either way the layout is:
 //!
 //! ```text
-//! DATA_DIR/cardid/<version>/{manifest.json,arts.json,detector.onnx,embed.onnx,search.onnx}
+//! DATA_DIR/cardid/<version>/{manifest.json,SHA256SUMS,arts.json,detector.onnx,embed.onnx,search.onnx}
 //! DATA_DIR/cardid/current -> <version>
+//! DATA_DIR/cardid/previous -> <version before>
+//! DATA_DIR/cardid/corrections/   (labelled crops, never pruned)
 //! ```
 //!
 //! The app never runs the models; it serves the files of the version `current` points at.
 
 pub mod corrections;
+pub mod update;
 
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -37,8 +42,9 @@ pub fn bundle_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("cardid")
 }
 
+/// A version directory name, never one of the reserved names beside the versions.
 fn valid_version(version: &str) -> bool {
-    version != "current" && VERSION.is_match(version)
+    !matches!(version, "current" | "previous" | "corrections") && VERSION.is_match(version)
 }
 
 /// The manifest of the bundle `current` points at, or `None` when

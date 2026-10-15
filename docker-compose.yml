@@ -28,6 +28,8 @@ services:
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-}
       CARDID_CORRECTIONS_TOKEN: ${CARDID_CORRECTIONS_TOKEN:-}
       CARDID_CORRECTIONS_ADMIN_ID: ${CARDID_CORRECTIONS_ADMIN_ID:-}
+      # github (default), off, or a bundle's https://.../manifest.json.
+      CARDID_BUNDLE_SOURCE: ${CARDID_BUNDLE_SOURCE:-}
       # Optional WebRTC NAT traversal for webcam tables (comma-separated URLs).
       WEBRTC_STUN_URLS: ${WEBRTC_STUN_URLS:-}
       WEBRTC_TURN_URLS: ${WEBRTC_TURN_URLS:-}
