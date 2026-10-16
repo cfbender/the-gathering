@@ -49,6 +49,15 @@ describe("data channel messages", () => {
     expect(send({ ...response, shareCorrections: undefined })).toBeNull()
   })
 
+  it("accepts a blank-crop answer with only its request id", () => {
+    expect(send({ type: "capture_blank", requestId: "r", image: "dropped" })).toEqual({
+      type: "capture_blank",
+      requestId: "r",
+    })
+    expect(send({ type: "capture_blank", requestId: "" })).toBeNull()
+    expect(send({ type: "capture_blank" })).toBeNull()
+  })
+
   it("ignores malformed JSON, non-strings, and other message types", () => {
     expect(parseDataMessage("{not json")).toBeNull()
     expect(parseDataMessage(new ArrayBuffer(4))).toBeNull()

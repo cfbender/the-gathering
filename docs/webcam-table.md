@@ -275,6 +275,11 @@ the same way together with the click position inside the crop. The requester rec
 from that crop. Either way the crop carries the owner's privacy (`reveal_to`) and consent, not
 the clicker's.
 
+A browser whose graphics state breaks can keep playing video on screen while drawing it into a
+canvas as nothing, until it is restarted. A crop that reads back as pure black is therefore not
+shown: the browser that drew it shows a warning to restart, and an owner answering a request
+replies with `capture_blank` instead, so the clicker's warning names whose browser to restart.
+
 Video flips are a viewer-only preference (players can flip their own preview too; the sent
 stream is never flipped), so the click is mapped back to unflipped source
 coordinates before it is sent, and the owner always crops native pixels. The requester then

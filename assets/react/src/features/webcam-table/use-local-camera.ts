@@ -24,18 +24,30 @@ export function encodeCrop(canvas: HTMLCanvasElement) {
   return image
 }
 
+function isBlack(pixels: Uint8ClampedArray) {
+  for (let index = 0; index < pixels.length; index += 4) {
+    if (pixels[index] || pixels[index + 1] || pixels[index + 2]) return false
+  }
+  return true
+}
+
 /** A square crop of a playing video's current frame around (`x`, `y`), fractions of the frame,
- * with the click's position inside it, in that video's pixels. */
+ * with the click's position inside it, in that video's pixels. `"blank"` when the browser drew
+ * the frame as pure black: a browser whose graphics state broke keeps playing video on screen
+ * but draws it into a canvas as nothing, until it is restarted. */
 export function captureCrop(video: HTMLVideoElement, x: number, y: number) {
   const width = video.videoWidth
   const height = video.videoHeight
   const size = Math.min(CROP_SIZE, width, height)
+  if (!size) return "blank"
   const left = Math.max(0, Math.min(width - size, Math.round(x * width - size / 2)))
   const top = Math.max(0, Math.min(height - size, Math.round(y * height - size / 2)))
   const canvas = document.createElement("canvas")
   canvas.width = size
   canvas.height = size
-  canvas.getContext("2d")?.drawImage(video, left, top, size, size, 0, 0, size, size)
+  const context = canvas.getContext("2d")
+  context?.drawImage(video, left, top, size, size, 0, 0, size, size)
+  if (context && isBlack(context.getImageData(0, 0, size, size).data)) return "blank"
   return {
     image: encodeCrop(canvas),
     nativeWidth: width,
@@ -57,6 +69,7 @@ export function useLocalCamera(link: RoomLink, deviceId: string, cameraEnabled: 
   const [cameraChanging, setCameraChanging] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const cameraOpenedRef = useRef(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   /** Rows the real camera delivers; null while only the placeholder is published. */
@@ -116,6 +129,7 @@ export function useLocalCamera(link: RoomLink, deviceId: string, cameraEnabled: 
         const track = media.getVideoTracks()[0]!
         track.enabled = previous?.getVideoTracks()[0]?.enabled ?? false
         streamRef.current = media
+        cameraOpenedRef.current = true
         setLocalStream(media)
         setCameraHeight(track.getSettings().height ?? null)
         if (videoRef.current) {
@@ -165,8 +179,10 @@ export function useLocalCamera(link: RoomLink, deviceId: string, cameraEnabled: 
     return next
   }, [])
 
+  /** Null until the real camera opens: the placeholder's black frame is not worth a crop. */
   const crop = useCallback(
-    (x: number, y: number) => (videoRef.current ? captureCrop(videoRef.current, x, y) : null),
+    (x: number, y: number) =>
+      videoRef.current && cameraOpenedRef.current ? captureCrop(videoRef.current, x, y) : null,
     [],
   )
 

@@ -210,6 +210,9 @@ export function useWebcamRoom(
     revealBusy: peers.revealBusy,
     changeReveal: peers.changeReveal,
     capture: captures.capture,
+    /** A browser drew a clicked card as a black picture; see `useCardCapture`. */
+    captureWarning: captures.warning,
+    dismissCaptureWarning: captures.dismissWarning,
     identifiedCards: cards.identifiedCards,
     status,
     error,

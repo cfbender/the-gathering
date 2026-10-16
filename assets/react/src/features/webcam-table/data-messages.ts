@@ -25,7 +25,14 @@ export interface CaptureResponse {
   shareCorrections: boolean
 }
 
-export type DataMessage = CaptureRequest | CaptureResponse
+/** The owner's answer when its browser drew the camera frame as pure black, so the clicker
+ * can say whose browser needs a restart instead of showing a black card. */
+export interface CaptureBlank {
+  type: "capture_blank"
+  requestId: string
+}
+
+export type DataMessage = CaptureRequest | CaptureResponse | CaptureBlank
 
 export const CAPTURE_IMAGE_PREFIX = "data:image/jpeg;base64,"
 /** The server relays messages up to 256 KiB; a 640 px JPEG crop fits well inside it. */
@@ -110,5 +117,9 @@ export function parseDataMessage(data: unknown): DataMessage | null {
   if (!isRecord(value)) return null
   if (value.type === "capture_request") return parseRequest(value)
   if (value.type === "capture_response") return parseResponse(value)
+  if (value.type === "capture_blank")
+    return isRequestId(value.requestId)
+      ? { type: "capture_blank", requestId: value.requestId }
+      : null
   return null
 }

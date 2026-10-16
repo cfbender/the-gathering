@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { NO_FLIP, type VideoFlip } from "./board"
-import type { CaptureRequest, CaptureResponse } from "./data-messages"
+import type { CaptureBlank, CaptureRequest, CaptureResponse } from "./data-messages"
 import { canViewBoard } from "./media-policy"
 import { orientCrop } from "./orient-crop"
 import { liveStatus, type RoomLink } from "./room-link"
@@ -32,6 +32,14 @@ const SLOW_CAPTURE_MS = 1500
 const OUTLINE_TOO_BIG =
   "That card is too big to outline in one crop; zoom out or outline a smaller card"
 
+/** This browser drew camera video into a crop as pure black (see `captureCrop`). */
+export const BLANK_HERE =
+  "Your browser is capturing camera video as a black picture, so cards cannot be identified. Restart your browser to fix it."
+
+/** The board owner's browser answered a crop request with a black picture. */
+export const blankThere = (name: string) =>
+  `${name}'s browser is capturing their camera as a black picture, so their cards cannot be identified. Ask them to restart their browser.`
+
 /** Native camera crops for card identification. Your own board is cropped locally. Another
  * board is cropped from the frame already on this screen when the server is sending it at
  * the owner's camera resolution; otherwise the owner is asked through the server and answers
@@ -50,6 +58,9 @@ export function useCardCapture(
 ) {
   const pendingRef = useRef(new Map<string, PendingCapture>())
   const [capture, setCapture] = useState<CapturedCard | null>(null)
+  /** Why the last click (or a crop this seat was asked for) came out black; cleared by the
+   * next crop that is shown. */
+  const [warning, setWarning] = useState<string | null>(null)
   const showingRef = useRef(0)
 
   /** Shows a crop oriented the way the clicker sees the board. The latest click wins, and a
@@ -57,6 +68,7 @@ export function useCardCapture(
   const show = useCallback(
     (card: CapturedCard, flip: VideoFlip) => {
       const showing = (showingRef.current += 1)
+      setWarning(null)
       if (!flip.horizontal && !flip.vertical) {
         setCapture(card)
         return
@@ -92,6 +104,11 @@ export function useCardCapture(
       if (!canViewBoard(link.peerId, fromPeerId, revealTarget()) || !videoEnabled()) return
       const result = crop(request.x, request.y)
       if (!result) return
+      if (result === "blank") {
+        setWarning(BLANK_HERE)
+        send(fromPeerId, { type: "capture_blank", requestId: request.requestId })
+        return
+      }
       const response: CaptureResponse = {
         type: "capture_response",
         requestId: request.requestId,
@@ -105,7 +122,7 @@ export function useCardCapture(
   )
 
   const receive = useCallback(
-    (fromPeerId: string, response: CaptureResponse) => {
+    (fromPeerId: string, response: CaptureResponse | CaptureBlank) => {
       const pending = pendingRef.current.get(response.requestId)
       if (pending?.targetPeerId !== fromPeerId) return
       window.clearTimeout(pending.timeout)
@@ -114,6 +131,7 @@ export function useCardCapture(
       const owner = link.participants.find((item) => item.peer_id === fromPeerId)
       if (!owner || owner.camera_off || !canViewBoard(fromPeerId, link.peerId, owner.reveal_to))
         return
+      if (response.type === "capture_blank") return setWarning(blankThere(owner.player_name))
       const elapsed = Math.round(performance.now() - pending.requestedAt)
       if (elapsed >= SLOW_CAPTURE_MS) {
         console.info(
@@ -168,6 +186,7 @@ export function useCardCapture(
       if (targetPeerId === link.peerId) {
         const result = crop(x, y)
         if (!result) return
+        if (result === "blank") return setWarning(BLANK_HERE)
         const outline = corners && outlineInCrop(corners, result, { x, y })
         if (corners && !outline) return setStatus(OUTLINE_TOO_BIG)
         show(
@@ -189,6 +208,7 @@ export function useCardCapture(
       const frame = remoteFrame(targetPeerId)
       if (frame && owner.camera_height && frame.videoHeight >= owner.camera_height) {
         const result = captureCrop(frame, x, y)
+        if (result === "blank") return setWarning(BLANK_HERE)
         const outline = corners && outlineInCrop(corners, result, { x, y })
         if (corners && !outline) return setStatus(OUTLINE_TOO_BIG)
         show(
@@ -235,6 +255,7 @@ export function useCardCapture(
     setCapture(null)
   }, [])
   const cancelAll = useCallback(() => cancel(null, false), [cancel])
+  const dismissWarning = useCallback(() => setWarning(null), [])
 
-  return { capture, requestCapture, dismissCapture, cancelAll }
+  return { capture, requestCapture, dismissCapture, cancelAll, warning, dismissWarning }
 }

@@ -3,6 +3,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test"
 import { EMPTY_TURNS } from "./turns"
+import { BLANK_HERE, blankThere } from "./use-card-capture"
 import { TOKEN_REFRESH_INTERVAL_MS } from "./use-room-channel"
 import { wire } from "./test-support/fake-socket-io"
 import {
@@ -634,8 +635,28 @@ const crop = {
   shareCorrections: true,
 }
 
+/** Plays this seat's camera at 1080p and has every canvas read back black pixels except the
+ * last one, which is `last`. */
+function drawFramesEndingIn(last: [number, number, number]) {
+  const drawImage = vi.fn()
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage,
+    getImageData: (_x: number, _y: number, width: number, height: number) => {
+      const data = new Uint8ClampedArray(width * height * 4).fill(255)
+      for (let index = 0; index < data.length; index += 4) data.fill(0, index, index + 3)
+      data.set(last, data.length - 4)
+      return { data }
+    },
+  } as unknown as CanvasRenderingContext2D)
+  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(crop.image)
+  vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(1920)
+  vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(1080)
+  return drawImage
+}
+
 it("drops malformed or unexpected peer messages without throwing", async () => {
   const { result } = await roomWithTheo()
+  drawFramesEndingIn([0, 0, 1])
   act(() => {
     deliver(theo.peer_id, "{not json")
     deliver(theo.peer_id, 42)
@@ -751,10 +772,8 @@ it("crops a remote board from its own frame when that frame is the owner's nativ
   act(() => wire.presence([self, owner]))
   const stream = { id: theo.peer_id } as unknown as MediaStream
   await serveTheoBoard(connection, stream)
-  const drawImage = vi.fn()
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
-    drawImage,
-  } as unknown as CanvasRenderingContext2D)
+  // One barely lit pixel is still a picture.
+  const drawImage = drawFramesEndingIn([1, 0, 0])
   const stage = playingTile(1080)
   const unwatch = result.current.watchTile(stream, stage)
 
@@ -924,4 +943,50 @@ it("reports a rejected offer and logs later failed steps instead of leaving unha
   expect(wire.sent("sfu_answer")).toEqual([])
   // The candidate arrived before any description, so it waits instead of failing.
   expect(connection.addIceCandidate).not.toHaveBeenCalled()
+})
+
+it("warns instead of showing a crop this browser drew black", async () => {
+  const { result, self, connection } = await roomWithTheo()
+  act(() => wire.presence([self, { ...theo, camera_height: 1080 }]))
+  const stream = { id: theo.peer_id } as unknown as MediaStream
+  await serveTheoBoard(connection, stream)
+  result.current.watchTile(stream, playingTile(1080))
+  drawFramesEndingIn([0, 0, 0])
+
+  // Cropping Theo's board from this screen, and Cody's own board, both come out black.
+  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5))
+  expect(result.current.captureWarning).toBe(BLANK_HERE)
+  act(() => result.current.dismissCaptureWarning())
+  act(() => result.current.requestCapture(self.peer_id, 0.5, 0.5))
+  expect(result.current.captureWarning).toBe(BLANK_HERE)
+  expect(result.current.capture).toBeNull()
+
+  // Theo asking for a crop gets told why there is none instead of waiting out the timeout.
+  act(() => result.current.dismissCaptureWarning())
+  act(() => deliver(theo.peer_id, { type: "capture_request", requestId: "r", x: 0.5, y: 0.5 }))
+  expect(sentMessages()).toEqual([
+    { to: theo.peer_id, message: { type: "capture_blank", requestId: "r" } },
+  ])
+  expect(result.current.captureWarning).toBe(BLANK_HERE)
+})
+
+it("names the seat whose browser drew its crop black, until a crop arrives", async () => {
+  const { result } = await roomWithTheo()
+  vi.useFakeTimers()
+  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5))
+  const { requestId } = sentMessages()[0]!.message
+  act(() => deliver(theo.peer_id, { type: "capture_blank", requestId }))
+  expect(result.current.captureWarning).toBe(blankThere("Theo"))
+  expect(result.current.capture).toBeNull()
+  expect(result.current.status).toMatch(/^Live/)
+  act(() => {
+    vi.advanceTimersByTime(CAPTURE_TIMEOUT_MS)
+  })
+  expect(result.current.status).toMatch(/^Live/)
+
+  act(() => result.current.requestCapture(theo.peer_id, 0.5, 0.5))
+  const retry = sentMessages()[1]!.message.requestId
+  act(() => deliver(theo.peer_id, { ...crop, requestId: retry }))
+  expect(result.current.capture).not.toBeNull()
+  expect(result.current.captureWarning).toBeNull()
 })

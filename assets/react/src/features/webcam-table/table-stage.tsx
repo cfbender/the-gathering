@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router"
-import { LayoutGrid, Undo2 } from "lucide-react"
+import { LayoutGrid, TriangleAlert, Undo2, X } from "lucide-react"
 import type { Ref } from "react"
 import { cn } from "@/lib/cn"
 import { ActiveBoard, capturePoint, videoAspect } from "./board"
@@ -157,8 +157,26 @@ function CameraGrid({
 /** Card identification on top of the active board: progress, the picker, and the preview. */
 function IdentificationOverlays({ view, flow }: { view: TableView; flow: CardIdentificationFlow }) {
   const { capture, captureOwner, recognition, recognizer, preview } = flow
+  const { captureWarning, dismissCaptureWarning } = view.room
   return (
     <>
+      {captureWarning && (
+        <div
+          role="alert"
+          className="alert alert-warning absolute bottom-12 left-1/2 z-20 w-max max-w-[90%] -translate-x-1/2 text-sm shadow-lg sm:max-w-md"
+        >
+          <TriangleAlert className="size-4 shrink-0" />
+          <span>{captureWarning}</span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs btn-square"
+            aria-label="Dismiss"
+            onClick={dismissCaptureWarning}
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
       {capture && recognition.status === "identifying" && !flow.pickerOpen && !preview && (
         <p
           role="status"
