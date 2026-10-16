@@ -1,7 +1,8 @@
 [tools]
 aube = "1.21.0"
 node = "26.9.0"
-rust = { version = "1.99.0", components = "clippy,rustfmt" }
+# The minimal profile skips rust-docs (about 900 MB, slow to unpack and snapshot).
+rust = { version = "1.99.0", profile = "minimal", components = "clippy,rustfmt" }
 sqlite = "3.53.4"
 "npm:backlog.md" = "latest"
 
