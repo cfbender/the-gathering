@@ -10,6 +10,7 @@ import {
   ScanSearch,
   Shuffle,
   Undo2,
+  UserRoundPlus,
   Users,
   Wifi,
 } from "lucide-react"
@@ -44,6 +45,8 @@ export interface TableTabProps {
   onModeChange?: (mode: GameFormat) => void
   onMoveSeat?: (peerId: string, delta: -1 | 1) => void
   onRemoveParticipant?: (peerId: string) => void
+  /** Gives a spectator a seat while the table is in setup (hosts and admins). */
+  onSeatSpectator?: (peerId: string) => void
   spectating?: boolean
   isOwner?: boolean
   participants: TableParticipant[]
@@ -301,11 +304,7 @@ function SetupSection(props: TableTabProps) {
         {props.mode !== "commander" ? " until the match starts" : ""}. Once playing, eliminate or
         restore a player from their seat menu; out players skip turns but keep their recorded seat.
       </p>
-      <SpectatorList
-        spectators={props.spectators}
-        localPeerId={local.peer_id}
-        onRemove={props.onRemoveParticipant}
-      />
+      <SpectatorList {...props} />
 
       <div className="mt-3 grid gap-1.5">
         <MatchControls {...props} />
@@ -398,17 +397,23 @@ function ConnectionSection(props: TableTabProps) {
   )
 }
 
-/** Late arrivals watching the match; they hold no seat, so they are listed apart from turn order. */
+/** Late arrivals watching the match; they hold no seat, so they are listed apart from turn order.
+ * Before the game starts, hosts and admins can seat them while the table has room. */
 function SpectatorList({
   spectators,
-  localPeerId,
-  onRemove,
-}: {
-  spectators: TableParticipant[]
-  localPeerId: string
-  onRemove?: (peerId: string) => void
-}) {
+  localParticipant,
+  participants,
+  maxPlayers,
+  timer,
+  onRemoveParticipant: onRemove,
+  onSeatSpectator,
+}: TableTabProps) {
   if (spectators.length === 0) return null
+  const localPeerId = localParticipant.peer_id
+  const onSeat =
+    timer?.state.started_at == null && participants.length < maxPlayers
+      ? onSeatSpectator
+      : undefined
   return (
     <>
       <h3 className="text-base-content/50 mt-4 mb-1 flex items-center gap-1 text-[0.6rem] font-bold tracking-wider uppercase">
@@ -420,6 +425,17 @@ function SpectatorList({
             <span className="truncate">{spectator.player_name}</span>
             {spectator.peer_id === localPeerId && (
               <span className="text-base-content/50"> (you)</span>
+            )}
+            {onSeat && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs btn-square shrink-0 text-success"
+                aria-label={`Give ${spectator.player_name} a seat`}
+                title={`Give ${spectator.player_name} a seat`}
+                onClick={() => onSeat(spectator.peer_id)}
+              >
+                <UserRoundPlus className="size-3.5" />
+              </button>
             )}
             {onRemove && spectator.peer_id !== localPeerId && (
               <RemoveParticipant participant={spectator} onRemove={onRemove} />
@@ -436,15 +452,13 @@ export function TableTab(props: TableTabProps) {
     return (
       <PanelSection title="Spectating" icon={Users}>
         <p className="mb-3 text-xs text-base-content/70">
-          The game is in progress. Seats are reserved for returning players.
+          {props.timer?.state.started_at == null
+            ? "The table is in setup. The host or an admin can give you a seat."
+            : "The game is in progress. Seats are reserved for returning players."}
         </p>
         <TimerBadge sample={props.timer} />
         <SeatOrderTable {...props} readOnly />
-        <SpectatorList
-          spectators={props.spectators}
-          localPeerId={props.localParticipant.peer_id}
-          onRemove={props.onRemoveParticipant}
-        />
+        <SpectatorList {...props} />
       </PanelSection>
     )
 

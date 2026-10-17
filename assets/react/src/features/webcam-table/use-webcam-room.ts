@@ -162,11 +162,24 @@ export function useWebcamRoom(
       .receive("timeout", () => setError("Removal request timed out; try again"))
   }
 
+  function seatSpectator(peerId: string) {
+    if (link.channel?.state !== "joined") {
+      setError("Reconnect to the table before seating someone")
+      return
+    }
+    link.channel
+      .push("seat_spectator", { peer_id: peerId })
+      .receive("ok", () => setError(null))
+      .receive("error", ({ reason }: { reason: string }) => setError(reason))
+      .receive("timeout", () => setError("Seat request timed out; try again"))
+  }
+
   return {
     spectating,
     canModerate,
     removed,
     removeParticipant,
+    seatSpectator,
     isOwner: game.isOwner,
     peerId: link.peerId,
     participants: game.participants,

@@ -603,6 +603,8 @@ impl Channel {
                 self.update_presence();
                 self.push("seat_reset", &json!({ "participant": self.participant }));
             }
+            // The client rejoins under a new peer id, and the lobby admits it to a seat.
+            ConnEvent::Seated => return Err(Stop::Error("seated".into())),
         }
         Ok(())
     }
@@ -658,9 +660,12 @@ impl Channel {
         if event == "remove_participant" && !self.owner && !self.socket.user.is_admin() {
             return error("only the host or an admin can remove participants");
         }
+        if event == "seat_spectator" && !self.owner && !self.socket.user.is_admin() {
+            return error("only the host or an admin can seat spectators");
+        }
         if self.participant.spectator
             && !signal
-            && !["timer_sync", "remove_participant"].contains(&event)
+            && !["timer_sync", "remove_participant", "seat_spectator"].contains(&event)
         {
             return error("spectators cannot change the game");
         }
@@ -684,6 +689,7 @@ impl Channel {
                 "begin_play",
                 "roll",
                 "remove_participant",
+                "seat_spectator",
             ]
             .contains(&event)
         {
@@ -719,6 +725,14 @@ impl Channel {
                         .remove_participant(&self.room_id, peer_id)
                         .await?,
                 )
+            }
+            "seat_spectator" => {
+                match exactly(payload, 1).and_then(|map| map.get("peer_id")?.as_str()) {
+                    Some(peer_id) => {
+                        reply(self.tables().seat_spectator(&self.room_id, peer_id).await?)
+                    }
+                    None => error("invalid participant"),
+                }
             }
             "seat_order" | "arrange_seats" => self.seat_order(event, payload).await,
             "set_mode" => self.set_mode(payload).await,

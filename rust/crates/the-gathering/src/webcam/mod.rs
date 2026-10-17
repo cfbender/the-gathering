@@ -371,6 +371,16 @@ impl WebcamTables {
             .await
     }
 
+    /// Gives a lobby spectator a seat: their connection rejoins and takes it.
+    pub async fn seat_spectator(
+        &self,
+        room: &str,
+        peer_id: &str,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::Seat(peer_id.to_owned(), reply))
+            .await
+    }
+
     /// Pauses or resumes the clock.
     pub async fn timer(&self, room: &str, action: Action) -> Result<TimerState, RoomGone> {
         self.call(room, |reply| RoomMsg::Timer(action, reply)).await

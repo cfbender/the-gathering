@@ -165,6 +165,63 @@ async fn hosts_remove_players_and_spectating_admins_remove_spectators() {
 }
 
 #[tokio::test]
+async fn hosts_seat_spectators_in_a_rematch_lobby() {
+    let mut t = Table::new().await;
+    let mut bob = t.join_seat(PEER_B).await;
+    t.alice.ok("start_game", json!({})).await;
+    let mut dave = t.join_seat(PEER_D).await;
+    assert_eq!(dave.participant["spectator"], true);
+    t.alice
+        .refused(
+            "seat_spectator",
+            json!({"peer_id": PEER_D}),
+            "seats are fixed once the game starts",
+        )
+        .await;
+
+    t.alice.ok("rematch", json!({})).await;
+    bob.refused(
+        "seat_spectator",
+        json!({"peer_id": PEER_D}),
+        "only the host or an admin can seat spectators",
+    )
+    .await;
+    t.alice
+        .refused(
+            "seat_spectator",
+            json!({"peer_id": PEER_B}),
+            "participant is not spectating",
+        )
+        .await;
+    t.alice
+        .err("seat_spectator", json!({"peer_id": PEER_D, "extra": 1}))
+        .await;
+    dave.refute("rejoin").await;
+
+    t.alice
+        .ok("seat_spectator", json!({"peer_id": PEER_D}))
+        .await;
+    dave.expect("rejoin").await;
+    let player = dave.player_id();
+    let (status, response) = dave
+        .join(&t.room, json!({"peer_id": PEER_E, "player_id": player}))
+        .await;
+    assert_eq!(status, "ok", "rejoin refused: {response}");
+    assert_eq!(dave.participant["spectator"], false);
+    let seats: Vec<String> = t
+        .snapshot()
+        .await
+        .seats
+        .into_iter()
+        .map(|seat| seat.peer_id)
+        .collect();
+    assert!(seats.contains(&PEER_E.to_owned()));
+    assert_eq!(seats.len(), 3);
+    dave.ok("update_status", json!({"life": 39})).await;
+    assert_eq!(t.seat(PEER_E).await.life, 39);
+}
+
+#[tokio::test]
 async fn removing_the_active_player_keeps_their_result_and_advances_the_turn() {
     let mut t = Table::new().await;
     let mut bob = t.join_seat(PEER_B).await;

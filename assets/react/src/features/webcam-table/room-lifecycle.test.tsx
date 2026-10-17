@@ -10,6 +10,8 @@ const mode = vi.hoisted(() => ({
   started: false,
   spectator: false,
   spectators: [] as TableParticipant[],
+  canModerate: false,
+  seated: [] as string[],
 }))
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
@@ -23,6 +25,8 @@ vi.mock("./use-webcam-room", async (importOriginal) => {
       return {
         ...room,
         spectating: mode.spectator,
+        canModerate: mode.canModerate || room.canModerate,
+        seatSpectator: (peerId: string) => mode.seated.push(peerId),
         // "self" stands in for this tab's peer ID, which is random per render.
         spectators: mode.spectators.map((watcher) =>
           watcher.peer_id === "self" ? { ...watcher, peer_id: room.peerId } : watcher,
@@ -60,6 +64,8 @@ vi.mock("./use-webcam-room", async (importOriginal) => {
 afterEach(() => {
   cleanup()
   mode.spectators = []
+  mode.canModerate = false
+  mode.seated = []
   vi.restoreAllMocks()
 })
 
@@ -160,6 +166,38 @@ it("lists spectators in the Table tab for seated players and for the spectators 
   list = screen.getByRole("list", { name: "Spectators" })
   expect(within(list).getAllByRole("listitem")).toHaveLength(2)
   expect(within(list).getByText("(you)")).toBeTruthy()
+})
+
+it("lets hosts give a spectator a seat only while the table is in setup", () => {
+  mode.canModerate = true
+  mode.spectators = [
+    {
+      peer_id: "watcher",
+      player_id: 3,
+      player_name: "Wren",
+      joined_at: 200,
+      life: 40,
+      poison: 0,
+      rad: 0,
+      commander_casts: {},
+      commander_damage: {},
+      camera_off: true,
+      eliminated: false,
+      spectator: true,
+    },
+  ]
+  renderTable(true)
+  expect(screen.queryByRole("button", { name: "Give Wren a seat" })).toBeNull()
+  cleanup()
+
+  renderTable(false)
+  fireEvent.click(screen.getByRole("button", { name: "Give Wren a seat" }))
+  expect(mode.seated).toEqual(["watcher"])
+  cleanup()
+
+  mode.canModerate = false
+  renderTable(false)
+  expect(screen.queryByRole("button", { name: "Give Wren a seat" })).toBeNull()
 })
 
 it("allows video-only spectator autoplay without camera permission or a click", () => {

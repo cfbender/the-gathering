@@ -206,6 +206,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           participants={view.seated}
           spectators={room.spectators}
           onRemoveParticipant={room.canModerate ? room.removeParticipant : undefined}
+          onSeatSpectator={room.canModerate ? room.seatSpectator : undefined}
           localParticipant={view.localParticipant}
           maxPlayers={MAX_PLAYERS}
           playerDecks={decksFor(view, view.localParticipant)}

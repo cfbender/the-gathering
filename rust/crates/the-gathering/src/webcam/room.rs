@@ -257,6 +257,8 @@ pub enum ConnEvent {
     SeatEliminated(bool),
     /// A rematch reset the seat.
     SeatReset(Box<Seat>),
+    /// A host or admin gave this spectator a seat; rejoining takes it.
+    Seated,
 }
 
 /// A joined channel, as the room sees it.
@@ -335,6 +337,8 @@ pub enum RoomMsg {
     Eliminate(String, bool, Reply<()>),
     /// Remove a participant by peer id.
     Remove(String, Reply<Outcome>),
+    /// Seat a lobby spectator by peer id.
+    Seat(String, Reply<Outcome>),
     /// Pause or resume.
     Timer(Action, Reply<TimerState>),
     /// End the mulligan window.
@@ -690,6 +694,27 @@ impl Room {
                 } else {
                     let _ = reply.send(Err("participant is not at this table".into()));
                 }
+            }
+            // The spectator's channel rejoins, and the lobby admits it like any new arrival.
+            RoomMsg::Seat(peer_id, reply) => {
+                let spectator = self
+                    .connections
+                    .iter()
+                    .find(|(id, connection)| {
+                        connection.peer_id == peer_id && !entry.all_seats.contains_key(id)
+                    })
+                    .map(|(_, connection)| &connection.conn);
+                let outcome = if entry.timer.started_at.is_some() {
+                    Err("seats are fixed once the game starts")
+                } else if entry.all_seats.len() >= MAX_SEATS {
+                    Err("room is full")
+                } else if let Some(conn) = spectator {
+                    let _ = conn.tx.send(ConnEvent::Seated);
+                    Ok(())
+                } else {
+                    Err("participant is not spectating")
+                };
+                let _ = reply.send(outcome.map_err(String::from));
             }
             RoomMsg::Monarch(holder, actor, reply) => {
                 if entry.monarch.as_ref() != Some(&holder) {

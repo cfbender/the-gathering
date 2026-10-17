@@ -342,8 +342,10 @@ ten-second reload grace), in their last seat order with their decks, commanders,
 state. What resets: the timer (back to setup, not started), turns and turn times, each seat's life
 (40), poison, rad, commander tax and damage, eliminations, Two-Headed Giant team life, the monarch,
 identified cards, and the log (which restarts with one "Rematch" line). Seats of players who have
-left are dropped, so the lobby holds exactly who is present; spectators keep watching and take a
-seat by reloading while the new lobby is open. The room broadcasts `table_state` and `table_log`
+left are dropped, so the lobby holds exactly who is present; spectators keep watching until they
+take a seat, either by reloading while the new lobby is open or when a host or admin gives them one
+with the seat icon next to their name in the Table panel (`seat_spectator`; the spectator's channel
+gets `rejoin` and the lobby admits it like any new arrival, up to ten seats). The room broadcasts `table_state` and `table_log`
 to every seat and sends each seated connection its reset seat; the channel adopts that seat in its
 state and presence and pushes `seat_reset` so the browser rehydrates its local life and
 counters. If recording succeeds but the rematch does not, the form still closes (the game is saved)
