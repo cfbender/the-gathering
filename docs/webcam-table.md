@@ -433,7 +433,9 @@ board is large, everyone else is small, and controls live in a collapsible colum
 - **Phones** (below `lg`) put the board first: the rail becomes a strip of seat chips (name, life,
   turn, camera off) that pin boards the same way, a thumb bar holds your life ±, Pass turn, My
   board (on a virtual board), and the panel button, and the side panel opens as a bottom sheet
-  that starts closed. Landscape phones put the chips and the thumb bar in one row above the board.
+  that starts closed, with **Leave table** at its top. On touch screens your life box keeps its ±
+  buttons and counters chevron visible, since there is no hover and tapping the box opens the
+  keyboard. Landscape phones put the chips and the thumb bar in one row above the board.
 - **Commander identity** colors both the rail and active-board name bars: one muted solid for
   mono-color, a WUBRG-ordered gradient for multiple colors, and neutral for colorless or unknown.
   The active-board commander name shows identity pips using the existing mana symbols; compact

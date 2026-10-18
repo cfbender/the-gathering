@@ -88,6 +88,25 @@ it("keeps life interactions separate from selecting the camera board", () => {
   expect(onActivate).toHaveBeenCalledOnce()
 })
 
+it("keeps your life buttons and counters out on touch screens", () => {
+  vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse)" }))
+  render(
+    <LifeControl
+      life={37}
+      local
+      size="board"
+      counters={() => <button type="button">Counters</button>}
+      onChangeLife={() => {}}
+    />,
+  )
+  expect(screen.getByRole("button", { name: "Gain 1 life" })).toBeTruthy()
+  expect(screen.getByRole("button", { name: "Lose 1 life" })).toBeTruthy()
+  expect(screen.getByRole("button", { name: "Counters" }).parentElement!.className).not.toContain(
+    "invisible",
+  )
+  vi.unstubAllGlobals()
+})
+
 describe.each(["tile", "board"] as const)("%s life control", (size) => {
   it("reveals life buttons on hover and focus, keeps them while moving focus, and sends signed deltas", () => {
     const onChangeLife = vi.fn()

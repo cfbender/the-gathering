@@ -71,7 +71,9 @@ export function LifeControl({
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
   const [countersOpen, setCountersOpen] = useState(false)
-  const expanded = hovered || focused || countersOpen
+  // Touch screens have no hover, and tapping the box opens the keyboard: keep the controls out.
+  const [touch] = useState(() => matchMedia("(pointer: coarse)").matches)
+  const expanded = touch || hovered || focused || countersOpen
   const box = cn(
     "grid min-w-14 place-items-center rounded-md border border-white/25 bg-black/80 px-2 font-black text-white tabular-nums shadow",
     size === "board" ? "h-16 text-4xl" : "h-14 text-3xl",

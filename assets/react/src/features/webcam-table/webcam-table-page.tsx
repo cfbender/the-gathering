@@ -298,12 +298,15 @@ export function WebcamTablePage({ roomId }: Props) {
   if (!player) {
     return (
       <div className="grid min-h-dvh place-items-center bg-black p-6">
-        <div role="alert" className="alert alert-warning max-w-xl">
+        <div
+          role="alert"
+          className="alert alert-warning alert-vertical max-w-xl sm:alert-horizontal"
+        >
           <div>
             <h1 className="font-bold">No linked player</h1>
             <p>Your account must be linked to a player before joining a table.</p>
           </div>
-          <Link to="/games" reloadDocument className="btn btn-sm">
+          <Link to="/games" reloadDocument className="btn btn-sm whitespace-nowrap">
             Back to games
           </Link>
         </div>

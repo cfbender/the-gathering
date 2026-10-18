@@ -1,7 +1,9 @@
+import { Link } from "@tanstack/react-router"
 import {
   ChevronLeft,
   ChevronRight,
   Gamepad2,
+  LogOut,
   Layers,
   ScrollText,
   Settings,
@@ -67,6 +69,14 @@ export function SidePanel(props: Props) {
         props.left && "lg:order-1 lg:flex-row-reverse",
       )}
     >
+      {/* Phones reach the rest of the app (settings, other games) by leaving the table. */}
+      <div className="flex items-center justify-end border-b border-white/10 px-2 pt-1.5 pb-1 lg:hidden">
+        <Button asChild variant="ghost" size="sm" className="gap-1.5">
+          <Link to="/games" reloadDocument>
+            <LogOut className="size-4" /> Leave table
+          </Link>
+        </Button>
+      </div>
       <nav
         className="flex shrink-0 items-center gap-1 px-1.5 py-1 lg:w-14 lg:flex-col lg:items-stretch lg:px-1 lg:py-1.5"
         aria-label="Table panels"
