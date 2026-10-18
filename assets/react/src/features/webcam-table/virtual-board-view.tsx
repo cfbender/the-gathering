@@ -68,6 +68,8 @@ export function VirtualBoardScreen({ view, onClose }: { view: TableView; onClose
       className="fixed inset-0 z-50 h-dvh bg-base-100 text-base-content"
     >
       <DeckPlaytester
+        // The table watches this game; a rematch deals a fresh one.
+        canRestart={false}
         title={saved.deckName}
         initialState={saved.initialState}
         snapshot={saved.snapshot}

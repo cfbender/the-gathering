@@ -16,6 +16,9 @@ import type { useWebcamRoom } from "./use-webcam-room"
 
 interface SavedBoard {
   version: 1
+  /** False while the seat uses its camera; the game waits to be resumed. */
+  active?: boolean
+  deckId?: number
   deckName: string
   /** The deal, kept so a rematch can shuffle the same cards into a new game. */
   initialState: PlaytestState
@@ -42,7 +45,8 @@ function redeal(state: PlaytestState) {
 
 /**
  * This seat's virtual board: the whole game stays in this browser (saved per table, so a reload
- * resumes it), and only its public projection goes to the table. The board is republished
+ * resumes it), and only its public projection goes to the table. Going back to the camera
+ * pauses the game rather than discarding it. The board is republished
  * whenever the table lacks it (a rejoin or a rematch), redealt when a rematch resets the seat,
  * and untapped with a draw when the turn passes to this seat.
  */
@@ -67,12 +71,11 @@ export function useVirtualBoard({
   const { publishBoard, boards, seatResets, turns, participants, mode } = room
 
   const store = useCallback(
-    (next: SavedBoard | null) => {
+    (next: SavedBoard) => {
       savedRef.current = next
       setSaved(next)
-      if (next) localStorage.setItem(key, JSON.stringify(next))
-      else localStorage.removeItem(key)
-      publishBoard(next ? projectPublicSnapshot(next.snapshot) : null)
+      localStorage.setItem(key, JSON.stringify(next))
+      publishBoard(next.active === false ? null : projectPublicSnapshot(next.snapshot))
     },
     [key, publishBoard],
   )
@@ -88,8 +91,9 @@ export function useVirtualBoard({
   // The table lost this board (a rejoin after a restart, or a rematch): publish it again.
   const published = playerId in boards
   useEffect(() => {
-    if (savedRef.current && !published)
-      publishBoard(projectPublicSnapshot(savedRef.current.snapshot))
+    const current = savedRef.current
+    if (current && current.active !== false && !published)
+      publishBoard(projectPublicSnapshot(current.snapshot))
   }, [boards, published, publishBoard])
 
   const firstReset = useRef(seatResets)
@@ -107,13 +111,19 @@ export function useVirtualBoard({
     const previous = previousTurn.current
     previousTurn.current = turns.active_player_id
     const current = savedRef.current
-    if (current && previous !== null && previous !== myTurn && turns.active_player_id === myTurn)
+    if (
+      current &&
+      current.active !== false &&
+      previous !== null &&
+      previous !== myTurn &&
+      turns.active_player_id === myTurn
+    )
       change(nextTurnSnapshot(current.snapshot, { draw: true }))
   }, [change, myTurn, turns.active_player_id])
 
   return {
     /** The seat plays on its virtual board instead of the camera. */
-    active: saved !== null,
+    active: saved !== null && saved.active !== false,
     saved,
     /** Why the board cannot start, or null when it can. */
     unavailable: room.spectating
@@ -127,19 +137,28 @@ export function useVirtualBoard({
             : !list.data
               ? "Loading the deck's list…"
               : null,
+    /** Resumes a paused game of the same deck, or deals a new one. */
     start: () => {
       if (!list.data || !deck) return
-      const initialState = dealDecklist(list.data)
-      store({
-        version: 1,
-        deckName: deck.name,
-        initialState,
-        snapshot: initialSnapshot(initialState),
-      })
+      const current = savedRef.current
+      if (current?.deckId === deck.id) store({ ...current, active: true })
+      else {
+        const initialState = dealDecklist(list.data)
+        store({
+          version: 1,
+          active: true,
+          deckId: deck.id,
+          deckName: deck.name,
+          initialState,
+          snapshot: initialSnapshot(initialState),
+        })
+      }
       setCameraOff(true)
     },
+    /** Back to the camera; the game is kept for when the seat returns to it. */
     stop: () => {
-      store(null)
+      const current = savedRef.current
+      if (current) store({ ...current, active: false })
       setCameraOff(false)
     },
     change,

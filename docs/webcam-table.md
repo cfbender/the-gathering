@@ -685,7 +685,9 @@ board before drawing it, keeping only known fields and card images under `/api/c
 Other seats draw the board in place of the video in the stage, rail, and grid; tapping a face-up
 card in the stage opens the usual card preview. Life comes from the seat (the board's life
 control changes the table's), and when the table's turn reaches the owner the board untaps
-and draws. **Use camera instead** clears the board and turns the camera back on.
+and draws. **Use camera instead** takes the board off the table and turns the camera back on;
+the game stays saved, and **Use virtual board** resumes it (a different deck deals a new game).
+Restart is hidden at the table (`canRestart={false}`): a rematch deals a fresh game.
 
 ## File and component structure
 
