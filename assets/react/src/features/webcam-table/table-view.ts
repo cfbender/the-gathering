@@ -5,6 +5,7 @@ import { canViewBoard } from "./media-policy"
 import type { TableParticipant } from "./room-types"
 import type { useTablePreferences } from "./table-preferences"
 import { useActiveBoard } from "./use-active-board"
+import { useVirtualBoard, type VirtualBoard } from "./use-virtual-board"
 import type { useWebcamRoom } from "./use-webcam-room"
 
 export type WebcamRoom = ReturnType<typeof useWebcamRoom>
@@ -32,20 +33,26 @@ export interface TableView {
   releaseBoard: () => void
   toggleCamera: () => void
   openReveal: () => void
+  /** This seat's virtual board, when it plays without a camera. */
+  virtualBoard: VirtualBoard
+  /** Shows this seat's virtual board full screen. */
+  openBoard: () => void
 }
 
 export function useTableView({
   room,
+  roomId,
   preferences,
   playerId,
   playerName,
   decks,
   toggleCamera,
   openReveal,
+  openBoard,
 }: Pick<
   TableView,
-  "room" | "preferences" | "playerId" | "decks" | "toggleCamera" | "openReveal"
-> & { playerName: string }): TableView {
+  "room" | "preferences" | "playerId" | "decks" | "toggleCamera" | "openReveal" | "openBoard"
+> & { roomId: string; playerName: string }): TableView {
   const board = useActiveBoard(room.participants, room.peerId, preferences.viewMode)
   const localParticipant: TableParticipant = room.participants.find(
     (participant) => participant.peer_id === room.peerId,
@@ -59,6 +66,15 @@ export function useTableView({
     eliminated: false,
     joined_at: Number.MAX_SAFE_INTEGER,
   }
+  const virtualBoard = useVirtualBoard({
+    room,
+    roomId,
+    playerId,
+    deck: decks.find((deck) => deck.id === localParticipant.deck_id),
+    setCameraOff: (off) => {
+      if (room.cameraOff !== off) toggleCamera()
+    },
+  })
   const seated =
     room.spectating || room.participants.some((participant) => participant.peer_id === room.peerId)
       ? room.participants
@@ -90,6 +106,8 @@ export function useTableView({
     releaseBoard: board.release,
     toggleCamera,
     openReveal,
+    virtualBoard,
+    openBoard,
   }
 }
 
@@ -124,6 +142,18 @@ export function isCurrentTurn(view: TableView, participant: TableParticipant) {
   return (
     turnId(view.seated, participant.player_id, view.room.mode) === view.room.turns.active_player_id
   )
+}
+
+/** A seat's life as the table counts it: Two-Headed Giant teams share one total. */
+export function seatLife(view: TableView, participant: TableParticipant) {
+  if (view.room.mode !== "two_headed_giant") return participant.life
+  const team = view.groups.findIndex((group) => group.includes(participant))
+  return view.room.teamLife[team] ?? 60
+}
+
+/** The board a seat publishes instead of its camera, if it plays on a virtual board. */
+export function boardFor(view: TableView, participant: TableParticipant) {
+  return view.room.boards[participant.player_id]
 }
 
 export function streamFor(view: TableView, participant: TableParticipant) {

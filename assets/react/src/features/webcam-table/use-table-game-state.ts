@@ -1,3 +1,4 @@
+import type { PublicPlaytestSnapshot } from "@cfbender/playtest"
 import { useQueryClient } from "@tanstack/react-query"
 import type { TableChannel } from "./table-channel"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -16,6 +17,7 @@ import {
 } from "./table-events"
 import type { RollRequest, TableRoll } from "./table-rolls"
 import { EMPTY_TURNS, type TurnState } from "./turns"
+import { parseBoard } from "./virtual-board"
 
 export const STARTING_LIFE = 40
 const TIMER_SYNC_MS = 15_000
@@ -39,6 +41,15 @@ interface TableState {
 
 type ErrorReply = { reason: string }
 
+/** Virtual boards by player id: what each owner publishes of their game. */
+export type TableBoards = Record<number, PublicPlaytestSnapshot>
+
+function withBoard(boards: TableBoards, playerId: number, board: unknown): TableBoards {
+  const { [playerId]: _previous, ...rest } = boards
+  const parsed = parseBoard(board)
+  return parsed ? { ...rest, [playerId]: parsed } : rest
+}
+
 /** Seats, turns, timer, life, counters, monarch, rolls, and the table log: everything the
  * server tells the table about the game, and the commands a seat sends to change it. */
 export function useTableGameState(
@@ -61,6 +72,9 @@ export function useTableGameState(
   const [isOwner, setIsOwner] = useState(false)
   const [roll, setRoll] = useState<TableRoll | null>(null)
   const [monarch, setMonarch] = useState<Monarch | null>(null)
+  const [boards, setBoards] = useState<TableBoards>({})
+  /** Bumped when a rematch resets this seat, so a virtual board can deal a new game. */
+  const [seatResets, setSeatResets] = useState(0)
   // Your own life is tracked locally so rapid ± clicks compound before presence
   // echoes the new total back; presence stays the source for everyone else.
   const lifeRef = useRef(STARTING_LIFE)
@@ -156,12 +170,24 @@ export function useTableGameState(
         ({ participants: eliminated }: { participants: TableParticipant[] }) =>
           setEliminatedSeats(eliminated),
       )
+      room.on("table_boards", (event: { boards: Record<string, unknown> }) =>
+        setBoards(
+          Object.entries(event.boards).reduce<TableBoards>(
+            (all, [playerId, board]) => withBoard(all, Number(playerId), board),
+            {},
+          ),
+        ),
+      )
+      room.on("board", ({ player_id, board }: { player_id: number; board: unknown }) =>
+        setBoards((current) => withBoard(current, player_id, board)),
+      )
       room.on("timer_state", receiveTimer)
       room.on("roll", setRoll)
       // A rematch reset this seat; the new table_state and table_log arrive as broadcasts.
-      room.on("seat_reset", ({ participant }: { participant: TableParticipant }) =>
-        restoreSeat(participant),
-      )
+      room.on("seat_reset", ({ participant }: { participant: TableParticipant }) => {
+        restoreSeat(participant)
+        setSeatResets((resets) => resets + 1)
+      })
     },
     [queryClient, receiveTimer, restoreSeat, syncMonarch],
   )
@@ -386,6 +412,18 @@ export function useTableGameState(
       .receive("timeout", () => setError("Elimination request timed out; try again"))
   }
 
+  /** Publishes this seat's virtual board to the table, or `null` to go back to the camera. */
+  const publishBoard = useCallback(
+    (board: PublicPlaytestSnapshot | null) => {
+      const channel = link.channel
+      if (link.spectator || channel?.state !== "joined") return
+      channel
+        .push("board", { board })
+        .receive("error", ({ reason }: ErrorReply) => setError(reason))
+    },
+    [link, setError],
+  )
+
   function rollDice(request: RollRequest) {
     link.channel
       ?.push("roll", request)
@@ -407,6 +445,8 @@ export function useTableGameState(
     teamLife,
     roll,
     monarch,
+    boards,
+    seatResets,
     life,
     counters,
     bindChannel,
@@ -431,5 +471,6 @@ export function useTableGameState(
     rematch,
     setEliminated,
     rollDice,
+    publishBoard,
   }
 }

@@ -1,6 +1,7 @@
 import {
   Ellipsis,
   Eye,
+  LayoutDashboard,
   TrianglesCenterlineDashedHorizontal,
   TrianglesCenterlineDashedVertical,
   Video,
@@ -18,6 +19,16 @@ import { NO_FLIP, type FlipAxis, type VideoFlip } from "./board"
 import { commanderBackground } from "./commander-colors"
 import { CommanderControl } from "./commander-control"
 import type { TableParticipant } from "./use-webcam-room"
+
+/** This seat's virtual board controls, offered on your own seat bar. */
+export interface SeatBoardControls {
+  active: boolean
+  /** Why it cannot start, or null. */
+  unavailable: string | null
+  onStart: () => void
+  onStop: () => void
+  onOpen: () => void
+}
 
 // Each icon shows the mirror line: a vertical flip mirrors across a horizontal line.
 const FLIP_ITEMS = [
@@ -38,6 +49,7 @@ export function SeatBar({
   flip = NO_FLIP,
   onToggleFlip,
   canEliminate = local,
+  virtualBoard,
 }: {
   participant: TableParticipant
   local: boolean
@@ -50,6 +62,7 @@ export function SeatBar({
   flip?: VideoFlip
   onToggleFlip?: (axis: FlipAxis) => void
   canEliminate?: boolean
+  virtualBoard?: SeatBoardControls
 }) {
   const compact = size === "tile"
   const cameraIcon = participant.camera_off ? (
@@ -110,12 +123,36 @@ export function SeatBar({
                 {`${flip[axis] ? "Unflip" : "Flip"} video ${axis}ly`}
               </DropdownMenuItem>
             ))}
+          {virtualBoard &&
+            (virtualBoard.active ? (
+              <DropdownMenuItem onSelect={virtualBoard.onStop}>
+                <Video className="size-4" /> Use camera instead
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                onSelect={virtualBoard.onStart}
+                disabled={virtualBoard.unavailable !== null}
+                title={virtualBoard.unavailable ?? "Play on a virtual tabletop instead of a camera"}
+              >
+                <LayoutDashboard className="size-4" />
+                <span>
+                  Use virtual board
+                  {virtualBoard.unavailable && (
+                    <span className="block text-xs font-normal text-base-content/60">
+                      {virtualBoard.unavailable}
+                    </span>
+                  )}
+                </span>
+              </DropdownMenuItem>
+            ))}
           {local && (
             <>
-              <DropdownMenuItem onSelect={onToggleCamera}>
-                {cameraIcon}
-                {participant.camera_off ? "Turn camera on" : "Turn camera off"}
-              </DropdownMenuItem>
+              {!virtualBoard?.active && (
+                <DropdownMenuItem onSelect={onToggleCamera}>
+                  {cameraIcon}
+                  {participant.camera_off ? "Turn camera on" : "Turn camera off"}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onSelect={onReveal}>
                 <Eye className="size-4" /> Reveal hand…
               </DropdownMenuItem>
@@ -131,7 +168,18 @@ export function SeatBar({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-      {local ? (
+      {local && virtualBoard?.active ? (
+        <button
+          type="button"
+          // Phones open it from the thumb bar.
+          className="btn btn-primary btn-sm shrink-0 gap-1 px-2 focus-visible:-outline-offset-2 max-lg:hidden"
+          onClick={virtualBoard.onOpen}
+          title="Open your virtual board"
+        >
+          <LayoutDashboard className="size-3.5" />
+          {compact ? <span className="sr-only">My board</span> : "My board"}
+        </button>
+      ) : local ? (
         <button
           type="button"
           className={cn(

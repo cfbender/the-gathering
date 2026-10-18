@@ -37,6 +37,8 @@ const LIFE_RANGE: std::ops::RangeInclusive<i64> = -999..=999;
 const MAX_SDP_BYTES: usize = 65_536;
 /// Direct seat-to-seat messages carry card crops (JPEG data URLs) for the scanner.
 const MAX_PEER_MESSAGE_BYTES: usize = 262_144;
+/// A whole Commander deck's public board is about 30 KB; the cap leaves room for tokens.
+const MAX_BOARD_BYTES: usize = 131_072;
 /// No webcam publishes more rows than 8K; anything above is a bogus status.
 const MAX_CAMERA_HEIGHT: i64 = 4_320;
 const SIGNAL_EVENTS: [&str; 5] = [
@@ -507,6 +509,9 @@ impl Channel {
         // Sent once per join rather than in every table_state; new entries follow as log_entry.
         let log = self.tables().log(&self.room_id).await?;
         self.push("table_log", &json!({ "entries": log }));
+        // Likewise every virtual board; changes follow as `board`.
+        let boards = self.tables().boards(&self.room_id).await?;
+        self.push("table_boards", &json!({ "boards": boards }));
         // The seat's media connection lives in the SFU; the browser offers once the join
         // reply arrives.
         state
@@ -678,6 +683,7 @@ impl Channel {
         if !OWNER_EVENTS.contains(&event)
             && ![
                 "cards",
+                "board",
                 "choose_deck",
                 "reveal",
                 "update_status",
@@ -701,6 +707,7 @@ impl Channel {
     async fn dispatch(&mut self, event: &str, payload: &Value) -> Handled {
         match event {
             "cards" => self.cards(payload).await,
+            "board" => self.board(payload).await,
             "sfu_offer" => self.sfu_offer(payload).await,
             "sfu_answer" => self.sfu_answer(payload).await,
             "sfu_candidate" => self.sfu_candidate(payload).await,
@@ -838,6 +845,29 @@ impl Channel {
         }
         // Any seated player may remove any entry to correct a misidentification.
         self.update_cards(payload).await
+    }
+
+    /// A seat's virtual board: the owner's public view of their game, or `null` to go back to
+    /// the camera. Other clients validate the shape before drawing it.
+    async fn board(&self, payload: &Value) -> Handled {
+        let board = match exactly(payload, 1).and_then(|map| map.get("board")) {
+            Some(Value::Null) => None,
+            Some(board @ Value::Object(_)) => Some(board.clone()),
+            _ => return error("invalid board"),
+        };
+        if board.as_ref().is_some_and(|board| {
+            serde_json::to_vec(board).map_or(true, |encoded| encoded.len() > MAX_BOARD_BYTES)
+        }) {
+            return error("board too large");
+        }
+        match self
+            .tables()
+            .board(&self.room_id, self.participant.player_id, board)
+            .await?
+        {
+            Ok(()) => reply(Reply::ok()),
+            Err(reason) => error(&reason),
+        }
     }
 
     fn sdp(payload: &Value) -> Option<&str> {

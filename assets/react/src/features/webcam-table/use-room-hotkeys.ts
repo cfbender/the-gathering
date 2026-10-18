@@ -15,9 +15,11 @@ export function useRoomHotkeys(
   view: TableView,
   flow: Pick<CardIdentificationFlow, "pickerOpen" | "dismissPicker">,
   panel: PanelControls,
+  /** Off while the virtual board has the keyboard for its own shortcuts. */
+  enabled = true,
 ) {
   const { room, preferences, seated, activeParticipant } = view
-  useTableHotkeys(preferences.hotkeys && !room.spectating, flow.pickerOpen, (action) => {
+  useTableHotkeys(enabled && preferences.hotkeys && !room.spectating, flow.pickerOpen, (action) => {
     switch (action) {
       case "gainLife":
         return room.changeLife(1)

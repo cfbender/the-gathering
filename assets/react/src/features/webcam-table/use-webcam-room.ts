@@ -242,6 +242,10 @@ export function useWebcamRoom(
     trackers,
     monarch: game.monarch,
     takeMonarch: game.takeMonarch,
+    /** Virtual boards by player id; see `useVirtualBoard`. */
+    boards: game.boards,
+    seatResets: game.seatResets,
+    publishBoard: game.publishBoard,
     toggleCamera,
     setSharesCorrections,
     startGame: game.startGame,

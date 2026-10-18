@@ -1,5 +1,6 @@
 @import "tailwindcss" source(none);
 @import "./palettes.css";
+@import "@cfbender/playtest/styles.css";
 @source "./";
 @source "../../../rust/crates/the-gathering/src/web/shell.rs";
 

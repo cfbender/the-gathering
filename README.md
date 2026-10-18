@@ -271,6 +271,8 @@ suggestions instead. When a seated player's chosen deck links to a list, every s
 and warms its card images, **Decks → View decklist** shows your own list, and the recognizer
 favours cards in the clicked board owner's list (see Oracle's README, "Deck-list prior").
 Opponents' lists are not shown in the UI but are visible in the browser's network tab.
+**Use virtual board** in your seat menu replaces your camera with a virtual tabletop dealt
+from your deck's linked list; other players see the board, with your hand and library as counts.
 **Trackers** over your own camera keep free-form 0–100 counters ("Lands", "Creatures in graveyard")
 and a combat-math list: enter each anthem or combat buff with its conditions (attacking, blocking,
 flying, tokens, nontoken, or any creature type) and the overlay shows the combined bonus for every

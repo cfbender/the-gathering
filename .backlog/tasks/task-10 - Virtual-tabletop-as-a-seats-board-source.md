@@ -1,9 +1,10 @@
 ---
 id: TASK-10
 title: Virtual tabletop as a seat's board source
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-18 15:18'
+updated_date: '2026-10-18 16:31'
 labels: []
 dependencies: []
 ordinal: 18000

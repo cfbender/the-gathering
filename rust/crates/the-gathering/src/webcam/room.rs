@@ -75,6 +75,9 @@ pub struct Entry {
     /// The shared log, newest first.
     #[serde(default)]
     pub log: Vec<LogEntry>,
+    /// Virtual boards by player id: each owner's public view of their game, client-shaped.
+    #[serde(default)]
+    pub boards: BTreeMap<i64, Value>,
     /// The player who opened the table.
     pub owner_id: i64,
 }
@@ -99,6 +102,7 @@ impl Entry {
             monarch_revision: 0,
             cards: Vec::new(),
             log: Vec::new(),
+            boards: BTreeMap::new(),
             owner_id,
         }
     }
@@ -311,6 +315,10 @@ pub enum RoomMsg {
     Snapshot(Reply<Snapshot>),
     /// The log.
     Log(Reply<Vec<LogEntry>>),
+    /// Every virtual board by player id.
+    Boards(Reply<BTreeMap<i64, Value>>),
+    /// Publish (or with `None`, clear) a seated player's virtual board.
+    Board(i64, Option<Value>, Reply<Outcome>),
     /// A roll by a seat.
     Roll(Holder, RollKind, RollResult, Reply<()>),
     /// Close when empty and idle; answers whether it closed.
@@ -625,6 +633,23 @@ impl Room {
             RoomMsg::Log(reply) => {
                 let _ = reply.send(entry.log);
             }
+            RoomMsg::Boards(reply) => {
+                let _ = reply.send(entry.boards);
+            }
+            RoomMsg::Board(player_id, board, reply) => {
+                if !entry.all_seats.contains_key(&player_id) {
+                    let _ = reply.send(Err("only seated players have a board".into()));
+                    return Ok(Flow::Continue);
+                }
+                let event = json!({ "player_id": player_id, "board": board });
+                match board {
+                    Some(board) => entry.boards.insert(player_id, board),
+                    None => entry.boards.remove(&player_id),
+                };
+                self.commit(entry, vec![Broadcast::Event("board", event)])
+                    .await?;
+                let _ = reply.send(Ok(()));
+            }
             RoomMsg::Roll(actor, kind, result, reply) => {
                 let mut roll = json!({
                     "kind": match kind { RollKind::Dice(_) => "dice", RollKind::Coin => "coin" },
@@ -671,6 +696,7 @@ impl Room {
                 });
                 if let Some(player_id) = target.filter(|id| !entry.removed_players.contains(id)) {
                     entry.removed_players.insert(player_id);
+                    let board_cleared = entry.boards.remove(&player_id).is_some();
                     if let Some(mut seat) = entry.all_seats.get(&player_id).cloned() {
                         if entry.timer.started_at.is_some() {
                             // Keep team positions and the result, but skip this player's turns.
@@ -683,7 +709,13 @@ impl Room {
                             entry.peer_ids.retain(|id| id != &peer_id);
                         }
                     }
-                    let events = vec![eliminated_seats_event(&entry), Broadcast::TableState];
+                    let mut events = vec![eliminated_seats_event(&entry), Broadcast::TableState];
+                    if board_cleared {
+                        events.push(Broadcast::Event(
+                            "board",
+                            json!({ "player_id": player_id, "board": null }),
+                        ));
+                    }
                     self.commit(entry, events).await?;
                     self.departing.remove(&player_id);
                     if let Some(connection) = self.connections.remove(&player_id) {
@@ -1068,6 +1100,8 @@ impl Room {
             // A higher revision, so clients drop the old crown rather than ignore a stale event.
             monarch_revision: entry.monarch_revision + 1,
             cards: Vec::new(),
+            // Owners deal a fresh game and publish it when their seat resets.
+            boards: BTreeMap::new(),
             eliminated_seats: BTreeMap::new(),
             all_seats: seats.clone(),
             peer_ids,
@@ -1079,6 +1113,7 @@ impl Room {
             vec![
                 Broadcast::TableState,
                 Broadcast::Event("table_log", json!({ "entries": log })),
+                Broadcast::Event("table_boards", json!({ "boards": {} })),
             ],
         )
         .await?;

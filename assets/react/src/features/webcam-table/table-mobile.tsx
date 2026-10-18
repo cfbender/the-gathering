@@ -1,14 +1,6 @@
-import { Menu, Minus, Plus, SkipForward, VideoOff } from "lucide-react"
+import { LayoutDashboard, Menu, Minus, Plus, SkipForward, VideoOff } from "lucide-react"
 import { cn } from "@/lib/cn"
-import type { TableParticipant } from "./room-types"
-import { isCurrentTurn, isLocal, togglePin, type TableView } from "./table-view"
-
-/** A seat's life as the table counts it: Two-Headed Giant teams share one total. */
-function seatLife(view: TableView, participant: TableParticipant) {
-  if (view.room.mode !== "two_headed_giant") return participant.life
-  const team = view.groups.findIndex((group) => group.includes(participant))
-  return view.room.teamLife[team] ?? 60
-}
+import { boardFor, isCurrentTurn, isLocal, seatLife, togglePin, type TableView } from "./table-view"
 
 /** Phones replace the camera rail with one chip per seat: name, life, and turn at a glance,
  * and a tap shows (or releases) that board, like clicking a rail camera. */
@@ -59,7 +51,7 @@ export function MobileSeatStrip({ view }: { view: TableView }) {
                 </span>
               )}
             </span>
-            {participant.camera_off && (
+            {participant.camera_off && !boardFor(view, participant) && (
               <VideoOff className="size-3.5 shrink-0 text-error" aria-label="Camera off" />
             )}
             <span className="text-lg font-black tabular-nums">{life}</span>
@@ -129,6 +121,16 @@ export function MobileActionBar({
             disabled={room.turns.active_player_id === null}
           >
             <SkipForward className="size-4" /> Pass turn
+          </button>
+        )}
+        {view.virtualBoard.active && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-square h-11 min-h-11 w-11"
+            aria-label="Open my board"
+            onClick={view.openBoard}
+          >
+            <LayoutDashboard className="size-5" />
           </button>
         )}
         <button

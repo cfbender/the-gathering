@@ -1,5 +1,5 @@
 //! Webcam table state: counters, monarch, seat order, reveal, timers, spectators, rolls,
-//! elimination, turns and identified cards.
+//! elimination, turns, identified cards and virtual boards.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -11,7 +11,7 @@ use crate::webcam_support;
 
 use serde_json::{Value, json};
 use the_gathering::webcam::room::Actor;
-use webcam_support::{PEER_A, PEER_B, PEER_C, Table, listed, room_id};
+use webcam_support::{PEER_A, PEER_B, PEER_C, PEER_D, Table, listed, room_id};
 
 const PEER_A_NEW: &str = "00000000-0000-4000-8000-0000000000a2";
 const ELSEWHERE: &str = "00000000-0000-4000-8000-00000000e0e0";
@@ -1035,4 +1035,56 @@ async fn spectators_cannot_identify_remove_or_clear_cards() {
     let cards = t.snapshot().await.cards;
     assert_eq!(cards.len(), 1);
     assert_eq!(cards[0]["id"], entry["id"]);
+}
+
+#[tokio::test]
+async fn virtual_boards_reach_every_seat_and_late_joiners_until_cleared() {
+    let mut t = Table::new().await;
+    let mut bob = t.join_player(PEER_B, "Bob").await;
+    let board = json!({ "battlefield": [{ "id": "c1", "name": "Forest" }], "handCount": 7 });
+    t.alice.ok("board", json!({ "board": board })).await;
+    let event = bob.expect("board").await;
+    assert_eq!(event, json!({ "player_id": t.player, "board": board }));
+
+    let mut cara = t.join_player(PEER_C, "Cara").await;
+    let boards = cara.expect("table_boards").await;
+    assert_eq!(boards["boards"], json!({ t.player.to_string(): board }));
+
+    for payload in [
+        json!({}),
+        json!({ "board": [] }),
+        json!({ "board": "forest" }),
+        json!({ "board": {}, "player_id": bob.player_id() }),
+    ] {
+        t.alice.refused("board", payload, "invalid board").await;
+    }
+    let huge = json!({ "board": { "battlefield": "x".repeat(140_000) } });
+    t.alice.refused("board", huge, "board too large").await;
+
+    t.alice.ok("board", json!({ "board": null })).await;
+    let cleared = bob
+        .expect_where("board", |event| event["board"].is_null())
+        .await;
+    assert_eq!(cleared["player_id"], t.player);
+    let mut dana = t.join_player(PEER_D, "Dana").await;
+    assert_eq!(dana.expect("table_boards").await["boards"], json!({}));
+}
+
+#[tokio::test]
+async fn a_virtual_board_survives_a_room_crash_but_not_a_rematch() {
+    let mut t = Table::new().await;
+    let board = json!({ "battlefield": [], "handCount": 7, "libraryCount": 92 });
+    t.alice.ok("board", json!({ "board": board })).await;
+    t.server.state().webcam_tables.kill(&t.room);
+    t.alice.expect("rejoin").await;
+
+    let mut restarted = t.rejoin(PEER_A_NEW).await;
+    let boards = restarted.expect("table_boards").await;
+    assert_eq!(boards["boards"], json!({ t.player.to_string(): board }));
+
+    restarted.ok("rematch", json!({})).await;
+    let cleared = restarted.expect("table_boards").await;
+    assert_eq!(cleared["boards"], json!({}));
+    let mut late = t.rejoin(PEER_A_NEW).await;
+    assert_eq!(late.expect("table_boards").await["boards"], json!({}));
 }

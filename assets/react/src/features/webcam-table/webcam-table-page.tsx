@@ -25,6 +25,7 @@ import { useSeatDecklists } from "./seat-decklists"
 import { useTurnSound } from "./use-turn-sound"
 import { useVideoStats } from "./video-stats"
 import { useWebcamRoom } from "./use-webcam-room"
+import { VirtualBoardScreen } from "./virtual-board-view"
 
 /** Tailwind's `lg` breakpoint, where the table switches from the phone layout. */
 const DESKTOP_QUERY = "(min-width: 64rem)"
@@ -85,6 +86,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   // Phones open the panel on demand as a sheet over the board.
   const [panelOpen, setPanelOpen] = useState(() => matchMedia(DESKTOP_QUERY).matches)
   const [panelTab, setPanelTab] = useState<PanelTab>("table")
+  const [boardOpen, setBoardOpen] = useState(false)
   const invite = useInviteLink()
   const toggleCamera = () => {
     preferences.update({ cameraEnabled: room.cameraOff })
@@ -93,12 +95,14 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
   const openHelp = useCallback(() => setDialog({ kind: "help" }), [])
   const view = useTableView({
     room,
+    roomId,
     preferences,
     playerId,
     playerName,
     decks,
     toggleCamera,
     openReveal: () => setDialog({ kind: "reveal" }),
+    openBoard: () => setBoardOpen(true),
   })
   const videoStats = useVideoStats(preferences.stats, room.getPeerStats)
   useTurnSound(
@@ -122,14 +126,20 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     corrections,
     blocked: dialog?.kind === "help" || dialog?.kind === "finish",
   })
-  useRoomHotkeys(view, flow, {
-    togglePanel: () => setPanelOpen((open) => !open),
-    showTab: (tab) => {
-      setPanelTab(tab)
-      setPanelOpen(true)
+  const boardShown = boardOpen && view.virtualBoard.active
+  useRoomHotkeys(
+    view,
+    flow,
+    {
+      togglePanel: () => setPanelOpen((open) => !open),
+      showTab: (tab) => {
+        setPanelTab(tab)
+        setPanelOpen(true)
+      },
+      openHelp,
     },
-    openHelp,
-  })
+    !boardShown,
+  )
 
   // The grid already shows every camera, so the rail and its divider step aside.
   const railShown = !view.showGrid
@@ -263,6 +273,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           }}
         />
 
+        {boardShown && <VirtualBoardScreen view={view} onClose={() => setBoardOpen(false)} />}
         <TableDialogs view={view} dialog={dialog} onDialogChange={setDialog} />
         {(room.closedByOwner || room.removed) && <TableEndedRedirect removed={room.removed} />}
       </div>

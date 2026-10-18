@@ -47,6 +47,11 @@ function symbolDetails(symbol: string) {
   }
 }
 
+/** The image for a symbol named like Scryfall's files (`{2/W}` is `2W`), or "" when unknown. */
+export function manaSymbolUrl(symbol: string) {
+  return symbolAssets[`../assets/mana/${symbol}.svg`] ?? ""
+}
+
 export function parseManaCost(cost: string): ManaCostPart[] {
   return cost
     .split(/(\{[^}]+\})/g)

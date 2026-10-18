@@ -12,7 +12,9 @@ import type { TableParticipant } from "./room-types"
 import { describeRoll } from "./table-rolls"
 import { StartOverlay } from "./start-overlay"
 import { SeatActions, SeatLife, SeatTile, SeatTrackers, TeamHeader } from "./table-seat"
+import { SeatBoard } from "./virtual-board-view"
 import {
+  boardFor,
   isCurrentTurn,
   videoFlip,
   isLocal,
@@ -36,6 +38,7 @@ function StageBoard({
   drawing: OutlineDrawing
 }) {
   const { room, preferences } = view
+  const board = boardFor(view, participant)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1" data-stage-board>
@@ -49,6 +52,7 @@ function StageBoard({
           currentTurn={isCurrentTurn(view, participant)}
           connectionState={room.connectionStates[participant.peer_id]}
           stream={streamFor(view, participant)}
+          board={board && <SeatBoard board={board} onPreview={flow.previewCard} />}
           lifeControl={<SeatLife view={view} participant={participant} size="board" />}
           trackers={<SeatTrackers view={view} participant={participant} />}
           release={

@@ -17,12 +17,13 @@ pub mod session;
 pub mod timer;
 pub mod turns;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::AbortHandle;
 
@@ -219,6 +220,22 @@ impl WebcamTables {
     /// The shared table log, newest first.
     pub async fn log(&self, room: &str) -> Result<Vec<LogEntry>, RoomGone> {
         self.call(room, RoomMsg::Log).await
+    }
+
+    /// Every virtual board by player id.
+    pub async fn boards(&self, room: &str) -> Result<BTreeMap<i64, Value>, RoomGone> {
+        self.call(room, RoomMsg::Boards).await
+    }
+
+    /// Publishes (or with `None`, clears) a seated player's virtual board.
+    pub async fn board(
+        &self,
+        room: &str,
+        player_id: i64,
+        board: Option<Value>,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::Board(player_id, board, reply))
+            .await
     }
 
     /// Records and broadcasts a seat's dice or coin roll.

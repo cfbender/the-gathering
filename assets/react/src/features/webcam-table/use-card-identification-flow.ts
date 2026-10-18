@@ -274,6 +274,8 @@ export function useCardIdentificationFlow({
     previewEntry: (entry: BoardCard) =>
       setPreview({ kind: "entry", entry, shown: entry.card, correctable: false }),
     previewArt: (art: GalleryArt) => setPreview({ kind: "art", card: toCard(art) }),
+    /** A card tapped on a seat's virtual board. */
+    previewCard: (card: IdentifiedCard) => setPreview({ kind: "art", card }),
     /** "Wrong card?" on the previewed entry: reopen the picker to replace it. */
     correctPreview: (entryId: string) => {
       setPicker({ replacing: entryId })

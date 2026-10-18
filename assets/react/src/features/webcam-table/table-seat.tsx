@@ -4,7 +4,9 @@ import type { TableParticipant } from "./room-types"
 import { SeatBar } from "./seat-bar"
 import { SeatCounterControls } from "./seat-counter-controls"
 import { SeatTrackersOverlay } from "./seat-trackers"
+import { SeatBoard } from "./virtual-board-view"
 import {
+  boardFor,
   decksFor,
   isCurrentTurn,
   videoFlip,
@@ -110,6 +112,20 @@ export function SeatActions({ view, participant, size }: SeatProps) {
         !room.spectating &&
         (room.isOwner || isLocal(view, participant))
       }
+      virtualBoard={
+        isLocal(view, participant) && !room.spectating
+          ? {
+              active: view.virtualBoard.active,
+              unavailable: view.virtualBoard.unavailable,
+              onStart: () => {
+                view.virtualBoard.start()
+                view.openBoard()
+              },
+              onStop: view.virtualBoard.stop,
+              onOpen: view.openBoard,
+            }
+          : undefined
+      }
     />
   )
 }
@@ -128,6 +144,7 @@ export function SeatTile({
   fill?: boolean
 }) {
   const { room, preferences } = view
+  const board = boardFor(view, participant)
   return (
     <div className={fill ? "flex min-h-0 flex-1 flex-col" : "overflow-hidden rounded-sm"}>
       <div className={fill ? "relative min-h-0 flex-1" : "relative"}>
@@ -142,6 +159,7 @@ export function SeatTile({
           currentTurn={isCurrentTurn(view, participant)}
           connectionState={room.connectionStates[participant.peer_id]}
           stream={streamFor(view, participant)}
+          board={board && <SeatBoard board={board} />}
           fill={fill}
           onActivate={() => togglePin(view, participant)}
           lifeControl={<SeatLife view={view} participant={participant} size="tile" />}

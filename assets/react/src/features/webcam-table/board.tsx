@@ -170,6 +170,7 @@ export function ActiveBoard({
   onInspect,
   lifeControl,
   trackers,
+  board,
 }: {
   participant: TableParticipant
   unattackable?: boolean
@@ -181,6 +182,8 @@ export function ActiveBoard({
   connectionState?: RTCPeerConnectionState
   hiddenLabel?: string
   revealBadge?: string
+  /** A virtual board the seat plays on instead of its camera; replaces the video. */
+  board?: ReactNode
   /** Shown while the viewer has pinned this board: returns to the turn or the grid. */
   release?: { label: string; title: string; icon: LucideIcon; onClick: () => void }
   /** An outline being drawn on this board (Shift+click corners). */
@@ -192,39 +195,44 @@ export function ActiveBoard({
 }) {
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
-      <button
-        type="button"
-        className="group relative block h-full w-full cursor-crosshair text-left"
-        onClick={onInspect}
-        disabled={!!hiddenLabel || participant.camera_off}
-        aria-label={`Inspect ${participant.player_name}'s board`}
-      >
-        {hiddenLabel ? (
-          <VideoPlaceholder label={hiddenLabel} />
-        ) : stream ? (
-          <StreamVideo stream={stream} className={cn("object-contain", flipClasses(flip))} />
-        ) : (
-          <VideoPlaceholder
-            label={
-              participant.departed
-                ? "Left table"
-                : local
-                  ? "Starting camera…"
-                  : describeConnection(connectionState)
-            }
-          />
-        )}
-        {participant.camera_off && <CameraOffOverlay />}
-        {outline && <OutlineMarks draft={outline} flip={flip} />}
-        {revealBadge && (
-          <span className="absolute top-28 left-2 rounded bg-primary px-2 py-1 text-xs text-primary-content">
-            {revealBadge}
+      {board && !hiddenLabel ? (
+        // Below the life box and the release/trackers stack that overlay the board's top.
+        <div className="absolute inset-0 pt-20">{board}</div>
+      ) : (
+        <button
+          type="button"
+          className="group relative block h-full w-full cursor-crosshair text-left"
+          onClick={onInspect}
+          disabled={!!hiddenLabel || participant.camera_off}
+          aria-label={`Inspect ${participant.player_name}'s board`}
+        >
+          {hiddenLabel ? (
+            <VideoPlaceholder label={hiddenLabel} />
+          ) : stream ? (
+            <StreamVideo stream={stream} className={cn("object-contain", flipClasses(flip))} />
+          ) : (
+            <VideoPlaceholder
+              label={
+                participant.departed
+                  ? "Left table"
+                  : local
+                    ? "Starting camera…"
+                    : describeConnection(connectionState)
+              }
+            />
+          )}
+          {participant.camera_off && <CameraOffOverlay />}
+          {outline && <OutlineMarks draft={outline} flip={flip} />}
+          {revealBadge && (
+            <span className="absolute top-28 left-2 rounded bg-primary px-2 py-1 text-xs text-primary-content">
+              {revealBadge}
+            </span>
+          )}
+          <span className="pointer-events-none absolute bottom-9 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-3 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+            Click a card to identify it · Shift+click its four corners to outline it
           </span>
-        )}
-        <span className="pointer-events-none absolute bottom-9 left-1/2 -translate-x-1/2 rounded-full bg-black/75 px-3 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-          Click a card to identify it · Shift+click its four corners to outline it
-        </span>
-      </button>
+        </button>
+      )}
       {participant.eliminated && <EliminatedOverlay />}
       {unattackable && (
         <span className="pointer-events-none absolute bottom-10 left-2 rounded bg-base-100/95 px-2 py-1 text-xs text-warning">
@@ -276,6 +284,7 @@ export function CameraTile({
   onActivate,
   lifeControl,
   trackers,
+  board,
 }: {
   participant: TableParticipant
   unattackable?: boolean
@@ -286,6 +295,8 @@ export function CameraTile({
   connectionState?: RTCPeerConnectionState
   hiddenLabel?: string
   revealBadge?: string
+  /** A virtual board the seat plays on instead of its camera; replaces the video. */
+  board?: ReactNode
   active: boolean
   currentTurn?: boolean
   /** Grid cells fill their container and letterbox the video so the whole board stays visible. */
@@ -312,6 +323,9 @@ export function CameraTile({
       >
         {hiddenLabel ? (
           <VideoPlaceholder compact label={hiddenLabel} />
+        ) : board ? (
+          // Read-only here: a tap anywhere on the tile shows the seat's board on the stage.
+          <div className="pointer-events-none absolute inset-0">{board}</div>
         ) : stream ? (
           <StreamVideo
             stream={stream}
@@ -329,7 +343,7 @@ export function CameraTile({
             }
           />
         )}
-        {participant.camera_off && <CameraOffOverlay compact />}
+        {participant.camera_off && !board && <CameraOffOverlay compact />}
         {revealBadge && (
           <span className="absolute right-0 bottom-0 left-0 bg-primary px-1 py-0.5 text-center text-[0.6rem] text-primary-content">
             {revealBadge}

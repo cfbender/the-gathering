@@ -428,9 +428,12 @@ board is large, everyone else is small, and controls live in a collapsible colum
   camera on/off and Reveal hand, opening the existing private-reveal flow in a dialog.
   Commander names truncate when necessary; the full name remains in the title/hover preview.
   Empty seats up to ten render as dashed "Open seat" placeholders. The rail scrolls vertically
-  on desktop and horizontally in 240px tiles at narrow widths rather than shrinking ten cameras until their
-  names and controls are unreadable. Clicking a tile soft-pins that board over the active turn;
-  clicking the same tile again releases it.
+  rather than shrinking ten cameras until their names and controls are unreadable. Clicking a
+  tile soft-pins that board over the active turn; clicking the same tile again releases it.
+- **Phones** (below `lg`) put the board first: the rail becomes a strip of seat chips (name, life,
+  turn, camera off) that pin boards the same way, a thumb bar holds your life ±, Pass turn, My
+  board (on a virtual board), and the panel button, and the side panel opens as a bottom sheet
+  that starts closed. Landscape phones put the chips and the thumb bar in one row above the board.
 - **Commander identity** colors both the rail and active-board name bars: one muted solid for
   mono-color, a WUBRG-ordered gradient for multiple colors, and neutral for colorless or unknown.
   The active-board commander name shows identity pips using the existing mana symbols; compact
@@ -660,6 +663,27 @@ handler enforce visibility. Authorized viewers still receive the owner's native 
 crop from the untouched 1080p source, unaffected by the sender tiers. Identifications during
 a reveal stay local to the clicker rather than entering the shared card tray. A chosen viewer
 can still save or share what they saw; this feature cannot revoke frames already delivered.
+
+### Virtual board
+
+A seat can play on a virtual tabletop instead of a camera: **Use virtual board** in your own seat
+menu deals a game from your chosen deck's linked list (commander zone plus a shuffled library and
+an opening hand) and turns your camera off. The board is the shared
+[`@cfbender/playtest`](https://github.com/cfbender/playtest) playtester, also used by ManaVault.
+**My board** (seat bar, or the phone thumb bar) opens it full screen; **Table** goes back.
+
+The whole game stays in the owner's browser, saved per table and player in `localStorage`, so a
+reload resumes it. Only `projectPublicSnapshot` goes to the table: hand and library become counts
+and face-down cards are anonymous. The `board` channel event (`{board}` or `{board: null}`,
+seated players only, capped at 128 KiB) stores it in the room's durable state by player id and
+broadcasts `board {player_id, board}`; every (re)join receives all of them as `table_boards`, and
+a rematch clears them (the owner deals a fresh game when its seat resets). Viewers parse each
+board before drawing it, keeping only known fields and card images under `/api/card-images`.
+
+Other seats draw the board in place of the video in the stage, rail, and grid; tapping a face-up
+card in the stage opens the usual card preview. Life comes from the seat (the board's life
+control changes the table's), and when the table's turn reaches the owner the board untaps
+and draws. **Use camera instead** clears the board and turns the camera back on.
 
 ## File and component structure
 
