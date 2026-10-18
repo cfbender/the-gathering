@@ -68,6 +68,7 @@ function renderPage(currentUser = user) {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe("deck chooser", () => {
@@ -96,6 +97,33 @@ describe("deck chooser", () => {
     },
   )
 
+  it("shows the script's note and warns when the script fell back to built-in weights", async () => {
+    const body = pick(1, "Scripted deck")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: {
+              ...body.data,
+              chance: 0.125,
+              note: "Rematch: lost in 25 min",
+              script_error: { message: "attempt to index a nil value", line: 4 },
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    )
+    renderPage()
+    expect(await screen.findByText("Rematch: lost in 25 min")).toBeTruthy()
+    expect(screen.getByText("12.5% chance")).toBeTruthy()
+    expect(screen.getByRole("alert").textContent).toContain("line 4: attempt to index a nil value")
+    expect(screen.getByRole("link", { name: "Fix the script" }).getAttribute("href")).toBe(
+      "/decks/choose/script",
+    )
+  })
+
   it("hides hosted-deck sync until a deck host is configured", async () => {
     vi.stubGlobal(
       "fetch",
@@ -117,15 +145,18 @@ describe("deck chooser", () => {
   })
 
   it("records a skip before requesting a different candidate", async () => {
+    vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({
+      timeZone: "America/New_York",
+    } as Intl.ResolvedDateTimeFormatOptions)
     const calls: string[] = []
     const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
       calls.push(`${init?.method ?? "GET"} ${url}`)
 
       const body =
-        url === "/api/deck-chooser?exclude_id=1"
+        url === "/api/deck-chooser?exclude_id=1&tz=America%2FNew_York"
           ? pick(2, "Second deck")
-          : url === "/api/deck-chooser"
+          : url === "/api/deck-chooser?tz=America%2FNew_York"
             ? pick(1, "First deck")
             : { data: { deck_id: 1, outcome: "skipped", skip_count: 1 } }
 
@@ -142,9 +173,9 @@ describe("deck chooser", () => {
     await screen.findByRole("heading", { name: "Second deck" })
 
     expect(calls).toEqual([
-      "GET /api/deck-chooser",
+      "GET /api/deck-chooser?tz=America%2FNew_York",
       "POST /api/deck-chooser/1/outcomes",
-      "GET /api/deck-chooser?exclude_id=1",
+      "GET /api/deck-chooser?exclude_id=1&tz=America%2FNew_York",
     ])
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3))
   })

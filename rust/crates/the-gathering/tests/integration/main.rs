@@ -21,6 +21,7 @@ mod auth_api;
 mod card_api;
 mod cardid_api;
 mod catalog;
+mod deck_chooser_scripts;
 mod decklists;
 mod decks_api;
 mod dev_auto_login;

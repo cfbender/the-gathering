@@ -1,4 +1,4 @@
-import { Check, Dices, Library, SkipForward } from "lucide-react"
+import { AlertTriangle, Check, Dices, Library, SkipForward, SlidersHorizontal } from "lucide-react"
 import { useState } from "react"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { CardArtBackground } from "@/components/card-art-background"
@@ -36,8 +36,15 @@ export function DeckChooserPage() {
       <PageHeader
         eyebrow="What should I play?"
         title="Choose a deck"
-        description="A weighted pick favors decks you have not played recently, while your skips keep nudging a deck back into the mix."
-        actions={<SyncRemoteDecksButton sync={sync} />}
+        description="A weighted pick favors decks you have not played recently, while your skips keep nudging a deck back into the mix. Customize it with your own script."
+        actions={
+          <>
+            <a href="/decks/choose/script" className="btn btn-outline btn-sm">
+              <SlidersHorizontal className="size-4" /> Customize
+            </a>
+            <SyncRemoteDecksButton sync={sync} />
+          </>
+        }
       />
 
       <a href="/decks" className="link link-hover text-base-content/65 w-fit text-sm">
@@ -62,6 +69,21 @@ export function DeckChooserPage() {
         </div>
       )}
 
+      {pick.data?.deck && pick.data.script_error && (
+        <div role="alert" className="alert alert-warning">
+          <AlertTriangle className="size-5" />
+          <span className="min-w-0">
+            Your chooser script failed, so this pick used the built-in weights:{" "}
+            <span className="font-mono text-xs break-words">
+              {pick.data.script_error.line !== null && `line ${pick.data.script_error.line}: `}
+              {pick.data.script_error.message}
+            </span>
+          </span>
+          <a href="/decks/choose/script" className="btn btn-sm">
+            Fix the script
+          </a>
+        </div>
+      )}
       {pick.isPending && <ChooserSkeleton />}
       {pick.isError && (
         <div role="alert" className="alert alert-error">
@@ -128,6 +150,9 @@ function DeckCandidate({
             <DeckCommanders deck={deck} />
           </p>
           <ColorIdentity colors={deck.color_identity} className="mt-3 text-xl" />
+          {pick.note && (
+            <p className="text-base-content/85 mt-4 text-base font-semibold">{pick.note}</p>
+          )}
           <div className="mt-5 flex flex-wrap gap-2 text-sm">
             <span className="badge badge-lg bg-base-100/75 border-base-300">
               {pick.play_count} {pick.play_count === 1 ? "play" : "plays"}
@@ -140,6 +165,11 @@ function DeckCandidate({
                 ? `Last played ${formatDate(pick.last_played_at)}`
                 : "Never played"}
             </span>
+            {pick.chance !== undefined && (
+              <span className="badge badge-lg bg-base-100/75 border-base-300">
+                {formatChance(pick.chance)} chance
+              </span>
+            )}
           </div>
         </div>
         <div className="card-actions flex-col justify-end sm:flex-row">
@@ -170,6 +200,12 @@ function ChooserSkeleton() {
         <div className="bg-base-300 h-5 w-1/2 rounded" />
       </div>
     </div>
+  )
+}
+
+function formatChance(value: number) {
+  return new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: 1 }).format(
+    value,
   )
 }
 

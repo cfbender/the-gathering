@@ -36,6 +36,7 @@ import { Route as PlayersIndexRouteImport } from "./routes/players.index"
 import { Route as PlayersPlayerIdRouteImport } from "./routes/players.$playerId"
 import { Route as TableRoomIdRouteImport } from "./routes/table.$roomId"
 import { Route as TableNewRouteImport } from "./routes/table.new"
+import { Route as DecksChooseScriptRouteImport } from "./routes/decks.choose_.script"
 import { Route as GamesGameIdEditRouteImport } from "./routes/games.$gameId_.edit"
 
 const IndexRoute = IndexRouteImport.update({
@@ -173,6 +174,11 @@ const TableNewRoute = TableNewRouteImport.update({
   path: "/table/new",
   getParentRoute: () => rootRouteImport,
 } as any)
+const DecksChooseScriptRoute = DecksChooseScriptRouteImport.update({
+  id: "/decks/choose_/script",
+  path: "/decks/choose/script",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GamesGameIdEditRoute = GamesGameIdEditRouteImport.update({
   id: "/games/$gameId_/edit",
   path: "/games/$gameId/edit",
@@ -207,6 +213,7 @@ export interface FileRoutesByFullPath {
   "/decks/": typeof DecksIndexRoute
   "/games/": typeof GamesIndexRoute
   "/players/": typeof PlayersIndexRoute
+  "/decks/choose/script": typeof DecksChooseScriptRoute
   "/games/$gameId/edit": typeof GamesGameIdEditRoute
 }
 export interface FileRoutesByTo {
@@ -237,6 +244,7 @@ export interface FileRoutesByTo {
   "/decks": typeof DecksIndexRoute
   "/games": typeof GamesIndexRoute
   "/players": typeof PlayersIndexRoute
+  "/decks/choose/script": typeof DecksChooseScriptRoute
   "/games/$gameId/edit": typeof GamesGameIdEditRoute
 }
 export interface FileRoutesById {
@@ -268,6 +276,7 @@ export interface FileRoutesById {
   "/decks/": typeof DecksIndexRoute
   "/games/": typeof GamesIndexRoute
   "/players/": typeof PlayersIndexRoute
+  "/decks/choose_/script": typeof DecksChooseScriptRoute
   "/games/$gameId_/edit": typeof GamesGameIdEditRoute
 }
 export interface FileRouteTypes {
@@ -300,6 +309,7 @@ export interface FileRouteTypes {
     | "/decks/"
     | "/games/"
     | "/players/"
+    | "/decks/choose/script"
     | "/games/$gameId/edit"
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -330,6 +340,7 @@ export interface FileRouteTypes {
     | "/decks"
     | "/games"
     | "/players"
+    | "/decks/choose/script"
     | "/games/$gameId/edit"
   id:
     | "__root__"
@@ -360,6 +371,7 @@ export interface FileRouteTypes {
     | "/decks/"
     | "/games/"
     | "/players/"
+    | "/decks/choose_/script"
     | "/games/$gameId_/edit"
   fileRoutesById: FileRoutesById
 }
@@ -384,6 +396,7 @@ export interface RootRouteChildren {
   DecksIndexRoute: typeof DecksIndexRoute
   GamesIndexRoute: typeof GamesIndexRoute
   PlayersIndexRoute: typeof PlayersIndexRoute
+  DecksChooseScriptRoute: typeof DecksChooseScriptRoute
   GamesGameIdEditRoute: typeof GamesGameIdEditRoute
 }
 
@@ -578,6 +591,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof TableNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/decks/choose_/script": {
+      id: "/decks/choose_/script"
+      path: "/decks/choose/script"
+      fullPath: "/decks/choose/script"
+      preLoaderRoute: typeof DecksChooseScriptRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/games/$gameId_/edit": {
       id: "/games/$gameId_/edit"
       path: "/games/$gameId/edit"
@@ -631,6 +651,7 @@ const rootRouteChildren: RootRouteChildren = {
   DecksIndexRoute: DecksIndexRoute,
   GamesIndexRoute: GamesIndexRoute,
   PlayersIndexRoute: PlayersIndexRoute,
+  DecksChooseScriptRoute: DecksChooseScriptRoute,
   GamesGameIdEditRoute: GamesGameIdEditRoute,
 }
 export const routeTree = rootRouteImport

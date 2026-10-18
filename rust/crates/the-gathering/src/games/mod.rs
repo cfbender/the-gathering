@@ -5,9 +5,11 @@
 //! already hold a transaction (imports, the Discord bot) can compose them; steps that must
 //! succeed or fail together open a savepoint.
 
+pub mod chooser_context;
 pub mod color_identity;
 pub mod deck;
 pub mod deck_picker;
+pub mod deck_script;
 pub mod game;
 pub mod input;
 pub mod link_catalog_cards;
@@ -33,9 +35,10 @@ use sqlx::SqliteConnection;
 use crate::accounts::User;
 use crate::db::{self, Pool, UtcDateTime};
 use crate::error::ApiError;
+use crate::local_time::Zone;
 use crate::validation::ValidationError;
 
-pub use self::deck_picker::{Candidate, DeckPick, Outcome};
+pub use self::deck_picker::{Candidate, Chooser, DeckPick, Outcome, Pick, Scored, WeightSource};
 pub use self::input::{DeckInput, GameInput, PlayerInput, SeatInput};
 pub use self::list_games::GameFilters;
 pub use self::merge_players::LinkPlan;
@@ -424,21 +427,82 @@ impl Games {
         .await
     }
 
-    /// Picks one of the member's decks at random, weighted toward decks played least lately.
+    /// Picks one of the member's decks at random, weighted by their script or, without one
+    /// (or when it fails), toward decks played least lately. `zone` is the browser's zone the
+    /// script sees.
     pub async fn pick_deck(
         &self,
         user: &User,
         exclude_id: Option<i64>,
+        zone: &Zone,
         random: f64,
     ) -> Result<DeckPick, sqlx::Error> {
-        deck_picker::random_deck(
+        let (chooser, script) = {
+            let mut conn = self.pool.acquire().await?;
+            let chooser =
+                deck_picker::load_chooser(&mut conn, user.id, exclude_id, UtcDateTime::now(), zone)
+                    .await?;
+            (chooser, deck_picker::get_script(&mut conn, user.id).await?)
+        };
+        let Some(chooser) = chooser else {
+            return Ok(DeckPick::PlayerNotLinked);
+        };
+        let scored = deck_picker::score(&chooser, script).await;
+        Ok(deck_picker::pick(chooser, scored, random))
+    }
+
+    /// The chooser's inputs weighed with `script` (the built-in weights for `None`), without
+    /// picking; `None` when the member has no linked player.
+    pub async fn preview_deck_script(
+        &self,
+        user: &User,
+        script: Option<String>,
+        exclude_id: Option<i64>,
+        zone: &Zone,
+    ) -> Result<Option<(Chooser, Scored)>, sqlx::Error> {
+        let chooser = deck_picker::load_chooser(
             &mut *self.pool.acquire().await?,
             user.id,
             exclude_id,
             UtcDateTime::now(),
-            random,
+            zone,
         )
-        .await
+        .await?;
+        let Some(chooser) = chooser else {
+            return Ok(None);
+        };
+        let scored = deck_picker::score(&chooser, script).await;
+        Ok(Some((chooser, scored)))
+    }
+
+    /// The member's saved deck chooser script.
+    pub async fn deck_script(&self, user: &User) -> Result<Option<String>, sqlx::Error> {
+        deck_picker::get_script(&mut *self.pool.acquire().await?, user.id).await
+    }
+
+    /// Saves the member's deck chooser script after checking that it compiles and defines
+    /// `weight`; a blank script clears it.
+    pub async fn save_deck_script(
+        &self,
+        user: &User,
+        script: Option<String>,
+    ) -> Result<Option<String>, GamesError> {
+        let script = script.filter(|script| !script.trim().is_empty());
+        if let Some(script) = script.clone() {
+            let checked = tokio::task::spawn_blocking(move || deck_script::check(&script))
+                .await
+                .map_err(|_| GamesError::BadRequest)?;
+            if let Err(error) = checked {
+                return Err(ValidationError::single("script", error.to_string()).into());
+            }
+        }
+        write_tx!(self, |conn| deck_picker::set_script(
+            conn,
+            user.id,
+            script.as_deref()
+        )
+        .await)?;
+        Ok(script)
     }
 
     /// Records whether the member played or skipped a picked deck.

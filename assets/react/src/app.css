@@ -259,3 +259,50 @@ html[data-theme-style="glass"] :is(.btn-outline, .btn-ghost):hover {
     padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Lua syntax colors for the deck chooser script editor, drawn from the active palette and
+ * pulled toward the text color so every palette stays readable in light and dark modes. Colors
+ * only: the editor overlays these on a textarea, so glyph widths must not change. */
+.lua-keyword,
+.lua-string,
+.lua-number,
+.lua-constant,
+.lua-builtin,
+.lua-global,
+.lua-function {
+  color: color-mix(in oklch, var(--lua-color) 78%, var(--color-base-content));
+}
+
+.lua-keyword {
+  --lua-color: var(--color-primary);
+}
+
+.lua-string {
+  --lua-color: var(--color-secondary);
+}
+
+.lua-number,
+.lua-constant {
+  --lua-color: var(--color-accent);
+}
+
+.lua-builtin,
+.lua-function {
+  --lua-color: var(--color-info);
+}
+
+.lua-global {
+  --lua-color: var(--color-warning);
+}
+
+.lua-field {
+  color: color-mix(in oklch, var(--color-base-content) 85%, transparent);
+}
+
+.lua-operator {
+  color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+}
+
+.lua-comment {
+  color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+}

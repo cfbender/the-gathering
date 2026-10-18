@@ -1745,10 +1745,16 @@ async fn excluded_and_archived_decks_never_appear() {
         .execute(app.pool())
         .await
         .unwrap();
-    match app.state.games.pick_deck(&user, None, 0.0).await.unwrap() {
+    match app
+        .state
+        .games
+        .pick_deck(&user, None, &the_gathering::local_time::Zone::utc(), 0.0)
+        .await
+        .unwrap()
+    {
         the_gathering::games::DeckPick::Picked(pick) => {
-            assert_eq!(pick.deck.id, eligible.id);
-            assert!(![excluded.id, archived.id].contains(&pick.deck.id));
+            assert_eq!(pick.candidate.deck.id, eligible.id);
+            assert!(![excluded.id, archived.id].contains(&pick.candidate.deck.id));
         }
         other => panic!("unexpected {other:?}"),
     }
@@ -1800,10 +1806,19 @@ async fn play_count_and_last_played_are_derived_from_game_seats() {
         None,
     )
     .await;
-    match app.state.games.pick_deck(&user, None, 0.0).await.unwrap() {
+    match app
+        .state
+        .games
+        .pick_deck(&user, None, &the_gathering::local_time::Zone::utc(), 0.0)
+        .await
+        .unwrap()
+    {
         the_gathering::games::DeckPick::Picked(pick) => {
-            assert_eq!(pick.play_count, 1);
-            assert_eq!(pick.last_played_at, Some(utc("2026-09-19T18:00:00Z")));
+            assert_eq!(pick.candidate.play_count, 1);
+            assert_eq!(
+                pick.candidate.last_played_at,
+                Some(utc("2026-09-19T18:00:00Z"))
+            );
         }
         other => panic!("unexpected {other:?}"),
     }

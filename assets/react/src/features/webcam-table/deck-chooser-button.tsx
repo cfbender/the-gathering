@@ -74,6 +74,11 @@ export function DeckChooserButton({ onChooseDeck }: { onChooseDeck: (deckId: num
                     ? `last played ${formatDate(candidate.last_played_at)}`
                     : "never played"}
                 </p>
+                {candidate.note && (
+                  <p className="text-base-content/80 mt-1 text-[0.65rem] font-semibold">
+                    {candidate.note}
+                  </p>
+                )}
               </div>
               {outcome.isError && (
                 <p role="alert" className="text-error text-xs">

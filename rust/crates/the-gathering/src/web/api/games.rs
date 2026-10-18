@@ -602,6 +602,8 @@ pub async fn games_delete(
 pub struct ChooserQuery {
     /// The previous suggestion, skipped when another deck is available.
     exclude_id: Option<i64>,
+    /// The browser's IANA zone, for the local time scripts see (UTC when unknown).
+    tz: Option<String>,
 }
 
 /// `GET /api/deck-chooser` (`exclude_id` skips the previous suggestion).
@@ -611,24 +613,130 @@ pub async fn deck_chooser_show(
     QueryParams(query): QueryParams<ChooserQuery>,
 ) -> ApiResult<Json<Value>> {
     let random: f64 = rand::random();
+    let zone = Zone::parse(query.tz.as_deref());
     let pick = state
         .games
-        .pick_deck(&user, query.exclude_id, random)
+        .pick_deck(&user, query.exclude_id, &zone, random)
         .await?;
     Ok(match pick {
         DeckPick::PlayerNotLinked => data(json!({ "deck": null, "reason": "player_not_linked" })),
         DeckPick::NoEligibleDecks => data(json!({ "deck": null, "reason": "no_eligible_decks" })),
-        DeckPick::Picked(candidate) => {
+        DeckPick::Picked(pick) => {
+            let candidate = &pick.candidate;
             let art = art_urls(&state, &deck_card_refs(&candidate.deck)).await?;
             data(json!({
                 "deck": deck_summary(&candidate.deck, None, &art),
                 "play_count": candidate.play_count,
                 "skip_count": candidate.deck.skip_count,
                 "last_played_at": candidate.last_played_at,
+                "chance": pick.chance,
+                "note": pick.note,
+                "script_error": pick.script_error,
                 "reason": null,
             }))
         }
     })
+}
+
+/// `GET /api/deck-chooser/script`: the member's saved script (`null` for the built-in weights).
+pub async fn deck_chooser_script_show(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> ApiResult<Json<Value>> {
+    let script = state.games.deck_script(&user).await?;
+    Ok(data(json!({ "script": script })))
+}
+
+/// `PUT /api/deck-chooser/script` body.
+#[derive(Debug, Deserialize)]
+pub struct ScriptBody {
+    /// Lua source; `null` or blank restores the built-in weights.
+    script: Option<String>,
+}
+
+/// `PUT /api/deck-chooser/script`: saves a script that compiles and defines `weight`.
+pub async fn deck_chooser_script_update(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    JsonBody(body): JsonBody<ScriptBody>,
+) -> ApiResult<Json<Value>> {
+    let script = state.games.save_deck_script(&user, body.script).await?;
+    Ok(data(json!({ "script": script })))
+}
+
+/// `POST /api/deck-chooser/preview` body.
+#[derive(Debug, Default, Deserialize)]
+pub struct PreviewBody {
+    /// The draft script; `null` or blank previews the built-in weights.
+    #[serde(default)]
+    script: Option<String>,
+    /// The browser's IANA zone.
+    #[serde(default)]
+    tz: Option<String>,
+    /// A deck to leave out, as when it was just skipped.
+    #[serde(default)]
+    exclude_id: Option<i64>,
+}
+
+/// `POST /api/deck-chooser/preview`: weighs the member's decks with a draft script without
+/// picking or saving, returning each deck's script input, weight, and chance, the context,
+/// and the script's log or error.
+pub async fn deck_chooser_preview(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    JsonBody(body): JsonBody<PreviewBody>,
+) -> ApiResult<Json<Value>> {
+    let zone = Zone::parse(body.tz.as_deref());
+    let script = body.script.filter(|script| !script.trim().is_empty());
+    let Some((chooser, scored)) = state
+        .games
+        .preview_deck_script(&user, script, body.exclude_id, &zone)
+        .await?
+    else {
+        return Ok(data(json!({
+            "reason": "player_not_linked",
+            "source": null,
+            "error": null,
+            "logs": [],
+            "context": null,
+            "decks": [],
+        })));
+    };
+    let mut context = chooser.context;
+    let inputs = context
+        .as_object_mut()
+        .and_then(|context| context.remove("decks"))
+        .and_then(|decks| match decks {
+            Value::Array(decks) => Some(decks),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let chances = scored.chances();
+    let decks: Vec<Value> = chooser
+        .candidates
+        .iter()
+        .zip(inputs)
+        .zip(scored.weights.iter().zip(chances))
+        .map(|((candidate, input), (weighted, chance))| {
+            json!({
+                "id": candidate.deck.id,
+                "name": candidate.deck.name,
+                "base_weight": candidate.weight,
+                "weight": weighted.weight,
+                "chance": chance,
+                "note": weighted.note,
+                "input": input,
+            })
+        })
+        .collect();
+    Ok(data(json!({
+        "reason": if decks.is_empty() { json!("no_eligible_decks") } else { Value::Null },
+        "source": scored.source.as_str(),
+        "error": scored.error,
+        "logs": scored.logs,
+        "context": context,
+        "decks": decks,
+    })))
 }
 
 /// What the member did with a suggestion.

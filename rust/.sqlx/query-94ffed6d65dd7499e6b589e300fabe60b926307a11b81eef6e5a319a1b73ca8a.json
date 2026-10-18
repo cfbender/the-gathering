@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT deck_chooser_script FROM users WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "deck_chooser_script",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "deck_chooser_script"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "94ffed6d65dd7499e6b589e300fabe60b926307a11b81eef6e5a319a1b73ca8a"
+}

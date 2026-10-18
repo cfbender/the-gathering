@@ -62,6 +62,15 @@ impl Zone {
         UtcDateTime::from_unix(zoned.timestamp().as_second())
     }
 
+    /// The local date and wall clock of a UTC instant.
+    pub fn zoned(&self, at: UtcDateTime) -> Option<jiff::Zoned> {
+        Some(
+            Timestamp::from_second(at.unix())
+                .ok()?
+                .to_zoned(self.tz.clone()),
+        )
+    }
+
     /// The local wall clock of a UTC instant: Sunday-first weekday (0 = Sunday … 6 = Saturday,
     /// like JavaScript's `Date#getDay`) and hour.
     pub fn weekday_and_hour(&self, at: UtcDateTime) -> Option<(i64, i64)> {

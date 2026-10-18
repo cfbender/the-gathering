@@ -113,6 +113,14 @@ pub fn router(state: AppState) -> Router {
         .route("/api/stats/commanders/{id}", get(stats::commander))
         .route("/api/deck-chooser", get(games::deck_chooser_show))
         .route(
+            "/api/deck-chooser/script",
+            get(games::deck_chooser_script_show).put(games::deck_chooser_script_update),
+        )
+        .route(
+            "/api/deck-chooser/preview",
+            post(games::deck_chooser_preview),
+        )
+        .route(
             "/api/deck-chooser/{id}/outcomes",
             post(games::deck_chooser_outcome),
         )

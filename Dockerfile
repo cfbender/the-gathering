@@ -38,6 +38,8 @@ RUN aube install --frozen-lockfile
 
 COPY vite.config.ts tsconfig.json ./
 COPY assets assets
+# The deck chooser script editor renders its field reference from this guide.
+COPY docs/deck-chooser-scripts.md docs/deck-chooser-scripts.md
 COPY priv/static priv/static
 RUN NODE_ENV=production aube run build
 

@@ -1,0 +1,230 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT g.id AS \"game_id!\", g.played_at AS \"played_at!: UtcDateTime\", g.duration_minutes, g.turns,\n                  g.format AS \"format!\", g.win_condition, s.player_id AS \"player_id!\", p.name AS \"player_name!\",\n                  s.deck_id, d.name AS \"deck_name?\", d.commander_name AS \"commander_name?\",\n                  d.partner_name AS \"partner_name?\", d.color_identity AS \"color_identity?\",\n                  s.result AS \"result!\", s.eliminated_turn, s.kills, s.mvp_card_name,\n                  eb.name AS \"eliminated_by?\"\n           FROM game_players s\n           JOIN games g ON g.id = s.game_id\n           JOIN players p ON p.id = s.player_id\n           LEFT JOIN decks d ON d.id = s.deck_id\n           LEFT JOIN players eb ON eb.id = s.eliminated_by_player_id\n           WHERE s.game_id IN (SELECT game_id FROM game_players WHERE player_id = ?)\n           ORDER BY g.played_at DESC, g.id DESC, s.seat, s.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "game_id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "played_at!: UtcDateTime",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "played_at"
+          }
+        }
+      },
+      {
+        "name": "duration_minutes",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "duration_minutes"
+          }
+        }
+      },
+      {
+        "name": "turns",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "turns"
+          }
+        }
+      },
+      {
+        "name": "format!",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "format"
+          }
+        }
+      },
+      {
+        "name": "win_condition",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "games",
+            "name": "win_condition"
+          }
+        }
+      },
+      {
+        "name": "player_id!",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "player_id"
+          }
+        }
+      },
+      {
+        "name": "player_name!",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "deck_id",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "deck_id"
+          }
+        }
+      },
+      {
+        "name": "deck_name?",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "commander_name?",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "commander_name"
+          }
+        }
+      },
+      {
+        "name": "partner_name?",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "partner_name"
+          }
+        }
+      },
+      {
+        "name": "color_identity?",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "decks",
+            "name": "color_identity"
+          }
+        }
+      },
+      {
+        "name": "result!",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "result"
+          }
+        }
+      },
+      {
+        "name": "eliminated_turn",
+        "ordinal": 14,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "eliminated_turn"
+          }
+        }
+      },
+      {
+        "name": "kills",
+        "ordinal": 15,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "kills"
+          }
+        }
+      },
+      {
+        "name": "mvp_card_name",
+        "ordinal": 16,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "mvp_card_name"
+          }
+        }
+      },
+      {
+        "name": "eliminated_by?",
+        "ordinal": 17,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "players",
+            "name": "name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "8c1c734f00e8ecdc0a2b44153e7f785c0b366f137c45c5c77746897fc4c4d16b"
+}

@@ -9,8 +9,9 @@ const backendOrigin = `http://127.0.0.1:${process.env.PORT || "4000"}`
 const vitePort = Number(process.env.VITE_PORT || 5173)
 
 // Paths the Vite dev server owns. Everything else (the SPA shell, /api, static
-// files under priv/static) is proxied to the backend so one origin serves it all.
-const vitePathPrefixes = ["/assets/react/", "/@", "/node_modules/", "/__vite"]
+// files under priv/static) is proxied to the backend so one origin serves it all. `/docs/`
+// covers guides the app imports as raw text (the deck chooser script reference).
+const vitePathPrefixes = ["/assets/react/", "/docs/", "/@", "/node_modules/", "/__vite"]
 
 export default defineConfig({
   base: process.env.NODE_ENV === "production" ? "/assets/react/" : "/",

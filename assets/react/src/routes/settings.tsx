@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/app-shell"
 import { AppearanceSection } from "@/components/appearance-section"
 import { SudoPrompt } from "@/components/sudo-prompt"
 import { ApiKeysSection } from "@/features/api-keys/api-keys-section"
+import { DeckChooserSettingsSection } from "@/features/decks/deck-chooser-settings-section"
 import { invalidateGameRelated } from "@/features/games/games"
 import { api } from "@/lib/api"
 import { errorMessage, requireUser, useCurrentUser } from "@/lib/auth"
@@ -102,10 +103,12 @@ function SettingsPage() {
       <PageHeader
         eyebrow="Account"
         title="Settings"
-        description={`Manage your profile${user.has_password ? ", password" : ""}, appearance, and API keys.`}
+        description={`Manage your profile${user.has_password ? ", password" : ""}, appearance, deck chooser, and API keys.`}
       />
 
       <AppearanceSection />
+
+      <DeckChooserSettingsSection />
 
       <form className="card bg-base-200 border-base-300 min-w-0 border" onSubmit={updateProfile}>
         <div className="card-body min-w-0 gap-4">

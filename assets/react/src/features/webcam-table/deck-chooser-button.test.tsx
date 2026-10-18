@@ -34,6 +34,7 @@ function pick(id: number, name: string) {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 function stubChooser(bodyFor: (method: string, url: string) => unknown) {
@@ -68,10 +69,13 @@ function renderButton() {
 
 describe("table deck chooser", () => {
   it("waits for the popover, skips, then seats the played deck", async () => {
+    vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({
+      timeZone: "America/New_York",
+    } as Intl.ResolvedDateTimeFormatOptions)
     const calls = stubChooser((method, url) =>
       method === "POST"
         ? { data: { deck_id: 1, outcome: "ok", skip_count: 0 } }
-        : url === "/api/deck-chooser?exclude_id=1"
+        : url === "/api/deck-chooser?exclude_id=1&tz=America%2FNew_York"
           ? pick(2, "Second deck")
           : pick(1, "First deck"),
     )
@@ -86,9 +90,9 @@ describe("table deck chooser", () => {
 
     await waitFor(() => expect(onChooseDeck).toHaveBeenCalledWith(2))
     expect(calls).toEqual([
-      "GET /api/deck-chooser",
+      "GET /api/deck-chooser?tz=America%2FNew_York",
       "POST /api/deck-chooser/1/outcomes",
-      "GET /api/deck-chooser?exclude_id=1",
+      "GET /api/deck-chooser?exclude_id=1&tz=America%2FNew_York",
       "POST /api/deck-chooser/2/outcomes",
     ])
     await waitFor(() => expect(screen.queryByText("Second deck")).toBeNull())

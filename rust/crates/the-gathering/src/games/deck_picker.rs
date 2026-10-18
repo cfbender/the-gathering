@@ -1,14 +1,26 @@
-//! The deck chooser: a weighted random pick among the
-//! signed-in member's playable decks that favors never-played, older, skipped, and
-//! less-played decks.
+//! The deck chooser: a weighted random pick among the signed-in member's playable decks.
+//!
+//! The built-in weights favor never-played, older, skipped, and less-played decks. A member
+//! can replace them with a Lua script ([`super::deck_script`]) that weighs each deck from the
+//! tables [`super::chooser_context`] builds; a script that fails falls back to the built-in
+//! weights and reports why.
 
+use std::time::Duration;
+
+use serde_json::Value;
 use sqlx::SqliteConnection;
 
 use crate::db::UtcDateTime;
+use crate::local_time::Zone;
 
 use super::GamesError;
-use super::model::{Deck, get_deck, select_decks};
+use super::chooser_context;
+use super::deck_script::{self, ScriptError, Weighted};
+use super::model::{Deck, Player, get_deck, select_decks};
 use super::player::get_player_for_user;
+
+/// How long a request waits for a script; the sandbox's own limits normally stop it sooner.
+const SCRIPT_TIMEOUT: Duration = Duration::from_secs(2);
 
 const UNPLAYED_BOOST_HOURS: i64 = 30 * 24;
 
@@ -33,7 +45,81 @@ pub enum DeckPick {
     /// No deck is playable (`reason: "no_eligible_decks"`).
     NoEligibleDecks,
     /// A deck.
-    Picked(Box<Candidate>),
+    Picked(Box<Pick>),
+}
+
+/// A picked deck and how it was weighed.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Pick {
+    /// The deck, with the weight it was drawn with.
+    pub candidate: Candidate,
+    /// Its share of the total weight.
+    pub chance: f64,
+    /// The script's note for it.
+    pub note: Option<String>,
+    /// Why the member's script was not used, when it failed.
+    pub script_error: Option<ScriptError>,
+}
+
+/// Where the weights came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeightSource {
+    /// The built-in formula (no script, or the script failed).
+    BuiltIn,
+    /// The member's script.
+    Script,
+}
+
+impl WeightSource {
+    /// The wire value.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BuiltIn => "built_in",
+            Self::Script => "script",
+        }
+    }
+}
+
+/// The weights a pick draws from, one per candidate.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Scored {
+    /// One per candidate, in order.
+    pub weights: Vec<Weighted>,
+    /// Where they came from.
+    pub source: WeightSource,
+    /// Why the script was not used.
+    pub error: Option<ScriptError>,
+    /// The script's `print` output.
+    pub logs: Vec<String>,
+}
+
+impl Scored {
+    /// Each weight's share of the total (zero when every weight is zero).
+    pub fn chances(&self) -> Vec<f64> {
+        let total: f64 = self.weights.iter().map(|weighted| weighted.weight).sum();
+        self.weights
+            .iter()
+            .map(|weighted| {
+                if total > 0.0 {
+                    weighted.weight / total
+                } else {
+                    0.0
+                }
+            })
+            .collect()
+    }
+}
+
+/// Everything a pick or preview weighs: the member's player, playable decks with built-in
+/// weights, and the script context.
+#[derive(Clone, Debug)]
+pub struct Chooser {
+    /// The member's player.
+    pub player: Player,
+    /// Playable decks, with built-in weights.
+    pub candidates: Vec<Candidate>,
+    /// The `ctx` table; `ctx.decks` holds one `deck` table per candidate.
+    pub context: Value,
 }
 
 /// An outcome the member reports for a suggested deck.
@@ -105,17 +191,21 @@ pub fn selection_weights(candidates: Vec<Candidate>, now: UtcDateTime) -> Vec<Ca
         .collect()
 }
 
-fn weighted_pick(weighted: Vec<Candidate>, random: f64) -> Option<Candidate> {
-    let total: f64 = weighted.iter().map(|candidate| candidate.weight).sum();
+/// Draws one candidate in proportion to `weights`; zero-weight candidates are never drawn.
+fn weighted_pick(weights: &[Weighted], random: f64) -> Option<usize> {
+    let total: f64 = weights.iter().map(|weighted| weighted.weight).sum();
     let threshold = random.clamp(0.0, 1.0) * total;
     let mut cumulative = 0.0;
     let mut last = None;
-    for candidate in weighted {
-        cumulative += candidate.weight;
-        if cumulative >= threshold {
-            return Some(candidate);
+    for (index, weighted) in weights.iter().enumerate() {
+        if weighted.weight <= 0.0 {
+            continue;
         }
-        last = Some(candidate);
+        cumulative += weighted.weight;
+        if cumulative >= threshold {
+            return Some(index);
+        }
+        last = Some(index);
     }
     last
 }
@@ -153,31 +243,139 @@ async fn playable_decks(
         .collect())
 }
 
-/// Picks one of the player's playable decks, weighted toward ones played less. The deck
-/// `exclude_id` is skipped when other candidates remain; `random` is a uniform draw in
-/// `[0, 1]`.
-pub async fn random_deck(
+/// The member's playable decks and script context, or `None` without a linked player. The
+/// deck `exclude_id` is left out when other candidates remain.
+pub async fn load_chooser(
     conn: &mut SqliteConnection,
     user_id: i64,
     exclude_id: Option<i64>,
     now: UtcDateTime,
-    random: f64,
-) -> Result<DeckPick, sqlx::Error> {
+    zone: &Zone,
+) -> Result<Option<Chooser>, sqlx::Error> {
     let Some(player) = get_player_for_user(conn, user_id).await? else {
-        return Ok(DeckPick::PlayerNotLinked);
+        return Ok(None);
     };
     let mut candidates = playable_decks(conn, player.id).await?;
+    let mut excluded = None;
     if candidates.len() > 1
         && let Some(id) = exclude_id
     {
         candidates.retain(|candidate| candidate.deck.id != id);
+        excluded = Some(id);
     }
-    Ok(
-        match weighted_pick(selection_weights(candidates, now), random) {
-            Some(candidate) => DeckPick::Picked(Box::new(candidate)),
-            None => DeckPick::NoEligibleDecks,
+    let candidates = selection_weights(candidates, now);
+    let history = chooser_context::load_history(conn, player.id).await?;
+    let context = chooser_context::build(&player, &candidates, &history, now, zone, excluded);
+    Ok(Some(Chooser {
+        player,
+        candidates,
+        context,
+    }))
+}
+
+/// Weighs the candidates with `script`, or with the built-in weights when there is no
+/// script or it fails (including when it leaves every deck out).
+pub async fn score(chooser: &Chooser, script: Option<String>) -> Scored {
+    let built_in = |error: Option<ScriptError>, logs: Vec<String>| Scored {
+        weights: chooser
+            .candidates
+            .iter()
+            .map(|candidate| Weighted {
+                weight: candidate.weight,
+                note: None,
+            })
+            .collect(),
+        source: WeightSource::BuiltIn,
+        error,
+        logs,
+    };
+    let Some(script) = script else {
+        return built_in(None, Vec::new());
+    };
+    let context = chooser.context.clone();
+    let task = tokio::task::spawn_blocking(move || deck_script::run(&script, &context));
+    let run = match tokio::time::timeout(SCRIPT_TIMEOUT, task).await {
+        Ok(Ok(run)) => run,
+        Ok(Err(_)) => return built_in(Some(ScriptError::new("the script crashed")), Vec::new()),
+        Err(_) => {
+            return built_in(
+                Some(ScriptError::new("the script did not finish in time")),
+                Vec::new(),
+            );
+        }
+    };
+    match run.result {
+        Ok(weights)
+            if !weights.is_empty() && weights.iter().all(|weighted| weighted.weight <= 0.0) =>
+        {
+            built_in(
+                Some(ScriptError::new("weight() returned 0 for every deck")),
+                run.logs,
+            )
+        }
+        Ok(weights) => Scored {
+            weights,
+            source: WeightSource::Script,
+            error: None,
+            logs: run.logs,
         },
+        Err(error) => built_in(Some(error), run.logs),
+    }
+}
+
+/// Picks one of the chooser's decks with `scored` weights; `random` is a uniform draw in
+/// `[0, 1]`.
+pub fn pick(chooser: Chooser, scored: Scored, random: f64) -> DeckPick {
+    let chances = scored.chances();
+    let Some(index) = weighted_pick(&scored.weights, random) else {
+        return DeckPick::NoEligibleDecks;
+    };
+    let (Some(candidate), Some(weighted)) = (
+        chooser.candidates.into_iter().nth(index),
+        scored.weights.into_iter().nth(index),
+    ) else {
+        return DeckPick::NoEligibleDecks;
+    };
+    DeckPick::Picked(Box::new(Pick {
+        candidate: Candidate {
+            weight: weighted.weight,
+            ..candidate
+        },
+        chance: chances.get(index).copied().unwrap_or_default(),
+        note: weighted.note,
+        script_error: scored.error,
+    }))
+}
+
+/// The member's saved script.
+pub async fn get_script(
+    conn: &mut SqliteConnection,
+    user_id: i64,
+) -> Result<Option<String>, sqlx::Error> {
+    Ok(sqlx::query_scalar!(
+        "SELECT deck_chooser_script FROM users WHERE id = ?",
+        user_id
     )
+    .fetch_optional(&mut *conn)
+    .await?
+    .flatten())
+}
+
+/// Saves (or with `None`, clears) the member's script; validate it with
+/// [`deck_script::check`] first.
+pub async fn set_script(
+    conn: &mut SqliteConnection,
+    user_id: i64,
+    script: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        "UPDATE users SET deck_chooser_script = ? WHERE id = ?",
+        script,
+        user_id
+    )
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
 }
 
 /// Only the member's own, unretired decks.

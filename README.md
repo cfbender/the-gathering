@@ -227,6 +227,15 @@ game seats; only the current skip count and per-deck chooser inclusion setting a
 stored. Skipping records the skip before rerolling, while choosing clears that deck's
 skips.
 
+Members can replace that weighting with their own Lua script under **Choose a deck →
+Customize**. A script defines `weight(deck, ctx)` and sees each deck's plays, skips,
+results, recent games, and colors, plus the local time, games played today and tonight,
+and the member's recent history. The editor previews every deck's chance under the draft
+before saving. Scripts run sandboxed on the server with memory, instruction, and time
+limits, and a script that fails falls back to the built-in weights for that pick. See
+[docs/deck-chooser-scripts.md](docs/deck-chooser-scripts.md) for the contract, every field,
+and the examples.
+
 Hosted decks are not listed separately: **Sync hosted decks** (on your player profile
 and the chooser, shown once any deck host is configured) calls `POST
 /api/session/remote-decks/sync`, which folds only decks explicitly marked as Commander

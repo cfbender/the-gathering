@@ -1,5 +1,5 @@
 CREATE TABLE "schema_migrations" ("version" INTEGER PRIMARY KEY, "inserted_at" TEXT);
-CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "username" TEXT NOT NULL, "display_name" TEXT NOT NULL, "role" TEXT DEFAULT 'member' NOT NULL, "disabled_at" TEXT, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL, "hashed_password" TEXT, "discord_id" TEXT, "avatar_url" TEXT, "moxfield_username" TEXT, "archidekt_username" TEXT, "manavault_url" TEXT, "manavault_api_key" TEXT, "palette" TEXT DEFAULT 'claret' NOT NULL, "theme_style" TEXT DEFAULT 'glass' NOT NULL);
+CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "username" TEXT NOT NULL, "display_name" TEXT NOT NULL, "role" TEXT DEFAULT 'member' NOT NULL, "disabled_at" TEXT, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL, "hashed_password" TEXT, "discord_id" TEXT, "avatar_url" TEXT, "moxfield_username" TEXT, "archidekt_username" TEXT, "manavault_url" TEXT, "manavault_api_key" TEXT, "palette" TEXT DEFAULT 'claret' NOT NULL, "theme_style" TEXT DEFAULT 'glass' NOT NULL, "deck_chooser_script" TEXT);
 CREATE TABLE sqlite_sequence(name,seq);
 CREATE UNIQUE INDEX "users_username_index" ON "users" ("username");
 CREATE TABLE "server_settings" ("id" INTEGER PRIMARY KEY, "registration_enabled" INTEGER DEFAULT false NOT NULL, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL, "detailed_stats_from" TEXT, "registration_invite_hash" BLOB);
@@ -1011,3 +1011,4 @@ INSERT INTO schema_migrations VALUES(20261010063504,NULL);
 INSERT INTO schema_migrations VALUES(20261012050542,NULL);
 INSERT INTO schema_migrations VALUES(20261014020504,NULL);
 INSERT INTO schema_migrations VALUES(20261018042304,NULL);
+INSERT INTO schema_migrations VALUES(20261018054335,NULL);
