@@ -14,6 +14,7 @@ import { TableCameraRail } from "./table-camera-rail"
 import { TableDialogs, type TableDialog } from "./table-dialogs"
 import { RailResizeHandle, useTablePreferences } from "./table-preferences"
 import { TableSettings } from "./table-settings"
+import { MobileActionBar, MobileSeatStrip } from "./table-mobile"
 import { TableStage } from "./table-stage"
 import { decksFor, useTableView } from "./table-view"
 import { useCameraRailWidth } from "./use-camera-rail-width"
@@ -24,6 +25,9 @@ import { useSeatDecklists } from "./seat-decklists"
 import { useTurnSound } from "./use-turn-sound"
 import { useVideoStats } from "./video-stats"
 import { useWebcamRoom } from "./use-webcam-room"
+
+/** Tailwind's `lg` breakpoint, where the table switches from the phone layout. */
+const DESKTOP_QUERY = "(min-width: 64rem)"
 
 interface Props {
   roomId: string
@@ -78,7 +82,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     preferences.cameraEnabled,
   )
   const [dialog, setDialog] = useState<TableDialog>(null)
-  const [panelOpen, setPanelOpen] = useState(true)
+  // Phones open the panel on demand as a sheet over the board.
+  const [panelOpen, setPanelOpen] = useState(() => matchMedia(DESKTOP_QUERY).matches)
   const [panelTab, setPanelTab] = useState<PanelTab>("table")
   const invite = useInviteLink()
   const toggleCamera = () => {
@@ -139,8 +144,9 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
     <WatchTileContext value={room.watchTile}>
       <div
         className={cn(
-          "grid h-dvh bg-black text-white lg:grid-rows-1",
-          railShown ? "grid-rows-[auto_minmax(0,1fr)_auto]" : "grid-rows-[minmax(0,1fr)_auto]",
+          // Phones: seat strip, board, thumb bar; landscape puts the strip and bar in one row.
+          "grid h-dvh grid-rows-[auto_minmax(0,1fr)_auto] bg-black text-white lg:grid-rows-1",
+          "max-lg:landscape:grid-cols-[minmax(0,1fr)_auto] max-lg:landscape:grid-rows-[auto_minmax(0,1fr)]",
           railShown
             ? preferences.panelLeft
               ? "lg:grid-cols-[auto_auto_minmax(0,1fr)_0.375rem_var(--table-camera-width)]"
@@ -156,6 +162,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           } as CSSProperties
         }
       >
+        <MobileSeatStrip view={view} />
         {railShown && (
           <>
             <TableCameraRail view={view} videoStats={videoStats} />
@@ -170,6 +177,14 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
         )}
 
         <TableStage ref={stageRef} view={view} flow={flow} videoStats={videoStats} />
+        <MobileActionBar view={view} panelOpen={panelOpen} onOpenPanel={() => setPanelOpen(true)} />
+        {panelOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            aria-hidden="true"
+            onClick={() => setPanelOpen(false)}
+          />
+        )}
 
         {panelOpen ? (
           <RailResizeHandle

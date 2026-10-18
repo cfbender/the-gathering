@@ -60,7 +60,10 @@ export function SidePanel(props: Props) {
   return (
     <div
       className={cn(
-        "bg-base-100 text-base-content flex max-h-[45dvh] flex-col border-t border-white/10 lg:max-h-none lg:flex-row lg:border-t-0 lg:border-l",
+        "bg-base-100 text-base-content flex flex-col border-white/10 lg:flex-row lg:border-l",
+        // Phones show the open panel as a sheet over the board and hide it when collapsed.
+        "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-50 max-lg:max-h-[80dvh] max-lg:rounded-t-2xl max-lg:border-t max-lg:shadow-2xl",
+        !open && "max-lg:hidden",
         props.left && "lg:order-1 lg:flex-row-reverse",
       )}
     >
@@ -78,7 +81,7 @@ export function SidePanel(props: Props) {
           aria-expanded={open}
         >
           {open ? (
-            <ChevronRight className="size-4 -rotate-90 lg:rotate-0" />
+            <ChevronRight className="size-4 rotate-90 lg:rotate-0" />
           ) : (
             <ChevronLeft className="size-4 -rotate-90 lg:rotate-0" />
           )}

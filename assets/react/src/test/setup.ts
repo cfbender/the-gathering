@@ -43,3 +43,22 @@ for (const name of ["localStorage", "sessionStorage"] as const) {
 // jsdom logs "Not implemented: Window's scrollTo() method" whenever Radix Select
 // restores scroll position. Layout does not exist in jsdom, so make it a no-op.
 Object.defineProperty(window, "scrollTo", { value: () => {}, configurable: true, writable: true })
+
+// jsdom has no `matchMedia`. With no viewport, no media query matches; tests that need one
+// to match stub it themselves.
+if (!("matchMedia" in window)) {
+  Object.defineProperty(window, "matchMedia", {
+    value: (media: string) => ({
+      matches: false,
+      media,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+    configurable: true,
+    writable: true,
+  })
+}

@@ -240,7 +240,7 @@ export function TableStage({
     <section
       ref={ref}
       className={cn(
-        "relative flex min-h-0 min-w-0 flex-col",
+        "relative flex min-h-0 min-w-0 flex-col max-lg:landscape:col-span-2 max-lg:landscape:row-start-2",
         view.preferences.panelLeft && "lg:order-3",
       )}
       aria-label={view.showGrid ? "Camera grid" : "Active board"}

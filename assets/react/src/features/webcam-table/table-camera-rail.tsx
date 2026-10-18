@@ -22,7 +22,7 @@ export function TableCameraRail({
   return (
     <aside
       className={cn(
-        "flex min-h-0 gap-1.5 overflow-x-auto p-1.5 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto",
+        "hidden min-h-0 gap-1.5 p-1.5 lg:flex lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto",
         preferences.panelLeft && "lg:order-5",
       )}
       aria-label="Player cameras"
@@ -30,10 +30,7 @@ export function TableCameraRail({
       {view.groups.map((group) => (
         <div
           key={group[0]!.peer_id}
-          className={cn(
-            "w-60 shrink-0 lg:w-auto",
-            teamsMode && "overflow-hidden rounded-lg border border-primary/40",
-          )}
+          className={cn(teamsMode && "overflow-hidden rounded-lg border border-primary/40")}
         >
           {teamsMode && <TeamHeader view={view} group={group} />}
           {group.map((participant) => (
@@ -47,7 +44,7 @@ export function TableCameraRail({
         </div>
       ))}
       {Array.from({ length: openSeats }, (_, index) => (
-        <div key={`open-${index}`} className="hidden w-44 shrink-0 lg:block lg:w-auto">
+        <div key={`open-${index}`}>
           <OpenSeat />
         </div>
       ))}

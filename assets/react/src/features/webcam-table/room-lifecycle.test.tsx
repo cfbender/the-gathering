@@ -67,11 +67,13 @@ afterEach(() => {
   mode.canModerate = false
   mode.seated = []
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
-function renderTable(started: boolean, spectator = false) {
+function renderTable(started: boolean, spectator = false, phone = false) {
   mode.started = started
   mode.spectator = spectator
+  vi.stubGlobal("matchMedia", () => ({ matches: !phone }))
   vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 503 }))
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
@@ -198,6 +200,14 @@ it("lets hosts give a spectator a seat only while the table is in setup", () => 
   mode.canModerate = false
   renderTable(false)
   expect(screen.queryByRole("button", { name: "Give Wren a seat" })).toBeNull()
+})
+
+it("starts phones with the table panel closed and opens it from the thumb bar", () => {
+  renderTable(true, false, true)
+  expect(screen.queryByRole("button", { name: "Invite players" })).toBeNull()
+  expect(screen.getByRole("button", { name: /Pass turn/ })).toBeTruthy()
+  fireEvent.click(screen.getByRole("button", { name: "Open table panel" }))
+  expect(screen.getByRole("button", { name: "Invite players" })).toBeTruthy()
 })
 
 it("allows video-only spectator autoplay without camera permission or a click", () => {
