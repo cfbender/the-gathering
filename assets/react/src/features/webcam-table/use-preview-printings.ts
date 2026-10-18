@@ -18,8 +18,6 @@ export function usePreviewPrintings(initial: IdentifiedCard) {
         const result = await getPrintings({ name: initial.name, catalog_id: null }, page++)
         printings.push(...result.data)
         hasMore = result.has_more
-        // The shared Scryfall search endpoint permits one request per 500 ms.
-        if (hasMore) await new Promise((resolve) => setTimeout(resolve, 500))
       }
       return printings
     },

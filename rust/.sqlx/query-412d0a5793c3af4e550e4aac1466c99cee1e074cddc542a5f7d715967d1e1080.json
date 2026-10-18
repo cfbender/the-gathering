@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM card_rulings",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "412d0a5793c3af4e550e4aac1466c99cee1e074cddc542a5f7d715967d1e1080"
+}

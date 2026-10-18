@@ -94,7 +94,7 @@ export function PrintingPicker({
             <button type="button" className="btn btn-outline btn-sm" onClick={() => choose(null)}>
               Use catalog default
             </button>
-            {printings.isPending && <p role="status">Loading printings from Scryfall…</p>}
+            {printings.isPending && <p role="status">Loading printings…</p>}
             {printings.isError && (
               <div role="alert" className="space-y-2">
                 <p>

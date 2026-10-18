@@ -255,8 +255,8 @@ video until you end the reveal or the target leaves. Clicking a card on
 any board identifies it with the recognizer bundle published from [Oracle](https://github.com/cfbender/oracle) (see
 its README, "Shipping"): the server downloads the newest `scanner-bundle-*` release of this
 repository at boot and every six hours (`CARDID_BUNDLE_SOURCE`), serves `DATA_DIR/cardid/current/*`
-at `/api/cardid/*`, and the browser runs the models itself. A recognized card opens with its rules text (fetched
-from Scryfall per printing and cached) and lands in that board's card tray for every seat.
+at `/api/cardid/*`, and the browser runs the models itself. A recognized card opens with its rules text and
+rulings (from the local catalog) and lands in that board's card tray for every seat.
 Without a published bundle the table still works and offers the player's commanders as
 suggestions instead. When a seated player's chosen deck links to a list, every seat loads it
 and warms its card images, **Decks → View decklist** shows your own list, and the recognizer
@@ -424,7 +424,7 @@ are not automatically redacted; application code must never log credentials.
 
 ### Card catalog
 
-The app downloads Scryfall's compressed `default_cards` JSONL feed when the catalog is empty and refreshes it weekly. The response is streamed to a temporary file and decoded incrementally, then a complete staged generation is published atomically. Search uses only SQLite after sync; run a refresh manually with:
+The app downloads Scryfall's compressed `default_cards` and `rulings` JSONL feeds when the catalog is empty and refreshes them weekly. The responses are streamed to temporary files and decoded incrementally, then a complete staged generation of cards and rulings is published atomically. Every printing in `default_cards` is stored too (printings a complete sync no longer lists are removed unless a deck uses them). Card search, printing pickers, printing details (including prices, as of the latest sync), and rulings use only SQLite after a sync; no page makes Scryfall API requests. Run a refresh manually with:
 
 ```sh
 docker exec the-gathering /app/bin/the-gathering catalog-sync
@@ -433,11 +433,11 @@ docker exec the-gathering /app/bin/the-gathering catalog-sync
 
 After each sync (and after every CSV or Mythic Track import) the app links decks and MVP cards that only carry a card name to catalog cards by name, filling in Scryfall IDs and missing colour identities. Trigger that alone from **Admin → Users → Link imported cards to the catalog** or with `the-gathering catalog-backfill`.
 
-**Game Changer badges** use Scryfall's `game_changer` flag for the Commander Brackets list, not a separate hard-coded card list or a bracket recommendation. After deploying the Game Changer migration, run `the-gathering catalog-sync` once: existing catalog rows initially default to false, and linking/backfilling alone cannot populate this flag. Future catalog syncs keep the badges current. Printing searches and webcam printing details also refresh the flag from Scryfall on demand (details may be cached for one hour). Offline recognition-gallery candidates do not carry this metadata; their preview shows the badge once printing details load. No badge means no known positive flag, not a guarantee that the card is absent from the list. Deck summaries label each commander independently; the app does not store full decklists, so it cannot report a whole-deck Game Changer count.
+**Game Changer badges** use Scryfall's `game_changer` flag for the Commander Brackets list, not a separate hard-coded card list or a bracket recommendation. After deploying the Game Changer migration, run `the-gathering catalog-sync` once: existing catalog rows initially default to false, and linking/backfilling alone cannot populate this flag. Future catalog syncs keep the badges current, for printings as well as cards (browsers may cache printing details for one hour). Offline recognition-gallery candidates do not carry this metadata; their preview shows the badge once printing details load. No badge means no known positive flag, not a guarantee that the card is absent from the list. Deck summaries label each commander independently; the app does not store full decklists, so it cannot report a whole-deck Game Changer count.
 
 There is one row per Scryfall `oracle_id`. The preferred printing is English, available on paper, non-digital, and non-promo, then the newest `released_at`; set code, collector number, and Scryfall UUID break ties. `default_cards` is used instead of `oracle_cards` because it provides printing images and lets the app choose that representative deterministically.
 
-In **Deck details**, use **Choose printing** below the commander or partner to match the artwork on your card, then **Save deck**. **Use catalog default** removes the override. Printing choices load on demand from Scryfall (paper printings in all languages, with pagination), so browsing requires an internet connection. Printing metadata is cached separately in SQLite: saved artwork survives catalog refreshes and does not need another Scryfall API request to display. Image files use the shared cache described below. Changing a commander or partner clears that slot's printing; printing selection does not change commander identity, colors, imports, or statistics.
+In **Deck details**, use **Choose printing** below the commander or partner to match the artwork on your card, then **Save deck**. **Use catalog default** removes the override. Printing choices come from the printings the catalog sync stores (English paper printings, newest first, with pagination), so browsing needs no Scryfall API request. Saved artwork survives catalog refreshes, even when Scryfall stops listing that printing. Image files use the shared cache described below. Changing a commander or partner clears that slot's printing; printing selection does not change commander identity, colors, imports, or statistics.
 
 Card images (`small`, `normal`, `art_crop` JPEGs from `cards.scryfall.io`) are served through
 authenticated `GET /api/card-images?url=…`. Stored catalog URLs remain unchanged; API responses

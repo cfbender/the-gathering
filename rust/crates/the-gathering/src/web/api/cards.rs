@@ -29,7 +29,6 @@ impl From<LookupError> for ApiError {
         match error {
             LookupError::BadRequest => Self::BadRequest,
             LookupError::NotFound => Self::NotFound,
-            LookupError::BadGateway => Self::BadGateway,
             LookupError::Database => Self::Internal(anyhow::anyhow!("printing lookup failed")),
         }
     }
@@ -163,12 +162,7 @@ pub async fn printings_index(
         Some(page) => page,
     };
     let (printings, has_more) = catalog(&state)
-        .list_printings(
-            &state.scryfall,
-            query.card_id.as_deref(),
-            query.name.as_deref(),
-            page,
-        )
+        .list_printings(query.card_id.as_deref(), query.name.as_deref(), page)
         .await?;
     Ok(Json(json!({
         "data": printings.iter().map(printing_summary_json).collect::<Vec<_>>(),
@@ -176,7 +170,7 @@ pub async fn printings_index(
     })))
 }
 
-/// `GET /api/card-printings/:id`: a cached printing.
+/// `GET /api/card-printings/:id`: a stored printing.
 pub async fn printings_show(
     State(state): State<AppState>,
     PathParam(id): PathParam<String>,
@@ -193,7 +187,7 @@ pub async fn printings_details(
     State(state): State<AppState>,
     PathParam(id): PathParam<String>,
 ) -> ApiResult<Response> {
-    let details = printings::details(&state.pool, &state.scryfall, &id).await?;
+    let details = printings::details(&state.pool, &id).await?;
     let mut response = data(printings::render_details(&details)).into_response();
     response.headers_mut().insert(
         header::CACHE_CONTROL,
@@ -207,8 +201,8 @@ pub async fn printings_rulings(
     State(state): State<AppState>,
     PathParam(id): PathParam<String>,
 ) -> ApiResult<Json<Value>> {
-    let rulings = printings::rulings(&state.pool, &state.scryfall, &id).await?;
-    Ok(data(rulings))
+    let rulings = printings::rulings(&state.pool, &id).await?;
+    Ok(data(json!(rulings)))
 }
 
 /// `GET /api/catalog`: the latest sync.

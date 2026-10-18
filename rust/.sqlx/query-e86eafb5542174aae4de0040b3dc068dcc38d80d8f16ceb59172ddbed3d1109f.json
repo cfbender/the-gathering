@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT oracle_id FROM card_printings WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "oracle_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_printings",
+            "name": "oracle_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e86eafb5542174aae4de0040b3dc068dcc38d80d8f16ceb59172ddbed3d1109f"
+}

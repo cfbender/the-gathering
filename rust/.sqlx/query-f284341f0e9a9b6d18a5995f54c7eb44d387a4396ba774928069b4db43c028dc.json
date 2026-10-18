@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM card_rulings_staging",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "f284341f0e9a9b6d18a5995f54c7eb44d387a4396ba774928069b4db43c028dc"
+}

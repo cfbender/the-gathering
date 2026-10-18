@@ -396,29 +396,40 @@ async fn reads_gzip_generations() {
     assert_eq!(get(&app, "jotun").await.name, "Jötun Grunt");
 }
 
+fn fixture_records() -> Vec<Value> {
+    String::from_utf8(fixture("scryfall_catalog.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+async fn rulings(app: &TestApp, oracle_id: &str) -> Vec<String> {
+    sqlx::query_scalar("SELECT comment FROM card_rulings WHERE oracle_id = ? ORDER BY id")
+        .bind(oracle_id)
+        .fetch_all(app.pool())
+        .await
+        .unwrap()
+}
+
 #[tokio::test]
-async fn downloads_the_default_cards_bulk_file_from_scryfall() {
+async fn downloads_the_default_cards_and_rulings_bulk_files_from_scryfall() {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     let server = MockServer::start().await;
-    let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
-    gzip.write_all(&fixture("scryfall_catalog.jsonl")).unwrap();
-    let body = gzip.finish().unwrap();
-    Mock::given(method("GET"))
-        .and(path("/bulk-data"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
-            {"type": "oracle_cards", "jsonl_download_uri": format!("{}/wrong.jsonl.gz", server.uri())},
-            {"type": "default_cards", "jsonl_download_uri": format!("{}/default.jsonl.gz", server.uri()),
-             "updated_at": "2026-10-01T09:10:11.123+00:00"}
-        ]})))
-        .mount(&server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/default.jsonl.gz"))
-        .respond_with(ResponseTemplate::new(200).set_body_bytes(body))
-        .mount(&server)
-        .await;
+    let ruling = |oracle_id: &str, comment: &str| json!({"object": "ruling", "oracle_id": oracle_id, "source": "wotc", "published_at": "2026-01-23", "comment": comment});
+    support::mount_scryfall_bulk(
+        &server,
+        &fixture_records(),
+        &[
+            ruling("oracle-bolt", "First."),
+            ruling("oracle-jotun", "Elsewhere."),
+            ruling("oracle-bolt", "Second."),
+            json!({"object": "ruling", "oracle_id": "oracle-bolt"}),
+        ],
+    )
+    .await;
     let app = TestApp::with_config(|config| config.scryfall_api_base = server.uri()).await;
     assert_eq!(run(&app, Source::Scryfall).await, Ok(2));
     let status = catalog(&app).sync_status().await.unwrap();
@@ -427,6 +438,26 @@ async fn downloads_the_default_cards_bulk_file_from_scryfall() {
         status.scryfall_updated_at.unwrap().to_string(),
         "2026-10-01T09:10:11Z"
     );
+    // File order within a card; a ruling without a comment is skipped.
+    assert_eq!(rulings(&app, "oracle-bolt").await, ["First.", "Second."]);
+
+    // A sync that cannot download the rulings publishes nothing and keeps the old rulings.
+    server.reset().await;
+    support::mount_scryfall_bulk(&server, &fixture_records()[..1], &[]).await;
+    Mock::given(method("GET"))
+        .and(path("/rulings.jsonl.gz"))
+        .respond_with(ResponseTemplate::new(500))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    let reason = run(&app, Source::Scryfall).await.unwrap_err();
+    assert!(reason.contains("HTTP 500"), "{reason}");
+    assert_eq!(catalog(&app).count_cards().await.unwrap(), 2);
+    assert_eq!(rulings(&app, "oracle-bolt").await, ["First.", "Second."]);
+
+    // A local cards file leaves the rulings as they are.
+    sync_fixture(&app).await;
+    assert_eq!(rulings(&app, "oracle-jotun").await, ["Elsewhere."]);
 }
 
 #[tokio::test]

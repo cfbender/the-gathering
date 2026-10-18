@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM card_printings WHERE catalog_sync_id IS NOT ?\n           AND id NOT IN (SELECT commander_printing_id FROM decks WHERE commander_printing_id IS NOT NULL)\n           AND id NOT IN (SELECT partner_printing_id FROM decks WHERE partner_printing_id IS NOT NULL)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "09ff3a2005f2fc12d505ae5eae2aa3f3625c80bb4aeb6b561e9162c4cf5d7b71"
+}

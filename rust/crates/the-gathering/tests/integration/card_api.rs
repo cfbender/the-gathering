@@ -16,14 +16,12 @@ use support::{TestApp, fixture_path};
 use the_gathering::catalog::image_cache::{CacheStatus, CardImages, ImageError};
 use the_gathering::catalog::sync::{self, Source};
 use the_gathering::catalog::{CardRef, Catalog, images};
-use the_gathering::config::WindowLimit;
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const SAGA: &str = "00000000-0000-0000-0000-000000000001";
 const MDFC: &str = "00000000-0000-0000-0000-000000000002";
 const MISSING: &str = "00000000-0000-0000-0000-000000000003";
-const DOWN: &str = "00000000-0000-0000-0000-000000000004";
 
 fn encode(value: &str) -> String {
     url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
@@ -231,6 +229,7 @@ fn scryfall_card(id: &str, name: &str) -> Value {
         "set_name": "New Set",
         "collector_number": "9",
         "lang": "en",
+        "released_at": "2024-01-01",
         "image_uris": {
             "art_crop": format!("https://img.example/{id}-default.jpg"),
             "normal": format!("https://img.example/{id}-default-card.jpg")
@@ -245,20 +244,9 @@ fn merge(mut base: Value, overrides: &Value) -> Value {
     base
 }
 
-async fn printing_app(server: &MockServer) -> TestApp {
-    printing_app_with(server, |_| {}).await
-}
-
-async fn printing_app_with(
-    server: &MockServer,
-    adjust: impl FnOnce(&mut the_gathering::config::Config),
-) -> TestApp {
-    let uri = server.uri();
-    let app = TestApp::with_config(|config| {
-        config.scryfall_api_base = uri;
-        adjust(config);
-    })
-    .await;
+/// Signed in, with Tymna and Thrasios in the catalog and an alternate printing of each.
+async fn printing_app() -> TestApp {
+    let app = TestApp::new().await;
     logged_in(&app).await;
     for (id, name) in [
         ("commander", "Tymna the Weaver"),
@@ -292,104 +280,136 @@ fn catalog(app: &TestApp) -> Catalog {
     }
 }
 
-async fn mount_card(server: &MockServer, id: &str, body: Value, times: u64) {
-    Mock::given(method("GET"))
-        .and(path(format!("/cards/{id}")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(body))
-        .expect(times)
-        .mount(server)
-        .await;
+/// Syncs a cards file holding `records`.
+async fn sync_records(app: &TestApp, records: &[Value]) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cards.jsonl");
+    let lines: Vec<String> = records.iter().map(Value::to_string).collect();
+    std::fs::write(&path, lines.join("\n")).unwrap();
+    sync::run(app.pool(), &app.state.scryfall, Source::File(path))
+        .await
+        .unwrap();
+}
+
+/// A signed-in app whose catalog sync imported `records`.
+async fn synced_app(records: &[Value]) -> TestApp {
+    let app = TestApp::new().await;
+    logged_in(&app).await;
+    sync_records(&app, records).await;
+    app
+}
+
+async fn details(app: &TestApp, id: &str) -> Value {
+    app.get(&format!("/api/card-printings/{id}/details"))
+        .await
+        .assert_json(200)["data"]
+        .clone()
 }
 
 #[tokio::test]
-async fn lists_and_caches_english_paper_printings_with_pagination_and_front_face_images() {
-    let server = MockServer::start().await;
-    let printing = merge(
-        scryfall_card("commander", "Tymna the Weaver"),
-        &json!({"game_changer": true, "id": "double-faced-print", "image_uris": null,
-               "card_faces": [{"image_uris": {"art_crop": "https://img.example/front.jpg"}}]}),
+async fn lists_english_paper_printings_newest_first_across_pages_with_front_face_images() {
+    let card = scryfall_card("commander", "Tymna the Weaver");
+    let newest = merge(
+        card.clone(),
+        &json!({"id": "double-faced-print", "game_changer": true, "released_at": "2026-01-01",
+                "image_uris": null,
+                "card_faces": [{"name": "Tymna the Weaver", "image_uris": {"art_crop": "https://img.example/front.jpg"}}]}),
     );
-    let other = scryfall_card("partner", "Thrasios, Triton Hero");
-    let digital = merge(
-        printing.clone(),
-        &json!({"id": "digital", "games": ["arena"]}),
-    );
-    let japanese = merge(printing.clone(), &json!({"id": "japanese", "lang": "ja"}));
-    let memorabilia = merge(
-        printing.clone(),
-        &json!({"id": "memorabilia", "set_type": "memorabilia"}),
-    );
-    Mock::given(method("GET"))
-        .and(path("/cards/search"))
-        .and(query_param(
-            "q",
-            "oracleid:oracle-commander game:paper lang:en",
-        ))
-        .and(query_param("unique", "prints"))
-        .and(query_param("page", "2"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            json!({"data": [printing, other, digital, japanese, memorabilia], "has_more": true}),
-        ))
-        .expect(1)
-        .mount(&server)
-        .await;
-    let app = printing_app(&server).await;
+    // The file lists the older printings of one set lowest number first, before the newer ones.
+    let mut records: Vec<Value> = (1..=175)
+        .map(|number| {
+            merge(
+                card.clone(),
+                &json!({"id": format!("old-{number:03}"), "released_at": "2000-01-01", "collector_number": number.to_string()}),
+            )
+        })
+        .collect();
+    records.extend([
+        card.clone(),
+        newest.clone(),
+        scryfall_card("partner", "Thrasios, Triton Hero"),
+    ]);
+    let unlisted = [
+        (
+            "00000000-0000-0000-0000-00000000000a",
+            json!({"games": ["arena"]}),
+        ),
+        (
+            "00000000-0000-0000-0000-00000000000b",
+            json!({"lang": "ja"}),
+        ),
+        (
+            "00000000-0000-0000-0000-00000000000c",
+            json!({"set_type": "memorabilia"}),
+        ),
+    ];
+    for (id, overrides) in &unlisted {
+        records.push(merge(newest.clone(), &merge(json!({"id": id}), overrides)));
+    }
+    let app = synced_app(&records).await;
 
+    // The newest printing represents the card in the catalog.
     let body = app
-        .get("/api/card-printings?card_id=commander&page=2")
+        .get("/api/card-printings?card_id=double-faced-print")
         .await
         .assert_json(200);
     assert_eq!(body["has_more"], true);
     let data = body["data"].as_array().unwrap();
-    assert_eq!(data.len(), 1);
-    assert_eq!(data[0]["id"], "double-faced-print");
-    assert_eq!(data[0]["lang"], "en");
-    assert_eq!(data[0]["game_changer"], true);
-
-    let stored = catalog(&app)
-        .get_printing("double-faced-print")
-        .await
-        .unwrap()
-        .unwrap();
+    let ids: Vec<&str> = data
+        .iter()
+        .map(|printing| printing["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids.len(), 175);
+    // Collector numbers order a set numerically, not as text.
     assert_eq!(
-        stored.image_uris["art_crop"],
-        "https://img.example/front.jpg"
+        &ids[..4],
+        ["double-faced-print", "commander", "old-175", "old-174"]
     );
-    assert!(stored.game_changer);
-    for id in ["digital", "japanese", "memorabilia"] {
-        assert!(
-            catalog(&app).get_printing(id).await.unwrap().is_none(),
-            "{id}"
-        );
+    assert_eq!(ids[174], "old-003");
+    assert_eq!(
+        data[0],
+        json!({
+            "id": "double-faced-print", "name": "Tymna the Weaver", "game_changer": true, "set_code": "new",
+            "set_name": "New Set", "collector_number": "9", "lang": "en",
+            "image_uris": {"art_crop": "https://img.example/front.jpg"}
+        })
+    );
+
+    let body = app
+        .get("/api/card-printings?name=Tymna%20the%20Weaver&page=2")
+        .await
+        .assert_json(200);
+    assert_eq!(body["has_more"], false);
+    let ids: Vec<&Value> = body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|printing| &printing["id"])
+        .collect();
+    assert_eq!(ids, ["old-002", "old-001"]);
+    let body = app
+        .get("/api/card-printings?card_id=double-faced-print&page=3")
+        .await
+        .assert_json(200);
+    assert_eq!(body, json!({"data": [], "has_more": false}));
+
+    // Every printing is stored for details, listed or not.
+    for (id, _) in unlisted {
+        assert_eq!(details(&app, id).await["id"], id);
     }
-    assert!(
-        catalog(&app)
-            .get_card("double-faced-print")
-            .await
-            .unwrap()
-            .is_none()
-    );
     let body = app
         .get("/api/card-printings/double-faced-print")
         .await
         .assert_json(200);
-    assert_eq!(body["data"]["set_code"], "new");
-    let request = &server.received_requests().await.unwrap()[0];
-    assert!(request.headers.get("user-agent").is_some());
-    assert!(
-        !request
-            .url
-            .query()
-            .unwrap_or_default()
-            .contains("include_multilingual")
+    assert_eq!(
+        body["data"]["image_uris"]["art_crop"],
+        "https://img.example/front.jpg"
     );
 }
 
 #[tokio::test]
 async fn serves_sibling_and_early_core_printings_without_catalog_membership() {
-    let server = MockServer::start().await;
-    let app = printing_app(&server).await;
-    for (id, name, set, number, lang) in [
+    let printings = [
         (
             "a51fb64d-cc0c-400d-971f-78c28d42043b",
             "Sol Talisman",
@@ -418,31 +438,31 @@ async fn serves_sibling_and_early_core_printings_without_catalog_membership() {
             "162",
             "it",
         ),
-    ] {
-        assert!(catalog(&app).get_card(id).await.unwrap().is_none());
-        let card = merge(
+    ];
+    // Each printing shares its card with a preferred printing the catalog keeps instead.
+    let mut records = Vec::new();
+    for (id, name, set, number, lang) in printings {
+        let printing = merge(
             scryfall_card(id, name),
-            &json!({"set": set, "collector_number": number, "lang": lang}),
+            &json!({"set": set, "collector_number": number, "lang": lang, "released_at": "1994-04-01"}),
         );
-        mount_card(&server, id, card, 1).await;
-        Mock::given(method("GET"))
-            .and(path(format!("/cards/{id}/rulings")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let body = app
-            .get(&format!("/api/card-printings/{id}/details"))
-            .await
-            .assert_json(200);
-        assert_eq!(body["data"]["id"], id);
-        assert_eq!(body["data"]["name"], name);
-        assert_eq!(body["data"]["set_code"], set);
-        assert_eq!(body["data"]["collector_number"], number);
-        assert_eq!(body["data"]["lang"], lang);
+        records.push(merge(
+            printing.clone(),
+            &json!({"id": format!("{name}-preferred"), "released_at": "2024-01-01"}),
+        ));
+        records.push(printing);
+    }
+    let app = synced_app(&records).await;
+    for (id, name, set, number, lang) in printings {
+        assert!(catalog(&app).get_card(id).await.unwrap().is_none());
+        let body = details(&app, id).await;
+        assert_eq!(body["id"], id);
+        assert_eq!(body["name"], name);
+        assert_eq!(body["set_code"], set);
+        assert_eq!(body["collector_number"], number);
+        assert_eq!(body["lang"], lang);
         assert_eq!(
-            body["data"]["image_uris"]["normal"],
+            body["image_uris"]["normal"],
             format!("https://img.example/{id}-default-card.jpg")
         );
         let body = app
@@ -455,33 +475,26 @@ async fn serves_sibling_and_early_core_printings_without_catalog_membership() {
 
 #[tokio::test]
 async fn a_selectable_sibling_face_without_its_own_scan_still_returns_its_name_and_rules() {
-    let server = MockServer::start().await;
-    let card = merge(
+    let mut card = merge(
         scryfall_card(MDFC, "Front // Back"),
-        &json!({"image_uris": null, "layout": "modal_dfc", "image_status": "missing", "card_faces": [
+        &json!({"layout": "modal_dfc", "image_status": "missing", "card_faces": [
             {"name": "Front"},
             {"name": "Back", "oracle_text": "Draw a card.", "type_line": "Sorcery"}
         ]}),
     );
-    let mut card = card;
     card.as_object_mut().unwrap().remove("image_uris");
-    mount_card(&server, MDFC, card, 1).await;
-    let app = printing_app(&server).await;
+    let app = synced_app(&[card]).await;
     let id = format!("{MDFC}-1");
-    let body = app
-        .get(&format!("/api/card-printings/{id}/details"))
-        .await
-        .assert_json(200);
-    assert_eq!(body["data"]["id"], id);
-    assert_eq!(body["data"]["name"], "Back");
-    assert_eq!(body["data"]["oracle_text"], "Draw a card.");
-    assert_eq!(body["data"]["type_line"], "Sorcery");
-    assert_eq!(body["data"]["image_uris"], json!({}));
+    let body = details(&app, &id).await;
+    assert_eq!(body["id"], id);
+    assert_eq!(body["name"], "Back");
+    assert_eq!(body["oracle_text"], "Draw a card.");
+    assert_eq!(body["type_line"], "Sorcery");
+    assert_eq!(body["image_uris"], json!({}));
 }
 
 #[tokio::test]
-async fn fetches_full_printing_details_by_scryfall_id_and_caches_the_printing() {
-    let server = MockServer::start().await;
+async fn serves_full_printing_details_from_the_last_sync() {
     let card = merge(
         scryfall_card(SAGA, "Kiora Bests the Sea God"),
         &json!({
@@ -501,8 +514,7 @@ async fn fetches_full_printing_details_by_scryfall_id_and_caches_the_printing() 
             }
         }),
     );
-    mount_card(&server, SAGA, card, 1).await;
-    let app = printing_app(&server).await;
+    let app = synced_app(std::slice::from_ref(&card)).await;
 
     let response = app
         .get(&format!("/api/card-printings/{SAGA}/details"))
@@ -512,27 +524,20 @@ async fn fetches_full_printing_details_by_scryfall_id_and_caches_the_printing() 
         Some("private, max-age=3600")
     );
     let body = response.assert_json(200)["data"].clone();
-    assert_eq!(body["name"], "Kiora Bests the Sea God");
-    assert_eq!(body["game_changer"], false);
-    assert_eq!(body["mana_cost"], "{5}{U}{U}");
-    assert_eq!(body["type_line"], "Enchantment — Saga");
-    assert_eq!(body["oracle_text"], "I — Create an 8/8 blue Kraken.");
-    assert_eq!(body["set_code"], "new");
-    assert_eq!(body["set_name"], "New Set");
-    assert_eq!(body["collector_number"], "9");
-    assert_eq!(body["layout"], "saga");
-    assert_eq!(body["rarity"], "mythic");
-    assert_eq!(body["released_at"], "2020-01-24");
-    assert_eq!(body["scryfall_uri"], "https://scryfall.com/card/thb/52");
     assert_eq!(
-        body["prices"],
-        json!({"usd": "0.25", "usd_foil": "1.10", "usd_etched": null})
+        body,
+        json!({
+            "id": SAGA, "oracle_id": format!("oracle-{SAGA}"), "name": "Kiora Bests the Sea God",
+            "set_code": "new", "set_name": "New Set", "collector_number": "9", "lang": "en",
+            "game_changer": false,
+            "image_uris": {"small": "https://img.example/saga-small.jpg", "normal": "https://img.example/saga-normal.jpg"},
+            "mana_cost": "{5}{U}{U}", "type_line": "Enchantment — Saga",
+            "oracle_text": "I — Create an 8/8 blue Kraken.", "flavor_text": null,
+            "power": null, "toughness": null, "loyalty": null, "layout": "saga", "rarity": "mythic",
+            "released_at": "2020-01-24", "scryfall_uri": "https://scryfall.com/card/thb/52",
+            "prices": {"usd": "0.25", "usd_foil": "1.10", "usd_etched": null}
+        })
     );
-    assert_eq!(
-        body["image_uris"],
-        json!({"small": "https://img.example/saga-small.jpg", "normal": "https://img.example/saga-normal.jpg"})
-    );
-    assert!(body.get("games").is_none());
     assert_eq!(
         catalog(&app)
             .get_printing(SAGA)
@@ -543,56 +548,16 @@ async fn fetches_full_printing_details_by_scryfall_id_and_caches_the_printing() 
         "New Set"
     );
 
-    // Every seat asks for the card; within a day the rest are answered without Scryfall.
-    let cached = app
-        .get(&format!("/api/card-printings/{SAGA}/details"))
-        .await
-        .assert_json(200);
-    assert_eq!(cached["data"], body);
+    // Prices are as of the latest sync.
+    sync_records(&app, &[merge(card, &json!({"prices": {"usd": "0.30"}}))]).await;
+    assert_eq!(
+        details(&app, SAGA).await["prices"],
+        json!({"usd": "0.30", "usd_foil": null, "usd_etched": null})
+    );
 }
 
 #[tokio::test]
-async fn refetches_printing_details_once_the_cached_copy_is_a_day_old() {
-    let server = MockServer::start().await;
-    let first = merge(
-        scryfall_card(SAGA, "Kiora Bests the Sea God"),
-        &json!({"prices": {"usd": "0.25"}}),
-    );
-    let second = merge(
-        scryfall_card(SAGA, "Kiora Bests the Sea God"),
-        &json!({"prices": {"usd": "0.30"}}),
-    );
-    Mock::given(method("GET"))
-        .and(path(format!("/cards/{SAGA}")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(first))
-        .up_to_n_times(1)
-        .expect(1)
-        .mount(&server)
-        .await;
-    mount_card(&server, SAGA, second, 1).await;
-    let app = printing_app(&server).await;
-
-    let body = app
-        .get(&format!("/api/card-printings/{SAGA}/details"))
-        .await
-        .assert_json(200);
-    assert_eq!(body["data"]["prices"]["usd"], "0.25");
-    let stale = the_gathering::db::UtcDateTime::now().plus(time::Duration::seconds(-86_400));
-    sqlx::query("UPDATE card_details_cache SET fetched_at = ?")
-        .bind(stale)
-        .execute(app.pool())
-        .await
-        .unwrap();
-    let body = app
-        .get(&format!("/api/card-printings/{SAGA}/details"))
-        .await
-        .assert_json(200);
-    assert_eq!(body["data"]["prices"]["usd"], "0.30");
-}
-
-#[tokio::test]
-async fn selects_each_printed_face_without_mixing_text_images_or_cached_ids() {
-    let server = MockServer::start().await;
+async fn selects_each_printed_face_without_mixing_text_or_images() {
     let mut card = merge(
         scryfall_card(MDFC, "Valki, God of Lies // Tibalt, Cosmic Impostor"),
         &json!({"layout": "modal_dfc", "game_changer": true, "card_faces": [
@@ -610,14 +575,9 @@ async fn selects_each_printed_face_without_mixing_text_images_or_cached_ids() {
         ]}),
     );
     card.as_object_mut().unwrap().remove("image_uris");
-    mount_card(&server, MDFC, card, 2).await;
-    let app = printing_app(&server).await;
+    let app = synced_app(&[card]).await;
 
-    let body = app
-        .get(&format!("/api/card-printings/{MDFC}/details"))
-        .await
-        .assert_json(200)["data"]
-        .clone();
+    let body = details(&app, MDFC).await;
     assert_eq!(body["mana_cost"], "{1}{B}");
     assert_eq!(body["name"], "Valki, God of Lies");
     assert_eq!(body["game_changer"], true);
@@ -637,11 +597,7 @@ async fn selects_each_printed_face_without_mixing_text_images_or_cached_ids() {
     );
 
     let back_id = format!("{MDFC}-1");
-    let back = app
-        .get(&format!("/api/card-printings/{back_id}/details"))
-        .await
-        .assert_json(200)["data"]
-        .clone();
+    let back = details(&app, &back_id).await;
     assert_eq!(back["id"], back_id);
     assert_eq!(back["name"], "Tibalt, Cosmic Impostor");
     assert_eq!(back["game_changer"], true);
@@ -658,52 +614,13 @@ async fn selects_each_printed_face_without_mixing_text_images_or_cached_ids() {
         back["image_uris"],
         json!({"normal": "https://img.example/tibalt.jpg"})
     );
-    assert_eq!(
-        catalog(&app)
-            .get_printing(MDFC)
-            .await
-            .unwrap()
-            .unwrap()
-            .name,
-        "Valki, God of Lies"
-    );
-    assert_eq!(
-        catalog(&app)
-            .get_printing(&back_id)
-            .await
-            .unwrap()
-            .unwrap()
-            .name,
-        "Tibalt, Cosmic Impostor"
-    );
-
-    let shown = app
-        .get(&format!("/api/card-printings/{back_id}"))
-        .await
-        .assert_json(200);
-    let expected: serde_json::Map<String, Value> = [
-        "id",
-        "name",
-        "game_changer",
-        "set_code",
-        "set_name",
-        "collector_number",
-        "lang",
-        "image_uris",
-    ]
-    .into_iter()
-    .map(|key| (key.to_owned(), back[key].clone()))
-    .collect();
-    assert_eq!(shown, json!({"data": expected}));
 }
 
 #[tokio::test]
 async fn supports_transform_reversible_and_token_faces_including_face_level_oracle_ids() {
-    let server = MockServer::start().await;
-    let app = printing_app(&server).await;
+    let mut records = Vec::new();
     for layout in ["transform", "reversible_card", "double_faced_token"] {
         let id = uuid::Uuid::new_v4().to_string();
-        let back_id = format!("{id}-1");
         let mut card = merge(
             scryfall_card(&id, "Front // Back"),
             &json!({"layout": layout, "set_type": "token", "card_faces": [
@@ -714,17 +631,19 @@ async fn supports_transform_reversible_and_token_faces_including_face_level_orac
         );
         card.as_object_mut().unwrap().remove("oracle_id");
         card.as_object_mut().unwrap().remove("image_uris");
-        mount_card(&server, &id, card, 1).await;
-        let body = app
-            .get(&format!("/api/card-printings/{back_id}/details"))
-            .await
-            .assert_json(200);
-        assert_eq!(body["data"]["name"], "Back");
-        assert_eq!(body["data"]["layout"], layout);
-        assert_eq!(body["data"]["oracle_id"], "back-oracle");
-        assert_eq!(body["data"]["oracle_text"], "Flying");
-        let stored = catalog(&app).get_printing(&back_id).await.unwrap().unwrap();
-        assert_eq!(stored.image_uris["normal"], "https://img.example/back.jpg");
+        records.push(card);
+    }
+    // The generation needs one catalog card to publish.
+    records.push(scryfall_card("commander", "Tymna the Weaver"));
+    let app = synced_app(&records).await;
+    for card in &records[..3] {
+        let back_id = format!("{}-1", card["id"].as_str().unwrap());
+        let body = details(&app, &back_id).await;
+        assert_eq!(body["name"], "Back");
+        assert_eq!(body["layout"], card["layout"]);
+        assert_eq!(body["oracle_id"], "back-oracle");
+        assert_eq!(body["oracle_text"], "Flying");
+        assert_eq!(body["image_uris"]["normal"], "https://img.example/back.jpg");
     }
 }
 
@@ -743,36 +662,41 @@ const HALVES: [(&str, [&str; 2], &str); 4] = [
     ),
 ];
 
+/// A split or flip card per [`HALVES`] entry, each half with its own rules.
+fn halves() -> Vec<Value> {
+    HALVES
+        .iter()
+        .map(|(layout, names, type_line)| {
+            let id = uuid::Uuid::new_v4().to_string();
+            let faces: Vec<Value> = names
+                .iter()
+                .enumerate()
+                .map(|(i, name)| {
+                    json!({"name": name, "oracle_text": format!("Rules {i}"), "type_line": type_line,
+                           "mana_cost": if i == 0 { "{2}{G}" } else { "" }})
+                })
+                .collect();
+            merge(
+                scryfall_card(&id, &names.join(" // ")),
+                &json!({"layout": layout, "card_faces": faces, "power": "99"}),
+            )
+        })
+        .collect()
+}
+
 #[tokio::test]
 async fn split_and_flip_halves_select_their_own_rules_but_retain_the_shared_front_image() {
-    let server = MockServer::start().await;
-    let app = printing_app(&server).await;
-    for (layout, names, type_line) in HALVES {
-        let id = uuid::Uuid::new_v4().to_string();
-        let faces: Vec<Value> = names
-            .iter()
-            .enumerate()
-            .map(|(i, name)| {
-                json!({"name": name, "oracle_text": format!("Rules {i}"), "type_line": type_line,
-                       "mana_cost": if i == 0 { "{2}{G}" } else { "" }})
-            })
-            .collect();
-        let card = merge(
-            scryfall_card(&id, &names.join(" // ")),
-            &json!({"layout": layout, "card_faces": faces, "power": "99"}),
-        );
-        mount_card(&server, &id, card, 2).await;
+    let cards = halves();
+    let app = synced_app(&cards).await;
+    for (card, (_, names, type_line)) in cards.iter().zip(HALVES) {
+        let id = card["id"].as_str().unwrap();
         for (i, name) in names.iter().enumerate() {
             let face_id = if i == 0 {
-                id.clone()
+                id.to_owned()
             } else {
                 format!("{id}-1")
             };
-            let data = app
-                .get(&format!("/api/card-printings/{face_id}/details"))
-                .await
-                .assert_json(200)["data"]
-                .clone();
+            let data = details(&app, &face_id).await;
             assert_eq!(data["id"], face_id);
             assert_eq!(data["name"], *name);
             assert_eq!(data["oracle_text"], format!("Rules {i}"));
@@ -783,9 +707,6 @@ async fn split_and_flip_halves_select_their_own_rules_but_retain_the_shared_fron
                 data["image_uris"]["normal"],
                 format!("https://img.example/{id}-default-card.jpg")
             );
-            let stored = catalog(&app).get_printing(&face_id).await.unwrap().unwrap();
-            assert_eq!(stored.name, *name);
-            assert_eq!(json!(stored.image_uris), data["image_uris"]);
         }
     }
 }
@@ -793,29 +714,11 @@ async fn split_and_flip_halves_select_their_own_rules_but_retain_the_shared_fron
 #[tokio::test]
 async fn alternate_printings_preserve_either_split_or_flip_half_without_changing_full_card_requests()
  {
-    let server = MockServer::start().await;
-    let app = printing_app(&server).await;
-    for (layout, names, _) in HALVES {
-        let id = uuid::Uuid::new_v4().to_string();
+    let cards = halves();
+    let app = synced_app(&cards).await;
+    for (card, (_, names, _)) in cards.iter().zip(HALVES) {
+        let id = card["id"].as_str().unwrap();
         let full_name = names.join(" // ");
-        let card = merge(
-            scryfall_card(&id, &full_name),
-            &json!({"layout": layout, "card_faces": names.iter().map(|name| json!({"name": name})).collect::<Vec<_>>()}),
-        );
-        app.catalog_card(card.clone()).await;
-        Mock::given(method("GET"))
-            .and(path("/cards/search"))
-            .and(query_param(
-                "q",
-                format!("oracleid:oracle-{id} game:paper lang:en"),
-            ))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({"data": [card], "has_more": false})),
-            )
-            .expect(3)
-            .mount(&server)
-            .await;
         for (name, suffix) in [(names[0], ""), (names[1], "-1"), (full_name.as_str(), "")] {
             let body = app
                 .get(&format!("/api/card-printings?name={}", encode(name)))
@@ -835,55 +738,41 @@ async fn alternate_printings_preserve_either_split_or_flip_half_without_changing
 
 #[tokio::test]
 async fn prepare_and_adventure_retain_their_shared_image_and_combined_rules() {
-    let server = MockServer::start().await;
-    let app = printing_app(&server).await;
-    for layout in ["prepare", "adventure"] {
-        let id = uuid::Uuid::new_v4().to_string();
-        let card = merge(
-            scryfall_card(&id, "Studious First-Year // Rampant Growth"),
-            &json!({"layout": layout, "card_faces": [
-                {"mana_cost": "{G}", "oracle_text": "When this creature enters, prepare."},
-                {"mana_cost": "{1}{G}", "oracle_text": "Search for a basic land."}
-            ]}),
-        );
-        mount_card(&server, &id, card, 1).await;
-        let body = app
-            .get(&format!("/api/card-printings/{id}/details"))
-            .await
-            .assert_json(200);
+    let cards: Vec<Value> = ["prepare", "adventure"]
+        .into_iter()
+        .map(|layout| {
+            merge(
+                scryfall_card(
+                    &uuid::Uuid::new_v4().to_string(),
+                    "Studious First-Year // Rampant Growth",
+                ),
+                &json!({"layout": layout, "card_faces": [
+                    {"mana_cost": "{G}", "oracle_text": "When this creature enters, prepare."},
+                    {"mana_cost": "{1}{G}", "oracle_text": "Search for a basic land."}
+                ]}),
+            )
+        })
+        .collect();
+    let app = synced_app(&cards).await;
+    for card in &cards {
+        let id = card["id"].as_str().unwrap();
+        let body = details(&app, id).await;
+        assert_eq!(body["name"], "Studious First-Year // Rampant Growth");
+        assert_eq!(body["mana_cost"], "{G}");
         assert_eq!(
-            body["data"]["name"],
-            "Studious First-Year // Rampant Growth"
-        );
-        assert_eq!(body["data"]["mana_cost"], "{G}");
-        assert_eq!(
-            body["data"]["oracle_text"],
+            body["oracle_text"],
             "When this creature enters, prepare.\n//\nSearch for a basic land."
         );
         assert_eq!(
-            body["data"]["image_uris"]["normal"],
+            body["image_uris"]["normal"],
             format!("https://img.example/{id}-default-card.jpg")
         );
     }
 }
 
 #[tokio::test]
-async fn rejects_malformed_or_unavailable_faces_and_reports_misses_and_outages() {
-    let server = MockServer::start().await;
-    mount_card(&server, SAGA, scryfall_card(SAGA, "Single-faced card"), 1).await;
-    Mock::given(method("GET"))
-        .and(path(format!("/cards/{MISSING}")))
-        .respond_with(ResponseTemplate::new(404).set_body_json(json!({})))
-        .expect(1)
-        .mount(&server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path(format!("/cards/{DOWN}")))
-        .respond_with(ResponseTemplate::new(503).set_body_json(json!({})))
-        .expect(1)
-        .mount(&server)
-        .await;
-    let app = printing_app(&server).await;
+async fn rejects_malformed_or_unavailable_faces_and_reports_misses() {
+    let app = synced_app(&[scryfall_card(SAGA, "Single-faced card")]).await;
     for suffix in ["-0", "-2", "-01", "-1-1", ":back", "-x"] {
         let id = format!("{MDFC}{suffix}");
         app.get(&format!("/api/card-printings/{}/details", encode(&id)))
@@ -899,58 +788,25 @@ async fn rejects_malformed_or_unavailable_faces_and_reports_misses_and_outages()
     app.get(&format!("/api/card-printings/{MISSING}/details"))
         .await
         .assert_json(404);
-    app.get(&format!("/api/card-printings/{DOWN}/details"))
+    app.get(&format!("/api/card-printings/{MISSING}/rulings"))
         .await
-        .assert_json(502);
+        .assert_json(404);
     app.clear_cookies();
-    app.get(&format!("/api/card-printings/{MDFC}/details"))
-        .await
-        .assert_json(401);
+    for resource in ["details", "rulings"] {
+        app.get(&format!("/api/card-printings/{SAGA}/{resource}"))
+            .await
+            .assert_json(401);
+    }
 }
 
 #[tokio::test]
-async fn queues_a_details_lookup_behind_the_shared_scryfall_limit_instead_of_failing() {
-    let server = MockServer::start().await;
-    mount_card(
-        &server,
-        SAGA,
-        scryfall_card(SAGA, "Kiora Bests the Sea God"),
-        1,
-    )
-    .await;
-    let app = printing_app_with(&server, |config| config.scryfall_rate_limit = 1).await;
-    // Another seat's lookup of the same card has just taken this window's only slot.
-    app.state.scryfall.limiter().hit(
-        "scryfall_card",
-        WindowLimit {
-            limit: 1,
-            scale: Duration::from_millis(100),
-        },
-    );
+async fn supports_name_only_or_obsolete_catalog_references() {
+    let app = synced_app(&[scryfall_card("commander", "Tymna the Weaver")]).await;
     let body = app
-        .get(&format!("/api/card-printings/{SAGA}/details"))
+        .get("/api/card-printings?card_id=obsolete&name=Tymna%20the%20Weaver")
         .await
         .assert_json(200);
-    assert_eq!(body["data"]["name"], "Kiora Bests the Sea God");
-}
-
-#[tokio::test]
-async fn supports_name_only_or_obsolete_catalog_references_and_surfaces_upstream_failure() {
-    let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/cards/search"))
-        .and(query_param(
-            "q",
-            "oracleid:oracle-commander game:paper lang:en",
-        ))
-        .respond_with(ResponseTemplate::new(503).set_body_json(json!({"error": "Unavailable"})))
-        .expect(1)
-        .mount(&server)
-        .await;
-    let app = printing_app(&server).await;
-    app.get("/api/card-printings?card_id=obsolete&name=Tymna%20the%20Weaver")
-        .await
-        .assert_json(502);
+    assert_eq!(body["data"][0]["id"], "commander");
     app.get("/api/card-printings?page=0").await.assert_json(400);
     app.get("/api/card-printings?name=Unknown")
         .await
@@ -965,14 +821,20 @@ async fn supports_name_only_or_obsolete_catalog_references_and_surfaces_upstream
 }
 
 #[tokio::test]
-async fn saved_printing_art_survives_a_catalog_replacement_and_a_missing_crop_falls_back() {
-    let server = MockServer::start().await;
-    let app = printing_app(&server).await;
+async fn a_sync_prunes_printings_it_no_longer_lists_and_a_missing_crop_falls_back() {
+    let app = printing_app().await;
     sync_fixture(&app).await;
     assert!(catalog(&app).get_card("commander").await.unwrap().is_none());
     assert!(
         catalog(&app)
             .get_printing("commander-alternate")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        catalog(&app)
+            .get_printing("printing-old")
             .await
             .unwrap()
             .is_some()
@@ -1003,8 +865,8 @@ struct DeckCtx {
 }
 
 /// The printing setup plus the signed-in member's linked player and a partner deck.
-async fn deck_ctx(server: &MockServer) -> DeckCtx {
-    let app = printing_app(server).await;
+async fn deck_ctx() -> DeckCtx {
+    let app = printing_app().await;
     let user = app
         .state
         .accounts
@@ -1056,8 +918,7 @@ fn assert_art(deck: &Value) {
 #[tokio::test]
 async fn saves_independent_commander_and_partner_printings_and_resolves_them_on_every_deck_surface()
 {
-    let server = MockServer::start().await;
-    let ctx = deck_ctx(&server).await;
+    let ctx = deck_ctx().await;
     let body = save(
         &ctx,
         json!({"commander_printing_id": "commander-alternate", "partner_printing_id": "partner-alternate"}),
@@ -1154,8 +1015,7 @@ async fn saves_independent_commander_and_partner_printings_and_resolves_them_on_
 
 #[tokio::test]
 async fn deck_create_list_and_edit_expose_independent_full_card_printing_images() {
-    let server = MockServer::start().await;
-    let ctx = deck_ctx(&server).await;
+    let ctx = deck_ctx().await;
     let created = ctx
         .app
         .post(
@@ -1210,8 +1070,7 @@ async fn deck_create_list_and_edit_expose_independent_full_card_printing_images(
 
 #[tokio::test]
 async fn rejects_unknown_and_mismatched_printings_atomically_including_on_create() {
-    let server = MockServer::start().await;
-    let ctx = deck_ctx(&server).await;
+    let ctx = deck_ctx().await;
     for attrs in [
         json!({"commander_printing_id": "partner-alternate"}),
         json!({"partner_printing_id": "commander-alternate"}),
@@ -1256,8 +1115,7 @@ async fn rejects_unknown_and_mismatched_printings_atomically_including_on_create
 #[tokio::test]
 async fn clears_defaults_explicitly_and_stale_printings_when_a_card_changes_or_partner_is_removed()
 {
-    let server = MockServer::start().await;
-    let ctx = deck_ctx(&server).await;
+    let ctx = deck_ctx().await;
     save(
         &ctx,
         json!({"commander_printing_id": "commander-alternate", "partner_printing_id": "partner-alternate"}),
@@ -1296,8 +1154,7 @@ async fn clears_defaults_explicitly_and_stale_printings_when_a_card_changes_or_p
 
 #[tokio::test]
 async fn saved_deck_printing_art_survives_a_catalog_replacement() {
-    let server = MockServer::start().await;
-    let ctx = deck_ctx(&server).await;
+    let ctx = deck_ctx().await;
     save(
         &ctx,
         json!({"commander_printing_id": "commander-alternate", "partner_printing_id": "partner-alternate"}),
@@ -1316,125 +1173,51 @@ async fn saved_deck_printing_art_survives_a_catalog_replacement() {
 
 // ---- card rulings controller ----
 
-const PRINTING: &str = "00000000-0000-0000-0000-000000000001";
-const EXPIRED: &str = "00000000-0000-0000-0000-000000000002";
-
-async fn cached_rulings(app: &TestApp, id: &str) -> Option<Value> {
-    let row: Option<String> =
-        sqlx::query_scalar("SELECT rulings FROM card_rulings_cache WHERE id = ?")
-            .bind(id)
-            .fetch_optional(app.pool())
-            .await
-            .unwrap();
-    row.map(|rulings| serde_json::from_str(&rulings).unwrap())
-}
-
 #[tokio::test]
-async fn fetches_exact_printing_rulings_and_caches_only_the_public_fields() {
+async fn serves_imported_rulings_and_printings_without_calling_the_scryfall_api() {
     let server = MockServer::start().await;
-    let ruling = json!({"source": "wotc", "published_at": "2026-01-23", "comment": "Draw a card."});
-    let mut exposed = ruling.clone();
-    exposed["oracle_id"] = json!("not-exposed");
-    Mock::given(method("GET"))
-        .and(path(format!("/cards/{PRINTING}/rulings")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [exposed]})))
-        .up_to_n_times(1)
-        .expect(1)
-        .mount(&server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path(format!("/cards/{PRINTING}/rulings")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [ruling]})))
-        .expect(1)
-        .mount(&server)
-        .await;
-    let app = printing_app(&server).await;
-
-    for _ in 0..2 {
-        let body = app
-            .get(&format!("/api/card-printings/{PRINTING}/rulings"))
-            .await
-            .assert_json(200);
-        assert_eq!(body, json!({"data": [ruling]}));
-    }
-    assert_eq!(cached_rulings(&app, PRINTING).await, Some(json!([ruling])));
-
-    let back = format!("{PRINTING}-1");
-    for _ in 0..2 {
-        let body = app
-            .get(&format!("/api/card-printings/{back}/rulings"))
-            .await
-            .assert_json(200);
-        assert_eq!(body, json!({"data": [ruling]}));
-    }
-    assert_eq!(cached_rulings(&app, &back).await, Some(json!([ruling])));
-    assert_eq!(cached_rulings(&app, PRINTING).await, Some(json!([ruling])));
-    let request = &server.received_requests().await.unwrap()[0];
-    assert!(request.headers.get("user-agent").is_some());
-}
-
-#[tokio::test]
-async fn caches_empty_results_and_refreshes_expired_results() {
-    let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path(format!("/cards/{EXPIRED}/rulings")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
-        .expect(1)
-        .mount(&server)
-        .await;
-    let app = printing_app(&server).await;
-    let stale = the_gathering::db::UtcDateTime::now().plus(time::Duration::seconds(-86_400));
-    sqlx::query("INSERT INTO card_rulings_cache (id, rulings, fetched_at) VALUES (?, ?, ?)")
-        .bind(EXPIRED)
-        .bind(json!([{"comment": "Outdated"}]).to_string())
-        .bind(stale)
-        .execute(app.pool())
+    let card = merge(
+        scryfall_card(MDFC, "Valki, God of Lies // Tibalt, Cosmic Impostor"),
+        &json!({"layout": "modal_dfc", "card_faces": [
+            {"name": "Valki, God of Lies"}, {"name": "Tibalt, Cosmic Impostor"}
+        ]}),
+    );
+    let ruling = |oracle_id: String, comment: &str| json!({"object": "ruling", "oracle_id": oracle_id, "source": "wotc", "published_at": "2026-01-23", "comment": comment});
+    support::mount_scryfall_bulk(
+        &server,
+        &[card, scryfall_card(SAGA, "Kiora Bests the Sea God")],
+        &[
+            ruling(format!("oracle-{MDFC}"), "Choose a face."),
+            ruling(format!("oracle-{SAGA}"), "Another card."),
+            ruling(format!("oracle-{MDFC}"), "Copies are double-faced."),
+        ],
+    )
+    .await;
+    let app = TestApp::with_config(|config| config.scryfall_api_base = server.uri()).await;
+    logged_in(&app).await;
+    sync::run(app.pool(), &app.state.scryfall, Source::Scryfall)
         .await
         .unwrap();
-    for _ in 0..2 {
+    let downloads = server.received_requests().await.unwrap().len();
+
+    let expected = json!({"data": [
+        {"source": "wotc", "published_at": "2026-01-23", "comment": "Choose a face."},
+        {"source": "wotc", "published_at": "2026-01-23", "comment": "Copies are double-faced."}
+    ]});
+    for id in [MDFC.to_owned(), format!("{MDFC}-1")] {
         let body = app
-            .get(&format!("/api/card-printings/{EXPIRED}/rulings"))
+            .get(&format!("/api/card-printings/{id}/rulings"))
             .await
             .assert_json(200);
-        assert_eq!(body, json!({"data": []}));
+        assert_eq!(body, expected);
+        assert_eq!(details(&app, &id).await["id"], id);
     }
-    assert_eq!(cached_rulings(&app, EXPIRED).await, Some(json!([])));
-}
-
-#[tokio::test]
-async fn rulings_require_authentication_and_do_not_cache_missing_malformed_or_failed_responses() {
-    let server = MockServer::start().await;
-    let app = printing_app(&server).await;
-    for (status, body, expected) in [
-        (404, json!({}), 404),
-        (503, json!({}), 502),
-        (200, json!({"data": "invalid"}), 502),
-    ] {
-        let id = uuid::Uuid::new_v4().to_string();
-        Mock::given(method("GET"))
-            .and(path(format!("/cards/{id}/rulings")))
-            .respond_with(ResponseTemplate::new(status).set_body_json(body))
-            .expect(1)
-            .mount(&server)
-            .await;
-        app.get(&format!("/api/card-printings/{id}/rulings"))
-            .await
-            .assert_json(expected);
-        assert_eq!(cached_rulings(&app, &id).await, None);
-    }
-    // A transport failure (the connection is refused) is a bad gateway too.
-    let unreachable =
-        TestApp::with_config(|config| config.scryfall_api_base = "http://127.0.0.1:9".into()).await;
-    logged_in(&unreachable).await;
-    unreachable
-        .get(&format!("/api/card-printings/{PRINTING}/rulings"))
+    let body = app
+        .get("/api/card-printings?name=Valki%2C%20God%20of%20Lies")
         .await
-        .assert_json(502);
-    assert_eq!(cached_rulings(&unreachable, PRINTING).await, None);
-    app.clear_cookies();
-    app.get("/api/card-printings/secret/rulings")
-        .await
-        .assert_json(401);
+        .assert_json(200);
+    assert_eq!(body["data"][0]["id"], MDFC);
+    assert_eq!(server.received_requests().await.unwrap().len(), downloads);
 }
 
 // ---- card image controller ----

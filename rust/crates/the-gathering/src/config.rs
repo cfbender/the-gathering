@@ -337,9 +337,6 @@ pub struct Config {
     pub self_update: SelfUpdateConfig,
     /// Scryfall API base (tests point it at a stub).
     pub scryfall_api_base: String,
-    /// Scryfall API requests allowed per window (100 ms for card lookups and rulings,
-    /// 500 ms for printing searches), shared by every user.
-    pub scryfall_rate_limit: u64,
     /// Origin card images are downloaded from in place of `https://cards.scryfall.io`
     /// (tests point it at a stub; the accepted source URLs never change).
     pub card_image_base: String,
@@ -660,7 +657,6 @@ impl Config {
                 github_api: "https://api.github.com/repos/cfbender/the-gathering".into(),
             },
             scryfall_api_base: "https://api.scryfall.com".into(),
-            scryfall_rate_limit: 1,
             card_image_base: "https://cards.scryfall.io".into(),
             moxfield_api_base: "https://api2.moxfield.com".into(),
             archidekt_api_base: "https://archidekt.com".into(),
@@ -724,7 +720,6 @@ impl Config {
                 ..SelfUpdateConfig::default()
             },
             scryfall_api_base: "https://api.scryfall.com".into(),
-            scryfall_rate_limit: 1_000_000,
             card_image_base: "https://cards.scryfall.io".into(),
             moxfield_api_base: "https://api2.moxfield.com".into(),
             archidekt_api_base: "https://archidekt.com".into(),

@@ -1,20 +1,22 @@
-//! Alternate printings and full printing details fetched from Scryfall on demand
-//! plus cached rulings.
+//! Alternate printings, full printing details, and rulings, read from the printings and
+//! rulings each catalog sync imports from Scryfall's bulk files.
 //!
-//! These work on Scryfall's raw JSON: faces are selected by copying a face's fields over the
+//! Every printing keeps a trimmed copy of its Scryfall card object (`card_printings.card`),
+//! and these work on that raw JSON: faces are selected by copying a face's fields over the
 //! card, and the details keep fields (prices, `scryfall_uri`) the shared card model omits.
 
 use std::collections::BTreeMap;
 
+use lotus::scryfall::catalog::EXCLUDED_SET_TYPES;
+use serde::Serialize;
 use serde_json::{Map, Value, json};
+use sqlx::SqliteConnection;
 
-use super::scryfall::{Failure, Scryfall};
 use super::{Card, Printing, parse_image_uris, printing_id};
-use crate::db::{self, Pool, UtcDateTime};
+use crate::db::{IsoDate, Pool};
 
-/// Scryfall syncs prices from its affiliates every 24 hours, so a day-old copy loses little.
-const DETAILS_TTL_SECONDS: i64 = 86_400;
-const RULINGS_TTL_SECONDS: i64 = 86_400;
+/// Printings per picker page.
+const PAGE_SIZE: usize = 175;
 const FACE_LAYOUTS: [&str; 6] = [
     "transform",
     "modal_dfc",
@@ -35,6 +37,43 @@ const FACE_FIELDS: [&str; 9] = [
     "loyalty",
 ];
 const HALF_LAYOUTS: [&str; 2] = ["split", "flip"];
+/// The card fields a stored printing keeps besides its images, prices, and faces.
+const CARD_FIELDS: [&str; 19] = [
+    "id",
+    "oracle_id",
+    "name",
+    "set",
+    "set_name",
+    "collector_number",
+    "lang",
+    "game_changer",
+    "mana_cost",
+    "type_line",
+    "oracle_text",
+    "flavor_text",
+    "power",
+    "toughness",
+    "loyalty",
+    "layout",
+    "rarity",
+    "released_at",
+    "scryfall_uri",
+];
+/// The card fields `card_printings` keeps in its own columns rather than in `card`.
+const COLUMN_FIELDS: [&str; 10] = [
+    "id",
+    "oracle_id",
+    "name",
+    "set",
+    "set_name",
+    "collector_number",
+    "lang",
+    "game_changer",
+    "released_at",
+    "image_uris",
+];
+const IMAGE_VARIANTS: [&str; 3] = ["small", "normal", "art_crop"];
+const PRICES: [&str; 3] = ["usd", "usd_foil", "usd_etched"];
 
 /// Why a printing lookup failed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,25 +82,14 @@ pub enum LookupError {
     BadRequest,
     /// Unknown card or printing (404).
     NotFound,
-    /// Scryfall failed (502).
-    BadGateway,
     /// The database failed (500; logged).
     Database,
 }
 
 #[allow(clippy::needless_pass_by_value)] // used as `map_err(database)`
 fn database(error: sqlx::Error) -> LookupError {
-    tracing::error!("printing cache: {error}");
+    tracing::error!("printing lookup: {error}");
     LookupError::Database
-}
-
-impl From<Failure> for LookupError {
-    fn from(failure: Failure) -> Self {
-        match failure {
-            Failure::NotFound => Self::NotFound,
-            Failure::BadGateway => Self::BadGateway,
-        }
-    }
 }
 
 /// The value when present and neither `null` nor `false`.
@@ -257,17 +285,152 @@ fn details_data(card: &Value, row: &Printing) -> Value {
     })
 }
 
-async fn upsert_printing(
-    conn: &mut sqlx::SqliteConnection,
-    printing: &Printing,
+/// The `fields` of `object` that are set, with image URLs cut to the variants the app serves.
+fn keep(object: &Map<String, Value>, fields: &[&str]) -> Map<String, Value> {
+    let mut kept: Map<String, Value> = fields
+        .iter()
+        .filter_map(|field| {
+            object
+                .get(*field)
+                .filter(|value| !value.is_null())
+                .map(|value| ((*field).to_owned(), value.clone()))
+        })
+        .collect();
+    if let Some(Value::Object(images)) = object.get("image_uris") {
+        kept.insert(
+            "image_uris".to_owned(),
+            Value::Object(keep(images, &IMAGE_VARIANTS)),
+        );
+    }
+    kept
+}
+
+/// A printing as the catalog sync stores it: its `card_printings` columns, and in `card` the
+/// rest of the card object the details and pickers read.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BulkPrinting {
+    printing: Printing,
+    selectable: bool,
+    released_at: Option<IsoDate>,
+    card: String,
+}
+
+/// The stored form of a Scryfall card object, listed by pickers when it is English, paper,
+/// and not from a token or memorabilia set. `None` without an id, name, or oracle id;
+/// reversible cards carry the oracle id on each face, and the front face's stands for the
+/// printing.
+pub fn from_bulk(raw: &Value) -> Option<BulkPrinting> {
+    let object = raw.as_object()?;
+    object.get("id").and_then(Value::as_str)?;
+    object.get("name").and_then(Value::as_str)?;
+    let oracle_id = object
+        .get("oracle_id")
+        .or_else(|| front(raw).and_then(|face| face.get("oracle_id")))
+        .and_then(Value::as_str)?;
+    let mut card = keep(object, &CARD_FIELDS);
+    card.insert("oracle_id".to_owned(), Value::String(oracle_id.to_owned()));
+    if let Some(Value::Object(prices)) = object.get("prices") {
+        card.insert("prices".to_owned(), Value::Object(keep(prices, &PRICES)));
+    }
+    let face_fields: Vec<&str> = std::iter::once("oracle_id").chain(FACE_FIELDS).collect();
+    let faces: Vec<Value> = faces(raw)
+        .iter()
+        .filter_map(Value::as_object)
+        .map(|face| Value::Object(keep(face, &face_fields)))
+        .collect();
+    if !faces.is_empty() {
+        card.insert("card_faces".to_owned(), Value::Array(faces));
+    }
+    let card = Value::Object(card);
+    let printing = printing_data(&card);
+    let released_at = card
+        .get("released_at")
+        .and_then(Value::as_str)
+        .and_then(IsoDate::parse);
+    let mut extras = card;
+    if let Some(extras) = extras.as_object_mut() {
+        for field in COLUMN_FIELDS {
+            extras.remove(field);
+        }
+    }
+    let paper = object
+        .get("games")
+        .and_then(Value::as_array)
+        .is_some_and(|games| games.iter().any(|game| game == "paper"));
+    let excluded_set = object
+        .get("set_type")
+        .and_then(Value::as_str)
+        .is_some_and(|set_type| EXCLUDED_SET_TYPES.contains(&set_type));
+    Some(BulkPrinting {
+        printing,
+        selectable: object.get("lang").and_then(Value::as_str) == Some("en")
+            && paper
+            && !excluded_set,
+        released_at,
+        card: extras.to_string(),
+    })
+}
+
+/// A `card_printings` row the sync stored.
+struct StoredPrinting {
+    id: String,
+    oracle_id: String,
+    name: String,
+    set_code: String,
+    set_name: String,
+    collector_number: String,
+    lang: String,
+    image_uris: String,
+    game_changer: bool,
+    released_at: Option<IsoDate>,
+    card: String,
+}
+
+impl StoredPrinting {
+    /// The card object: `card` with the printing's columns put back. The image column holds
+    /// the front face's images when the card has none of its own, which reads the same.
+    fn card(self) -> Option<Value> {
+        let Ok(Value::Object(mut card)) = serde_json::from_str(&self.card) else {
+            return None;
+        };
+        let images = parse_image_uris(&self.image_uris);
+        for (field, value) in [
+            ("id", json!(self.id)),
+            ("oracle_id", json!(self.oracle_id)),
+            ("name", json!(self.name)),
+            ("set", json!(self.set_code)),
+            ("set_name", json!(self.set_name)),
+            ("collector_number", json!(self.collector_number)),
+            ("lang", json!(self.lang)),
+            ("game_changer", json!(self.game_changer)),
+            ("released_at", json!(self.released_at)),
+            ("image_uris", json!(images)),
+        ] {
+            if !(value.is_null() || field == "image_uris" && images.is_empty()) {
+                card.insert(field.to_owned(), value);
+            }
+        }
+        Some(Value::Object(card))
+    }
+}
+
+/// Inserts or refreshes a printing, recording catalog sync `sync` as the run that listed it.
+pub async fn store(
+    conn: &mut SqliteConnection,
+    row: &BulkPrinting,
+    sync: i64,
 ) -> Result<(), sqlx::Error> {
+    let printing = &row.printing;
     let images = serde_json::to_string(&printing.image_uris).unwrap_or_else(|_| "{}".to_owned());
     sqlx::query!(
-        "INSERT INTO card_printings (id, oracle_id, name, set_code, set_name, collector_number, lang, image_uris, game_changer)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO card_printings (id, oracle_id, name, set_code, set_name, collector_number, lang, image_uris,
+                                     game_changer, card, catalog_sync_id, selectable, released_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET oracle_id = excluded.oracle_id, name = excluded.name,
            set_code = excluded.set_code, set_name = excluded.set_name, collector_number = excluded.collector_number,
-           lang = excluded.lang, image_uris = excluded.image_uris, game_changer = excluded.game_changer",
+           lang = excluded.lang, image_uris = excluded.image_uris, game_changer = excluded.game_changer,
+           card = excluded.card, catalog_sync_id = excluded.catalog_sync_id, selectable = excluded.selectable,
+           released_at = excluded.released_at",
         printing.id,
         printing.oracle_id,
         printing.name,
@@ -276,128 +439,118 @@ async fn upsert_printing(
         printing.collector_number,
         printing.lang,
         images,
-        printing.game_changer
+        printing.game_changer,
+        row.card,
+        sync,
+        row.selectable,
+        row.released_at
     )
     .execute(conn)
     .await?;
     Ok(())
 }
 
-/// One page of a card's English paper printings, cached in
-/// `card_printings`. `name` keeps the requested half of a split or flip card selected.
+/// Deletes the printings catalog sync `sync` did not list, except those a deck shows.
+pub async fn prune(conn: &mut SqliteConnection, sync: i64) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        "DELETE FROM card_printings WHERE catalog_sync_id IS NOT ?
+           AND id NOT IN (SELECT commander_printing_id FROM decks WHERE commander_printing_id IS NOT NULL)
+           AND id NOT IN (SELECT partner_printing_id FROM decks WHERE partner_printing_id IS NOT NULL)",
+        sync
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// One page of a card's English paper printings, newest first. `name` keeps the requested
+/// half of a split or flip card selected.
 pub async fn list(
     pool: &Pool,
-    scryfall: &Scryfall,
     card: &Card,
     page: u32,
     name: Option<&str>,
 ) -> Result<(Vec<Printing>, bool), LookupError> {
-    let (cards, has_more) = scryfall.printings(&card.oracle_id, page).await?;
-    let rows: Vec<Printing> = cards
+    let limit = i64::try_from(PAGE_SIZE + 1).unwrap_or(i64::MAX);
+    let offset = i64::try_from(PAGE_SIZE)
+        .unwrap_or(i64::MAX)
+        .saturating_mul(i64::from(page.saturating_sub(1)));
+    let mut cards = sqlx::query_as!(
+        StoredPrinting,
+        r#"SELECT id AS "id!", oracle_id, name, set_code, set_name, collector_number, lang, image_uris,
+                  game_changer AS "game_changer: bool", released_at AS "released_at: IsoDate", card AS "card!"
+           FROM card_printings
+           WHERE oracle_id = ? AND selectable AND card IS NOT NULL
+           ORDER BY released_at DESC, set_code DESC, CAST(collector_number AS INTEGER) DESC,
+                    collector_number DESC, id DESC
+           LIMIT ? OFFSET ?"#,
+        card.oracle_id,
+        limit,
+        offset
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(database)?;
+    let has_more = cards.len() > PAGE_SIZE;
+    cards.truncate(PAGE_SIZE);
+    let rows = cards
         .into_iter()
-        .filter(|printing| {
-            printing.get("oracle_id").and_then(Value::as_str) == Some(card.oracle_id.as_str())
-                && printing
-                    .get("games")
-                    .and_then(Value::as_array)
-                    .is_some_and(|games| games.iter().any(|game| game == "paper"))
-                && printing.get("lang").and_then(Value::as_str) == Some("en")
-        })
-        // Scryfall includes memorabilia basics; the catalog intentionally does not describe them.
-        .filter(|printing| {
-            !matches!(
-                printing.get("set_type").and_then(Value::as_str),
-                Some("token" | "memorabilia")
-            )
-        })
-        .map(|printing| printing_data(&select_named_half(printing, name)))
+        .filter_map(StoredPrinting::card)
+        .map(|card| printing_data(&select_named_half(card, name)))
         .collect();
-    if !rows.is_empty() {
-        let mut tx = db::begin(pool).await.map_err(database)?;
-        for row in &rows {
-            upsert_printing(&mut tx, row).await.map_err(database)?;
-        }
-        tx.commit().await.map_err(database)?;
-    }
     Ok((rows, has_more))
 }
 
-/// Rules text, cost, type, set, prices, and images of any printing
-/// by Scryfall id (with `-1` for the second face), cached for a day in `card_details_cache`
-/// so every seat at a table, and every later game, reads it locally. The printing's image
-/// and set are cached in `card_printings` on the way through.
-pub async fn details(pool: &Pool, scryfall: &Scryfall, id: &str) -> Result<Value, LookupError> {
+/// Rules text, cost, type, set, prices, and images of a printing by Scryfall id (with `-1`
+/// for the second face).
+pub async fn details(pool: &Pool, id: &str) -> Result<Value, LookupError> {
     let (card_id, face) = printing_id::parse(id).ok_or(LookupError::BadRequest)?;
-    let now = UtcDateTime::now();
-    let cached = sqlx::query!(
-        r#"SELECT details, fetched_at AS "fetched_at: UtcDateTime" FROM card_details_cache WHERE id = ?"#,
-        id
+    let card = sqlx::query_as!(
+        StoredPrinting,
+        r#"SELECT id AS "id!", oracle_id, name, set_code, set_name, collector_number, lang, image_uris,
+                  game_changer AS "game_changer: bool", released_at AS "released_at: IsoDate", card AS "card!"
+           FROM card_printings WHERE id = ? AND card IS NOT NULL"#,
+        card_id
     )
     .fetch_optional(pool)
     .await
-    .map_err(database)?;
-    if let Some(row) = cached
-        && now.unix() - row.fetched_at.unix() < DETAILS_TTL_SECONDS
-        && let Ok(details) = serde_json::from_str::<Value>(&row.details)
-    {
-        return Ok(details);
-    }
-    let card = scryfall.card(card_id).await?;
+    .map_err(database)?
+    .and_then(StoredPrinting::card)
+    .ok_or(LookupError::NotFound)?;
     let card = select_face(&card, face, id)?;
     let row = printing_data(&card);
-    let details = details_data(&card, &row);
-    let encoded = details.to_string();
-    let mut tx = db::begin(pool).await.map_err(database)?;
-    upsert_printing(&mut tx, &row).await.map_err(database)?;
-    sqlx::query!(
-        "INSERT INTO card_details_cache (id, details, fetched_at) VALUES (?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET details = excluded.details, fetched_at = excluded.fetched_at",
-        id,
-        encoded,
-        now
-    )
-    .execute(&mut *tx)
-    .await
-    .map_err(database)?;
-    tx.commit().await.map_err(database)?;
-    Ok(details)
+    Ok(details_data(&card, &row))
 }
 
-/// A printing's rulings, cached for a day by printing id (face suffix
-/// included) in `card_rulings_cache`.
-pub async fn rulings(
-    pool: &Pool,
-    scryfall: &Scryfall,
-    id: &str,
-) -> Result<Vec<Value>, LookupError> {
+/// One Scryfall ruling.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Ruling {
+    /// `wotc` or `scryfall`.
+    pub source: Option<String>,
+    /// Publication date.
+    pub published_at: Option<IsoDate>,
+    /// The ruling text.
+    pub comment: String,
+}
+
+/// The rulings of a printing's card (the second face's id included), oldest first.
+pub async fn rulings(pool: &Pool, id: &str) -> Result<Vec<Ruling>, LookupError> {
     let (card_id, _face) = printing_id::parse(id).ok_or(LookupError::BadRequest)?;
-    let now = UtcDateTime::now();
-    let cached = sqlx::query!(
-        r#"SELECT rulings, fetched_at AS "fetched_at: UtcDateTime" FROM card_rulings_cache WHERE id = ?"#,
-        id
+    let oracle_id =
+        sqlx::query_scalar!("SELECT oracle_id FROM card_printings WHERE id = ?", card_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(database)?
+            .ok_or(LookupError::NotFound)?;
+    sqlx::query_as!(
+        Ruling,
+        r#"SELECT source, published_at AS "published_at: IsoDate", comment
+           FROM card_rulings WHERE oracle_id = ? ORDER BY published_at, id"#,
+        oracle_id
     )
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await
-    .map_err(database)?;
-    if let Some(row) = cached
-        && now.unix() - row.fetched_at.unix() < RULINGS_TTL_SECONDS
-        && let Ok(rulings) = serde_json::from_str::<Vec<Value>>(&row.rulings)
-    {
-        return Ok(rulings);
-    }
-    let rulings = scryfall.rulings(card_id).await?;
-    let encoded = Value::Array(rulings.clone()).to_string();
-    sqlx::query!(
-        "INSERT INTO card_rulings_cache (id, rulings, fetched_at) VALUES (?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET rulings = excluded.rulings, fetched_at = excluded.fetched_at",
-        id,
-        encoded,
-        now
-    )
-    .execute(pool)
-    .await
-    .map_err(database)?;
-    Ok(rulings)
+    .map_err(database)
 }
 
 /// `details` with its `image_uris` pointed at the image cache, as the API renders it.

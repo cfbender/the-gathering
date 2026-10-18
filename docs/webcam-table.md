@@ -831,17 +831,17 @@ older six-frame bundles still work), gallery search. A top-1
 that leads the runner-up by at least `CLEAR_MARGIN` (0.08 cosine) is treated as the answer to a
 plain click: it is recorded immediately and the **card preview** opens over the board — the
 card image with its set and collector number, and (on wider screens) a box with mana cost, type
-line, P/T or loyalty, and oracle text. That text is not in the catalog (which keeps one printing
-per card), so `card-details.ts` asks `GET /api/card-printings/:id/details`, which
-`Catalog.Printings.details/1` answers by fetching the exact printing from Scryfall once and
-caching it in `card_printings`. "Wrong card?" on the preview reopens the picker for the same
-crop and the chosen card replaces the entry.
+line, P/T or loyalty, and oracle text. The catalog keeps one printing per card, so
+`card-details.ts` asks `GET /api/card-printings/:id/details`, which `catalog/printings.rs`
+answers from the exact printing the catalog sync imported into `card_printings` (every printing
+in Scryfall's `default_cards` file), without a Scryfall request. "Wrong card?" on the preview
+reopens the picker for the same crop and the chosen card replaces the entry.
 
 For separate-side gallery entries, details select that face's name, image, mana cost, type
-and rules text. The suffix is stripped only for the Scryfall request, not the details/query
-cache key or correction label. The cached-printing `show` endpoint can also return either
-face after details has populated it. Rulings use the base card's shared ruling list and
-face-keyed cache rows. Malformed gallery IDs return HTTP 400 from details/rulings.
+and rules text. The suffix is stripped only to find the stored printing, not for the details/query
+cache key or correction label. The printing `show` endpoint returns whole printings only.
+Rulings use the base card's shared ruling list. Malformed gallery IDs return HTTP 400 from
+details/rulings.
 
 The **picker** (`card-suggestions.tsx`) is user-initiated only: it opens for a near-tie, when
 no bundle is published (deck suggestions stand in), on "Wrong card?", or for an outlined card.
@@ -901,9 +901,9 @@ The card popup keeps **Wrong card?**, **Remove**, **Rulings**, and close togethe
 consistently sized toolbar. Clicking outside the visible content, including the space below
 the rules text, closes it. Right-click its content or use **Rulings** to view Scryfall rulings;
 the popup is the only place rulings are offered (tray entries just open the popup). The authenticated
-`GET /api/card-printings/:id/rulings` endpoint fetches `/cards/:id/rulings` and caches
-successful results (including an empty list) in `card_rulings_cache` for one day. Errors are
-not cached, and the dialog offers retry. This cache is independent of printing/catalog refreshes.
+`GET /api/card-printings/:id/rulings` endpoint answers from `card_rulings`, which each catalog
+sync replaces from Scryfall's `rulings` bulk file (rulings are keyed by the printing's oracle
+id). Errors offer a retry in the dialog.
 
 Identified cards are not game events and never appear in the Log. Confirming a card (the silent
 clear match, `1`–`5`, a click, or a search result) broadcasts `card_identified` on the data

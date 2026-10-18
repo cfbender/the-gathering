@@ -2,8 +2,8 @@ import { queryOptions, useQuery, type QueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import type { CardImageUris } from "@/lib/cards"
 
-/** `GET /api/card-printings/:id/details`: one exact printing, fetched from Scryfall by the
- * server because the catalog only keeps one printing per card. */
+/** `GET /api/card-printings/:id/details`: one exact printing, as the server imported it from
+ * Scryfall's bulk data in the last catalog sync. */
 export interface PrintingDetails {
   id: string
   oracle_id: string
@@ -34,7 +34,7 @@ export function getPrintingDetails(id: string) {
   ).then((body) => body.data)
 }
 
-/** Prices change, so refresh printing details after one hour. */
+/** Each catalog sync refreshes prices, so refresh printing details after one hour. */
 function printingDetailsQuery(id: string) {
   return queryOptions({
     queryKey: ["card-printings", id, "details"],
@@ -57,9 +57,8 @@ export function preloadImage(src: string | undefined) {
 }
 
 /** Warms the details cache and both card images (tray thumb and preview) for printings named
- * at the table, so opening one does not wait on Scryfall. Lookups run one at a time, in the
- * order given, so a mid-game join's backlog does not crowd out other seats' fresh clicks on
- * the server's shared Scryfall limit. A failure is left for the query to retry when something
+ * at the table, so opening one does not wait on the server or the image cache. Lookups run one
+ * at a time, in the order given. A failure is left for the query to retry when something
  * actually shows the card. */
 export async function prefetchPrintings(queryClient: QueryClient, ids: Iterable<string>) {
   for (const id of ids) {

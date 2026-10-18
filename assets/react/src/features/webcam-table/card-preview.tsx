@@ -212,7 +212,7 @@ function PrintingPreview({ card: initial, ownerName, onWrongCard, onRemove, onCl
               )}
               {details.isError && (
                 <p className="mt-3 text-xs text-white/50">
-                  Rules text is unavailable right now (Scryfall could not be reached).
+                  Rules text is unavailable for this printing right now.
                 </p>
               )}
             </aside>

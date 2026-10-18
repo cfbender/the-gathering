@@ -585,6 +585,45 @@ pub fn fixture_path(relative: &str) -> PathBuf {
         .join(relative)
 }
 
+/// `records` as gzip-compressed JSON Lines.
+pub fn gzip_lines(records: &[Value]) -> Vec<u8> {
+    use std::io::Write;
+    let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    for record in records {
+        writeln!(gzip, "{record}").unwrap();
+    }
+    gzip.finish().unwrap()
+}
+
+/// Serves `cards` and `rulings` as Scryfall's `default_cards` (generated at
+/// 2026-10-01T09:10:11Z) and `rulings` bulk files.
+pub async fn mount_scryfall_bulk(
+    server: &wiremock::MockServer,
+    cards: &[Value],
+    rulings: &[Value],
+) {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, ResponseTemplate};
+
+    Mock::given(method("GET"))
+        .and(path("/bulk-data"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
+            {"type": "oracle_cards", "jsonl_download_uri": format!("{}/wrong.jsonl.gz", server.uri())},
+            {"type": "default_cards", "jsonl_download_uri": format!("{}/default.jsonl.gz", server.uri()),
+             "updated_at": "2026-10-01T09:10:11.123+00:00"},
+            {"type": "rulings", "jsonl_download_uri": format!("{}/rulings.jsonl.gz", server.uri())}
+        ]})))
+        .mount(server)
+        .await;
+    for (file, records) in [("/default.jsonl.gz", cards), ("/rulings.jsonl.gz", rulings)] {
+        Mock::given(method("GET"))
+            .and(path(file))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(gzip_lines(records)))
+            .mount(server)
+            .await;
+    }
+}
+
 /// A fixture's contents.
 pub fn fixture(relative: &str) -> Vec<u8> {
     std::fs::read(fixture_path(relative))

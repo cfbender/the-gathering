@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO card_rulings (id, oracle_id, source, published_at, comment)\n             SELECT id, oracle_id, source, published_at, comment FROM card_rulings_staging",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "0e84421ae3fe4eaa9cce537b29e46a61b2c910ef8a5f62afaa9c67d25f0aaa09"
+}

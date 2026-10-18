@@ -1,7 +1,7 @@
 //! The local card catalog synchronized from Scryfall: lookups,
 //! search, and the batched summaries other areas use for names, art, and identities, plus
-//! the write side (sync, backfill) and the on-demand Scryfall lookups (printings, details,
-//! rulings, images).
+//! the write side (sync, backfill), the imported printings, details, and rulings, and the
+//! card image cache.
 
 pub mod backfill;
 pub mod card_data;
@@ -153,7 +153,7 @@ macro_rules! select_cards {
 #[allow(unused_imports)] // for other areas' card queries
 pub(crate) use select_cards;
 
-/// A cached printing (`card_printings`).
+/// A stored printing (`card_printings`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Printing {
     /// Scryfall id.
@@ -336,7 +336,7 @@ impl Catalog {
         resolve_card_in(&mut *self.pool.acquire().await?, id, name).await
     }
 
-    /// A cached printing.
+    /// A stored printing.
     pub async fn get_printing(&self, id: &str) -> Result<Option<Printing>, sqlx::Error> {
         get_printing_in(&mut *self.pool.acquire().await?, id).await
     }
@@ -413,7 +413,6 @@ impl Catalog {
     /// One page of printings of the card resolved from `id` or `name`.
     pub async fn list_printings(
         &self,
-        scryfall: &scryfall::Scryfall,
         id: Option<&str>,
         name: Option<&str>,
         page: u32,
@@ -426,7 +425,7 @@ impl Catalog {
                 printings::LookupError::Database
             })?
             .ok_or(printings::LookupError::NotFound)?;
-        printings::list(&self.pool, scryfall, &card, page, name).await
+        printings::list(&self.pool, &card, page, name).await
     }
 
     /// The state of the latest catalog sync.

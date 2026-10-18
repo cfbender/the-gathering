@@ -45,7 +45,7 @@ pub struct Inner {
     pub sfu: the_gathering_sfu::Sfu,
     /// Session topics (`users_sessions:<token>`) whose sockets must disconnect.
     pub session_disconnects: broadcast::Sender<String>,
-    /// Scryfall API client with the shared request limit.
+    /// Scryfall client for the catalog sync's bulk downloads.
     pub scryfall: Scryfall,
     /// Disk cache of Scryfall card images.
     pub card_images: CardImages,
@@ -113,7 +113,7 @@ impl AppState {
             ipv6: config.sfu.ipv6,
             relay: relay_servers(&config, &http),
         });
-        let scryfall = Scryfall::new(&config.scryfall_api_base, config.scryfall_rate_limit)?;
+        let scryfall = Scryfall::new(&config.scryfall_api_base)?;
         let card_images = CardImages::new(&config.data_dir, &config.card_image_base)?;
         let decklists = Decklists::new(&config)?;
         let corrections = Corrections::new(&config.data_dir);
