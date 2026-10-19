@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT NOT EXISTS (SELECT 1 FROM cards)\n                      OR NOT EXISTS (SELECT 1 FROM card_printings WHERE card IS NOT NULL) AS \"needed!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "needed!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0fa1f65a6a44a51585b873438202475bddd6ed1d5d1d5b9f409467d8604e258c"
+}

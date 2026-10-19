@@ -435,7 +435,7 @@ are not automatically redacted; application code must never log credentials.
 
 ### Card catalog
 
-The app downloads Scryfall's compressed `default_cards` and `rulings` JSONL feeds when the catalog is empty and refreshes them weekly. The responses are streamed to temporary files and decoded incrementally, then a complete staged generation of cards and rulings is published atomically. Every printing in `default_cards` is stored too (printings a complete sync no longer lists are removed unless a deck uses them). Card search, printing pickers, printing details (including prices, as of the latest sync), and rulings use only SQLite after a sync; no page makes Scryfall API requests. Run a refresh manually with:
+The app downloads Scryfall's compressed `default_cards` and `rulings` JSONL feeds when the catalog is empty or no printing has been imported yet (as after upgrading to a release that stores printings), and refreshes them weekly. The responses are streamed to temporary files and decoded incrementally, then a complete staged generation of cards and rulings is published atomically. Every printing in `default_cards` is stored too (printings a complete sync no longer lists are removed unless a deck uses them). Card search, printing pickers, printing details (including prices, as of the latest sync), and rulings use only SQLite after a sync; no page makes Scryfall API requests. Run a refresh manually with:
 
 ```sh
 docker exec the-gathering /app/bin/the-gathering catalog-sync

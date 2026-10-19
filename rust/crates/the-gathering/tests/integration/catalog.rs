@@ -461,6 +461,40 @@ async fn downloads_the_default_cards_and_rulings_bulk_files_from_scryfall() {
 }
 
 #[tokio::test]
+async fn syncs_at_boot_when_no_printing_has_been_imported() {
+    use the_gathering::catalog::{printings, sync_server};
+
+    let id = "6f3e2b1a-0c4d-4e5f-8a9b-1c2d3e4f5a6b";
+    let mut record = fixture_records().swap_remove(0);
+    record["id"] = json!(id);
+    let server = wiremock::MockServer::start().await;
+    support::mount_scryfall_bulk(&server, &[record], &[]).await;
+    let app = TestApp::with_config(|config| {
+        config.scryfall_api_base = server.uri();
+        config.catalog_sync_enabled = true;
+    })
+    .await;
+    // Cards from an earlier sync, but no printing stored with its card data.
+    insert(&app, id, "oracle-bolt", "Catalog Bolt", json!({})).await;
+    assert_eq!(
+        printings::details(app.pool(), id).await,
+        Err(printings::LookupError::NotFound)
+    );
+
+    let mut finished = app.state.catalog_sync.subscribe();
+    sync_server::start(&app.state);
+    tokio::time::timeout(std::time::Duration::from_secs(30), finished.changed())
+        .await
+        .expect("a sync runs at boot")
+        .unwrap();
+    let details = printings::details(app.pool(), id).await.unwrap();
+    assert_eq!(
+        details["oracle_text"],
+        "Catalog Bolt deals 3 damage to any target."
+    );
+}
+
+#[tokio::test]
 async fn records_successful_and_failed_state_transitions_without_replacing_a_good_catalog() {
     let app = TestApp::new().await;
     assert_eq!(catalog(&app).sync_status().await.unwrap().status, "never");

@@ -99,9 +99,9 @@ impl SyncServer {
 }
 
 /// Starts the scheduled sync when `catalog_sync_enabled`: the first run after one second
-/// when the catalog is empty, else after `catalog_sync_interval`, and then
-/// `catalog_sync_interval` after each sync (scheduled or triggered) finishes. A scheduled
-/// run that comes due while another is running is skipped.
+/// when the catalog [needs a sync](super::Catalog::needs_sync), else after
+/// `catalog_sync_interval`, and then `catalog_sync_interval` after each sync (scheduled or
+/// triggered) finishes. A scheduled run that comes due while another is running is skipped.
 pub fn start(state: &AppState) {
     if !state.config.catalog_sync_enabled {
         return;
@@ -109,16 +109,15 @@ pub fn start(state: &AppState) {
     let state = state.clone();
     tokio::spawn(async move {
         let interval = state.config.catalog_sync_interval;
-        let empty = super::Catalog {
+        let needed = super::Catalog {
             pool: state.pool.clone(),
         }
-        .count_cards()
+        .needs_sync()
         .await
-        .unwrap_or(0)
-            == 0;
+        .unwrap_or(true);
         let idle = Duration::from_hours(365 * 24);
         let mut deadline = Instant::now()
-            + if empty {
+            + if needed {
                 Duration::from_secs(1)
             } else {
                 interval

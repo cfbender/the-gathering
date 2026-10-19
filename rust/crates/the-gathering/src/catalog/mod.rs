@@ -327,6 +327,17 @@ impl Catalog {
             .await
     }
 
+    /// Whether the catalog needs its first sync: it has no cards, or no printing carries the
+    /// card data printing details read (a database migrated before syncs stored printings).
+    pub async fn needs_sync(&self) -> Result<bool, sqlx::Error> {
+        sqlx::query_scalar!(
+            r#"SELECT NOT EXISTS (SELECT 1 FROM cards)
+                      OR NOT EXISTS (SELECT 1 FROM card_printings WHERE card IS NOT NULL) AS "needed!: bool""#
+        )
+        .fetch_one(&self.pool)
+        .await
+    }
+
     /// Resolves a card by id, else by name.
     pub async fn resolve_card(
         &self,
