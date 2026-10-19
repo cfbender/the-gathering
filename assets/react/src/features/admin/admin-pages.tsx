@@ -6,6 +6,7 @@ import {
   Bot,
   Link2,
   LogOut,
+  RefreshCw,
   Shield,
   Sparkles,
   Trash2,
@@ -17,6 +18,8 @@ import { SudoPrompt } from "@/components/sudo-prompt"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { api } from "@/lib/api"
 import { errorMessage, isSudoRequired } from "@/lib/auth"
+import { fetchCatalogStatus, triggerCatalogSync } from "@/lib/cards"
+import type { CatalogStatus } from "@/lib/cards"
 import type { User } from "@/lib/auth"
 import { formValue } from "@/lib/form"
 import { getPlayers, invalidateGameRelated, linkUserPlayer } from "@/features/games/games"
@@ -160,9 +163,10 @@ export function AdminCatalogPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         eyebrow="Administration"
-        title="Catalog repair"
-        description="Repair imported card references against the local Scryfall catalog."
+        title="Catalog"
+        description="Refresh the local Scryfall catalog and repair imported card references against it."
       />
+      <CatalogSync />
       <CatalogBackfill />
     </div>
   )
@@ -194,6 +198,87 @@ export function AdminDiscordPage() {
       <PendingDiscordGames games={games.data} error={games.error} />
     </div>
   )
+}
+
+/** The catalog syncs weekly on its own; this starts one now and follows it until it finishes. */
+function CatalogSync() {
+  const queryClient = useQueryClient()
+  const status = useQuery({
+    queryKey: ["catalog"],
+    queryFn: fetchCatalogStatus,
+    refetchInterval: (query) => (query.state.data?.status === "running" ? 3000 : false),
+  })
+  const run = useMutation({
+    mutationFn: triggerCatalogSync,
+    // The server records the run a moment after it answers, so show it as running and let
+    // the polling read the real state.
+    onSuccess: () =>
+      queryClient.setQueryData<CatalogStatus>(
+        ["catalog"],
+        (current) =>
+          current && { ...current, status: "running", last_started_at: new Date().toISOString() },
+      ),
+  })
+  const sync = status.data
+  const running = sync?.status === "running"
+
+  return (
+    <section
+      className="card bg-base-200 border-base-300 border"
+      aria-labelledby="catalog-sync-heading"
+    >
+      <div className="card-body gap-3 p-4 sm:p-5">
+        <h2 id="catalog-sync-heading" className="flex items-center gap-2 text-lg font-semibold">
+          <RefreshCw className="size-5" /> Sync the catalog from Scryfall
+        </h2>
+        <p className="text-base-content/70 text-sm">
+          Downloads Scryfall&apos;s card and rulings bulk data and replaces the local catalog,
+          printings, and rulings. This runs weekly on its own; run it by hand to pick up new cards
+          sooner. It takes a few minutes, and the current catalog stays in use until it finishes.
+        </p>
+        <div>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={run.isPending || running}
+            onClick={() => run.mutate()}
+          >
+            {running || run.isPending ? "Syncing…" : "Sync now"}
+          </button>
+        </div>
+        {sync && (
+          <p className="text-sm" role="status">
+            {catalogSyncSummary(sync)}
+          </p>
+        )}
+        {sync?.status === "failed" && sync.last_error && (
+          <p className="text-error text-sm break-words">{sync.last_error}</p>
+        )}
+        {status.error && <p className="text-error text-sm">{errorMessage(status.error)}</p>}
+        {run.error && !isSudoRequired(run.error) && (
+          <p className="text-error text-sm">{errorMessage(run.error)}</p>
+        )}
+        <SudoPrompt error={run.error} onSuccess={() => run.mutate()} />
+      </div>
+    </section>
+  )
+}
+
+function catalogSyncSummary(sync: CatalogStatus) {
+  const at = (timestamp: string | null) => (timestamp ? new Date(timestamp).toLocaleString() : "")
+  const cards = `${sync.card_count.toLocaleString()} card${sync.card_count === 1 ? "" : "s"}`
+  switch (sync.status) {
+    case "never":
+      return "The catalog has never been synced."
+    case "running":
+      return `Sync started ${at(sync.last_started_at)}; the catalog has ${cards} until it finishes.`
+    case "failed":
+      return `The last sync failed ${at(sync.last_finished_at)}; the catalog keeps ${cards}.`
+    case "succeeded":
+      return `Last synced ${at(sync.last_finished_at)}: ${cards}${
+        sync.scryfall_updated_at ? `, Scryfall data from ${at(sync.scryfall_updated_at)}` : ""
+      }.`
+  }
 }
 
 /**

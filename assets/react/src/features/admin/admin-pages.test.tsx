@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import { AdminUsersPage } from "./admin-pages"
+import { AdminCatalogPage, AdminUsersPage } from "./admin-pages"
 
 const user = {
   id: 42,
@@ -84,5 +84,42 @@ describe("admin users", () => {
       ),
     )
     expect(await screen.findByRole("button", { name: "Signed out" })).toBeTruthy()
+  })
+})
+
+describe("admin catalog", () => {
+  it("starts a catalog sync and shows it running", async () => {
+    const catalog = {
+      status: "succeeded",
+      last_started_at: "2026-10-12T04:00:00Z",
+      last_finished_at: "2026-10-12T04:05:00Z",
+      card_count: 31_000,
+      scryfall_updated_at: "2026-10-11T21:00:00Z",
+      last_error: null,
+    }
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const body =
+        init?.method === "POST"
+          ? { data: { status: "started" } }
+          : { data: url === "/api/catalog" ? catalog : null }
+      return new Response(JSON.stringify(body), {
+        status: init?.method === "POST" ? 202 : 200,
+        headers: { "content-type": "application/json" },
+      })
+    })
+    vi.stubGlobal("fetch", fetch)
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <AdminCatalogPage />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText(/Last synced .*31,000 cards/)).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Sync now" }))
+    expect(await screen.findByText(/Sync started/)).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Syncing…" }).hasAttribute("disabled")).toBe(true)
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/admin/catalog/sync",
+      expect.objectContaining({ method: "POST" }),
+    )
   })
 })

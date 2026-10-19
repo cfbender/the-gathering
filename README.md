@@ -435,14 +435,14 @@ are not automatically redacted; application code must never log credentials.
 
 ### Card catalog
 
-The app downloads Scryfall's compressed `default_cards` and `rulings` JSONL feeds when the catalog is empty or no printing has been imported yet (as after upgrading to a release that stores printings), and refreshes them weekly. The responses are streamed to temporary files and decoded incrementally, then a complete staged generation of cards and rulings is published atomically. Every printing in `default_cards` is stored too (printings a complete sync no longer lists are removed unless a deck uses them). Card search, printing pickers, printing details (including prices, as of the latest sync), and rulings use only SQLite after a sync; no page makes Scryfall API requests. Run a refresh manually with:
+The app downloads Scryfall's compressed `default_cards` and `rulings` JSONL feeds when the catalog is empty or no printing has been imported yet (as after upgrading to a release that stores printings), and refreshes them weekly. The responses are streamed to temporary files and decoded incrementally, then a complete staged generation of cards and rulings is published atomically. Every printing in `default_cards` is stored too (printings a complete sync no longer lists are removed unless a deck uses them). Card search, printing pickers, printing details (including prices, as of the latest sync), and rulings use only SQLite after a sync; no page makes Scryfall API requests. Run a refresh manually from **Admin → Catalog → Sync now**, which shows the latest sync's state, or with:
 
 ```sh
 docker exec the-gathering /app/bin/the-gathering catalog-sync
 # from a checkout: (cd rust && THE_GATHERING_ENV=dev mise exec -- cargo run -- catalog-sync)
 ```
 
-After each sync (and after every CSV or Mythic Track import) the app links decks and MVP cards that only carry a card name to catalog cards by name, filling in Scryfall IDs and missing colour identities. Trigger that alone from **Admin → Users → Link imported cards to the catalog** or with `the-gathering catalog-backfill`.
+After each sync (and after every CSV or Mythic Track import) the app links decks and MVP cards that only carry a card name to catalog cards by name, filling in Scryfall IDs and missing colour identities. Trigger that alone from **Admin → Catalog → Link imported cards to the catalog** or with `the-gathering catalog-backfill`.
 
 **Game Changer badges** use Scryfall's `game_changer` flag for the Commander Brackets list, not a separate hard-coded card list or a bracket recommendation. After deploying the Game Changer migration, run `the-gathering catalog-sync` once: existing catalog rows initially default to false, and linking/backfilling alone cannot populate this flag. Future catalog syncs keep the badges current, for printings as well as cards (browsers may cache printing details for one hour). Offline recognition-gallery candidates do not carry this metadata; their preview shows the badge once printing details load. No badge means no known positive flag, not a guarantee that the card is absent from the list. Deck summaries label each commander independently; the app does not store full decklists, so it cannot report a whole-deck Game Changer count.
 

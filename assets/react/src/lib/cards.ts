@@ -99,7 +99,7 @@ export function fetchCatalogStatus() {
 }
 
 export function triggerCatalogSync() {
-  return api<{ data: { status: "started" | "already_running" } }>("/api/catalog/sync", {
+  return api<{ data: { status: "started" | "already_running" } }>("/api/admin/catalog/sync", {
     method: "POST",
   }).then((response) => response.data)
 }
