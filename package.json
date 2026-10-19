@@ -15,7 +15,7 @@
     "precommit": "vp check && vp test run && vp build"
   },
   "dependencies": {
-    "@cfbender/playtest": "https://github.com/cfbender/playtest/archive/refs/tags/v0.1.1.tar.gz",
+    "@cfbender/playtest": "https://github.com/cfbender/playtest/archive/refs/tags/v0.1.2.tar.gz",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-dropdown-menu": "^2.1.24",
     "@radix-ui/react-popover": "^1.1.23",
