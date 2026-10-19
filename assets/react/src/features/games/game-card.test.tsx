@@ -48,13 +48,13 @@ async function renderCard(
   seats: Seat[],
   winCondition: Game["win_condition"] = null,
   format: Game["format"] = "commander",
+  length: Pick<Game, "turns" | "duration_minutes"> = { turns: null, duration_minutes: null },
 ) {
   const game: Game = {
     id: 42,
     format,
     played_at: "2026-09-19T18:00:00Z",
-    duration_minutes: null,
-    turns: null,
+    ...length,
     win_condition: winCondition,
     notes: null,
     source: "manual",
@@ -110,6 +110,17 @@ describe("GameCard", () => {
     ])
     expect(link.getAttribute("href")).toBe("/games/42")
     expect(screen.getByText("3 players")).toBeTruthy()
+    expect(screen.queryByText(/turns?$/)).toBeNull()
+    expect(screen.queryByText(/min$/)).toBeNull()
+  })
+
+  it("shows the recorded turn count and game time beside the player count", async () => {
+    await renderCard([seat(1, "Alice", "win"), seat(2, "Bob", "loss")], null, "commander", {
+      turns: 9,
+      duration_minutes: 74,
+    })
+    expect(screen.getByText("9 turns")).toBeTruthy()
+    expect(screen.getByText("74 min")).toBeTruthy()
   })
 
   it.each([

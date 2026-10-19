@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router"
-import { Trophy, UsersRound } from "lucide-react"
+import { Clock, RotateCw, Trophy, UsersRound } from "lucide-react"
 import { CommanderArt } from "@/components/commander-art"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
@@ -49,10 +49,24 @@ export function GameCard({ game }: { game: Game }) {
             <span className="badge badge-sm ml-2">{formatLabel(game.format)}</span>
           )}
         </h2>
-        <span className="text-base-content/65 flex items-center gap-1.5 text-xs">
-          <UsersRound aria-hidden="true" className="size-3.5" />
-          {game.seats.length} players
-        </span>
+        <div className="text-base-content/65 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <span className="flex items-center gap-1.5">
+            <UsersRound aria-hidden="true" className="size-3.5" />
+            {game.seats.length} players
+          </span>
+          {game.turns !== null && (
+            <span className="flex items-center gap-1.5">
+              <RotateCw aria-hidden="true" className="size-3.5" />
+              {game.turns} {game.turns === 1 ? "turn" : "turns"}
+            </span>
+          )}
+          {game.duration_minutes !== null && (
+            <span className="flex items-center gap-1.5">
+              <Clock aria-hidden="true" className="size-3.5" />
+              {game.duration_minutes} min
+            </span>
+          )}
+        </div>
       </div>
 
       {winner ? (
