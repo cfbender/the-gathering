@@ -86,12 +86,8 @@ jobs:
           # between runs. Cargo already rebuilds anything compiled by a different rustc.
           add-rust-environment-hash-key: false
 
-      - name: Cache JavaScript dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: node_modules
-          key: release-aube-${{ env.AUBE_VERSION }}-${{ hashFiles('aube-lock.yaml') }}
-
+      # No node_modules cache: a cold install takes a few seconds, and aube 1.21 fails with
+      # "File exists" when it relinks a restored node_modules containing a URL-tarball dependency.
       - name: Build assets
         run: |
           aube install --frozen-lockfile
