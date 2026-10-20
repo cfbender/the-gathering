@@ -2,7 +2,7 @@ import type { PublicPlaytestSnapshot } from "@cfbender/playtest"
 import { useQueryClient } from "@tanstack/react-query"
 import type { TableChannel } from "./table-channel"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { GameFormat } from "@/features/games/game-format"
+import type { TableMode } from "@/features/games/game-format"
 import type { GameTimerState, TimerSample } from "./game-timer"
 import type { RoomLink } from "./room-link"
 import type { BoardCard, Monarch, SeatStatus, TableParticipant } from "./room-types"
@@ -33,7 +33,7 @@ interface TableState {
   peer_ids: string[]
   seats: TableParticipant[]
   turns: TurnState
-  mode: GameFormat
+  mode: TableMode
   team_life: Record<number, number>
   monarch: MonarchEvent
   cards: BoardCard[]
@@ -67,7 +67,7 @@ export function useTableGameState(
   const [shuffleVersion, setShuffleVersion] = useState(0)
   const [timer, setTimer] = useState<TimerSample | null>(null)
   const [turns, setTurns] = useState<TurnState>(EMPTY_TURNS)
-  const [mode, setModeState] = useState<GameFormat>("commander")
+  const [mode, setModeState] = useState<TableMode>("commander")
   const [teamLife, setTeamLife] = useState<Record<number, number>>({})
   const [isOwner, setIsOwner] = useState(false)
   const [roll, setRoll] = useState<TableRoll | null>(null)
@@ -316,7 +316,7 @@ export function useTableGameState(
       .receive("error", reportError)
   }
 
-  function setMode(nextMode: GameFormat) {
+  function setMode(nextMode: TableMode) {
     link.channel
       ?.push("set_mode", { mode: nextMode })
       .receive("ok", () => setError(null))

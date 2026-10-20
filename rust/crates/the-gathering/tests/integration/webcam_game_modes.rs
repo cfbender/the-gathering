@@ -78,6 +78,42 @@ async fn mode_is_owner_only_validates_roster_and_freezes_order_after_start() {
         .await;
 }
 
+#[tokio::test]
+async fn duel_modes_start_seats_at_20_life_and_need_exactly_two_players() {
+    let mut t = Table::new().await;
+    let mut bob = t.join_seat(PEER_B).await;
+    bob.ok("update_status", json!({ "life": 35 })).await;
+    t.alice.ok("set_mode", json!({ "mode": "standard" })).await;
+    let reset = bob.expect("seat_reset").await;
+    assert_eq!(reset["participant"]["life"], 20);
+    assert_eq!(t.seat(PEER_A).await.life, 20);
+    assert_eq!(t.seat(PEER_B).await.life, 20);
+
+    // Another 20-life mode keeps the totals players already set.
+    bob.ok("update_status", json!({ "life": 18 })).await;
+    t.alice.ok("set_mode", json!({ "mode": "pauper" })).await;
+    bob.refute("seat_reset").await;
+    assert_eq!(t.seat(PEER_B).await.life, 18);
+
+    t.alice.ok("start_game", json!({})).await;
+    bob.ok("update_status", json!({ "life": 3 })).await;
+    t.alice.ok("rematch", json!({})).await;
+    assert_eq!(t.snapshot().await.mode, Mode::Pauper);
+    assert_eq!(t.seat(PEER_B).await.life, 20);
+
+    let carol = t.join_seat(PEER_C).await;
+    assert_eq!(carol.participant["life"], 20);
+    t.alice
+        .refused(
+            "start_game",
+            json!({}),
+            "This mode requires exactly 2 players",
+        )
+        .await;
+    t.alice.ok("set_mode", json!({ "mode": "commander" })).await;
+    assert_eq!(t.seat(PEER_C).await.life, 40);
+}
+
 async fn join_admin(t: &Table, peer: &str) -> Client {
     let user = t.server.admin().await;
     let player = t

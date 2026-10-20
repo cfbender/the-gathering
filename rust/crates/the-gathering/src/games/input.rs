@@ -142,7 +142,7 @@ pub struct GameInput {
     /// Notes.
     #[serde(default)]
     pub notes: Patch<String>,
-    /// `commander`, `two_headed_giant`, or `five_star`.
+    /// `commander`, `two_headed_giant`, `five_star`, or `duel_commander`.
     #[serde(default)]
     pub format: Patch<String>,
     /// The seats; given seats replace the game's seats.

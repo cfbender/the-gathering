@@ -238,7 +238,10 @@ fn moxfield_deck(row: &Value) -> RemoteDeck {
             .unwrap_or_else(|| format!("{PUBLIC_MOXFIELD}/decks/{}", id_text(public_id))),
         source: Source::Moxfield,
         updated_at: timestamp(row.get("lastUpdatedAtUtc")),
-        is_commander: row.get("format").and_then(Value::as_str) == Some("commander"),
+        is_commander: matches!(
+            row.get("format").and_then(Value::as_str),
+            Some("commander" | "duelCommander")
+        ),
     }
 }
 
@@ -251,7 +254,10 @@ fn manavault_deck(row: &Value, origin: &str) -> RemoteDeck {
             .unwrap_or_else(|| format!("{origin}/decks/{}", id_text(row.get("id")))),
         source: Source::ManaVault,
         updated_at: timestamp(row.get("updated_at")),
-        is_commander: row.get("format").and_then(Value::as_str) == Some("commander"),
+        is_commander: matches!(
+            row.get("format").and_then(Value::as_str),
+            Some("commander" | "duel_commander")
+        ),
     }
 }
 
@@ -752,7 +758,11 @@ impl RemoteDecks {
                     url: format!("{PUBLIC_ARCHIDEKT}/decks/{id}"),
                     source: Source::Archidekt,
                     updated_at: timestamp(row.get("updatedAt")),
-                    is_commander: body.get("deckFormat").and_then(Value::as_u64) == Some(3),
+                    // 3 is Commander / EDH and 12 Duel Commander.
+                    is_commander: matches!(
+                        body.get("deckFormat").and_then(Value::as_u64),
+                        Some(3 | 12)
+                    ),
                 })
             }
             Err(error @ (HttpError::ByteLimit | HttpError::DurationLimit)) => {

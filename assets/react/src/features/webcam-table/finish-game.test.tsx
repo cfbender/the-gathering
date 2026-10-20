@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import { ToastProvider } from "@/components/ui/toast"
-import { FinishGame } from "./finish-game"
+import { EndUnrecordedGame, FinishGame } from "./finish-game"
 import { EMPTY_COUNTERS } from "./seat-counters"
 import { EMPTY_TURNS, type TurnState } from "./turns"
 
@@ -306,5 +306,35 @@ describe("FinishGame", () => {
     expect(await screen.findByText(/Could not start the rematch/)).toBeTruthy()
     expect(onOpenChange).not.toHaveBeenCalled()
     expect(navigate).not.toHaveBeenCalled()
+  })
+})
+
+describe("EndUnrecordedGame", () => {
+  it("closes a non-Commander table without recording a game", async () => {
+    const fetch = vi.fn()
+    vi.stubGlobal("fetch", fetch)
+    const onEndTable = vi.fn(() => Promise.resolve(true))
+    const onRematch = vi.fn(() => Promise.resolve(true))
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ToastProvider>
+          <EndUnrecordedGame
+            mode="pauper"
+            onEndTable={onEndTable}
+            onRematch={onRematch}
+            onOpenChange={vi.fn()}
+          />
+        </ToastProvider>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText("Pauper games are not recorded in game history.")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /Record/ })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Close the table" }))
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/games" }))
+    expect(onEndTable).toHaveBeenCalledOnce()
+    expect(onRematch).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
   })
 })

@@ -143,12 +143,12 @@ impl Seat {
         }
     }
 
-    /// What a seat starts a game with (a rematch resets these).
+    /// The seat a new game starts with `life` (a rematch or a mode change resets these).
     #[must_use]
-    pub fn reset(self) -> Self {
+    pub fn reset(self, life: i64) -> Self {
         Self {
             generation: self.generation + 1,
-            life: STARTING_LIFE,
+            life,
             poison: 0,
             rad: 0,
             commander_casts: BTreeMap::new(),

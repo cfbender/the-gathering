@@ -1,6 +1,6 @@
 import type { TableParticipant } from "./use-webcam-room"
 import { activeTurnOrder } from "./table-events"
-import type { GameFormat } from "@/features/games/game-format"
+import type { GameFormat, TableMode } from "@/features/games/game-format"
 import { teams } from "./game-modes"
 import type { KillSeat } from "@/features/games/kill-picker"
 import type { SelectedCard } from "@/lib/cards"
@@ -12,7 +12,7 @@ export interface PlayerResult extends KillSeat {
 
 export function suggestedWinner(
   participants: TableParticipant[],
-  mode: GameFormat = "commander",
+  mode: TableMode = "commander",
 ): string {
   if (mode === "two_headed_giant") {
     const remaining = teams(participants).filter((team) => team.some((seat) => !seat.eliminated))

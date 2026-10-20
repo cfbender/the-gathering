@@ -129,7 +129,7 @@ A game you played, from your seat. `deck.games`, `deck.last_game`, `ctx.recent_g
 | `game.days_ago` | number | Days since the game. |
 | `game.today` | boolean | Whether it was played since local midnight. |
 | `game.in_session` | boolean | Whether it is part of the current session (see `ctx.session`). |
-| `game.format` | string | `"commander"`, `"two_headed_giant"`, or `"five_star"`. |
+| `game.format` | string | `"commander"`, `"two_headed_giant"`, `"five_star"`, or `"duel_commander"`. |
 | `game.win_condition` | string or `nil` | How it was won, such as `"combat_damage"`, `"commander_damage"`, `"infinite_combo"`, `"poison"`, `"mill"`, `"alternate_win_con"`, `"hard_lock"`, `"non_combat_damage"`, `"damage"`, `"concede"`, `"draw"`, or `"unknown"`. |
 | `game.duration_minutes` | integer or `nil` | How long the game took, when logged. |
 | `game.turns` | integer or `nil` | How many turns it took, when logged. |

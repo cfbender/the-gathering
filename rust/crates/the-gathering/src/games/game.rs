@@ -312,7 +312,12 @@ pub(crate) async fn validate_game(
     cs.inclusion(
         "format",
         format.as_deref(),
-        &["commander", "two_headed_giant", "five_star"],
+        &[
+            "commander",
+            "two_headed_giant",
+            "five_star",
+            "duel_commander",
+        ],
     );
     cs.inclusion(
         "source",

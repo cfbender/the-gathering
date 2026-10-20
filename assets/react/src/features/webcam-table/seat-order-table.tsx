@@ -9,12 +9,12 @@ import { activeTurnOrder } from "./table-events"
 import { formatTurnTime, turnDisplay, type TurnState } from "./turns"
 import { useTimerElapsed } from "./use-timer-elapsed"
 import type { TableParticipant } from "./use-webcam-room"
-import type { GameFormat } from "@/features/games/game-format"
+import type { TableMode } from "@/features/games/game-format"
 import { turnId, unattackableSeats } from "./game-modes"
 import { RemoveParticipant } from "./remove-participant"
 
 export interface SeatOrderTableProps {
-  mode?: GameFormat
+  mode?: TableMode
   onMoveSeat?: (peerId: string, delta: -1 | 1) => void
   onRemoveParticipant?: (peerId: string) => void
   readOnly?: boolean

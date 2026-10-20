@@ -1416,7 +1416,7 @@ mod sync {
     }
 
     #[tokio::test]
-    async fn imports_only_explicit_commander_format_from_every_host() {
+    async fn imports_only_explicit_commander_or_duel_commander_format_from_every_host() {
         let server = MockServer::start().await;
         let (app, user, origin) = vault_app(&server).await;
         let player = app
@@ -1438,26 +1438,41 @@ mod sync {
         let mut moxfield = Vec::new();
         let mut archidekt = Vec::new();
         let mut manavault = Vec::new();
-        for (id, format, arch_format) in [
-            (1, Some(json!("commander")), Some(json!(3))),
-            (2, Some(json!("modern")), Some(json!(2))),
-            (3, Some(json!("brawl")), Some(json!(10))),
-            (4, Some(json!("unknown")), Some(json!(999))),
-            (5, Some(Value::Null), Some(Value::Null)),
-            (6, None, None),
+        let same = |format: Option<Value>| (format.clone(), format);
+        for (id, (mox_format, vault_format), arch_format) in [
+            (1, same(Some(json!("commander"))), Some(json!(3))),
+            (2, same(Some(json!("modern"))), Some(json!(2))),
+            (3, same(Some(json!("brawl"))), Some(json!(10))),
+            (4, same(Some(json!("unknown"))), Some(json!(999))),
+            (5, same(Some(Value::Null)), Some(Value::Null)),
+            (6, same(None), None),
+            (
+                7,
+                (Some(json!("duelCommander")), Some(json!("duel_commander"))),
+                Some(json!(12)),
+            ),
         ] {
             // Rejected decks have a commander and match a local name: neither is proof of format.
-            let name = if id == 1 { "Commander" } else { "Existing" };
-            let mut row = json!({
+            let name = match id {
+                1 => "Commander",
+                7 => "Duel",
+                _ => "Existing",
+            };
+            let row = json!({
                 "id": id, "publicId": id.to_string(), "name": name,
                 "commanders": ["Krenko, Mob Boss"], "commanderColorIdentity": ["R"]
             });
-            if let Some(format) = format {
-                row["format"] = format;
+            for (rows, format) in [
+                (&mut moxfield, mox_format),
+                (&mut manavault, vault_format),
+                (&mut archidekt, None),
+            ] {
+                let mut row = row.clone();
+                if let Some(format) = format {
+                    row["format"] = format;
+                }
+                rows.push(row);
             }
-            moxfield.push(row.clone());
-            manavault.push(row.clone());
-            archidekt.push(row);
             let mut detail = json!({"cards": [{
                 "categories": ["Commander"],
                 "card": {"oracleCard": {"name": "Krenko, Mob Boss", "colorIdentity": ["Red"]}}
@@ -1478,6 +1493,7 @@ mod sync {
             (&mut manavault, "Vault"),
         ] {
             rows[0]["name"] = json!(name);
+            rows[6]["name"] = json!(format!("{name} Duel"));
         }
         stub_moxfield(&server, moxfield).await;
         for (endpoint, body) in [
@@ -1503,7 +1519,7 @@ mod sync {
             .assert_json(200);
         assert_eq!(
             result,
-            json!({"data": {"created": 3, "updated": 0, "errors": []}})
+            json!({"data": {"created": 6, "updated": 0, "errors": []}})
         );
         let saved = app
             .state
@@ -1513,7 +1529,18 @@ mod sync {
             .unwrap();
         let mut names: Vec<_> = saved.iter().map(|(deck, _)| deck.name.as_str()).collect();
         names.sort_unstable();
-        assert_eq!(names, ["Arch", "Existing", "Mox", "Vault"]);
+        assert_eq!(
+            names,
+            [
+                "Arch",
+                "Arch Duel",
+                "Existing",
+                "Mox",
+                "Mox Duel",
+                "Vault",
+                "Vault Duel"
+            ]
+        );
         let untouched = app
             .state
             .games

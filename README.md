@@ -13,7 +13,8 @@ services required.
 - **Webcam table:** rooms for two to ten players over a WebRTC SFU built into the server, with
   shared life, commander damage, poison, commander tax, monarch, turns and per-player clocks,
   dice rolls, a shared log, spectators, private hand reveals, and Commander, Two-Headed Giant,
-  and Five Star modes.
+  Five Star, and Duel Commander modes, plus unrecorded one-on-one Standard, Pauper, and Canadian
+  Highlander games.
 - **Card recognition:** click a card on any board and the browser identifies it with
   [Oracle](https://github.com/cfbender/oracle)'s models, then shows its printing, rules text,
   and rulings to the whole table, favouring cards in that player's linked deck list.

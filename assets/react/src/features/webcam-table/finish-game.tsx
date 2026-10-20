@@ -17,7 +17,7 @@ import { buildGamePayload, suggestedWinner, type PlayerResult } from "./game-res
 import { FinishGamePlayers } from "./finish-game-players"
 import { durationMinutes, type GameTimerState } from "./game-timer"
 import type { TableParticipant } from "./use-webcam-room"
-import type { GameFormat } from "@/features/games/game-format"
+import { formatLabel, type GameFormat, type TableMode } from "@/features/games/game-format"
 import { teams } from "./game-modes"
 import { highestTurn, type TurnState } from "./turns"
 
@@ -128,18 +128,7 @@ export function FinishGame({
       void navigate({ to: "/games/$gameId", params: { gameId: String(game.id) } })
     },
   })
-  const discard = useMutation({
-    mutationFn: (next: AfterGame) => (next === "rematch" ? onRematch() : onEndTable()),
-    onSuccess: (done, next) => {
-      if (!done) return
-      if (next === "close") {
-        void navigate({ to: "/games" })
-        return
-      }
-      toast({ message: "The rematch is ready in the same room.", tone: "success" })
-      onOpenChange(false)
-    },
-  })
+  const discard = useDiscardGame({ onEndTable, onRematch, onOpenChange })
   const busy = mutation.isPending || discard.isPending
   const saveError = mutation.error instanceof ApiError ? mutation.error : null
   const error = saveError
@@ -147,11 +136,7 @@ export function FinishGame({
       Object.keys(saveError.errors)
         .flatMap((field) => saveError.fieldErrors(field))
         .join(" · ")
-    : discard.data === false
-      ? discard.variables === "rematch"
-        ? "Could not start the rematch. Check your connection to the table and try again."
-        : "Could not end the game. Check your connection to the table and try again."
-      : null
+    : discardError(discard)
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
@@ -272,37 +257,14 @@ export function FinishGame({
           </label>
           <fieldset className="md:col-span-2">
             <legend className="mb-2 text-sm font-bold">After this game</legend>
-            <ToggleGroup
-              type="single"
+            <AfterGameChoice
               value={after}
-              onValueChange={(value) => {
-                if (!value) return
-                setAfter(value as AfterGame)
+              disabled={busy}
+              onChange={(value) => {
+                setAfter(value)
                 discard.reset()
               }}
-              aria-label="After this game"
-              className="grid gap-2 sm:grid-cols-2"
-            >
-              {(
-                [
-                  ["close", "Close the table", "Everyone leaves the room"],
-                  ["rematch", "End and rematch", "Same room and seats, back to setup"],
-                ] as const
-              ).map(([value, label, hint]) => (
-                <ToggleGroupItem
-                  key={value}
-                  value={value}
-                  disabled={busy}
-                  className={cn(
-                    "btn h-auto min-h-12 flex-col items-start gap-0.5 px-4 py-2 text-left",
-                    after === value ? "btn-primary" : "btn-outline",
-                  )}
-                >
-                  {label}
-                  <span className="text-xs font-normal opacity-65">{hint}</span>
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+            />
           </fieldset>
           {error && <div className="alert alert-error md:col-span-2">{error}</div>}
           {participants.length < 2 && (
@@ -375,6 +337,139 @@ export function FinishGame({
               The table timer is paused. If you go back, use Resume timer to keep playing.
             </p>
           )}
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Closes the table or starts a rematch without adding the game to history. */
+function useDiscardGame({
+  onEndTable,
+  onRematch,
+  onOpenChange,
+}: Pick<Props, "onEndTable" | "onRematch" | "onOpenChange">) {
+  const navigate = useNavigate()
+  const { toast } = useToast()
+  return useMutation({
+    mutationFn: (next: AfterGame) => (next === "rematch" ? onRematch() : onEndTable()),
+    onSuccess: (done, next) => {
+      if (!done) return
+      if (next === "close") {
+        void navigate({ to: "/games" })
+        return
+      }
+      toast({ message: "The rematch is ready in the same room.", tone: "success" })
+      onOpenChange(false)
+    },
+  })
+}
+
+function discardError(discard: ReturnType<typeof useDiscardGame>) {
+  if (discard.data !== false) return null
+  return discard.variables === "rematch"
+    ? "Could not start the rematch. Check your connection to the table and try again."
+    : "Could not end the game. Check your connection to the table and try again."
+}
+
+function AfterGameChoice({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: AfterGame
+  disabled: boolean
+  onChange: (value: AfterGame) => void
+}) {
+  return (
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(next) => {
+        if (next) onChange(next as AfterGame)
+      }}
+      aria-label="After this game"
+      className="grid gap-2 sm:grid-cols-2"
+    >
+      {(
+        [
+          ["close", "Close the table", "Everyone leaves the room"],
+          ["rematch", "End and rematch", "Same room and seats, back to setup"],
+        ] as const
+      ).map(([option, label, hint]) => (
+        <ToggleGroupItem
+          key={option}
+          value={option}
+          disabled={disabled}
+          className={cn(
+            "btn h-auto min-h-12 flex-col items-start gap-0.5 px-4 py-2 text-left",
+            value === option ? "btn-primary" : "btn-outline",
+          )}
+        >
+          {label}
+          <span className="text-xs font-normal opacity-65">{hint}</span>
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  )
+}
+
+/** End game for modes outside game history (non-Commander formats): the table closes or
+ * resets for a rematch, and nothing is recorded. */
+export function EndUnrecordedGame({
+  mode,
+  onEndTable,
+  onRematch,
+  onOpenChange,
+}: Pick<Props, "onEndTable" | "onRematch" | "onOpenChange"> & { mode: TableMode }) {
+  const [after, setAfter] = useState<AfterGame>("close")
+  const discard = useDiscardGame({ onEndTable, onRematch, onOpenChange })
+  const error = discardError(discard)
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <div>
+            <DialogTitle>End game</DialogTitle>
+            <p className="text-base-content/60 mt-1 text-sm">
+              {formatLabel(mode)} games are not recorded in game history.
+            </p>
+          </div>
+          <DialogClose onClose={() => onOpenChange(false)} />
+        </DialogHeader>
+        <form
+          className="grid gap-5 p-5 sm:p-6"
+          onSubmit={(event) => {
+            event.preventDefault()
+            discard.mutate(after)
+          }}
+        >
+          <fieldset>
+            <legend className="mb-2 text-sm font-bold">After this game</legend>
+            <AfterGameChoice
+              value={after}
+              disabled={discard.isPending}
+              onChange={(value) => {
+                setAfter(value)
+                discard.reset()
+              }}
+            />
+          </fieldset>
+          {error && <div className="alert alert-error">{error}</div>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" className="btn btn-ghost" onClick={() => onOpenChange(false)}>
+              Back to game
+            </button>
+            <button className="btn btn-primary min-w-36" disabled={discard.isPending}>
+              {discard.isPending
+                ? after === "rematch"
+                  ? "Starting…"
+                  : "Ending…"
+                : after === "rematch"
+                  ? "Start rematch"
+                  : "Close the table"}
+            </button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

@@ -6,7 +6,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { FinishGame } from "./finish-game"
+import { isGameFormat } from "@/features/games/game-format"
+import { EndUnrecordedGame, FinishGame } from "./finish-game"
 import type { GameTimerState } from "./game-timer"
 import { RevealControl } from "./reveal-control"
 import { HotkeyHelp } from "./table-hotkeys"
@@ -57,7 +58,15 @@ export function TableDialogs({
         </DialogContent>
       </Dialog>
       <HotkeyHelp open={dialog?.kind === "help"} onOpenChange={close} />
-      {dialog?.kind === "finish" && (
+      {dialog?.kind === "finish" && !isGameFormat(room.mode) && (
+        <EndUnrecordedGame
+          mode={room.mode}
+          onEndTable={room.endGame}
+          onRematch={room.rematch}
+          onOpenChange={close}
+        />
+      )}
+      {dialog?.kind === "finish" && isGameFormat(room.mode) && (
         <FinishGame
           mode={room.mode}
           participants={room.participants}

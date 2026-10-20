@@ -1,5 +1,5 @@
 import type { TableParticipant } from "./use-webcam-room"
-import type { GameFormat } from "@/features/games/game-format"
+import type { TableMode } from "@/features/games/game-format"
 import { teams, turnId } from "./game-modes"
 
 export interface TurnState {
@@ -37,7 +37,7 @@ export function unpassTarget(turns: TurnState): number | null {
 export function nextActiveSeat(
   seats: TableParticipant[],
   activeId: number | null,
-  mode: GameFormat = "commander",
+  mode: TableMode = "commander",
 ): TableParticipant | undefined {
   if (mode === "two_headed_giant") {
     activeId = turnId(seats, activeId, mode)
@@ -58,7 +58,7 @@ export function turnDisplay(
   playerId: number,
   gameElapsed: number,
   seats: TableParticipant[] = [],
-  mode: GameFormat = "commander",
+  mode: TableMode = "commander",
 ) {
   playerId = turnId(seats, playerId, mode) ?? playerId
   const running =

@@ -66,6 +66,14 @@ pub enum Mode {
     TwoHeadedGiant,
     /// Exactly five players.
     FiveStar,
+    /// One-on-one Commander at 20 life.
+    DuelCommander,
+    /// One-on-one Standard. Played at the table but not recorded.
+    Standard,
+    /// One-on-one Pauper. Played at the table but not recorded.
+    Pauper,
+    /// One-on-one Canadian Highlander. Played at the table but not recorded.
+    CanadianHighlander,
 }
 
 impl Mode {
@@ -75,7 +83,28 @@ impl Mode {
             "commander" => Some(Self::Commander),
             "two_headed_giant" => Some(Self::TwoHeadedGiant),
             "five_star" => Some(Self::FiveStar),
+            "duel_commander" => Some(Self::DuelCommander),
+            "standard" => Some(Self::Standard),
+            "pauper" => Some(Self::Pauper),
+            "canadian_highlander" => Some(Self::CanadianHighlander),
             _ => None,
+        }
+    }
+
+    /// Whether the mode is a one-on-one game.
+    pub fn is_duel(self) -> bool {
+        matches!(
+            self,
+            Self::DuelCommander | Self::Standard | Self::Pauper | Self::CanadianHighlander
+        )
+    }
+
+    /// The life each seat starts a game with.
+    pub fn starting_life(self) -> i64 {
+        if self.is_duel() {
+            20
+        } else {
+            seat::STARTING_LIFE
         }
     }
 }

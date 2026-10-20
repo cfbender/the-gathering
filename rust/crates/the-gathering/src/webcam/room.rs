@@ -428,6 +428,7 @@ fn roster_error(mode: Mode, count: usize) -> Option<&'static str> {
             Some("Two-Headed Giant requires an even number of players (at least 4)")
         }
         Mode::FiveStar if count != 5 => Some("Five Star requires exactly 5 players"),
+        mode if mode.is_duel() && count != 2 => Some("This mode requires exactly 2 players"),
         _ => None,
     }
 }
@@ -800,9 +801,26 @@ impl Room {
             }
             RoomMsg::SetMode(mode, reply) => {
                 if entry.timer.started_at.is_none() {
+                    // Seats adopt the new mode's starting life before the match begins.
+                    let life = mode.starting_life();
+                    let reset: BTreeMap<i64, Seat> = if life == entry.mode.starting_life() {
+                        BTreeMap::new()
+                    } else {
+                        entry
+                            .all_seats
+                            .iter()
+                            .map(|(id, seat)| (*id, seat.clone().reset(life)))
+                            .collect()
+                    };
+                    entry.all_seats.extend(reset.clone());
                     entry.mode = mode;
                     entry.team_life = BTreeMap::new();
                     self.commit(entry, vec![Broadcast::TableState]).await?;
+                    for (id, seat) in reset {
+                        if let Some(conn) = self.connection(id) {
+                            let _ = conn.tx.send(ConnEvent::SeatReset(Box::new(seat)));
+                        }
+                    }
                     let _ = reply.send(Ok(()));
                 } else {
                     let _ = reply.send(Err("game mode is fixed after start".into()));
@@ -989,7 +1007,10 @@ impl Room {
                 peer_id: participant.peer_id,
                 ..previous.clone()
             },
-            None => participant,
+            None => Seat {
+                life: entry.mode.starting_life(),
+                ..participant
+            },
         };
         participant.spectator = spectator;
         // A reload replaces a live tab or returns within the grace period: not news.
@@ -1078,7 +1099,7 @@ impl Room {
             .all_seats
             .iter()
             .filter(|(id, _)| present.contains(id))
-            .map(|(id, seat)| (*id, seat.clone().reset()))
+            .map(|(id, seat)| (*id, seat.clone().reset(entry.mode.starting_life())))
             .collect();
         let kept: Vec<&str> = seats.values().map(|seat| seat.peer_id.as_str()).collect();
         let peer_ids = entry

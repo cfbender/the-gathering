@@ -18,10 +18,11 @@ import { Button } from "@/components/ui/button"
 import { commanderNames, type DeckSummary } from "@/features/decks/decks"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
 import {
-  GAME_FORMATS,
+  TABLE_MODES,
   formatLabel,
-  isGameFormat,
-  type GameFormat,
+  isDuelMode,
+  isTableMode,
+  type TableMode,
 } from "@/features/games/game-format"
 import { cn } from "@/lib/cn"
 import { CommanderHover } from "@/components/card-hover"
@@ -36,13 +37,12 @@ import type { TableParticipant } from "./room-types"
 import { SeatOrderTable } from "./seat-order-table"
 import { describeIceServers, describeRecognizer } from "./side-panel-labels"
 import { TableRolls, type RollRequest } from "./table-rolls"
-import { Choice } from "./table-settings"
 import { TimerBadge, TimerToggle } from "./table-timer"
 import { nextActiveSeat, unpassTarget, type TurnState } from "./turns"
 
 export interface TableTabProps {
-  mode?: GameFormat
-  onModeChange?: (mode: GameFormat) => void
+  mode?: TableMode
+  onModeChange?: (mode: TableMode) => void
   onMoveSeat?: (peerId: string, delta: -1 | 1) => void
   onRemoveParticipant?: (peerId: string) => void
   /** Gives a spectator a seat while the table is in setup (hosts and admins). */
@@ -153,14 +153,29 @@ function MatchControls(props: TableTabProps) {
       )}
       {!started && isOwner !== false && (
         <>
-          <Choice
-            label="Game mode"
-            value={mode ?? "commander"}
-            options={GAME_FORMATS}
-            onChange={(value) => {
-              if (isGameFormat(value)) props.onModeChange?.(value)
-            }}
-          />
+          <label className="grid gap-2 text-[0.65rem] text-base-content/60">
+            Game mode
+            <select
+              className="select select-sm w-full bg-base-100 text-base-content"
+              value={mode ?? "commander"}
+              onChange={(event) => {
+                if (isTableMode(event.target.value)) props.onModeChange?.(event.target.value)
+              }}
+            >
+              {TABLE_MODES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {mode && isDuelMode(mode) && (
+            <p className="text-[0.65rem] text-base-content/60">
+              Exactly 2 players · 20 life.
+              {mode !== "duel_commander" &&
+                " Non-Commander games are played here but not recorded in game history."}
+            </p>
+          )}
           {mode === "two_headed_giant" && (
             <p className="text-[0.65rem] text-base-content/60">
               Two-Headed Giant Commander · 60 shared life. Adjacent seats form teams; move players

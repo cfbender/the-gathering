@@ -1,4 +1,4 @@
-import type { GameFormat } from "@/features/games/game-format"
+import type { TableMode } from "@/features/games/game-format"
 import type { TableParticipant } from "./use-webcam-room"
 
 export function teams(seats: TableParticipant[]): TableParticipant[][] {
@@ -7,7 +7,7 @@ export function teams(seats: TableParticipant[]): TableParticipant[][] {
   )
 }
 
-export function turnId(seats: TableParticipant[], playerId: number | null, mode: GameFormat) {
+export function turnId(seats: TableParticipant[], playerId: number | null, mode: TableMode) {
   if (mode !== "two_headed_giant") return playerId
   return (
     teams(seats).find((team) => team.some((seat) => seat.player_id === playerId))?.[0]?.player_id ??
