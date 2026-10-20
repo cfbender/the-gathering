@@ -30,7 +30,10 @@ export function TableCameraRail({
       {view.groups.map((group) => (
         <div
           key={group[0]!.peer_id}
-          className={cn(teamsMode && "overflow-hidden rounded-lg border border-primary/40")}
+          className={cn(
+            "shrink-0",
+            teamsMode && "overflow-hidden rounded-lg border border-primary/40",
+          )}
         >
           {teamsMode && <TeamHeader view={view} group={group} />}
           {group.map((participant) => (
