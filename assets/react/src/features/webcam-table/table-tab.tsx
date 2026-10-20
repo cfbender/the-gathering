@@ -277,7 +277,8 @@ function SetupSection(props: TableTabProps) {
           <div className="min-w-0 flex-1">
             <CommanderButton {...props} />
           </div>
-          {props.timer?.state.started_at == null && (
+          {/* Rerolling stops at the start, unless you still have no deck to play. */}
+          {(props.timer?.state.started_at == null || local.deck_id == null) && (
             <DeckChooserButton onChooseDeck={props.onChooseDeck} />
           )}
         </div>
