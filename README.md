@@ -2,20 +2,84 @@
 
 # The Gathering
 
-A self-hosted tracker for Commander (Magic: The Gathering) games. Record who played, which commanders, who won, and how, then browse stats for your playgroup. One container, one SQLite file, no external services.
+A self-hosted webcam table for playing Commander (Magic: The Gathering) remotely with your
+playgroup. Everyone points a camera at their board, clicks any card on any board to identify it,
+and tracks life, commander damage, turns, and counters together; when the game ends, the result
+lands in your group's game history and stats. One container, one SQLite file, and no hosted
+services required.
 
-**Status:** early scaffold. The stack, container build, and developer setup are in place; game tracking features are next.
+## Features
 
-## Planned features
+- **Webcam table:** rooms for two to ten players over a WebRTC SFU built into the server, with
+  shared life, commander damage, poison, commander tax, monarch, turns and per-player clocks,
+  dice rolls, a shared log, spectators, private hand reveals, and Commander, Two-Headed Giant,
+  and Five Star modes.
+- **Card recognition:** click a card on any board and the browser identifies it with
+  [Oracle](https://github.com/cfbender/oracle)'s models, then shows its printing, rules text,
+  and rulings to the whole table, favouring cards in that player's linked deck list.
+- **Virtual board:** play from a deck's linked list on a virtual tabletop instead of a camera.
+- **Discord:** member sign-in, `/newgame` queues that open a table once enough players join,
+  SpellBot game tracking, and `/log` and `/summary` commands.
+- **Game history and stats:** results recorded from the table, logged by hand, or imported from
+  CSV or Mythic Track, with kills, MVP cards, and playgroup, player, commander, color, and deck
+  statistics.
+- **Decks:** Moxfield, Archidekt, and ManaVault deck links and syncing, a local Scryfall card
+  catalog, and a weighted deck chooser members can script in Lua.
 
-- Discord sign-in for members; the server administrator uses username/password.
-- Log games by hand or import them from CSV.
-- Automatic game tracking from SpellBot / Discord.
-- Card search backed by a Scryfall catalog (latest printing per card) for commanders and MVP cards.
-- Deck-list links for Moxfield, Archidekt, and manavault.
-- Playgroup, player, commander, and deck statistics.
+## Webcam table
 
-## Kill tracking
+**Games → Play** opens a temporary room for up to ten signed-in members who share their
+board cameras through a WebRTC SFU built into the server (each browser uploads one simulcast
+stream and receives every other board at the resolution it is drawn) and record the result
+when the game ends. The SFU listens on the UDP range `WEBRTC_SFU_PORT_RANGE`; forward it to the
+host and set `WEBRTC_SFU_PUBLIC_IP`, or set `WEBRTC_SFU_RELAY_ONLY=true` to carry media over the
+configured TURN servers instead (see `docs/webcam-table.md`).
+
+**Reveal hand to** privately sends your camera to one chosen player; everyone else receives no
+video until you end the reveal or the target leaves.
+
+Clicking a card on any board identifies it with the recognizer bundle published from
+[Oracle](https://github.com/cfbender/oracle) (see its README, "Shipping"): the server downloads the newest `scanner-bundle-*` release of this
+repository at boot and every six hours (`CARDID_BUNDLE_SOURCE`), serves `DATA_DIR/cardid/current/*`
+at `/api/cardid/*`, and the browser runs the models itself. A recognized card opens with its rules text and
+rulings (from the local catalog) and lands in that board's card tray for every seat.
+Without a published bundle the table still works and offers the player's commanders as
+suggestions instead.
+
+When a seated player's chosen deck links to a list, every seat loads it
+and warms its card images, **Decks → View decklist** shows your own list, and the recognizer
+favours cards in the clicked board owner's list (see Oracle's README, "Deck-list prior").
+Opponents' lists are not shown in the UI but are visible in the browser's network tab.
+
+**Use virtual board** in your seat menu replaces your camera with a virtual tabletop dealt
+from your deck's linked list; other players see the board, with your hand and library as counts.
+
+**Trackers** over your own camera keep free-form 0–100 counters ("Lands", "Creatures in graveyard")
+and a combat-math list: enter each anthem or combat buff with its conditions (attacking, blocking,
+flying, tokens, nontoken, or any creature type) and the overlay shows the combined bonus for every
+kind of creature ("Attacking token creatures +4/+4 · vigilance"). Each counter and the buff list has
+its own "Show to table" switch; shared ones appear on your seat for everyone and shared counter
+changes are logged, while private ones stay in your browser.
+
+Design notes are in [docs/webcam-table.md](docs/webcam-table.md); to improve recognition or contribute training data,
+see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONTRIBUTING.md).
+
+### Scheduling games from Discord
+
+Use `/newgame [start] [min_players] [title] [format]` to post a public Join/Maybe/Leave
+queue. The default minimum is three (configurable from two to ten). Without
+`start`, it opens a webcam-table link as soon as the minimum joins; scheduled
+queues start or expire at the requested time. Maybe doesn't count toward the
+minimum, but if a scheduled game is short at its start time the bot pings the
+maybe list and waits 15 minutes for them to join. The host or a Discord Administrator
+can Change time or Cancel. The queue and its buttons live in a thread on the
+`/newgame` reply, where the ready and maybe pings land too; the host or an Administrator runs `/close` in it to
+close it. See [Discord integration](docs/discord-integration.md#webcam-table-queues-with-newgame)
+for time syntax, permissions, and restart/delivery behavior.
+
+## Game history
+
+### Kill tracking
 
 When logging or editing a game, use each player's **Kills** dropdown to select who they
 killed. **Total kills** includes those selections; enter a larger total (or only a total)
@@ -251,38 +315,6 @@ re-points an existing link. The response's `updated` count includes all matched
 existing decks, even when nothing changed. Hosts that fail to list are skipped and
 reported in the response's `errors`.
 
-### Webcam table
-
-**Games → Play** opens a temporary room for up to ten signed-in members who share their
-board cameras through a WebRTC SFU built into the server (each browser uploads one simulcast
-stream and receives every other board at the resolution it is drawn) and record the result
-when the game ends. The SFU listens on the UDP range `WEBRTC_SFU_PORT_RANGE`; forward it to the
-host and set `WEBRTC_SFU_PUBLIC_IP`, or set `WEBRTC_SFU_RELAY_ONLY=true` to carry media over the
-configured TURN servers instead (see `docs/webcam-table.md`).
-**Reveal hand to** privately sends your camera to one chosen player; everyone else receives no
-video until you end the reveal or the target leaves. Clicking a card on
-any board identifies it with the recognizer bundle published from [Oracle](https://github.com/cfbender/oracle) (see
-its README, "Shipping"): the server downloads the newest `scanner-bundle-*` release of this
-repository at boot and every six hours (`CARDID_BUNDLE_SOURCE`), serves `DATA_DIR/cardid/current/*`
-at `/api/cardid/*`, and the browser runs the models itself. A recognized card opens with its rules text and
-rulings (from the local catalog) and lands in that board's card tray for every seat.
-Without a published bundle the table still works and offers the player's commanders as
-suggestions instead. When a seated player's chosen deck links to a list, every seat loads it
-and warms its card images, **Decks → View decklist** shows your own list, and the recognizer
-favours cards in the clicked board owner's list (see Oracle's README, "Deck-list prior").
-Opponents' lists are not shown in the UI but are visible in the browser's network tab.
-**Use virtual board** in your seat menu replaces your camera with a virtual tabletop dealt
-from your deck's linked list; other players see the board, with your hand and library as counts.
-**Trackers** over your own camera keep free-form 0–100 counters ("Lands", "Creatures in graveyard")
-and a combat-math list: enter each anthem or combat buff with its conditions (attacking, blocking,
-flying, tokens, nontoken, or any creature type) and the overlay shows the combined bonus for every
-kind of creature ("Attacking token creatures +4/+4 · vigilance"). Each counter and the buff list has
-its own "Show to table" switch; shared ones appear on your seat for everyone and shared counter
-changes are logged, while private ones stay in your browser.
-Design notes are in
-[docs/webcam-table.md](docs/webcam-table.md); to improve recognition or contribute training data,
-see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONTRIBUTING.md).
-
 ### Environment variables
 
 | Variable | Default | Purpose |
@@ -315,17 +347,6 @@ see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONT
 | `DISCORD_SPELLBOT_USER_ID` | `725510263251402832` | Discord user ID accepted as SpellBot, useful when running a private SpellBot deployment. |
 | `THE_GATHERING_ADMIN_USERNAME` | unset | Creates this admin on container startup when paired with the password. |
 | `THE_GATHERING_ADMIN_PASSWORD` | unset | Password for container or Mix-task admin bootstrap. |
-
-Use `/newgame [start] [min_players] [title] [format]` to post a public Join/Maybe/Leave
-queue. The default minimum is three (configurable from two to ten). Without
-`start`, it opens a webcam-table link as soon as the minimum joins; scheduled
-queues start or expire at the requested time. Maybe doesn't count toward the
-minimum, but if a scheduled game is short at its start time the bot pings the
-maybe list and waits 15 minutes for them to join. The host or a Discord Administrator
-can Change time or Cancel. The queue and its buttons live in a thread on the
-`/newgame` reply, where the ready and maybe pings land too; the host or an Administrator runs `/close` in it to
-close it. See [Discord integration](docs/discord-integration.md#webcam-table-queues-with-newgame)
-for time syntax, permissions, and restart/delivery behavior.
 
 ### Accounts and registration
 
