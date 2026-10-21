@@ -262,6 +262,9 @@ export function CardSuggestions({
               <Search className="size-3.5 text-white/50" />
               <input
                 ref={searchRef}
+                // The panel opens because a click needs a human, so typing searches right away.
+                autoFocus
+                data-candidate-keys
                 className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-white/40"
                 placeholder="Search name, set:mh2, #236, lang:en  (/)"
                 value={query}

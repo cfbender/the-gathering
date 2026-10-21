@@ -187,6 +187,35 @@ it("leaves the same near-tie to the picker without a deck list", async () => {
   expect(recognizer.locate).not.toHaveBeenCalled()
 })
 
+it("picks with number keys from the focused picker search only while it is empty", async () => {
+  recognizer.identify.mockResolvedValue(
+    identification([
+      candidate("sol-ring-art", "Sol Ring", 0.75),
+      candidate("mind-stone", "Mind Stone", 0.7),
+    ]),
+  )
+  const { result } = renderFlow(new Map())
+  await waitFor(() => expect(result.current.pickerOpen).toBe(true))
+  const searchBox = document.createElement("input")
+  searchBox.dataset.candidateKeys = ""
+  document.body.append(searchBox)
+
+  searchBox.value = "2"
+  searchBox.dispatchEvent(new KeyboardEvent("keydown", { key: "2", bubbles: true }))
+  expect(room.announceCard).not.toHaveBeenCalled()
+
+  searchBox.value = ""
+  const key = new KeyboardEvent("keydown", { key: "2", bubbles: true, cancelable: true })
+  searchBox.dispatchEvent(key)
+  expect(key.defaultPrevented).toBe(true)
+  expect(room.announceCard).toHaveBeenCalledWith(
+    "peer-cody",
+    "Cody",
+    expect.objectContaining({ name: "Mind Stone" }),
+  )
+  searchBox.remove()
+})
+
 it("keeps a clearly better card that is not in the list", async () => {
   recognizer.identify.mockResolvedValue(
     identification([

@@ -193,9 +193,9 @@ it("picker search uses a sibling's own details for hover and selects that printi
       />
     </QueryClientProvider>,
   )
-  fireEvent.change(screen.getByRole("textbox", { name: "Search the card gallery" }), {
-    target: { value: "sol 236" },
-  })
+  const searchBox = screen.getByRole("textbox", { name: "Search the card gallery" })
+  expect(document.activeElement).toBe(searchBox)
+  fireEvent.change(searchBox, { target: { value: "sol 236" } })
   const button = await screen.findByRole("button", { name: /Sol Talisman\s*MH2 #236 · EN/ })
   fireEvent.mouseEnter(button)
   expect((await screen.findByRole("img", { name: "Sol Talisman" })).getAttribute("src")).toBe(

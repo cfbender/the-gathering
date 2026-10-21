@@ -244,13 +244,25 @@ export function useCardIdentificationFlow({
   useEffect(() => {
     function choose(event: KeyboardEvent) {
       if (!pickerOpen || event.key < "1" || event.key > "5") return
-      if (event.target instanceof HTMLElement && event.target.matches("input, textarea, select"))
+      const target = event.target
+      // The picker's search box takes focus when it opens; while it is empty the keys still pick.
+      const emptyPickerSearch =
+        target instanceof HTMLInputElement &&
+        target.dataset.candidateKeys !== undefined &&
+        target.value === ""
+      if (
+        target instanceof HTMLElement &&
+        target.matches("input, textarea, select") &&
+        !emptyPickerSearch
+      )
         return
       const index = Number(event.key) - 1
       const art = candidates[index]
-      if (art) return chooseCard(art)
-      const deck = suggestions[index]
-      if (deck && recognition.status === "skipped") chooseDeckForCapture(deck.id)
+      const deck = recognition.status === "skipped" ? suggestions[index] : undefined
+      if (!art && !deck) return
+      event.preventDefault()
+      if (art) chooseCard(art)
+      else if (deck) chooseDeckForCapture(deck.id)
     }
     window.addEventListener("keydown", choose)
     return () => window.removeEventListener("keydown", choose)
