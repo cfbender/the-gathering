@@ -699,6 +699,10 @@ impl Room {
 
     fn reveal(&mut self, id: &PeerId, target: Option<PeerId>) -> Result<(), SfuError> {
         let peer = self.peers.get_mut(id).ok_or(SfuError::NotJoined)?;
+        match &target {
+            Some(target) => tracing::info!("SFU shows {id}'s board only to {target}"),
+            None => tracing::info!("SFU shows {id}'s board to everyone"),
+        }
         peer.reveal_to = target;
         self.refresh_allowed(id);
         Ok(())

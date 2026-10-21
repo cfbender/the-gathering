@@ -505,6 +505,13 @@ impl Channel {
             self.socket.socket.id,
             self.room_id
         );
+        // A remembered reveal outlives a rejoin only while its target is still at the table.
+        if let Some(target) = &self.participant.reveal_to
+            && !self.present(target)
+        {
+            self.participant.reveal_to = None;
+            self.remember_seat(None).await?;
+        }
         // Sends every seat, this one included, the roster.
         state.presence.track(
             &self.topic,
@@ -525,7 +532,9 @@ impl Channel {
         let boards = self.tables().boards(&self.room_id).await?;
         self.push("table_boards", &json!({ "boards": boards }));
         // The seat's media connection lives in the SFU; the browser offers once the join
-        // reply arrives.
+        // reply arrives. A new SFU peer forwards to everyone, so a remembered reveal is
+        // reapplied before this channel handles that offer.
+        let unavailable = |error| Stop::Error(format!("sfu_unavailable: {error}"));
         state
             .sfu
             .join(
@@ -535,7 +544,16 @@ impl Channel {
                 sfu,
             )
             .await
-            .map_err(|error| Stop::Error(format!("sfu_unavailable: {error}")))
+            .map_err(unavailable)?;
+        state
+            .sfu
+            .reveal(
+                &self.room_id,
+                &self.participant.peer_id,
+                self.participant.reveal_to.as_deref(),
+            )
+            .await
+            .map_err(unavailable)
     }
 
     async fn terminate(self, stop: Stop) {

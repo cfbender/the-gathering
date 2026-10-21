@@ -7,11 +7,11 @@
     clippy::indexing_slicing
 )]
 
-use crate::webcam_support;
+use crate::{support, webcam_support};
 
 use serde_json::{Value, json};
 use the_gathering::webcam::room::Actor;
-use webcam_support::{PEER_A, PEER_B, PEER_C, PEER_D, Table, listed, room_id};
+use webcam_support::{PEER_A, PEER_B, PEER_C, PEER_D, Table, listed, room_id, wait_until};
 
 const PEER_A_NEW: &str = "00000000-0000-4000-8000-0000000000a2";
 const ELSEWHERE: &str = "00000000-0000-4000-8000-00000000e0e0";
@@ -320,6 +320,32 @@ async fn reveal_validates_targets_preserves_status_and_ends_when_the_target_leav
         })
         .await;
     assert_eq!(t.meta(PEER_A)["reveal_to"], Value::Null);
+}
+
+#[tokio::test]
+async fn a_rejoin_reapplies_a_reveal_at_the_sfu_and_ends_one_whose_target_left() {
+    let (_guard, logs) = support::capture_logs();
+    let mut t = Table::new().await;
+    let mut other = t.join_seat(PEER_B).await;
+    t.alice.ok("reveal", json!({ "target": PEER_B })).await;
+    t.server.disconnect(&mut t.alice, &t.room).await;
+
+    // The new SFU peer would otherwise forward the board to every seat.
+    logs.clear();
+    let mut rejoined = t.rejoin(PEER_A_NEW).await;
+    let private = format!("SFU shows {PEER_A_NEW}'s board only to {PEER_B}");
+    wait_until(|| async { logs.contents().contains(&private) }).await;
+    assert_eq!(t.meta(PEER_A_NEW)["reveal_to"], PEER_B);
+
+    // The target leaves while the revealer is away: the rejoin ends the reveal everywhere.
+    t.server.disconnect(&mut rejoined, &t.room).await;
+    t.server.disconnect(&mut other, &t.room).await;
+    logs.clear();
+    let _back = t.rejoin(PEER_A).await;
+    let public = format!("SFU shows {PEER_A}'s board to everyone");
+    wait_until(|| async { logs.contents().contains(&public) }).await;
+    assert_eq!(t.meta(PEER_A)["reveal_to"], Value::Null);
+    assert_eq!(t.seat(PEER_A).await.reveal_to, None);
 }
 
 #[tokio::test]
