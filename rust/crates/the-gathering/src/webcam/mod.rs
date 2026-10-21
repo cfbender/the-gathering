@@ -40,6 +40,10 @@ pub const PRUNE_INTERVAL: Duration = Duration::from_secs(60);
 /// How long an empty room may sit idle before the pruner closes it.
 pub const IDLE_TIMEOUT_MS: i64 = 30 * 60 * 1000;
 
+/// How many different tables one user may be connected to at once. Each table the SFU serves
+/// binds its own UDP ports from a shared range, so one account must not be able to hold them all.
+pub const MAX_TABLES_PER_USER: usize = 3;
+
 /// The presence topic and Socket.IO room of the table `room_id`.
 pub fn topic(room_id: &str) -> String {
     format!("webcam_table:{room_id}")
@@ -137,11 +141,19 @@ pub(crate) struct Shared {
     io: socketioxide::SocketIo,
     rooms: Mutex<HashMap<String, RoomHandle>>,
     next_instance: AtomicU64,
+    /// Per user, the tables they are connected to and how many connections each has.
+    claims: Mutex<HashMap<i64, HashMap<String, usize>>>,
 }
 
 impl Shared {
     fn rooms(&self) -> MutexGuard<'_, HashMap<String, RoomHandle>> {
         self.rooms
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn claims(&self) -> MutexGuard<'_, HashMap<i64, HashMap<String, usize>>> {
+        self.claims
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
@@ -158,6 +170,32 @@ impl Shared {
     }
 }
 
+/// One connection of a user to a table, from [`WebcamTables::claim`]; released on drop.
+#[derive(Debug)]
+pub struct TableClaim {
+    shared: Arc<Shared>,
+    user_id: i64,
+    room: String,
+}
+
+impl Drop for TableClaim {
+    fn drop(&mut self) {
+        let mut claims = self.shared.claims();
+        let Some(rooms) = claims.get_mut(&self.user_id) else {
+            return;
+        };
+        if let Some(count) = rooms.get_mut(&self.room) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                rooms.remove(&self.room);
+            }
+        }
+        if rooms.is_empty() {
+            claims.remove(&self.user_id);
+        }
+    }
+}
+
 /// The room registry. Cheap to clone.
 #[derive(Clone, Debug)]
 pub struct WebcamTables(Arc<Shared>);
@@ -170,7 +208,25 @@ impl WebcamTables {
             io,
             rooms: Mutex::new(HashMap::new()),
             next_instance: AtomicU64::new(1),
+            claims: Mutex::new(HashMap::new()),
         }))
+    }
+
+    /// Counts a connection of `user_id` to `room` until the claim drops. Refused when the user
+    /// is already connected to [`MAX_TABLES_PER_USER`] other tables; more connections to a table
+    /// they are at are always allowed.
+    pub fn claim(&self, user_id: i64, room: &str) -> Option<TableClaim> {
+        let mut claims = self.0.claims();
+        let rooms = claims.entry(user_id).or_default();
+        if !rooms.contains_key(room) && rooms.len() >= MAX_TABLES_PER_USER {
+            return None;
+        }
+        *rooms.entry(room.to_owned()).or_default() += 1;
+        Some(TableClaim {
+            shared: Arc::clone(&self.0),
+            user_id,
+            room: room.to_owned(),
+        })
     }
 
     fn live(&self, id: &str) -> Option<RoomHandle> {

@@ -545,6 +545,50 @@ async fn joins_are_limited_per_user_so_rejoining_cannot_reset_the_budget() {
 }
 
 #[tokio::test]
+async fn one_user_may_be_at_only_a_few_tables_at_once() {
+    let server = Server::start().await;
+    let (user, player) = server.linked_player("Mallory").await;
+    let rooms: Vec<String> = (0..4).map(|_| webcam_support::room_id()).collect();
+    let mut seats = Vec::new();
+    for (index, room) in rooms.iter().take(3).enumerate() {
+        let index = u32::try_from(index).unwrap() + 2;
+        seats.push(server.join_as(&user, player, room, &peer(index)).await);
+    }
+
+    let refused = |status: String, response: Value| {
+        assert_eq!(
+            (status.as_str(), response),
+            (
+                "error",
+                json!({ "reason": "You are at too many tables. Leave one to join another." })
+            )
+        );
+    };
+    let (status, response, _) = server.try_join(&user, player, &rooms[3], PEER_A).await;
+    refused(status, response);
+    // The refused join opened no table (and so no SFU room).
+    assert!(
+        !channels::rooms::active_rooms(server.state())
+            .iter()
+            .any(|room| room.id == rooms[3])
+    );
+
+    // Another connection to a table the user is already at is fine.
+    let _again = server.join_as(&user, player, &rooms[0], PEER_A).await;
+    let (status, response, _) = server.try_join(&user, player, &rooms[3], PEER_C).await;
+    refused(status, response);
+
+    // Other users are unaffected.
+    let _bob = server.join_player(&rooms[3], &peer(9), "Bob").await;
+
+    // Leaving a table frees a place.
+    seats[1].leave().await;
+    let topic = the_gathering::webcam::topic(&rooms[1]);
+    webcam_support::wait_until(|| async { server.state().presence.count(&topic) == 0 }).await;
+    server.join_as(&user, player, &rooms[3], PEER_C).await;
+}
+
+#[tokio::test]
 async fn rejects_a_player_not_linked_to_the_authenticated_account() {
     let t = Table::new().await;
     let user = t.server.user().await;

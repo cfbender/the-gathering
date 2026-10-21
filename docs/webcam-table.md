@@ -118,7 +118,10 @@ transceiver so the server has a connection to offer boards on without a camera.
 Each room binds one UDP socket per interface address on the first free port in
 `WEBRTC_SFU_PORT_RANGE` and announces
 `WEBRTC_SFU_PUBLIC_IP` as its server-reflexive address when set, so a host that forwards that
-range needs no STUN of its own. `WEBRTC_SFU_RELAY_ONLY=true` instead makes the server connect
+range needs no STUN of its own. Because every table holds ports from that shared range, one
+account may be connected to at most three different tables at once (any number of connections
+to each); a further join is refused before the table or its SFU room starts.
+`WEBRTC_SFU_RELAY_ONLY=true` instead makes the server connect
 out through Cloudflare TURN (relay-only ICE) for hosts that cannot forward ports,
 at the cost of every byte crossing the relay. `GET /api/webcam-table/config` tells the browser
 which (`sfu.transport`).

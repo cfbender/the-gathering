@@ -7,7 +7,9 @@
 //! Every event spends a token from the connection's bucket before it is handled, so floods
 //! are refused before they validate, broadcast or write SQLite. Signals have their own,
 //! larger bucket because connecting to a table sends dozens of candidates at once. Joins are
-//! limited per user through the shared rate limiter, so rejoining cannot reset the budget.
+//! limited per user through the shared rate limiter, so rejoining cannot reset the budget, and a
+//! user may be at only [`webcam::MAX_TABLES_PER_USER`] tables at once, since each table's SFU
+//! room holds UDP ports from a shared range.
 
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
@@ -30,7 +32,7 @@ use crate::webcam::log::{RollKind, RollResult};
 use crate::webcam::room::{Actor, Conn, ConnEvent, RoomExit};
 use crate::webcam::seat::{CombatEffect, CustomCounter, Seat};
 use crate::webcam::timer::Action;
-use crate::webcam::{self, Mode, RoomGone};
+use crate::webcam::{self, Mode, RoomGone, TableClaim};
 
 const LIFE_RANGE: std::ops::RangeInclusive<i64> = -999..=999;
 /// SDP offers with many candidates run 10–20 KB; anything far larger is abuse.
@@ -321,6 +323,8 @@ struct Channel {
     events: TokenBucket,
     signals: TokenBucket,
     joined_at: Instant,
+    /// Held until the channel has left the table and its SFU room.
+    _claim: TableClaim,
 }
 
 /// What a successful join hands the channel loop.
@@ -427,6 +431,13 @@ impl Channel {
         let Some(JoinParams { room_id, seat }) = params else {
             return Err(Reply::error("invalid room"));
         };
+        // Checked before the room starts, so refused joins open neither a table nor SFU ports.
+        let claim = state
+            .webcam_tables
+            .claim(user.id, &room_id)
+            .ok_or_else(|| {
+                Reply::error("You are at too many tables. Leave one to join another.")
+            })?;
         let participant = participant(state, &seat, user)
             .await
             .map_err(Reply::error)?;
@@ -473,6 +484,7 @@ impl Channel {
             events: TokenBucket::new(limits.webcam_table_events),
             signals: TokenBucket::new(limits.webcam_table_signals),
             joined_at: Instant::now(),
+            _claim: claim,
         };
         Ok((
             channel,
