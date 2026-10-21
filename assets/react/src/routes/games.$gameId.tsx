@@ -71,7 +71,7 @@ function GameDetailPage() {
           return (
             <article
               key={seat.id}
-              className={`card relative overflow-hidden border ${seat.result === "win" ? "border-success bg-success/10" : "border-base-300 bg-base-200"}`}
+              className={`card relative h-64 overflow-hidden border ${seat.result === "win" ? "border-success bg-success/10" : "border-base-300 bg-base-200"}`}
             >
               <CardArtBackground
                 imageUrl={seat.deck?.commander_art_crop_url}
@@ -102,29 +102,36 @@ function GameDetailPage() {
                   {seat.player.name}
                 </Link>
                 {victimNames && (
-                  <p className="text-sm text-base-content/70">Killed: {victimNames}</p>
+                  <p
+                    className="text-base-content/70 truncate text-sm"
+                    title={`Killed: ${victimNames}`}
+                  >
+                    Killed: {victimNames}
+                  </p>
                 )}
                 {seat.deck ? (
                   <Link
                     to="/decks/$deckId"
                     params={{ deckId: String(seat.deck.id) }}
-                    className="link-hover"
+                    className="link-hover min-w-0"
                   >
                     <span className="flex items-center justify-between gap-2">
-                      <strong>{seat.deck.name}</strong>
+                      <strong className="truncate" title={seat.deck.name}>
+                        {seat.deck.name}
+                      </strong>
                       <ColorIdentity colors={seat.deck.color_identity} />
                     </span>
-                    <span className="text-base-content/85 block text-sm">
-                      <DeckCommanders deck={seat.deck} hover />
+                    <span className="text-base-content/85 flex text-sm">
+                      <DeckCommanders deck={seat.deck} hover compact />
                     </span>
                   </Link>
                 ) : (
                   <p className="text-base-content/50">No deck recorded</p>
                 )}
                 {seat.mvp_card_name && (
-                  <div className="border-accent/40 relative mt-2 overflow-hidden rounded-lg border px-3 py-2 text-sm">
+                  <div className="border-accent/40 relative mt-auto overflow-hidden rounded-lg border px-3 py-2 text-sm">
                     <CardArtBackground imageUrl={seat.mvp_art_crop_url} />
-                    <p className="text-accent relative z-10">
+                    <p className="text-accent relative z-10 truncate">
                       <strong>MVP:</strong>{" "}
                       <CardHover
                         id={seat.mvp_image_url ? null : seat.mvp_card_id}
