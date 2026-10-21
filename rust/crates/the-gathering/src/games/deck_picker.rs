@@ -20,7 +20,7 @@ use super::model::{Deck, Player, get_deck, select_decks};
 use super::player::get_player_for_user;
 
 /// How long a request waits for a script; the sandbox's own limits normally stop it sooner.
-const SCRIPT_TIMEOUT: Duration = Duration::from_secs(2);
+pub(crate) const SCRIPT_TIMEOUT: Duration = Duration::from_secs(2);
 
 const UNPLAYED_BOOST_HOURS: i64 = 30 * 24;
 

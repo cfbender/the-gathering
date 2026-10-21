@@ -20,7 +20,7 @@ use crate::state::AppState;
 use crate::web::auth::AuthUser;
 use crate::web::extract::{JsonBody, PathParam, QueryParams};
 
-use super::data;
+use super::{check_user_limit, data};
 
 // JSON views
 
@@ -660,6 +660,12 @@ pub async fn deck_chooser_script_update(
     AuthUser(user): AuthUser,
     JsonBody(body): JsonBody<ScriptBody>,
 ) -> ApiResult<Json<Value>> {
+    check_user_limit(
+        &state,
+        "deck_scripts",
+        user.id,
+        state.config.rate_limits.deck_scripts,
+    )?;
     let script = state.games.save_deck_script(&user, body.script).await?;
     Ok(data(json!({ "script": script })))
 }
@@ -686,6 +692,12 @@ pub async fn deck_chooser_preview(
     AuthUser(user): AuthUser,
     JsonBody(body): JsonBody<PreviewBody>,
 ) -> ApiResult<Json<Value>> {
+    check_user_limit(
+        &state,
+        "deck_scripts",
+        user.id,
+        state.config.rate_limits.deck_scripts,
+    )?;
     let zone = Zone::parse(body.tz.as_deref());
     let script = body.script.filter(|script| !script.trim().is_empty());
     let Some((chooser, scored)) = state

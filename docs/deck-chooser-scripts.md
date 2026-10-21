@@ -61,7 +61,16 @@ run programs, or load other code. Use `ctx.now` for the time instead of `os.time
 
 Each run is limited to 32 MB of memory, 50 million Lua instructions, and 500 ms, and a
 script can be up to 64 KB long. A deck chooser script is usually a few dozen lines that run
-in well under a millisecond.
+in well under a millisecond. So that no script can outlast those limits, a few library
+functions differ from standard Lua:
+
+- There are no Lua patterns: `string.match`, `string.gmatch`, and `string.gsub` are
+  missing, and `string.find(s, text, init)` finds `text` literally (like passing
+  `plain = true`) in strings up to 16 KB.
+- `pcall` and `xpcall` cannot catch the error that ends a script for hitting a limit.
+- `setmetatable` refuses metatables with a `__gc` field (finalizers).
+
+Previews and saves together are limited to 60 a minute per member.
 
 `math.random` works and is seeded differently on every run, so a script that uses it gives
 a different preview each time.

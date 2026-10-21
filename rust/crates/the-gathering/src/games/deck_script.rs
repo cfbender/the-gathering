@@ -5,16 +5,18 @@
 //! note shown next to the pick). Every run gets a fresh Lua state with only the `string`,
 //! `table`, `math`, and `utf8` libraries and the safe parts of the base library: no files,
 //! `os`, `require`, `load`, or `debug`. Memory, instructions, and wall-clock time are capped,
-//! and `print` writes to a log the preview shows. `docs/deck-chooser-scripts.md` documents the
-//! `deck` and `ctx` tables.
+//! and `print` writes to a log the preview shows. The limits are checked between Lua
+//! instructions, so `deck_script_prelude.lua` replaces the library functions that could
+//! otherwise run past them in C (Lua patterns among them; `string.find` is plain-text only).
+//! `docs/deck-chooser-scripts.md` documents the `deck` and `ctx` tables.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use mlua::{
-    Function, HookTriggers, Lua, LuaOptions, LuaSerdeExt, MultiValue, StdLib, Table, VmState,
-    serde::SerializeOptions,
+    Function, HookTriggers, Lua, LuaOptions, LuaSerdeExt, LuaString, MultiValue, StdLib, Table,
+    VmState, serde::SerializeOptions,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -25,6 +27,8 @@ const MEMORY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 const INSTRUCTION_LIMIT: u64 = 50_000_000;
 const HOOK_INTERVAL: u32 = 1_000;
 const TIME_LIMIT: Duration = Duration::from_millis(500);
+/// The longest text `string.find` searches, so each call stays far below the time limit.
+const MAX_FIND_BYTES: usize = 16 * 1024;
 const MAX_LOG_LINES: usize = 200;
 const MAX_LOG_CHARS: usize = 500;
 const MAX_NOTE_CHARS: usize = 80;
@@ -118,6 +122,14 @@ pub struct Run {
     pub logs: Vec<String>,
 }
 
+fn limit_error() -> mlua::Error {
+    mlua::Error::RuntimeError(format!(
+        "the script ran too long (limits: {} million instructions, {} ms)",
+        INSTRUCTION_LIMIT / 1_000_000,
+        TIME_LIMIT.as_millis()
+    ))
+}
+
 /// A fresh sandboxed state with limits armed and `print` captured into `logs`.
 fn sandbox(logs: &Rc<RefCell<Vec<String>>>) -> mlua::Result<Lua> {
     let lua = Lua::new_with(
@@ -127,16 +139,19 @@ fn sandbox(logs: &Rc<RefCell<Vec<String>>>) -> mlua::Result<Lua> {
     lua.set_memory_limit(MEMORY_LIMIT_BYTES)?;
     let instructions = Cell::new(0_u64);
     let deadline = Instant::now() + TIME_LIMIT;
+    // Once set, the prelude's `pcall` and `xpcall` re-raise the limit error.
+    let tripped = Rc::new(Cell::new(false));
+    let hook_tripped = Rc::clone(&tripped);
     lua.set_hook(
         HookTriggers::new().every_nth_instruction(HOOK_INTERVAL),
         move |_, _| {
             instructions.set(instructions.get().saturating_add(u64::from(HOOK_INTERVAL)));
-            if instructions.get() > INSTRUCTION_LIMIT || Instant::now() > deadline {
-                return Err(mlua::Error::RuntimeError(format!(
-                    "the script ran too long (limits: {} million instructions, {} ms)",
-                    INSTRUCTION_LIMIT / 1_000_000,
-                    TIME_LIMIT.as_millis()
-                )));
+            if hook_tripped.get()
+                || instructions.get() > INSTRUCTION_LIMIT
+                || Instant::now() > deadline
+            {
+                hook_tripped.set(true);
+                return Err(limit_error());
             }
             Ok(VmState::Continue)
         },
@@ -161,7 +176,54 @@ fn sandbox(logs: &Rc<RefCell<Vec<String>>>) -> mlua::Result<Lua> {
         Ok(())
     })?;
     globals.raw_set("print", print)?;
+    let guard = lua.create_function(move |_, results: MultiValue| {
+        if tripped.get() {
+            Err(limit_error())
+        } else {
+            Ok(results)
+        }
+    })?;
+    let find = lua.create_function(plain_find)?;
+    lua.load(include_str!("deck_script_prelude.lua"))
+        .set_name("=sandbox")
+        .call::<()>((guard, find))?;
     Ok(lua)
+}
+
+/// `string.find(s, text [, init])`, searching for `text` literally (in linear time) instead
+/// of as a pattern.
+fn plain_find(
+    _: &Lua,
+    (haystack, needle, init): (LuaString, LuaString, Option<i64>),
+) -> mlua::Result<MultiValue> {
+    let (haystack, needle) = (haystack.as_bytes(), needle.as_bytes());
+    if haystack.len() > MAX_FIND_BYTES || needle.len() > MAX_FIND_BYTES {
+        return Err(mlua::Error::RuntimeError(format!(
+            "string.find searches text up to {} KB",
+            MAX_FIND_BYTES / 1024
+        )));
+    }
+    let len = i64::try_from(haystack.len()).unwrap_or(i64::MAX);
+    // Lua's rules: 1-based, negative counts back from the end, clamped to the start.
+    let init = match init.unwrap_or(1) {
+        init if init > 0 => init,
+        0 => 1,
+        init => len.saturating_add(init).saturating_add(1).max(1),
+    };
+    let found = usize::try_from(init - 1)
+        .ok()
+        .and_then(|start| Some(start + memchr::memmem::find(haystack.get(start..)?, &needle)?));
+    Ok(MultiValue::from_vec(match found {
+        Some(start) => {
+            let first = i64::try_from(start).unwrap_or(i64::MAX).saturating_add(1);
+            let needle_len = i64::try_from(needle.len()).unwrap_or(i64::MAX);
+            vec![
+                mlua::Value::Integer(first),
+                mlua::Value::Integer(first.saturating_add(needle_len) - 1),
+            ]
+        }
+        None => vec![mlua::Value::Nil],
+    }))
 }
 
 fn truncate(text: &str, max: usize) -> String {
@@ -374,6 +436,86 @@ mod tests {
             .unwrap_err();
         assert!(error.message.contains("out of memory"), "{error}");
         assert!(check(&"-".repeat(MAX_SCRIPT_BYTES + 1)).is_err());
+    }
+
+    /// Fails with the limit error, well before C code that ignored the limits would return.
+    fn assert_stopped(script: &str) {
+        let started = Instant::now();
+        let error = check(&format!("{script} function weight() return 1 end")).unwrap_err();
+        assert!(error.message.contains("ran too long"), "{script}: {error}");
+        assert!(started.elapsed() < Duration::from_secs(5), "{script}");
+    }
+
+    #[test]
+    fn library_functions_cannot_outrun_the_limits() {
+        // As a Lua pattern this backtracks for minutes before matching; as plain text it never
+        // matches, so the loop runs until the limit.
+        assert_stopped(
+            "while not string.find(string.rep('a', 30), string.rep('a?', 30) .. string.rep('a', 30)) do end",
+        );
+        // These loop in C once per repetition or position.
+        assert_stopped("local s = string.rep('', 1e10) while true do end");
+        assert_stopped("table.move({}, 1, 1e10, 1, {})");
+        let huge = "setmetatable({}, {__len = function() return 1e10 end})";
+        assert_stopped(&format!("table.insert({huge}, 1, 'x')"));
+        assert_stopped(&format!("table.remove({huge}, 1)"));
+        // pcall cannot swallow the limit error.
+        assert_stopped("for i = 1, 1e6 do pcall(function() while true do end end) end");
+        assert_stopped("for i = 1, 1e6 do xpcall(function() while true do end end, print) end");
+        // Finalizers run with hooks off.
+        let error =
+            check("setmetatable({}, {__gc = false}) function weight() return 1 end").unwrap_err();
+        assert_eq!(
+            (error.line, error.message.as_str()),
+            (Some(1), "__gc metamethods are not allowed")
+        );
+    }
+
+    #[test]
+    fn replaced_library_functions_keep_their_behavior() {
+        let script = r##"
+            local t = {1, 2, 3}
+            table.insert(t, 4)
+            table.insert(t, 1, 0)
+            assert(table.concat(t, ",") == "0,1,2,3,4")
+            assert(table.remove(t) == 4 and table.remove(t, 1) == 0)
+            assert(table.concat(t, ",") == "1,2,3" and table.remove({}) == nil)
+            assert(table.concat(table.move({1, 2, 3}, 1, 3, 2), ",") == "1,1,2,3")
+            assert(table.concat(table.move({1, 2, 3}, 2, 3, 1), ",") == "2,3,3")
+            assert(table.concat(table.move({1, 2}, 1, 2, 2, {9}), ",") == "9,1,2")
+            assert(string.rep("ab", 3, "-") == "ab-ab-ab" and string.rep("", 5) == "")
+            local first, last = ("a.b.c"):find(".", 3)
+            assert(first == 4 and last == 4, "plain text, not a pattern")
+            assert(select("#", string.find("Krenko", "x")) == 1)
+            assert(("hello"):find("lo", -2) == 4 and ("abc"):find("", 4) == 4)
+            assert(("abc"):find("", 5) == nil and ("abc"):find("a", 0) == 1)
+            assert(string.match == nil and string.gmatch == nil and string.gsub == nil)
+            assert(pcall(error, "caught") == false and select(2, pcall(math.abs, -2)) == 2)
+            function weight() return 1 end
+        "##;
+        assert_eq!(check(script), Ok(()));
+        let error = check("\ntable.insert({}, 5, 1)").unwrap_err();
+        assert_eq!(
+            (error.line, error.message.as_str()),
+            (
+                Some(2),
+                "bad argument #2 to 'insert' (position out of bounds)"
+            )
+        );
+        let error = check("table.remove('x')").unwrap_err();
+        assert_eq!(
+            (error.line, error.message.as_str()),
+            (
+                Some(1),
+                "bad argument #1 to 'remove' (table expected, got string)"
+            )
+        );
+        let error = check(&format!(
+            "string.find(string.rep('x', {}), 'x')",
+            MAX_FIND_BYTES + 1
+        ))
+        .unwrap_err();
+        assert!(error.message.contains("up to 16 KB"), "{error}");
     }
 
     #[test]

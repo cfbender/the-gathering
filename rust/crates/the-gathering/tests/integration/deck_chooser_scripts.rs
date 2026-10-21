@@ -3,8 +3,10 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use serde_json::{Value, json};
+use the_gathering::config::WindowLimit;
 use the_gathering::db::UtcDateTime;
 use the_gathering::games::{Deck, Player};
 
@@ -233,6 +235,36 @@ async fn saves_validates_and_clears_the_members_script() {
         app.get("/api/deck-chooser/script").await.assert_json(200)["data"]["script"],
         Value::Null
     );
+}
+
+#[tokio::test]
+async fn previews_and_saves_share_a_per_member_rate_limit() {
+    let app = TestApp::with_config(|config| {
+        config.rate_limits.deck_scripts = WindowLimit {
+            limit: 2,
+            scale: Duration::from_mins(1),
+        };
+    })
+    .await;
+    let script = json!({"script": "function weight() return 1 end"});
+    app.log_in(&app.member("member").await).await;
+    app.post("/api/deck-chooser/preview", script.clone())
+        .await
+        .assert_json(200);
+    app.put("/api/deck-chooser/script", script.clone())
+        .await
+        .assert_json(200);
+    let denied = app.post("/api/deck-chooser/preview", script.clone()).await;
+    denied.assert_json(429);
+    assert!(denied.header("retry-after").is_some());
+    app.put("/api/deck-chooser/script", script.clone())
+        .await
+        .assert_json(429);
+    app.clear_cookies();
+    app.log_in(&app.member("other").await).await;
+    app.post("/api/deck-chooser/preview", script)
+        .await
+        .assert_json(200);
 }
 
 #[tokio::test]

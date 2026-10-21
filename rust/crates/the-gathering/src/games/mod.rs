@@ -489,8 +489,14 @@ impl Games {
     ) -> Result<Option<String>, GamesError> {
         let script = script.filter(|script| !script.trim().is_empty());
         if let Some(script) = script.clone() {
-            let checked = tokio::task::spawn_blocking(move || deck_script::check(&script))
+            let task = tokio::task::spawn_blocking(move || deck_script::check(&script));
+            let checked = tokio::time::timeout(deck_picker::SCRIPT_TIMEOUT, task)
                 .await
+                .unwrap_or_else(|_| {
+                    Ok(Err(deck_script::ScriptError::new(
+                        "the script did not finish in time",
+                    )))
+                })
                 .map_err(|_| GamesError::BadRequest)?;
             if let Err(error) = checked {
                 return Err(ValidationError::single("script", error.to_string()).into());

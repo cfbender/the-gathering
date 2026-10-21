@@ -27,6 +27,7 @@ futures-util = "0.3"
 hmac = "0.12"
 http = "1"
 jiff = { version = "0.2", features = ["tzdb-bundle-always"] }
+memchr = "2"
 mlua = { version = "0.12", features = ["lua54", "vendored", "serde"] }
 pbkdf2 = "0.12"
 rand = "0.9"

@@ -111,6 +111,8 @@ pub struct RateLimits {
     pub webcam_table_joins: WindowLimit,
     /// AI rulings questions, per user.
     pub ai_rulings: WindowLimit,
+    /// Deck chooser script previews and saves (each runs the script), per user.
+    pub deck_scripts: WindowLimit,
     /// Behind a reverse proxy, read the client address from `x-real-ip`/`x-forwarded-for`.
     pub trust_proxy_headers: bool,
 }
@@ -161,6 +163,10 @@ impl RateLimits {
                 limit: 30,
                 scale: minutes(10),
             },
+            deck_scripts: WindowLimit {
+                limit: 60,
+                scale: minutes(1),
+            },
             trust_proxy_headers: false,
         }
     }
@@ -193,6 +199,7 @@ impl RateLimits {
                 scale: Duration::from_secs(60),
             },
             ai_rulings: big,
+            deck_scripts: big,
             trust_proxy_headers: false,
         }
     }
