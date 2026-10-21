@@ -99,6 +99,85 @@ async fn credential_endpoints_share_a_per_address_bucket_and_answer_429_when_exh
 }
 
 #[tokio::test]
+async fn login_attempts_for_one_username_are_limited_across_rotating_addresses() {
+    let app = app(|config| config.rate_limits.credentials_username = limit(3)).await;
+
+    // Case and surrounding whitespace do not open new buckets: the lookup ignores both.
+    for (ip, username) in [
+        ("10.203.0.1", "victim"),
+        ("10.203.0.2", "Victim"),
+        ("10.203.0.3", " VICTIM "),
+    ] {
+        from(
+            &app,
+            ip,
+            "/api/session",
+            json!({"username": username, "password": "wrong"}),
+        )
+        .await
+        .assert_json(401);
+    }
+    assert_too_many(
+        &from(
+            &app,
+            "10.203.0.4",
+            "/api/session",
+            json!({"username": "victim", "password": "wrong"}),
+        )
+        .await,
+    );
+
+    // Other usernames keep their own budget.
+    from(
+        &app,
+        "10.203.0.5",
+        "/api/session",
+        json!({"username": "someone-else", "password": "wrong"}),
+    )
+    .await
+    .assert_json(401);
+}
+
+#[tokio::test]
+async fn credential_endpoints_have_a_global_budget_across_clients_and_usernames() {
+    let app = app(|config| config.rate_limits.credentials_global = 2).await;
+    from(
+        &app,
+        "10.204.0.1",
+        "/api/session",
+        json!({"username": "first", "password": "wrong"}),
+    )
+    .await
+    .assert_json(401);
+    from(
+        &app,
+        "10.204.0.2",
+        "/api/session",
+        json!({"username": "second", "password": "wrong"}),
+    )
+    .await
+    .assert_json(401);
+    assert_too_many(
+        &from(
+            &app,
+            "10.204.0.3",
+            "/api/session",
+            json!({"username": "third", "password": "wrong"}),
+        )
+        .await,
+    );
+    assert_too_many(
+        &from(
+            &app,
+            "10.204.0.4",
+            "/api/users",
+            json!({"username": "fourth", "password": "wrong"}),
+        )
+        .await,
+    );
+}
+
+#[tokio::test]
 async fn requests_under_the_limit_pass_through_untouched() {
     let app = app(|config| config.rate_limits.credentials = limit(2)).await;
     let mut headers = HeaderMap::new();

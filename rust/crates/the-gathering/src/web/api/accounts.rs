@@ -21,7 +21,7 @@ use crate::web::auth::{AuthUser, MaybeUser, log_in_user, log_out_user, put_fresh
 use crate::web::extract::{JsonBody, PathParam, QueryParams};
 use crate::web::session::{DiscordOAuthAttempt, Session};
 
-use super::data;
+use super::{check_user_limit, data};
 
 fn user_response(user: &User) -> Json<Value> {
     data(user.to_json())
@@ -147,6 +147,21 @@ pub async fn session_create(
     MaybeUser(current): MaybeUser,
     JsonBody(credentials): JsonBody<Credentials>,
 ) -> ApiResult<Response> {
+    // Normalized like the lookup; usernames are at most 40 characters, so longer
+    // attempts share one bucket instead of growing the limiter's keys.
+    let username: String = credentials
+        .username
+        .trim()
+        .to_lowercase()
+        .chars()
+        .take(41)
+        .collect();
+    check_user_limit(
+        &state,
+        "credentials_username",
+        username,
+        state.config.rate_limits.credentials_username,
+    )?;
     match state
         .accounts
         .get_user_by_username_and_password(&credentials.username, &credentials.password)

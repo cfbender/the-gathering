@@ -74,17 +74,27 @@ fn deny(decision: Decision) -> Option<Response> {
     }
 }
 
-/// Throttles password login and bootstrap registration per client address.
+/// Password login and bootstrap registration: per client address, then a global budget.
+/// Login also checks a per-username bucket once the body is parsed (`session_create`).
 pub async fn rate_limit_credentials(
     State(state): State<AppState>,
     request: Request,
     next: Next,
 ) -> Response {
+    let limits = &state.config.rate_limits;
     let ip = client_ip(&state, request.headers(), peer(&request));
-    let decision = state.rate_limiter.hit(
-        &format!("credentials:{ip}"),
-        state.config.rate_limits.credentials,
-    );
+    let mut decision = state
+        .rate_limiter
+        .hit(&format!("credentials:{ip}"), limits.credentials);
+    if matches!(decision, Decision::Allow(_)) {
+        decision = state.rate_limiter.hit(
+            "credentials:global",
+            WindowLimit {
+                limit: limits.credentials_global,
+                scale: limits.credentials.scale,
+            },
+        );
+    }
     match deny(decision) {
         Some(response) => response,
         None => next.run(request).await,
@@ -135,17 +145,15 @@ pub async fn rate_limit_api_keys(
     }
 }
 
-/// Signed-in endpoints limited per account (`corrections`, `turn_credentials`).
+/// Endpoints limited per account: a user id (`corrections`, `turn_credentials`) or an
+/// attempted login username.
 pub fn check_user_limit(
     state: &AppState,
     bucket: &str,
-    user_id: i64,
+    user: impl std::fmt::Display,
     limit: WindowLimit,
 ) -> Result<(), ApiError> {
-    match state
-        .rate_limiter
-        .hit(&format!("{bucket}:{user_id}"), limit)
-    {
+    match state.rate_limiter.hit(&format!("{bucket}:{user}"), limit) {
         Decision::Allow(_) => Ok(()),
         Decision::Deny(ms) => Err(ApiError::TooManyRequests(retry_after_seconds(ms))),
     }

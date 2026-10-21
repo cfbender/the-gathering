@@ -70,6 +70,10 @@ pub struct BucketLimit {
 pub struct RateLimits {
     /// Password login and bootstrap registration, per client address.
     pub credentials: WindowLimit,
+    /// Password login, per attempted username across all addresses.
+    pub credentials_username: WindowLimit,
+    /// Password login and bootstrap registration across everyone, per `credentials` window.
+    pub credentials_global: u64,
     /// Card-recognition corrections, per user.
     pub corrections: WindowLimit,
     /// Personal API key requests, per owner.
@@ -100,6 +104,11 @@ impl RateLimits {
                 limit: 10,
                 scale: minutes(5),
             },
+            credentials_username: WindowLimit {
+                limit: 10,
+                scale: minutes(5),
+            },
+            credentials_global: 100,
             corrections: WindowLimit {
                 limit: 30,
                 scale: minutes(1),
@@ -145,6 +154,8 @@ impl RateLimits {
         };
         Self {
             credentials: big,
+            credentials_username: big,
+            credentials_global: 1_000_000,
             corrections: big,
             api_keys: big,
             sudo: big,

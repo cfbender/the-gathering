@@ -423,11 +423,12 @@ The SPA prompts the administrator for a password and Discord members to authoriz
 again. Passwords must be 12–72 characters.
 
 Password login and bootstrap registration (`POST /api/session`, `POST /api/users`) are limited
-to 10 attempts per client address every 5 minutes; further attempts get `429 Too Many Requests`
-with a `retry-after` header. Behind a reverse proxy every request arrives from the proxy's
-address, so set `TRUST_PROXY_HEADERS=true` when your proxy sets `x-real-ip` or
-`x-forwarded-for`. Password reauthentication is separately limited by account and client address,
-with a server-wide attempt budget. Discord sign-in is not rate limited here.
+to 10 attempts per client address every 5 minutes, login additionally to 10 attempts per
+username from any address, and both together to 100 attempts server-wide; further attempts get
+`429 Too Many Requests` with a `retry-after` header. Behind a reverse proxy every request
+arrives from the proxy's address, so set `TRUST_PROXY_HEADERS=true` when your proxy sets
+`x-real-ip` or `x-forwarded-for`. Password reauthentication is separately limited by account
+and client address, with a server-wide attempt budget. Discord sign-in is not rate limited here.
 
 Members can create personal API keys under **Settings → API keys** to list games from scripts
 (`GET /api/v1/games`, filterable by player and date). A key acts as its owner with the same
