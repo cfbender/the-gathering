@@ -302,9 +302,10 @@ impl Client<'_> {
     }
 
     /// Runs the conversation: each round sends `messages`, runs the tools the model calls
-    /// with `call`, and appends the results, until the model answers. After `max_rounds`
-    /// rounds of tool calls the model must answer without tools. Adds what every request
-    /// cost to `usage`, including requests before a failure.
+    /// with `call`, and appends the results, until the model answers. The first round must
+    /// call a tool, so the answer rests on what the tools return rather than the model's
+    /// memory; after `max_rounds` rounds of tool calls the model must answer without tools.
+    /// Adds what every request cost to `usage`, including requests before a failure.
     pub async fn converse<F, Fut>(
         &self,
         mut messages: Vec<Value>,
@@ -325,10 +326,15 @@ impl Client<'_> {
                 "tools": tools,
                 "max_tokens": MAX_TOKENS,
             });
-            if round == max_rounds
-                && let Some(body) = body.as_object_mut()
-            {
-                body.insert("tool_choice".into(), json!("none"));
+            let tool_choice = if round == max_rounds {
+                Some("none")
+            } else if round == 0 {
+                Some("required")
+            } else {
+                None
+            };
+            if let (Some(tool_choice), Some(body)) = (tool_choice, body.as_object_mut()) {
+                body.insert("tool_choice".into(), json!(tool_choice));
             }
             let response = self.post(&body, usage).await?;
             let message = response

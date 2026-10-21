@@ -468,6 +468,8 @@ async fn answers_with_rules_and_cards_the_model_looked_up() {
     let requests = server.received_requests().await.unwrap();
     let first: Value = serde_json::from_slice(&requests[0].body).unwrap();
     assert_eq!(first["model"], "test/model");
+    // The first round must look something up; later rounds may answer.
+    assert_eq!(first["tool_choice"], "required");
     assert_eq!(requests[0].headers["authorization"], "Bearer sk-or-test");
     let messages = first["messages"].as_array().unwrap();
     // Cache breakpoints follow the system prompt and the newest message only.
@@ -507,6 +509,7 @@ async fn answers_with_rules_and_cards_the_model_looked_up() {
     let session = first["session_id"].as_str().unwrap();
     assert!(session.starts_with("the-gathering-ruling-"));
     assert_eq!(second["session_id"], session);
+    assert!(second.get("tool_choice").is_none());
     let messages = second["messages"].as_array().unwrap();
     assert!(messages[3]["content"].is_string());
     assert!(messages[5]["content"].is_string());
