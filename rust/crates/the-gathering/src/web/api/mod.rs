@@ -13,7 +13,7 @@ pub mod server_logs;
 pub mod stats;
 pub mod webcam;
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use axum::extract::{ConnectInfo, Request, State};
 use axum::http::HeaderMap;
@@ -33,11 +33,14 @@ pub fn data(value: impl Into<Value>) -> axum::Json<Value> {
     axum::Json(json!({ "data": value.into() }))
 }
 
-/// The peer address, or the proxy headers when trusted.
+/// The peer address, or the proxy headers when the peer is a trusted proxy.
 pub fn client_ip(state: &AppState, headers: &HeaderMap, peer: Option<SocketAddr>) -> String {
-    let peer_ip = peer.map_or_else(|| "127.0.0.1".to_owned(), |peer| peer.ip().to_string());
-    if !state.config.rate_limits.trust_proxy_headers {
-        return peer_ip;
+    // The dual-stack listener reports IPv4 peers as `::ffff:a.b.c.d`.
+    let peer_ip = peer.map_or(IpAddr::V4(Ipv4Addr::LOCALHOST), |peer| {
+        peer.ip().to_canonical()
+    });
+    if !state.config.rate_limits.trusts_proxy(peer_ip) {
+        return peer_ip.to_string();
     }
     let header = headers
         .get("x-real-ip")
@@ -47,7 +50,8 @@ pub fn client_ip(state: &AppState, headers: &HeaderMap, peer: Option<SocketAddr>
         .and_then(|value| value.split(',').next_back())
         .map(str::trim)
         .and_then(|candidate| candidate.parse::<IpAddr>().ok())
-        .map_or(peer_ip, |ip| ip.to_string())
+        .map_or(peer_ip, |ip| ip.to_canonical())
+        .to_string()
 }
 
 fn peer(request: &Request) -> Option<SocketAddr> {

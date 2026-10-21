@@ -1,7 +1,8 @@
 //! Rate limits on credentials, sudo, and API keys.
 //!
-//! Requests go through `oneshot` without `ConnectInfo`, so the peer address is 127.0.0.1;
-//! clients are told apart with `x-forwarded-for` and `trust_proxy_headers`.
+//! Requests go through `oneshot` without `ConnectInfo`, so the peer address is 127.0.0.1, a
+//! trusted proxy by default; clients are told apart with `x-forwarded-for` and
+//! `trust_proxy_headers`. `from_peer` sets a socket address to test which peers are trusted.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -14,6 +15,8 @@ use crate::support;
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use axum::Extension;
+use axum::extract::ConnectInfo;
 use axum::http::{HeaderMap, Method};
 use serde_json::{Value, json};
 use support::TestApp;
@@ -40,6 +43,32 @@ async fn from(app: &TestApp, ip: &str, path: &str, body: Value) -> support::Test
     headers.insert("x-forwarded-for", ip.parse().unwrap());
     app.request_with(Method::POST, path, Some(body), headers)
         .await
+}
+
+/// Sends every request from `peer`'s socket address.
+fn from_peer(mut app: TestApp, peer: &str) -> TestApp {
+    let peer: SocketAddr = peer.parse().unwrap();
+    app.router = app.router.layer(Extension(ConnectInfo(peer)));
+    app
+}
+
+/// Failed logins claiming a different `x-real-ip` each time; returns the statuses.
+async fn rotating_real_ip_logins(app: &TestApp, attempts: u8) -> Vec<u16> {
+    let mut statuses = Vec::new();
+    for n in 1..=attempts {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", format!("203.0.113.{n}").parse().unwrap());
+        let response = app
+            .request_with(
+                Method::POST,
+                "/api/session",
+                Some(json!({"username": "nobody", "password": "wrong"})),
+                headers,
+            )
+            .await;
+        statuses.push(response.status.as_u16());
+    }
+    statuses
 }
 
 fn assert_too_many(response: &support::TestResponse) {
@@ -303,4 +332,71 @@ async fn client_ip_prefers_x_real_ip_then_the_last_x_forwarded_for_hop_when_trus
     );
     // Without a socket address (`oneshot` in tests) the peer is the loopback address.
     assert_eq!(client_ip(&app.state, &HeaderMap::new(), None), "127.0.0.1");
+}
+
+#[tokio::test]
+async fn forwarded_headers_from_an_untrusted_peer_cannot_rotate_the_login_bucket() {
+    let app = from_peer(
+        app(|config| config.rate_limits.credentials = limit(3)).await,
+        "198.51.100.7:40000",
+    );
+    assert_eq!(
+        rotating_real_ip_logins(&app, 5).await,
+        [401, 401, 401, 429, 429]
+    );
+}
+
+#[tokio::test]
+async fn forwarded_headers_from_a_private_proxy_still_name_the_client() {
+    // An IPv4 proxy as the dual-stack listener reports it.
+    let app = from_peer(
+        app(|config| config.rate_limits.credentials = limit(3)).await,
+        "[::ffff:192.168.1.10]:40000",
+    );
+    assert_eq!(rotating_real_ip_logins(&app, 5).await, [401; 5]);
+}
+
+#[tokio::test]
+async fn sudo_ignores_forwarded_headers_from_an_untrusted_peer() {
+    let app = from_peer(
+        app(|config| {
+            config.rate_limits.sudo = limit(2);
+            config.rate_limits.sudo_global = 100;
+        })
+        .await,
+        "198.51.100.7:40000",
+    );
+    let admin = app.unique_admin().await;
+    app.log_in(&admin).await;
+    for (ip, status) in [
+        ("10.203.0.1", 401),
+        ("10.203.0.2", 401),
+        ("10.203.0.3", 429),
+    ] {
+        let response = from(
+            &app,
+            ip,
+            "/api/session/sudo",
+            json!({"password": "wrong-password"}),
+        )
+        .await;
+        assert_eq!(response.status.as_u16(), status, "{ip}");
+    }
+}
+
+#[tokio::test]
+async fn trusted_proxies_replaces_the_private_network_default() {
+    let app = app(|config| {
+        config.rate_limits.trusted_proxies = vec!["10.9.0.0/16".parse().unwrap()];
+    })
+    .await;
+    let mut headers = HeaderMap::new();
+    headers.insert("x-real-ip", "203.0.113.5".parse().unwrap());
+    let ip = |peer: &str| client_ip(&app.state, &headers, Some(peer.parse().unwrap()));
+
+    assert_eq!(ip("10.9.4.2:5000"), "203.0.113.5");
+    assert_eq!(ip("[::ffff:10.9.4.2]:5000"), "203.0.113.5");
+    assert_eq!(ip("192.168.0.9:5000"), "192.168.0.9");
+    assert_eq!(ip("[::1]:5000"), "::1");
+    assert_eq!(client_ip(&app.state, &headers, None), "127.0.0.1");
 }

@@ -26,6 +26,8 @@ services:
       PHX_URL_PORT: ${PHX_URL_PORT:-}
       # Set to true behind a reverse proxy so login rate limiting sees real client addresses.
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-}
+      # Proxy addresses/CIDR ranges whose forwarded headers are believed (blank: loopback and private).
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       CARDID_CORRECTIONS_TOKEN: ${CARDID_CORRECTIONS_TOKEN:-}
       CARDID_CORRECTIONS_ADMIN_ID: ${CARDID_CORRECTIONS_ADMIN_ID:-}
       # Caps on stored card-recognition corrections (defaults 2000 per member, 1024 MB in total).

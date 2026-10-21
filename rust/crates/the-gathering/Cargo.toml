@@ -26,6 +26,7 @@ eetf = "0.10"
 futures-util = "0.3"
 hmac = "0.12"
 http = "1"
+ipnet = "2"
 jiff = { version = "0.2", features = ["tzdb-bundle-always"] }
 memchr = "2"
 mlua = { version = "0.12", features = ["lua54", "vendored", "serde"] }

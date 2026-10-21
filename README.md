@@ -348,7 +348,8 @@ reported in the response's `errors`.
 | `DATABASE_PATH` | `$DATA_DIR/the_gathering.db` | SQLite database file. |
 | `THE_GATHERING_PUBLIC_URL` | `https://localhost` | Origin users reach the app at (scheme, host, and a non-default port), used for generated links and the Discord OAuth redirect. An `https://` origin other than `localhost` also marks the session cookie `Secure`. Replaces `PHX_SCHEME`, `PHX_HOST`, and `PHX_URL_PORT`, which still work and log a warning. |
 | `PORT` | `4000` | Port the server binds inside the container. |
-| `TRUST_PROXY_HEADERS` | unset | Set to `true` behind a reverse proxy so rate limiting identifies clients by `x-real-ip` / `x-forwarded-for` instead of the proxy address. |
+| `TRUST_PROXY_HEADERS` | unset | Set to `true` behind a reverse proxy so rate limiting identifies clients by `x-real-ip` / `x-forwarded-for` instead of the proxy address. The headers are believed only from `TRUSTED_PROXIES`. |
+| `TRUSTED_PROXIES` | loopback and private ranges | Comma-separated addresses or CIDR ranges (for example `192.168.1.20` or `172.16.0.0/12`) whose forwarded headers are believed when `TRUST_PROXY_HEADERS` is on; requests from other addresses are counted by their own address. Narrow it to your proxy when untrusted clients share its private network. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, or `error`. `debug` explains why the Discord bot ignored a message. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
 | `RULES_SYNC_ENABLED` | `true` | Set to `false` to stop downloading the Comprehensive Rules for AI rulings and checking daily for new releases. |
@@ -428,8 +429,11 @@ to 10 attempts per client address every 5 minutes, login additionally to 10 atte
 username from any address, and both together to 100 attempts server-wide; further attempts get
 `429 Too Many Requests` with a `retry-after` header. Behind a reverse proxy every request
 arrives from the proxy's address, so set `TRUST_PROXY_HEADERS=true` when your proxy sets
-`x-real-ip` or `x-forwarded-for`. Password reauthentication is separately limited by account
-and client address, with a server-wide attempt budget. Discord sign-in is not rate limited here.
+`x-real-ip` or `x-forwarded-for`. The server believes those headers only when the request comes
+from `TRUSTED_PROXIES` (loopback and private addresses unless set), so clients reaching port
+4000 directly cannot pick their own address. Password reauthentication is separately limited by
+account and client address, with a server-wide attempt budget. Discord sign-in is not rate
+limited here.
 
 Members can create personal API keys under **Settings → API keys** to list games from scripts
 (`GET /api/v1/games`, filterable by player and date). A key acts as its owner with the same

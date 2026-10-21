@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, bail};
+use ipnet::IpNet;
 
 /// This repository's releases, where Oracle publishes the webcam table's bundles.
 const RELEASES_API: &str =
@@ -115,9 +116,17 @@ pub struct RateLimits {
     pub deck_scripts: WindowLimit,
     /// Behind a reverse proxy, read the client address from `x-real-ip`/`x-forwarded-for`.
     pub trust_proxy_headers: bool,
+    /// Peers whose forwarded headers are believed: loopback and private ranges unless
+    /// `TRUSTED_PROXIES` lists addresses or CIDR ranges.
+    pub trusted_proxies: Vec<IpNet>,
 }
 
 impl RateLimits {
+    /// Whether `peer`'s forwarded headers name the client.
+    pub fn trusts_proxy(&self, peer: IpAddr) -> bool {
+        self.trust_proxy_headers && self.trusted_proxies.iter().any(|net| net.contains(&peer))
+    }
+
     fn defaults() -> Self {
         let minutes = |m: u64| Duration::from_secs(m * 60);
         Self {
@@ -168,6 +177,7 @@ impl RateLimits {
                 scale: minutes(1),
             },
             trust_proxy_headers: false,
+            trusted_proxies: private_networks(),
         }
     }
 
@@ -201,8 +211,40 @@ impl RateLimits {
             ai_rulings: big,
             deck_scripts: big,
             trust_proxy_headers: false,
+            trusted_proxies: private_networks(),
         }
     }
+}
+
+/// Loopback, RFC 1918, and IPv6 unique local ranges.
+fn private_networks() -> Vec<IpNet> {
+    [
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "::1/128",
+        "fc00::/7",
+    ]
+    .iter()
+    .filter_map(|net| net.parse().ok())
+    .collect()
+}
+
+/// Comma-separated addresses or CIDR ranges.
+fn parse_networks(name: &str, values: &[String]) -> anyhow::Result<Vec<IpNet>> {
+    values
+        .iter()
+        .map(|value| {
+            value
+                .parse::<IpNet>()
+                .or_else(|_| value.parse::<IpAddr>().map(IpNet::from))
+                .ok()
+                .with_context(|| {
+                    format!("{name} must list IP addresses or CIDR ranges, got {value:?}")
+                })
+        })
+        .collect()
 }
 
 /// Discord OAuth sign-in credentials.
@@ -620,6 +662,10 @@ impl Config {
             RateLimits::defaults()
         };
         rate_limits.trust_proxy_headers = vars.flag("TRUST_PROXY_HEADERS");
+        let trusted_proxies = vars.split("TRUSTED_PROXIES");
+        if !trusted_proxies.is_empty() {
+            rate_limits.trusted_proxies = parse_networks("TRUSTED_PROXIES", &trusted_proxies)?;
+        }
 
         let catalog_sync_hours: u64 = vars.parse("CATALOG_SYNC_INTERVAL_HOURS", 168)?;
 
@@ -924,6 +970,39 @@ mod tests {
                 "{invalid}"
             );
         }
+    }
+
+    #[test]
+    fn reads_trusted_proxies_as_addresses_or_ranges() {
+        let prod = ("THE_GATHERING_SECRET_KEY", SECRET);
+        let trusts = |vars: &[(&str, &str)], peer: &str| {
+            let (config, _) = read(vars).unwrap();
+            config.rate_limits.trusts_proxy(peer.parse().unwrap())
+        };
+        let on = ("TRUST_PROXY_HEADERS", "true");
+        assert!(!trusts(&[prod], "127.0.0.1"));
+        for private in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.31.0.1",
+            "192.168.1.1",
+            "::1",
+            "fd00::1",
+        ] {
+            assert!(trusts(&[prod, on], private), "{private}");
+        }
+        for public in ["172.32.0.1", "8.8.8.8", "2001:db8::1"] {
+            assert!(!trusts(&[prod, on], public), "{public}");
+        }
+        let list = ("TRUSTED_PROXIES", "203.0.113.9, 2001:db8::/32");
+        assert!(trusts(&[prod, on, list], "203.0.113.9"));
+        assert!(trusts(&[prod, on, list], "2001:db8::1"));
+        assert!(!trusts(&[prod, on, list], "203.0.113.10"));
+        assert!(!trusts(&[prod, on, list], "127.0.0.1"));
+        let error = read(&[prod, ("TRUSTED_PROXIES", "proxy.lan")])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("TRUSTED_PROXIES"), "{error}");
     }
 
     #[test]

@@ -30,6 +30,9 @@
 # When run from a terminal the script asks for these; set them to skip the questions:
 #
 #   PUBLIC_URL        address players use, e.g. https://games.example.com (http://<container-ip>:4000)
+#   TRUSTED_PROXIES   with PUBLIC_URL, the reverse proxy's address or CIDR range (comma-separated);
+#                     only it may name the client in x-real-ip / x-forwarded-for for login rate
+#                     limiting (blank: loopback and private networks)
 #   ADMIN_USERNAME    first administrator account (blank skips; the app then offers its setup page)
 #   ADMIN_PASSWORD    at least 12 characters
 #   AUTO_UPDATE       cron schedule for automatic updates, or "off" (0 4 * * *: daily at 04:00)
@@ -98,6 +101,7 @@ SSH_KEYS="${SSH_KEYS:-/root/.ssh/authorized_keys}"
 PASSWORD="${PASSWORD:-}"
 VERSION="${VERSION:-}"
 PUBLIC_URL="${PUBLIC_URL:-}"
+TRUSTED_PROXIES="${TRUSTED_PROXIES:-}"
 ADMIN_USERNAME="${ADMIN_USERNAME:-}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 AUTO_UPDATE="${AUTO_UPDATE:-}"
@@ -443,6 +447,8 @@ create() {
     [[ ${#ADMIN_PASSWORD} -ge 12 ]] || die "ADMIN_PASSWORD must be at least 12 characters"
   fi
   parse_public_url
+  [[ "$TRUSTED_PROXIES" =~ ^[0-9A-Fa-f:.,/\ ]*$ ]] ||
+    die "TRUSTED_PROXIES must list IP addresses or CIDR ranges (got '$TRUSTED_PROXIES')"
   AUTO_UPDATE="${AUTO_UPDATE:-$AUTO_UPDATE_DEFAULT}"
   valid_schedule "$AUTO_UPDATE" || die "AUTO_UPDATE must be 'off', @daily-style, or a five-field cron expression (got '$AUTO_UPDATE')"
 
@@ -540,6 +546,9 @@ if [ ! -f ${ENV_FILE} ]; then
   # Releases up to 0.2 shipped an .env.example with SECRET_KEY_BASE and PHX_* instead.
   sed -i "s|^THE_GATHERING_SECRET_KEY=.*|THE_GATHERING_SECRET_KEY=\${secret}|; s|^SECRET_KEY_BASE=.*|SECRET_KEY_BASE=\${secret}|" ${ENV_FILE}
   sed -i "s|^THE_GATHERING_PUBLIC_URL=.*|THE_GATHERING_PUBLIC_URL=${PUBLIC_ORIGIN}|; s|^PHX_HOST=.*|PHX_HOST=${URL_HOST}|; s|^PHX_SCHEME=.*|PHX_SCHEME=${URL_SCHEME}|; s|^PHX_URL_PORT=.*|PHX_URL_PORT=${URL_PORT}|; s|^TRUST_PROXY_HEADERS=.*|TRUST_PROXY_HEADERS=${trust_proxy}|" ${ENV_FILE}
+  # Older releases' .env.example has no TRUSTED_PROXIES line.
+  grep -q '^TRUSTED_PROXIES=' ${ENV_FILE} || echo 'TRUSTED_PROXIES=' >>${ENV_FILE}
+  sed -i "s|^TRUSTED_PROXIES=.*|TRUSTED_PROXIES=${TRUSTED_PROXIES}|" ${ENV_FILE}
   chown root:${APP_USER} ${ENV_FILE}
   chmod 640 ${ENV_FILE}
 fi
@@ -597,7 +606,10 @@ EOF
 
 ${APP} ${tag} is running in container ${ctid} at http://${ip}:4000
 EOF
-  [[ -n "$PUBLIC_URL" ]] && echo "Configured for ${PUBLIC_ORIGIN}; point your reverse proxy at http://${ip}:4000."
+  if [[ -n "$PUBLIC_URL" ]]; then
+    echo "Configured for ${PUBLIC_ORIGIN}; point your reverse proxy at http://${ip}:4000."
+    echo "Client addresses in proxy headers are believed from ${TRUSTED_PROXIES:-loopback and private networks} (TRUSTED_PROXIES in ${ENV_FILE})."
+  fi
   if [[ "$IP" == dhcp && "$PIN_IP" == true ]]; then
     echo "${ip} came from DHCP and is now the container's static address: keep it out of the DHCP pool or reserve it."
   fi

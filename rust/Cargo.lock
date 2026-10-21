@@ -3588,6 +3588,7 @@ dependencies = [
  "hmac 0.12.1",
  "http",
  "http-body-util",
+ "ipnet",
  "jiff",
  "lotus",
  "memchr",
