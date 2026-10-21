@@ -949,10 +949,12 @@ impl Channel {
     }
 
     async fn sfu_candidate(&self, payload: &Value) -> Handled {
-        let Some(candidate) = payload
-            .get("candidate")
-            .filter(|candidate| candidate.get("candidate").is_some())
-        else {
+        let Some(candidate) = payload.get("candidate").filter(|candidate| {
+            candidate
+                .get("candidate")
+                .and_then(Value::as_str)
+                .is_some_and(|line| line.len() <= the_gathering_sfu::MAX_CANDIDATE_BYTES)
+        }) else {
             return error("invalid candidate");
         };
         match self

@@ -59,6 +59,14 @@ const FAILED_AFTER: Duration = Duration::from_secs(10);
 const MAX_ICE_RESTARTS: usize = 3;
 const ICE_RESTART_WINDOW: Duration = Duration::from_secs(120);
 
+/// Distinct candidates a browser may trickle per ICE generation (an ICE restart starts a new
+/// one). A browser gathers a handful per network interface.
+const MAX_REMOTE_CANDIDATES: usize = 64;
+
+/// The browser offers as soon as its join is acknowledged; a seat that has not offered by
+/// then is dropped.
+const OFFER_DEADLINE: Duration = Duration::from_secs(30);
+
 /// Answers that may fail in a row before the seat is told to reconnect.
 const MAX_FAILED_ANSWERS: u32 = 3;
 
@@ -170,6 +178,7 @@ struct Negotiation {
 struct Peer {
     /// Which join this is; a rejoin under the same id gets a new one.
     generation: u64,
+    joined: Instant,
     events: mpsc::UnboundedSender<SfuEvent>,
     watcher: JoinHandle<()>,
     spectator: bool,
@@ -480,6 +489,7 @@ impl Room {
 
         let peer = Peer {
             generation,
+            joined: now,
             events,
             watcher,
             spectator,
@@ -622,7 +632,11 @@ impl Room {
 
     fn candidate(&mut self, id: &PeerId, json: &Value) -> Result<(), SfuError> {
         let peer = self.peers.get_mut(id).ok_or(SfuError::NotJoined)?;
-        let Some(line) = json.get("candidate").and_then(Value::as_str) else {
+        let Some(line) = json
+            .get("candidate")
+            .and_then(Value::as_str)
+            .filter(|line| line.len() <= crate::MAX_CANDIDATE_BYTES)
+        else {
             return Err(SfuError::Rejected("invalid candidate".into()));
         };
         let line = line.trim().trim_start_matches("a=");
@@ -630,6 +644,7 @@ impl Room {
             // End of candidates.
             return Ok(());
         }
+        let full = peer.ice.remote.len() + peer.ice.mdns.len() >= MAX_REMOTE_CANDIDATES;
         let candidate = match Candidate::from_sdp_string(line) {
             Ok(candidate) => candidate,
             Err(error) if line.contains(".local ") => {
@@ -641,7 +656,14 @@ impl Room {
                     fields.next(),
                     fields.next().and_then(|port| port.parse().ok()),
                 ) {
-                    peer.ice.mdns.push((name.to_owned(), port));
+                    let mdns = (name.to_owned(), port);
+                    if peer.ice.mdns.contains(&mdns) {
+                        return Ok(());
+                    }
+                    if full {
+                        return Err(SfuError::Rejected("too many candidates".into()));
+                    }
+                    peer.ice.mdns.push(mdns);
                 }
                 return Ok(());
             }
@@ -650,6 +672,12 @@ impl Room {
                 return Err(SfuError::Rejected("invalid candidate".into()));
             }
         };
+        if peer.ice.remote.contains(&candidate) {
+            return Ok(());
+        }
+        if full {
+            return Err(SfuError::Rejected("too many candidates".into()));
+        }
         tracing::debug!("SFU candidate from {id}: {line}");
         let remote = candidate.addr();
         peer.ice.remote.push(candidate.clone());
@@ -839,6 +867,17 @@ impl Room {
             .collect();
         for id in failed {
             self.connection_failed(&id, now);
+        }
+
+        let silent: Vec<PeerId> = self
+            .peers
+            .iter()
+            .filter(|(_, peer)| !peer.ready && now >= peer.joined + OFFER_DEADLINE)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in silent {
+            tracing::info!("SFU seat {id} did not offer within {OFFER_DEADLINE:?}");
+            self.disconnect_peer(&id, "no offer");
         }
         self.process();
     }
@@ -1279,6 +1318,11 @@ impl Room {
             self.drive(id);
             return;
         };
+        if restart {
+            // The browser gathers its candidates again for the new credentials.
+            peer.ice.remote.clear();
+            peer.ice.mdns.clear();
+        }
         for (owner, mid) in &added {
             if let Some(sub) = peer.subs.get_mut(owner) {
                 sub.mid = Some(*mid);
@@ -1836,6 +1880,65 @@ mod tests {
 
         room.connection_failed(&id, Instant::now());
         assert_eq!(receiver.try_recv(), Ok(SfuEvent::Down("failed".into())));
+        assert!(room.peers.is_empty());
+    }
+
+    /// Trickled candidates are bounded per connection: an oversize line is refused even when
+    /// it parses, a repeat is not stored again, and past the cap new ones are refused.
+    #[tokio::test]
+    async fn trickled_candidates_are_bounded_and_deduplicated() {
+        let (mut room, _commands) = room();
+        let (events, _receiver) = mpsc::unbounded_channel();
+        let id = PeerId::from("p");
+        room.join(&id, false, events, None).unwrap();
+        let host = |port: usize| {
+            let line = format!("candidate:1 1 udp 2122260223 192.0.2.1 {port} typ host");
+            json!({ "candidate": line })
+        };
+        let mdns = |name: &str| {
+            let line = format!("candidate:2 1 udp 2122260223 {name}.local 9 typ host");
+            json!({ "candidate": line })
+        };
+
+        let padded = format!(
+            "candidate:1 1 udp 2122260223 192.0.2.1 9 typ host ufrag {}",
+            "a".repeat(crate::MAX_CANDIDATE_BYTES)
+        );
+        assert!(Candidate::from_sdp_string(&padded).is_ok());
+        assert_eq!(
+            room.candidate(&id, &json!({ "candidate": padded })),
+            Err(SfuError::Rejected("invalid candidate".into()))
+        );
+
+        for port in 1..MAX_REMOTE_CANDIDATES {
+            assert_eq!(room.candidate(&id, &host(port)), Ok(()));
+        }
+        assert_eq!(room.candidate(&id, &mdns("a")), Ok(()));
+        // Repeats are accepted without counting; anything new is refused.
+        assert_eq!(room.candidate(&id, &host(1)), Ok(()));
+        assert_eq!(room.candidate(&id, &mdns("a")), Ok(()));
+        let full = Err(SfuError::Rejected("too many candidates".into()));
+        assert_eq!(room.candidate(&id, &host(MAX_REMOTE_CANDIDATES)), full);
+        assert_eq!(room.candidate(&id, &mdns("b")), full);
+
+        let peer = room.peers.get(&id).unwrap();
+        assert_eq!(peer.ice.remote.len(), MAX_REMOTE_CANDIDATES - 1);
+        assert_eq!(peer.candidates.len(), MAX_REMOTE_CANDIDATES - 1);
+        assert_eq!(peer.ice.mdns.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_seat_that_never_offers_is_sent_down() {
+        let (mut room, _commands) = room();
+        let (events, mut receiver) = mpsc::unbounded_channel();
+        let id = PeerId::from("p");
+        room.join(&id, false, events, None).unwrap();
+        let joined = room.peers.get(&id).unwrap().joined;
+
+        room.handle_timeout(joined + OFFER_DEADLINE.saturating_sub(Duration::from_millis(1)));
+        assert!(room.peers.contains_key(&id));
+        room.handle_timeout(joined + OFFER_DEADLINE);
+        assert_eq!(receiver.try_recv(), Ok(SfuEvent::Down("no offer".into())));
         assert!(room.peers.is_empty());
     }
 

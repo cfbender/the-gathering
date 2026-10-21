@@ -214,6 +214,18 @@ async fn joins_with_a_real_player_and_keeps_signaling_off_the_topic() {
             "invalid candidate",
         )
         .await;
+    // So is one longer than any browser sends, even when it would parse.
+    let padded = format!(
+        "candidate:1 1 udp 1 127.0.0.1 9 typ host ufrag {}",
+        "a".repeat(1_024)
+    );
+    t.alice
+        .refused(
+            "sfu_candidate",
+            json!({ "candidate": { "candidate": padded, "sdpMid": "0" } }),
+            "invalid candidate",
+        )
+        .await;
     bob.refute("sfu_candidate").await;
 }
 

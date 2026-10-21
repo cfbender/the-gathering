@@ -53,6 +53,9 @@ use turn::TurnServer;
 /// Datagrams a room may have waiting before its sockets drop more.
 const DATAGRAM_BACKLOG: usize = 4_096;
 
+/// The longest trickled ICE candidate line accepted. Browser candidates are under 300 bytes.
+pub const MAX_CANDIDATE_BYTES: usize = 1_024;
+
 /// Simulcast layer names, lowest resolution first; the browser encodes them in this order.
 pub const LAYERS: [&str; 3] = ["l", "m", "h"];
 
