@@ -991,7 +991,7 @@ CREATE TABLE ai_ruling_usage (
   prompt_tokens INTEGER DEFAULT 0 NOT NULL,
   completion_tokens INTEGER DEFAULT 0 NOT NULL,
   inserted_at TEXT NOT NULL
-);
+, cached_tokens INTEGER DEFAULT 0 NOT NULL, cache_write_tokens INTEGER DEFAULT 0 NOT NULL);
 CREATE INDEX ai_ruling_usage_user_id_inserted_at_index ON ai_ruling_usage (user_id, inserted_at);
 CREATE TABLE comprehensive_rules (
   position INTEGER PRIMARY KEY,
@@ -1121,3 +1121,4 @@ INSERT INTO schema_migrations VALUES(20261014020504,NULL);
 INSERT INTO schema_migrations VALUES(20261018042304,NULL);
 INSERT INTO schema_migrations VALUES(20261018054335,NULL);
 INSERT INTO schema_migrations VALUES(20261021040425,NULL);
+INSERT INTO schema_migrations VALUES(20261021045452,NULL);

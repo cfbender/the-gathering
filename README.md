@@ -74,7 +74,10 @@ AI rulings** with an OpenRouter API key (stored encrypted) and any model ID that
 calling; saving checks both with OpenRouter. Every question's cost, as OpenRouter reports it, is
 recorded per member: set **Monthly limit per member (USD)** to cap each member's spending per
 calendar month (UTC); administrators are not limited. This month's spending per member is on the same page. Questions are also
-limited to 30 per member per 10 minutes.
+limited to 30 per member per 10 minutes. Requests mark prompt-cache breakpoints and keep each
+conversation on one provider, so models that support prompt caching bill the repeated system prompt,
+tools, and earlier lookups at their cheaper cached rate; the cached token counts are recorded with
+each question's cost.
 
 The server downloads the Comprehensive Rules from the text file linked on
 [magic.wizards.com/en/rules](https://magic.wizards.com/en/rules) shortly after boot, then checks that

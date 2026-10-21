@@ -1,5 +1,11 @@
 //! OpenRouter's chat completions API: checking credentials and running a tool-calling
 //! conversation to its final answer.
+//!
+//! Every round of a conversation resends the system prompt, the tools, and the earlier
+//! rounds, so requests mark cache breakpoints after the system prompt (shared by every
+//! question) and after the newest message (the prefix the next round resends), and carry
+//! the conversation's `session_id` so OpenRouter keeps routing it to the provider holding
+//! the cache. Providers that cache on their own (`OpenAI`, newer Gemini) ignore the marks.
 
 use std::future::Future;
 use std::time::Duration;
@@ -26,6 +32,8 @@ pub struct Client<'a> {
     pub api_key: &'a str,
     /// Model id.
     pub model: &'a str,
+    /// Identifies the conversation, so its requests reach the provider holding its cache.
+    pub session_id: &'a str,
 }
 
 /// Why a conversation failed, in words fit to show the person who asked.
@@ -180,6 +188,33 @@ fn tool_calls(message: &Value) -> Vec<ToolCall> {
         .unwrap_or_default()
 }
 
+/// `messages` with cache breakpoints after the first message (the system prompt) and the
+/// last one. Marked messages carry their text as one content part, the form breakpoints
+/// attach to.
+fn with_cache_breakpoints(messages: &[Value]) -> Vec<Value> {
+    let last = messages.len().saturating_sub(1);
+    messages
+        .iter()
+        .enumerate()
+        .map(|(index, message)| {
+            let mut message = message.clone();
+            if (index == 0 || index == last)
+                && let Some(text) = message.get("content").and_then(Value::as_str)
+            {
+                let part = json!([{
+                    "type": "text",
+                    "text": text,
+                    "cache_control": { "type": "ephemeral" },
+                }]);
+                if let Some(object) = message.as_object_mut() {
+                    object.insert("content".into(), part);
+                }
+            }
+            message
+        })
+        .collect()
+}
+
 /// What a conversation cost, summed over its requests from OpenRouter's `usage` blocks.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Usage {
@@ -189,6 +224,10 @@ pub struct Usage {
     pub prompt_tokens: i64,
     /// Completion tokens, reasoning included.
     pub completion_tokens: i64,
+    /// Prompt tokens read from the provider's cache (part of `prompt_tokens`).
+    pub cached_tokens: i64,
+    /// Prompt tokens written to the provider's cache (part of `prompt_tokens`).
+    pub cache_write_tokens: i64,
 }
 
 impl Usage {
@@ -206,6 +245,17 @@ impl Usage {
         self.completion_tokens = self
             .completion_tokens
             .saturating_add(number("completion_tokens"));
+        let details = |key: &str| {
+            usage
+                .get("prompt_tokens_details")
+                .and_then(|details| details.get(key))
+                .and_then(Value::as_i64)
+                .unwrap_or(0)
+        };
+        self.cached_tokens = self.cached_tokens.saturating_add(details("cached_tokens"));
+        self.cache_write_tokens = self
+            .cache_write_tokens
+            .saturating_add(details("cache_write_tokens"));
     }
 }
 
@@ -270,7 +320,8 @@ impl Client<'_> {
         for round in 0..=max_rounds {
             let mut body = json!({
                 "model": self.model,
-                "messages": messages,
+                "session_id": self.session_id,
+                "messages": with_cache_breakpoints(&messages),
                 "tools": tools,
                 "max_tokens": MAX_TOKENS,
             });

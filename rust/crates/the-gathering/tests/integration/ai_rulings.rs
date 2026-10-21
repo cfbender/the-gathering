@@ -342,7 +342,13 @@ fn completion(message: &Value, cost: f64) -> ResponseTemplate {
         "id": "gen-1",
         "model": "test/model-2026",
         "choices": [{ "message": message, "finish_reason": "stop" }],
-        "usage": { "prompt_tokens": 1000, "completion_tokens": 100, "total_tokens": 1100, "cost": cost },
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens": 100,
+            "total_tokens": 1100,
+            "cost": cost,
+            "prompt_tokens_details": { "cached_tokens": 600, "cache_write_tokens": 300 },
+        },
     }))
 }
 
@@ -464,7 +470,10 @@ async fn answers_with_rules_and_cards_the_model_looked_up() {
     assert_eq!(first["model"], "test/model");
     assert_eq!(requests[0].headers["authorization"], "Bearer sk-or-test");
     let messages = first["messages"].as_array().unwrap();
-    let system = messages[0]["content"].as_str().unwrap();
+    // Cache breakpoints follow the system prompt and the newest message only.
+    let ephemeral = json!({ "type": "ephemeral" });
+    assert_eq!(messages[0]["content"][0]["cache_control"], ephemeral);
+    let system = messages[0]["content"][0]["text"].as_str().unwrap();
     assert!(system.contains("effective as of 2026-09-25"));
     assert!(system.contains("\n702. Keyword Abilities\n"));
     assert_eq!(
@@ -475,7 +484,8 @@ async fn answers_with_rules_and_cards_the_model_looked_up() {
         messages[2],
         json!({ "role": "assistant", "content": "Earlier answer." })
     );
-    let question = messages[3]["content"].as_str().unwrap();
+    assert_eq!(messages[3]["content"][0]["cache_control"], ephemeral);
+    let question = messages[3]["content"][0]["text"].as_str().unwrap();
     assert!(
         question
             .starts_with("Cards in play at the table: Questing Beast; Sol Ring; Lightning Bolt")
@@ -491,9 +501,16 @@ async fn answers_with_rules_and_cards_the_model_looked_up() {
         ["search_rules", "get_rules", "lookup_cards", "search_cards"]
     );
 
-    // The second request carries the tool results.
+    // The second request carries the tool results, in the same session, with the breakpoint
+    // moved to the newest result.
     let second: Value = serde_json::from_slice(&requests[1].body).unwrap();
+    let session = first["session_id"].as_str().unwrap();
+    assert!(session.starts_with("the-gathering-ruling-"));
+    assert_eq!(second["session_id"], session);
     let messages = second["messages"].as_array().unwrap();
+    assert!(messages[3]["content"].is_string());
+    assert!(messages[5]["content"].is_string());
+    assert_eq!(messages[6]["content"][0]["cache_control"], ephemeral);
     assert_eq!(messages[4]["tool_calls"][0]["id"], "call-1");
     assert_eq!(messages[5]["tool_call_id"], "call-1");
     let rules_result: Value =
@@ -501,7 +518,7 @@ async fn answers_with_rules_and_cards_the_model_looked_up() {
     assert_eq!(rules_result["rules"][0]["number"], "702.19c");
     assert_eq!(rules_result["not_found"], json!(["999.9"]));
     let cards_result: Value =
-        serde_json::from_str(messages[6]["content"].as_str().unwrap()).unwrap();
+        serde_json::from_str(messages[6]["content"][0]["text"].as_str().unwrap()).unwrap();
     let card = &cards_result["cards"][0];
     assert_eq!(card["name"], "Questing Beast");
     assert!(card["oracle_text"].as_str().unwrap().contains("deathtouch"));
@@ -515,11 +532,43 @@ async fn answers_with_rules_and_cards_the_model_looked_up() {
         json!(["Questing Beast"])
     );
 
-    // Both requests' costs are recorded against the member.
+    // Both requests' costs and cache use are recorded against the member.
+    let cache = sqlx::query_as::<_, (i64, i64)>(
+        "SELECT cached_tokens, cache_write_tokens FROM ai_ruling_usage",
+    )
+    .fetch_one(app.pool())
+    .await
+    .unwrap();
+    assert_eq!(cache, (1200, 600));
     let status = app.get("/api/ai-rulings").await.assert_json(200);
     assert_eq!(status["data"]["enabled"], true);
     assert!((status["data"]["usage"]["spent_usd"].as_f64().unwrap() - 0.02).abs() < 1e-9);
     assert_eq!(status["data"]["usage"]["limit_usd"], Value::Null);
+
+    // A follow-up stays in the conversation's session; a new conversation gets its own.
+    let session_of_last = || async {
+        let requests = server.received_requests().await.unwrap();
+        let body: Value = serde_json::from_slice(&requests.last().unwrap().body).unwrap();
+        body["session_id"].as_str().unwrap().to_owned()
+    };
+    let follow_up = json!({
+        "question": "And with first strike?",
+        "history": [
+            { "question": "Earlier?", "answer": "Earlier answer." },
+            { "question": "My deathtouch trampler is blocked by a 5/5. How much gets through?", "answer": ANSWER },
+        ],
+    });
+    app.post("/api/ai-rulings", follow_up)
+        .await
+        .assert_json(200);
+    assert_eq!(session_of_last().await, session);
+    let fresh = json!({ "question": "Earlier?" });
+    app.post("/api/ai-rulings", fresh).await.assert_json(200);
+    assert_eq!(session_of_last().await, session, "same first question");
+    app.post("/api/ai-rulings", json!({ "question": "Something new?" }))
+        .await
+        .assert_json(200);
+    assert_ne!(session_of_last().await, session);
 }
 
 #[tokio::test]

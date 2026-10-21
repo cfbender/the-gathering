@@ -481,6 +481,19 @@ async fn card_references(
     Ok(references)
 }
 
+/// The OpenRouter session of the conversation `question` belongs to: the asker and the
+/// conversation's first question (hashed), so follow-ups reach the provider that cached its
+/// earlier turns.
+fn session_id(user_id: i64, question: &Question) -> String {
+    let first = question
+        .history
+        .first()
+        .map_or(question.text.as_str(), |turn| turn.question.as_str());
+    let digest = crate::crypto::sha256(format!("{user_id}\0{first}").as_bytes());
+    let hex = crate::catalog::image_cache::hex(digest.get(..16).unwrap_or(&digest));
+    format!("the-gathering-ruling-{hex}")
+}
+
 /// Answers `user`'s `question` with the configured model, within the monthly limit
 /// (administrators have none), and records what it cost.
 pub async fn ask(state: &AppState, user: &User, question: &Question) -> Result<Answer, AskError> {
@@ -511,11 +524,13 @@ pub async fn ask(state: &AppState, user: &User, question: &Question) -> Result<A
     }
     messages.push(json!({ "role": "user", "content": user_message(question) }));
 
+    let session_id = session_id(user_id, question);
     let client = Client {
         http: &state.http,
         base: &state.config.openrouter_api_base,
         api_key,
         model,
+        session_id: &session_id,
     };
     let pool = &state.pool;
     let mut usage = Usage::default();

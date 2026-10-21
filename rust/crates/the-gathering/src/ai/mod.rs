@@ -138,13 +138,16 @@ pub async fn record_usage(
     let now = UtcDateTime::now();
     let mut tx = db::begin(pool).await?;
     sqlx::query!(
-        "INSERT INTO ai_ruling_usage (user_id, model, cost_usd, prompt_tokens, completion_tokens, inserted_at)
-         VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO ai_ruling_usage (user_id, model, cost_usd, prompt_tokens, completion_tokens,
+            cached_tokens, cache_write_tokens, inserted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         user_id,
         model,
         usage.cost_usd,
         usage.prompt_tokens,
         usage.completion_tokens,
+        usage.cached_tokens,
+        usage.cache_write_tokens,
         now
     )
     .execute(&mut *tx)

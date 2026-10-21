@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ai_ruling_usage (user_id, model, cost_usd, prompt_tokens, completion_tokens,\n            cached_tokens, cache_write_tokens, inserted_at)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "a09ed635b192eda4df9e251c018bd947bce41e0ec5de3f72a26dfc1e667ddfb9"
+}
