@@ -4,8 +4,13 @@
 //! Shift+click arrives as `quad_source: "manual"` and is detector ground truth for Oracle;
 //! otherwise the quad is the detector's own. Writes are serialized, with the append-only
 //! label log as the commit point, and repeated capture/label submissions are idempotent.
+//!
+//! Corrections are never pruned: Oracle's importer pages the label log by line number, so
+//! deleting entries would shift its cursor. Instead new captures stop at a per-member count
+//! and the directory at a total size ([`CorrectionLimits`]); an operator clears the directory
+//! after importing, or raises the limits.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -15,6 +20,7 @@ use sha1::{Digest, Sha1};
 use tokio::io::AsyncWriteExt;
 
 use crate::catalog::printing_id;
+use crate::config::CorrectionLimits;
 use crate::regex::{Regex, compile};
 
 static UUID: LazyLock<Regex> =
@@ -47,6 +53,12 @@ pub enum CorrectionError {
     /// Another member owns this capture (403).
     #[error("forbidden")]
     Forbidden,
+    /// The member has stored their limit of captures (507).
+    #[error("member limit of {0} reached")]
+    MemberLimit(usize),
+    /// The directory has reached its total size (507).
+    #[error("storage full")]
+    StorageFull,
     /// Writing to disk failed (500).
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -63,11 +75,58 @@ pub struct Page {
     pub has_more: bool,
 }
 
-/// The corrections directory, `DATA_DIR/cardid/corrections`, with its writer lock.
+/// The corrections directory, `DATA_DIR/cardid/corrections`, with its limits and its
+/// usage behind the writer lock.
 #[derive(Debug)]
 pub struct Corrections {
     dir: PathBuf,
-    lock: tokio::sync::Mutex<()>,
+    limits: CorrectionLimits,
+    usage: tokio::sync::Mutex<Usage>,
+}
+
+/// What the directory holds: file bytes and captures per owner.
+#[derive(Debug, Default)]
+struct Usage {
+    bytes: u64,
+    captures: HashMap<i64, usize>,
+}
+
+fn bytes(len: usize) -> u64 {
+    u64::try_from(len).unwrap_or(u64::MAX)
+}
+
+impl Usage {
+    fn add(&mut self, len: usize) {
+        self.bytes = self.bytes.saturating_add(bytes(len));
+    }
+
+    /// Totals an existing directory.
+    fn scan(dir: &Path) -> std::io::Result<Self> {
+        let mut usage = Self::default();
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(usage),
+            Err(error) => return Err(error),
+        };
+        for entry in entries {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            if !metadata.is_dir() {
+                usage.bytes = usage.bytes.saturating_add(metadata.len());
+                continue;
+            }
+            for file in std::fs::read_dir(entry.path())? {
+                usage.bytes = usage.bytes.saturating_add(file?.metadata()?.len());
+            }
+            if let Some(owner) = std::fs::read_to_string(entry.path().join("owner"))
+                .ok()
+                .and_then(|owner| owner.parse::<i64>().ok())
+            {
+                *usage.captures.entry(owner).or_default() += 1;
+            }
+        }
+        Ok(usage)
+    }
 }
 
 fn uuid(value: Option<&Value>) -> bool {
@@ -195,12 +254,15 @@ fn split_for(id: &str) -> &'static str {
 }
 
 impl Corrections {
-    /// Corrections under `DATA_DIR/cardid/corrections`.
-    pub fn new(data_dir: &Path) -> Self {
-        Self {
-            dir: super::bundle_dir(data_dir).join("corrections"),
-            lock: tokio::sync::Mutex::new(()),
-        }
+    /// Corrections under `DATA_DIR/cardid/corrections`, totalling what is already there.
+    pub fn new(data_dir: &Path, limits: CorrectionLimits) -> std::io::Result<Self> {
+        let dir = super::bundle_dir(data_dir).join("corrections");
+        let usage = Usage::scan(&dir)?;
+        Ok(Self {
+            dir,
+            limits,
+            usage: tokio::sync::Mutex::new(usage),
+        })
     }
 
     /// The directory.
@@ -208,7 +270,9 @@ impl Corrections {
         &self.dir
     }
 
-    /// Validates and stores a correction for `user_id`, returning its capture id.
+    /// Validates and stores a correction for `user_id`, returning its capture id. A new
+    /// capture beyond the member's limit, or any write that would overflow the directory, is
+    /// refused; resubmitting an already stored label always succeeds.
     pub async fn save(&self, params: &Value, user_id: i64) -> Result<String, CorrectionError> {
         let jpeg = validate(params).ok_or(CorrectionError::BadRequest)?;
         let id = params
@@ -216,15 +280,15 @@ impl Corrections {
             .and_then(Value::as_str)
             .ok_or(CorrectionError::BadRequest)?
             .to_owned();
-        let _guard = self.lock.lock().await;
+        let mut usage = self.usage.lock().await;
         let dir = self.dir.join(&id);
         let owner_path = dir.join("owner");
         let owner = user_id.to_string();
-        if let Ok(existing) = tokio::fs::read_to_string(&owner_path).await
-            && existing != owner
-        {
+        let existing = tokio::fs::read_to_string(&owner_path).await.ok();
+        if existing.as_ref().is_some_and(|existing| *existing != owner) {
             return Err(CorrectionError::Forbidden);
         }
+        let is_new = existing.is_none();
         let mut row: BTreeMap<String, Value> = FIELDS
             .iter()
             .filter_map(|field| {
@@ -240,27 +304,46 @@ impl Corrections {
         );
         let encoded = serde_json::to_string(&row).map_err(std::io::Error::other)?;
         let latest_path = dir.join("label.json");
-        if tokio::fs::read_to_string(&latest_path)
-            .await
-            .ok()
-            .as_deref()
-            != Some(encoded.as_str())
-        {
+        let latest = tokio::fs::read_to_string(&latest_path).await.ok();
+        if latest.as_deref() != Some(encoded.as_str()) {
+            let captures = usage.captures.get(&user_id).copied().unwrap_or(0);
+            if is_new && captures >= self.limits.per_member {
+                return Err(CorrectionError::MemberLimit(self.limits.per_member));
+            }
+            let line = format!("{encoded}\n");
+            let crop = dir.join("crop.jpg");
+            let has_crop = tokio::fs::metadata(&crop).await.is_ok();
+            let needed = line.len()
+                + encoded.len()
+                + if is_new { owner.len() } else { 0 }
+                + if has_crop { 0 } else { jpeg.len() };
+            if usage.bytes.saturating_add(bytes(needed)) > self.limits.total_bytes {
+                return Err(CorrectionError::StorageFull);
+            }
             tokio::fs::create_dir_all(&dir).await?;
             tokio::fs::write(&owner_path, &owner).await?;
+            if is_new {
+                usage.add(owner.len());
+                *usage.captures.entry(user_id).or_default() += 1;
+            }
             // Never overwrite the image of an existing capture, including after a relabel.
-            let crop = dir.join("crop.jpg");
-            if tokio::fs::metadata(&crop).await.is_err() {
+            if !has_crop {
                 tokio::fs::write(&crop, &jpeg).await?;
+                usage.add(jpeg.len());
             }
             let mut log = tokio::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(self.dir.join("labels.jsonl"))
                 .await?;
-            log.write_all(format!("{encoded}\n").as_bytes()).await?;
+            log.write_all(line.as_bytes()).await?;
             log.flush().await?;
+            usage.add(line.len());
             tokio::fs::write(&latest_path, &encoded).await?;
+            usage.add(encoded.len());
+            usage.bytes = usage
+                .bytes
+                .saturating_sub(bytes(latest.map_or(0, |latest| latest.len())));
         }
         Ok(id)
     }

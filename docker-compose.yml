@@ -28,6 +28,9 @@ services:
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-}
       CARDID_CORRECTIONS_TOKEN: ${CARDID_CORRECTIONS_TOKEN:-}
       CARDID_CORRECTIONS_ADMIN_ID: ${CARDID_CORRECTIONS_ADMIN_ID:-}
+      # Caps on stored card-recognition corrections (defaults 2000 per member, 1024 MB in total).
+      CARDID_CORRECTIONS_MAX_PER_MEMBER: ${CARDID_CORRECTIONS_MAX_PER_MEMBER:-}
+      CARDID_CORRECTIONS_MAX_MB: ${CARDID_CORRECTIONS_MAX_MB:-}
       # github (default), off, or a bundle's https://.../manifest.json.
       CARDID_BUNDLE_SOURCE: ${CARDID_BUNDLE_SOURCE:-}
       # Optional WebRTC NAT traversal for webcam tables (comma-separated URLs).

@@ -65,6 +65,25 @@ pub struct BucketLimit {
     pub refill_per_second: f64,
 }
 
+/// Storage caps for card-recognition corrections, which stay on disk until an operator
+/// removes them.
+#[derive(Clone, Copy, Debug)]
+pub struct CorrectionLimits {
+    /// Captures one member may store.
+    pub per_member: usize,
+    /// Bytes the corrections directory may hold.
+    pub total_bytes: u64,
+}
+
+impl Default for CorrectionLimits {
+    fn default() -> Self {
+        Self {
+            per_member: 2_000,
+            total_bytes: 1024 * 1024 * 1024,
+        }
+    }
+}
+
 /// Rate limits for credentials, sudo, API keys, and webcam table channels.
 #[derive(Clone, Debug)]
 pub struct RateLimits {
@@ -334,6 +353,8 @@ pub struct Config {
     pub cardid_corrections_token: Option<String>,
     /// Administrator the export token acts for.
     pub cardid_corrections_admin_id: Option<i64>,
+    /// Storage caps for corrections.
+    pub cardid_corrections_limits: CorrectionLimits,
     /// Where the background updater downloads card-recognition bundles from.
     pub cardid_bundle_source: CardIdBundleSource,
     /// The GitHub releases listing searched for bundles (tests point it at a stub).
@@ -639,6 +660,15 @@ impl Config {
             discord_newgame_role_id: vars.get("DISCORD_NEWGAME_ROLE_ID"),
             cardid_corrections_token: vars.get("CARDID_CORRECTIONS_TOKEN"),
             cardid_corrections_admin_id: corrections_admin_id,
+            cardid_corrections_limits: CorrectionLimits {
+                per_member: vars.parse(
+                    "CARDID_CORRECTIONS_MAX_PER_MEMBER",
+                    CorrectionLimits::default().per_member,
+                )?,
+                total_bytes: vars
+                    .parse::<u64>("CARDID_CORRECTIONS_MAX_MB", 1024)?
+                    .saturating_mul(1024 * 1024),
+            },
             cardid_bundle_source: match vars.get("CARDID_BUNDLE_SOURCE") {
                 Some(value) => CardIdBundleSource::parse(&value)?,
                 // Development keeps bundles published locally from an Oracle checkout.
@@ -727,6 +757,7 @@ impl Config {
             discord_newgame_role_id: None,
             cardid_corrections_token: None,
             cardid_corrections_admin_id: None,
+            cardid_corrections_limits: CorrectionLimits::default(),
             cardid_bundle_source: CardIdBundleSource::Off,
             cardid_bundle_releases: RELEASES_API.into(),
             catalog_sync_enabled: false,

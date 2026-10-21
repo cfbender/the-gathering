@@ -1012,7 +1012,11 @@ server accepts `detector` or `manual`, and `manual` only with a quad). The small
 localStorage; the camera owner's preference also travels with each crop. The save note only
 appears after server acknowledgement and failures never interrupt identification.
 
-The server stores the private, bounded samples under `DATA_DIR/cardid/corrections`. The offline
+The server stores the private, bounded samples under `DATA_DIR/cardid/corrections`. It never
+prunes them, because the export pages the label log by line, so new captures stop with a 507
+once a member has stored `CARDID_CORRECTIONS_MAX_PER_MEMBER` (default 2000) or the directory
+holds `CARDID_CORRECTIONS_MAX_MB` (default 1024); remove the directory after importing, or raise
+the limits. The offline
 desktop importer creates the card warp and merges captures into Oracle's `data/real`; the NUC never
 trains or runs Python. Admin-only export, filesystem import, manual training and optional
 guarded nightly runs are documented in Oracle's README, **Training from in-app corrections**.

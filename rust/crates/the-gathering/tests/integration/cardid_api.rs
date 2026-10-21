@@ -16,8 +16,9 @@ use base64::Engine;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use support::{TestApp, fixture};
+use the_gathering::card_id::corrections::{CorrectionError, Corrections};
 use the_gathering::card_id::update;
-use the_gathering::config::{CardIdBundleSource, WindowLimit};
+use the_gathering::config::{CardIdBundleSource, CorrectionLimits, WindowLimit};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -681,4 +682,144 @@ async fn scoped_bearer_token_is_read_only_and_revoked_when_its_administrator_is_
     app.request_with(Method::GET, "/api/cardid/corrections", None, bearer)
         .await
         .assert_json(403);
+}
+
+async fn limited_app(limits: CorrectionLimits) -> TestApp {
+    let app = TestApp::with_config(|config| config.cardid_corrections_limits = limits).await;
+    let user = app.member("member").await;
+    app.log_in(&user).await;
+    app
+}
+
+fn stored_bytes(dir: &Path) -> u64 {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| {
+            let entry = entry.unwrap();
+            if entry.path().is_dir() {
+                stored_bytes(&entry.path())
+            } else {
+                entry.metadata().unwrap().len()
+            }
+        })
+        .sum()
+}
+
+#[tokio::test]
+async fn each_member_may_store_a_limited_number_of_captures() {
+    let app = limited_app(CorrectionLimits {
+        per_member: 2,
+        ..CorrectionLimits::default()
+    })
+    .await;
+    let first = payload();
+    app.post("/api/cardid/corrections", first.clone())
+        .await
+        .assert_json(201);
+    app.post("/api/cardid/corrections", payload())
+        .await
+        .assert_json(201);
+    let refused = payload();
+    let body = app
+        .post("/api/cardid/corrections", refused.clone())
+        .await
+        .assert_json(507);
+    assert_eq!(
+        body,
+        json!({"errors": {"detail": "You have saved the maximum of 2 card corrections"}})
+    );
+    let dir = app.state.corrections.directory().to_owned();
+    assert!(!dir.join(refused["capture_id"].as_str().unwrap()).exists());
+    assert_eq!(page(&app, 0).await.cursor, 2);
+
+    // Retrying and relabelling captures already stored are not new captures.
+    app.post("/api/cardid/corrections", first.clone())
+        .await
+        .assert_json(201);
+    app.post(
+        "/api/cardid/corrections",
+        with(first, &json!({"label": uuid::Uuid::new_v4().to_string()})),
+    )
+    .await
+    .assert_json(201);
+    assert_eq!(page(&app, 0).await.cursor, 3);
+
+    let other = app.member("other").await;
+    app.clear_cookies();
+    app.log_in(&other).await;
+    app.post("/api/cardid/corrections", refused)
+        .await
+        .assert_json(201);
+}
+
+#[tokio::test]
+async fn refuses_captures_once_the_directory_reaches_its_total_size() {
+    // Room for one fixture capture (a 1758-byte crop plus two copies of its label), not two.
+    let app = limited_app(CorrectionLimits {
+        total_bytes: 4_000,
+        ..CorrectionLimits::default()
+    })
+    .await;
+    app.post("/api/cardid/corrections", payload())
+        .await
+        .assert_json(201);
+    let refused = payload();
+    let body = app
+        .post("/api/cardid/corrections", refused.clone())
+        .await
+        .assert_json(507);
+    assert_eq!(
+        body,
+        json!({"errors": {"detail": "Card correction storage is full"}})
+    );
+    let other = app.member("other").await;
+    app.clear_cookies();
+    app.log_in(&other).await;
+    app.post("/api/cardid/corrections", refused)
+        .await
+        .assert_json(507);
+    let dir = app.state.corrections.directory();
+    assert!(stored_bytes(dir) <= 4_000);
+    assert_eq!(page(&app, 0).await.cursor, 1);
+}
+
+#[tokio::test]
+async fn limits_count_corrections_stored_before_a_restart() {
+    let app = TestApp::new().await;
+    let user = app.member("member").await;
+    app.log_in(&user).await;
+    let member = user.id;
+    for _ in 0..2 {
+        app.post("/api/cardid/corrections", payload())
+            .await
+            .assert_json(201);
+    }
+    let data_dir = &app.state.config.data_dir;
+    let restarted = Corrections::new(
+        data_dir,
+        CorrectionLimits {
+            per_member: 2,
+            ..CorrectionLimits::default()
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        restarted.save(&payload(), member).await,
+        Err(CorrectionError::MemberLimit(2))
+    ));
+    restarted.save(&payload(), member + 1).await.unwrap();
+
+    let used = stored_bytes(restarted.directory());
+    let full = Corrections::new(
+        data_dir,
+        CorrectionLimits {
+            total_bytes: used + 100,
+            ..CorrectionLimits::default()
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        full.save(&payload(), member + 1).await,
+        Err(CorrectionError::StorageFull)
+    ));
 }

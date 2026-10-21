@@ -110,12 +110,21 @@ impl From<CorrectionError> for ApiError {
         match error {
             CorrectionError::BadRequest => Self::BadRequest,
             CorrectionError::Forbidden => Self::Forbidden,
+            CorrectionError::MemberLimit(limit) => Self::Custom(
+                StatusCode::INSUFFICIENT_STORAGE,
+                json!({ "errors": { "detail": format!("You have saved the maximum of {limit} card corrections") } }),
+            ),
+            CorrectionError::StorageFull => Self::Custom(
+                StatusCode::INSUFFICIENT_STORAGE,
+                json!({ "errors": { "detail": "Card correction storage is full" } }),
+            ),
             CorrectionError::Io(error) => Self::Internal(error.into()),
         }
     }
 }
 
-/// `POST /api/cardid/corrections`: stores a labelled crop (rate limited per member).
+/// `POST /api/cardid/corrections`: stores a labelled crop (rate limited per member, and
+/// capped per member and in total).
 pub async fn corrections_create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

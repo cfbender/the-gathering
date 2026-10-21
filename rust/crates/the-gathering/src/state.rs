@@ -119,7 +119,7 @@ impl AppState {
         let scryfall = Scryfall::new(&config.scryfall_api_base)?;
         let card_images = CardImages::new(&config.data_dir, &config.card_image_base)?;
         let decklists = Decklists::new(&config)?;
-        let corrections = Corrections::new(&config.data_dir);
+        let corrections = Corrections::new(&config.data_dir, config.cardid_corrections_limits)?;
         let (socket_layer, io) = crate::web::channels::build();
         let presence = Presence::new(io.clone());
         let webcam_tables = WebcamTables::new(pool.clone(), io.clone());

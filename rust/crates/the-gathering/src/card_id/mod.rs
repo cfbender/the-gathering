@@ -10,7 +10,7 @@
 //! DATA_DIR/cardid/<version>/{manifest.json,SHA256SUMS,arts.json,detector.onnx,embed.onnx,search.onnx}
 //! DATA_DIR/cardid/current -> <version>
 //! DATA_DIR/cardid/previous -> <version before>
-//! DATA_DIR/cardid/corrections/   (labelled crops, never pruned)
+//! DATA_DIR/cardid/corrections/   (labelled crops, capped and never pruned)
 //! ```
 //!
 //! The app never runs the models; it serves the files of the version `current` points at.
