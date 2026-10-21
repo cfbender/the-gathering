@@ -768,6 +768,7 @@ async fn shared_turns_start_in_order_pass_once_per_revision_and_survive_late_joi
     assert_eq!(first.timer.paused_at, first.timer.started_at);
     other.ok("pass_turn", json!({ "revision": 1 })).await;
     t.alice.err("pass_turn", json!({ "revision": 1 })).await;
+    assert_eq!(t.log().await[0].text, "Bob passed Alice's turn to Bob");
     // Passing the first turn before pressing Start still begins the clock.
     t.alice
         .expect_where("timer_state", |timer| timer["paused_at"].is_null())
@@ -783,6 +784,7 @@ async fn shared_turns_start_in_order_pass_once_per_revision_and_survive_late_joi
     t.alice.err("unpass_turn", json!({ "revision": 1 })).await;
     t.alice.err("unpass_turn", json!({})).await;
     t.alice.ok("unpass_turn", json!({ "revision": 2 })).await;
+    assert_eq!(t.log().await[0].text, "Alice gave the turn back to Alice");
     t.alice
         .expect_where(
             "table_state",

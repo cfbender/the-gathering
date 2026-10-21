@@ -766,11 +766,19 @@ impl Channel {
                 }
             }
             "pass_turn" => match revision(payload) {
-                Some(revision) => reply(self.tables().pass_turn(&self.room_id, revision).await?),
+                Some(revision) => reply(
+                    self.tables()
+                        .pass_turn(&self.room_id, self.participant.holder(), revision)
+                        .await?,
+                ),
                 None => error("invalid pass turn"),
             },
             "unpass_turn" => match revision(payload) {
-                Some(revision) => reply(self.tables().unpass_turn(&self.room_id, revision).await?),
+                Some(revision) => reply(
+                    self.tables()
+                        .unpass_turn(&self.room_id, self.participant.holder(), revision)
+                        .await?,
+                ),
                 None => error("invalid un-pass turn"),
             },
             "adjust_turn" => self.adjust_turn(payload).await,

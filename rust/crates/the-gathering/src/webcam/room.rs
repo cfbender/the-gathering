@@ -355,10 +355,10 @@ pub enum RoomMsg {
     StartGame(Option<bool>, Reply<Outcome>),
     /// Auto-randomize setting.
     TurnSettings(bool, Reply<()>),
-    /// Pass the turn at this revision.
-    PassTurn(i64, Reply<Outcome>),
-    /// Undo the last pass at this revision.
-    UnpassTurn(i64, Reply<Outcome>),
+    /// Pass the turn at this revision on behalf of `actor`.
+    PassTurn(Holder, i64, Reply<Outcome>),
+    /// Undo the last pass at this revision on behalf of `actor`.
+    UnpassTurn(Holder, i64, Reply<Outcome>),
     /// Correct a player's turn count.
     AdjustTurn(i64, i64, Reply<Outcome>),
     /// Give the monarch to `holder` on behalf of `actor`.
@@ -892,19 +892,24 @@ impl Room {
                 self.commit(entry, vec![Broadcast::TableState]).await?;
                 let _ = reply.send(());
             }
-            RoomMsg::PassTurn(revision, reply) => {
-                if entry.turns.revision == revision && entry.turns.active_player_id.is_some() {
+            RoomMsg::PassTurn(actor, revision, reply) => {
+                if let Some(from) = entry
+                    .turns
+                    .active_player_id
+                    .filter(|_| entry.turns.revision == revision)
+                {
                     // Passing the first turn before pressing Start still begins the clock.
                     let awaiting = entry.timer.awaiting_start();
                     if awaiting {
                         entry.timer = entry.timer.update(Action::Resume, now());
                     }
-                    entry.turns = turns::pass(
-                        &entry.turns,
-                        &entry.ordered_seats(),
-                        entry.timer.elapsed(now()),
-                        entry.mode,
-                    );
+                    let seats = entry.ordered_seats();
+                    let turns =
+                        turns::pass(&entry.turns, &seats, entry.timer.elapsed(now()), entry.mode);
+                    let passed =
+                        log::pass(&actor, &seats, entry.mode, from, turns.active_player_id);
+                    entry.turns = turns;
+                    let entry = entry.log(vec![passed]);
                     let events = if awaiting {
                         vec![
                             Broadcast::Event("timer_state", to_value(&entry.timer_state())),
@@ -919,12 +924,17 @@ impl Room {
                     let _ = reply.send(Err("turn has changed or the game has not started".into()));
                 }
             }
-            RoomMsg::UnpassTurn(revision, reply) => {
+            RoomMsg::UnpassTurn(actor, revision, reply) => {
+                let seats = entry.ordered_seats();
                 let undone = (entry.turns.revision == revision)
-                    .then(|| turns::unpass(&entry.turns, &entry.ordered_seats(), entry.mode))
+                    .then(|| turns::unpass(&entry.turns, &seats, entry.mode))
                     .flatten();
                 if let Some(turns) = undone {
+                    let returned = turns
+                        .active_player_id
+                        .map(|to| log::unpass(&actor, &seats, entry.mode, to));
                     entry.turns = turns;
+                    let entry = entry.log(returned.into_iter().collect());
                     self.commit(entry, vec![Broadcast::TableState]).await?;
                     let _ = reply.send(Ok(()));
                 } else {

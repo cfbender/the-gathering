@@ -514,6 +514,11 @@ async fn two_headed_giant_validates_teams_serializes_shared_life_and_eliminates_
         .await;
     assert_eq!(t.snapshot().await.turns.counts, [(t.player, 2)].into());
     mate.ok("pass_turn", json!({ "revision": 1 })).await;
+    // A teammate passes the team's own turn, and the next team is named in full.
+    assert_eq!(
+        t.log().await[0].text,
+        format!("{PEER_B} passed the turn to {PEER_C} & {PEER_D}")
+    );
     assert_eq!(
         t.snapshot().await.turns.active_player_id,
         Some(rival.player_id())

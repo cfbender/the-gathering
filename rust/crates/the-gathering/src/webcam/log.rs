@@ -10,7 +10,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use super::Mode;
 use super::seat::{Holder, Seat};
+use super::turns;
 
 const MAX_ENTRIES: usize = 200;
 const MERGE_WINDOW_MS: i64 = 5_000;
@@ -230,6 +232,53 @@ pub fn seat_order(shuffled: bool, started: bool) -> LogEntry {
         (true, _) => text("Seat order randomized"),
         (false, false) => text("Game started in seat order"),
         (false, true) => text("Seat order changed"),
+    }
+}
+
+/// `actor` passed the turn of `from` (a turn id) to `to`.
+pub fn pass(actor: &Holder, seats: &[Seat], mode: Mode, from: i64, to: Option<i64>) -> LogEntry {
+    let own = seats.iter().any(|seat| {
+        seat.peer_id == actor.peer_id && turns::turn_id(seats, seat.player_id, mode) == from
+    });
+    let turn = if own {
+        "the turn".to_owned()
+    } else {
+        format!("{}'s turn", turn_name(seats, mode, from))
+    };
+    let line = format!("{} passed {turn}", actor.player_name);
+    text(match to {
+        Some(to) => format!("{line} to {}", turn_name(seats, mode, to)),
+        None => line,
+    })
+}
+
+/// `actor` undid the last pass, handing the turn back to `to` (a turn id).
+pub fn unpass(actor: &Holder, seats: &[Seat], mode: Mode, to: i64) -> LogEntry {
+    text(format!(
+        "{} gave the turn back to {}",
+        actor.player_name,
+        turn_name(seats, mode, to)
+    ))
+}
+
+/// Who a turn id stands for: the player, or the whole team in Two-Headed Giant.
+fn turn_name(seats: &[Seat], mode: Mode, id: i64) -> String {
+    let names: Vec<&str> = if mode == Mode::TwoHeadedGiant {
+        turns::team(seats, id)
+            .iter()
+            .map(|seat| seat.player_name.as_str())
+            .collect()
+    } else {
+        seats
+            .iter()
+            .filter(|seat| seat.player_id == id)
+            .map(|seat| seat.player_name.as_str())
+            .collect()
+    };
+    if names.is_empty() {
+        format!("player {id}")
+    } else {
+        names.join(" & ")
     }
 }
 

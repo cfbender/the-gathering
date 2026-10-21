@@ -458,23 +458,25 @@ impl WebcamTables {
             .await
     }
 
-    /// Passes the turn if `revision` is current.
+    /// Passes the turn on behalf of `actor` if `revision` is current.
     pub async fn pass_turn(
         &self,
         room: &str,
+        actor: Holder,
         revision: i64,
     ) -> Result<Result<(), String>, RoomGone> {
-        self.call(room, |reply| RoomMsg::PassTurn(revision, reply))
+        self.call(room, |reply| RoomMsg::PassTurn(actor, revision, reply))
             .await
     }
 
-    /// Undoes the last pass if `revision` is current.
+    /// Undoes the last pass on behalf of `actor` if `revision` is current.
     pub async fn unpass_turn(
         &self,
         room: &str,
+        actor: Holder,
         revision: i64,
     ) -> Result<Result<(), String>, RoomGone> {
-        self.call(room, |reply| RoomMsg::UnpassTurn(revision, reply))
+        self.call(room, |reply| RoomMsg::UnpassTurn(actor, revision, reply))
             .await
     }
 
