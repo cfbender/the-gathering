@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT number, text FROM comprehensive_rules ORDER BY position",
+  "describe": {
+    "columns": [
+      {
+        "name": "number",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules",
+            "name": "number"
+          }
+        }
+      },
+      {
+        "name": "text",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules",
+            "name": "text"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "510da1be7a99aedd0eb4bb343749a3c3959d3f62d7bf49783668ecfda15290ff"
+}

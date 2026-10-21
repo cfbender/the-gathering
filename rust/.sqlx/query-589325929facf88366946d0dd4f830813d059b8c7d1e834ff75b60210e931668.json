@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO comprehensive_rules_glossary (term, definition) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "589325929facf88366946d0dd4f830813d059b8c7d1e834ff75b60210e931668"
+}

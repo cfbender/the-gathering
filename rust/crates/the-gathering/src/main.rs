@@ -6,7 +6,7 @@ use anyhow::Context;
 use the_gathering::config::Config;
 use the_gathering::logs::LogHub;
 use the_gathering::state::AppState;
-use the_gathering::{card_id, catalog, db, decklists, discord, web};
+use the_gathering::{card_id, catalog, db, decklists, discord, rules, web};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -132,6 +132,7 @@ async fn serve(state: AppState) -> anyhow::Result<()> {
         );
     }
     catalog::sync_server::start(&state);
+    rules::sync::start(&state);
     card_id::update::start(&state);
     decklists::start_cache_sweeper(&state);
     if state.config.webcam_table_pruning_enabled {

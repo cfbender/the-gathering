@@ -8,6 +8,7 @@ import { useCurrentUser } from "@/lib/auth"
 import { cn } from "@/lib/cn"
 import { turnId } from "./game-modes"
 import { MAX_PLAYERS } from "./rooms"
+import { tableCardNames } from "./rulings-tab"
 import { SidePanel, type PanelTab } from "./side-panel"
 import { WatchTileContext } from "./stream-tiles"
 import { TableCameraRail } from "./table-camera-rail"
@@ -245,6 +246,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           transport={room.transport}
           recognizer={flow.recognizer.state}
           identifiedCards={room.identifiedCards}
+          roomId={roomId}
+          tableCards={tableCardNames(view.seated, view.decks, room.identifiedCards)}
           gallerySearchable
           onSearch={flow.recognizer.search}
           onPreviewCard={flow.previewEntry}

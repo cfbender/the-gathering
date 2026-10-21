@@ -2,6 +2,7 @@
 //! background jobs, on a SQLite database.
 
 pub mod accounts;
+pub mod ai;
 pub mod audit;
 pub mod card_id;
 pub mod catalog;
@@ -20,6 +21,7 @@ pub mod logs;
 pub mod patch;
 pub mod rate_limit;
 pub mod regex;
+pub mod rules;
 pub mod seed;
 pub mod self_update;
 pub mod state;

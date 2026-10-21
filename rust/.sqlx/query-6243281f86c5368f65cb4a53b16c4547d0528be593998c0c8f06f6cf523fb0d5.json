@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ai_settings (id, api_key, model, monthly_limit_usd, inserted_at, updated_at)\n         VALUES (1, ?, ?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n            api_key = CASE WHEN ? THEN ai_settings.api_key ELSE excluded.api_key END,\n            model = excluded.model, monthly_limit_usd = excluded.monthly_limit_usd,\n            updated_at = excluded.updated_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "6243281f86c5368f65cb4a53b16c4547d0528be593998c0c8f06f6cf523fb0d5"
+}

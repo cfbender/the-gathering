@@ -15,6 +15,7 @@ mod accounts;
 mod admin_players_api;
 mod admin_software_update_api;
 mod admin_users_api;
+mod ai_rulings;
 mod api_key_api;
 mod audit_api;
 mod auth_api;

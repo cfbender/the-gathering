@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM comprehensive_rules",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "4260480e06f665554de348aa6479c5cfdd29ef042d25132cedc553a19468b417"
+}

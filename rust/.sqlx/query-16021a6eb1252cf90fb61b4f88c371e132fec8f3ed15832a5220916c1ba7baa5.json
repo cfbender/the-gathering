@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO comprehensive_rules_updates (id, checked_at, last_error) VALUES (1, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET checked_at = excluded.checked_at, last_error = excluded.last_error",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "16021a6eb1252cf90fb61b4f88c371e132fec8f3ed15832a5220916c1ba7baa5"
+}

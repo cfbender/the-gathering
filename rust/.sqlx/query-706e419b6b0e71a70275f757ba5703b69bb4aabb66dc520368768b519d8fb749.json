@@ -1,0 +1,52 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT users.id AS \"user_id!\", users.display_name,\n                  count(*) AS \"questions!: i64\", coalesce(sum(cost_usd), 0.0) AS \"spent_usd!: f64\"\n           FROM ai_ruling_usage JOIN users ON users.id = ai_ruling_usage.user_id\n           WHERE ai_ruling_usage.inserted_at >= ?\n           GROUP BY users.id ORDER BY 4 DESC, 2",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "display_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "name": "questions!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "spent_usd!: f64",
+        "ordinal": 3,
+        "type_info": "Float",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "706e419b6b0e71a70275f757ba5703b69bb4aabb66dc520368768b519d8fb749"
+}

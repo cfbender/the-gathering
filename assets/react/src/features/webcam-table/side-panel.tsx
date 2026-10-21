@@ -5,6 +5,7 @@ import {
   Gamepad2,
   LogOut,
   Layers,
+  Scale,
   ScrollText,
   Settings,
   WalletCards,
@@ -15,12 +16,13 @@ import { cn } from "@/lib/cn"
 import { CardsTab, type CardsTabProps } from "./cards-tab"
 import { DecksTab } from "./decks-tab"
 import { LogTab } from "./log-tab"
+import { RulingsTab, type RulingsTabProps } from "./rulings-tab"
 import type { TableEvent } from "./table-events"
 import { TableTab, type TableTabProps } from "./table-tab"
 
-export type PanelTab = "table" | "decks" | "cards" | "log" | "settings"
+export type PanelTab = "table" | "decks" | "cards" | "rules" | "log" | "settings"
 
-interface Props extends CardsTabProps, TableTabProps {
+interface Props extends CardsTabProps, TableTabProps, RulingsTabProps {
   left?: boolean
   settings: ReactNode
   onHelp: () => void
@@ -35,6 +37,7 @@ const TABS: { id: PanelTab; label: string; icon: ComponentType<{ className?: str
   { id: "table", label: "Table", icon: Gamepad2 },
   { id: "decks", label: "Decks", icon: Layers },
   { id: "cards", label: "Cards", icon: WalletCards },
+  { id: "rules", label: "Rules", icon: Scale },
   { id: "log", label: "Log", icon: ScrollText },
   { id: "settings", label: "Settings", icon: Settings },
 ]
@@ -47,6 +50,8 @@ function PanelContent(props: Props) {
       return <DecksTab {...props} />
     case "cards":
       return <CardsTab {...props} />
+    case "rules":
+      return <RulingsTab roomId={props.roomId} tableCards={props.tableCards} />
     case "log":
       return <LogTab events={props.events} />
     case "settings":

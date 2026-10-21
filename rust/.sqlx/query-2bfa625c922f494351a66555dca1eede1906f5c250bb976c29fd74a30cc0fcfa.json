@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT source_url, effective_on AS \"effective_on: IsoDate\", rule_count, glossary_count,\n                  installed_at AS \"installed_at: UtcDateTime\", checked_at AS \"checked_at: UtcDateTime\",\n                  last_error\n           FROM comprehensive_rules_updates WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "source_url",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules_updates",
+            "name": "source_url"
+          }
+        }
+      },
+      {
+        "name": "effective_on: IsoDate",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules_updates",
+            "name": "effective_on"
+          }
+        }
+      },
+      {
+        "name": "rule_count",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules_updates",
+            "name": "rule_count"
+          }
+        }
+      },
+      {
+        "name": "glossary_count",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules_updates",
+            "name": "glossary_count"
+          }
+        }
+      },
+      {
+        "name": "installed_at: UtcDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules_updates",
+            "name": "installed_at"
+          }
+        }
+      },
+      {
+        "name": "checked_at: UtcDateTime",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules_updates",
+            "name": "checked_at"
+          }
+        }
+      },
+      {
+        "name": "last_error",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules_updates",
+            "name": "last_error"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "2bfa625c922f494351a66555dca1eede1906f5c250bb976c29fd74a30cc0fcfa"
+}

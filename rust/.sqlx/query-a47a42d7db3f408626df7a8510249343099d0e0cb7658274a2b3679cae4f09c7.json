@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT term, definition FROM comprehensive_rules_glossary ORDER BY position",
+  "describe": {
+    "columns": [
+      {
+        "name": "term",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules_glossary",
+            "name": "term"
+          }
+        }
+      },
+      {
+        "name": "definition",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "comprehensive_rules_glossary",
+            "name": "definition"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "a47a42d7db3f408626df7a8510249343099d0e0cb7658274a2b3679cae4f09c7"
+}

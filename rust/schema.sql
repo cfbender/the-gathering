@@ -975,6 +975,114 @@ CREATE INDEX "card_printings_oracle_id_index" ON "card_printings" ("oracle_id");
 CREATE TABLE "card_rulings" ("id" INTEGER PRIMARY KEY, "oracle_id" TEXT NOT NULL, "source" TEXT, "published_at" TEXT, "comment" TEXT NOT NULL);
 CREATE INDEX "card_rulings_oracle_id_index" ON "card_rulings" ("oracle_id");
 CREATE TABLE "card_rulings_staging" ("id" INTEGER PRIMARY KEY, "oracle_id" TEXT NOT NULL, "source" TEXT, "published_at" TEXT, "comment" TEXT NOT NULL);
+CREATE TABLE ai_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  api_key TEXT,
+  model TEXT,
+  monthly_limit_usd REAL,
+  inserted_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE ai_ruling_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL CONSTRAINT ai_ruling_usage_user_id_fkey REFERENCES users(id) ON DELETE CASCADE,
+  model TEXT NOT NULL,
+  cost_usd REAL DEFAULT 0 NOT NULL,
+  prompt_tokens INTEGER DEFAULT 0 NOT NULL,
+  completion_tokens INTEGER DEFAULT 0 NOT NULL,
+  inserted_at TEXT NOT NULL
+);
+CREATE INDEX ai_ruling_usage_user_id_inserted_at_index ON ai_ruling_usage (user_id, inserted_at);
+CREATE TABLE comprehensive_rules (
+  position INTEGER PRIMARY KEY,
+  number TEXT NOT NULL,
+  text TEXT NOT NULL
+);
+CREATE INDEX comprehensive_rules_number_index ON comprehensive_rules (number);
+CREATE TABLE comprehensive_rules_glossary (
+  position INTEGER PRIMARY KEY,
+  term TEXT NOT NULL,
+  definition TEXT NOT NULL
+);
+CREATE TABLE comprehensive_rules_updates (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  source_url TEXT,
+  effective_on TEXT,
+  rule_count INTEGER DEFAULT 0 NOT NULL,
+  glossary_count INTEGER DEFAULT 0 NOT NULL,
+  installed_at TEXT,
+  checked_at TEXT,
+  last_error TEXT
+);
+CREATE TRIGGER audit_ai_settings_insert AFTER INSERT ON ai_settings
+BEGIN
+  INSERT INTO audit_changes (operation_id, entity, entity_id, before_json, after_json, inserted_at)
+  VALUES (
+    (SELECT operation_id FROM audit_context WHERE id = 1),
+    'ai_settings',
+    CAST(NEW.id AS TEXT),
+    NULL,
+    json_object(
+      'id', NEW.id,
+      'model', NEW.model,
+      'monthly_limit_usd', NEW.monthly_limit_usd,
+      'inserted_at', NEW.inserted_at,
+      'updated_at', NEW.updated_at,
+      'api_key_set', json(CASE WHEN NEW.api_key IS NOT NULL THEN 'true' ELSE 'false' END)
+    ),
+    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+  );
+END;
+CREATE TRIGGER audit_ai_settings_update AFTER UPDATE ON ai_settings
+WHEN OLD.id IS NOT NEW.id
+  OR OLD.model IS NOT NEW.model
+  OR OLD.monthly_limit_usd IS NOT NEW.monthly_limit_usd
+  OR OLD.inserted_at IS NOT NEW.inserted_at
+  OR OLD.api_key IS NOT NEW.api_key
+BEGIN
+  INSERT INTO audit_changes (operation_id, entity, entity_id, before_json, after_json, inserted_at)
+  VALUES (
+    (SELECT operation_id FROM audit_context WHERE id = 1),
+    'ai_settings',
+    CAST(NEW.id AS TEXT),
+    json_object(
+      'id', OLD.id,
+      'model', OLD.model,
+      'monthly_limit_usd', OLD.monthly_limit_usd,
+      'inserted_at', OLD.inserted_at,
+      'updated_at', OLD.updated_at,
+      'api_key_set', json(CASE WHEN OLD.api_key IS NOT NULL THEN 'true' ELSE 'false' END)
+    ),
+    json_object(
+      'id', NEW.id,
+      'model', NEW.model,
+      'monthly_limit_usd', NEW.monthly_limit_usd,
+      'inserted_at', NEW.inserted_at,
+      'updated_at', NEW.updated_at,
+      'api_key_set', json(CASE WHEN NEW.api_key IS NOT NULL THEN 'true' ELSE 'false' END)
+    ),
+    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+  );
+END;
+CREATE TRIGGER audit_ai_settings_delete AFTER DELETE ON ai_settings
+BEGIN
+  INSERT INTO audit_changes (operation_id, entity, entity_id, before_json, after_json, inserted_at)
+  VALUES (
+    (SELECT operation_id FROM audit_context WHERE id = 1),
+    'ai_settings',
+    CAST(OLD.id AS TEXT),
+    json_object(
+      'id', OLD.id,
+      'model', OLD.model,
+      'monthly_limit_usd', OLD.monthly_limit_usd,
+      'inserted_at', OLD.inserted_at,
+      'updated_at', OLD.updated_at,
+      'api_key_set', json(CASE WHEN OLD.api_key IS NOT NULL THEN 'true' ELSE 'false' END)
+    ),
+    NULL,
+    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+  );
+END;
 INSERT INTO schema_migrations VALUES(20260919195831,NULL);
 INSERT INTO schema_migrations VALUES(20260919195952,NULL);
 INSERT INTO schema_migrations VALUES(20260919200035,NULL);
@@ -1012,3 +1120,4 @@ INSERT INTO schema_migrations VALUES(20261012050542,NULL);
 INSERT INTO schema_migrations VALUES(20261014020504,NULL);
 INSERT INTO schema_migrations VALUES(20261018042304,NULL);
 INSERT INTO schema_migrations VALUES(20261018054335,NULL);
+INSERT INTO schema_migrations VALUES(20261021040425,NULL);

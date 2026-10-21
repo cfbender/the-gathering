@@ -32,6 +32,8 @@
     "onnxruntime-web": "1.30.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "socket.io-client": "^4.8.4",
     "tailwind-merge": "^3.7.0"
   },

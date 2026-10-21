@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO comprehensive_rules_updates\n            (id, source_url, effective_on, rule_count, glossary_count, installed_at, checked_at, last_error)\n         VALUES (1, ?, ?, ?, ?, ?, ?, NULL)\n         ON CONFLICT (id) DO UPDATE SET source_url = excluded.source_url,\n            effective_on = excluded.effective_on, rule_count = excluded.rule_count,\n            glossary_count = excluded.glossary_count, installed_at = excluded.installed_at,\n            checked_at = excluded.checked_at, last_error = NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "ede62a8dfce296ab85d8fb8ef534be2098913c84363c13cf828777785d9fdfa5"
+}

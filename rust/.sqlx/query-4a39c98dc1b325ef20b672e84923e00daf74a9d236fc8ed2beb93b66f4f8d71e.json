@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT published_at AS \"published_at: IsoDate\", comment\n           FROM card_rulings WHERE oracle_id = ? ORDER BY published_at, id",
+  "describe": {
+    "columns": [
+      {
+        "name": "published_at: IsoDate",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_rulings",
+            "name": "published_at"
+          }
+        }
+      },
+      {
+        "name": "comment",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "card_rulings",
+            "name": "comment"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "4a39c98dc1b325ef20b672e84923e00daf74a9d236fc8ed2beb93b66f4f8d71e"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO comprehensive_rules (number, text) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f7ee459a26a3fc87196e9a22db6448e70654ba59bf5d22c4bac5f86e51e9f4ce"
+}

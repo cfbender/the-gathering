@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT coalesce(sum(cost_usd), 0.0) AS \"spent!: f64\" FROM ai_ruling_usage\n           WHERE user_id = ? AND inserted_at >= ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "spent!: f64",
+        "ordinal": 0,
+        "type_info": "Float",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fb86302c0cb25628a42e7350cbc50f5ebddeed4d9ac6420274b4a43d83099808"
+}

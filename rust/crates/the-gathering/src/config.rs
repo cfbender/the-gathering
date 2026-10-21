@@ -19,6 +19,11 @@ use anyhow::{Context, bail};
 const RELEASES_API: &str =
     "https://api.github.com/repos/cfbender/the-gathering/releases?per_page=30";
 
+/// The page Wizards of the Coast links the current Comprehensive Rules from.
+const RULES_PAGE: &str = "https://magic.wizards.com/en/rules";
+/// OpenRouter's API, which answers AI rulings.
+const OPENROUTER_API: &str = "https://openrouter.ai/api/v1";
+
 /// Which defaults apply.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Env {
@@ -81,6 +86,8 @@ pub struct RateLimits {
     pub webcam_table_signals: BucketLimit,
     /// Webcam table joins, per user.
     pub webcam_table_joins: WindowLimit,
+    /// AI rulings questions, per user.
+    pub ai_rulings: WindowLimit,
     /// Behind a reverse proxy, read the client address from `x-real-ip`/`x-forwarded-for`.
     pub trust_proxy_headers: bool,
 }
@@ -122,6 +129,10 @@ impl RateLimits {
                 limit: 30,
                 scale: minutes(1),
             },
+            ai_rulings: WindowLimit {
+                limit: 30,
+                scale: minutes(10),
+            },
             trust_proxy_headers: false,
         }
     }
@@ -151,6 +162,7 @@ impl RateLimits {
                 limit: 1_000_000,
                 scale: Duration::from_secs(60),
             },
+            ai_rulings: big,
             trust_proxy_headers: false,
         }
     }
@@ -319,6 +331,12 @@ pub struct Config {
     pub catalog_sync_enabled: bool,
     /// Interval between scheduled syncs.
     pub catalog_sync_interval: Duration,
+    /// Daily check for a new Comprehensive Rules release.
+    pub rules_sync_enabled: bool,
+    /// The Wizards page linking the current Comprehensive Rules (tests point it at a stub).
+    pub rules_page_url: String,
+    /// OpenRouter API base for AI rulings (tests point it at a stub).
+    pub openrouter_api_base: String,
     /// Close idle webcam tables in the background.
     pub webcam_table_pruning_enabled: bool,
     /// Static WebRTC servers.
@@ -620,6 +638,10 @@ impl Config {
             catalog_sync_enabled: env != Env::Test
                 && vars.get("CATALOG_SYNC_ENABLED").as_deref() != Some("false"),
             catalog_sync_interval: Duration::from_secs(catalog_sync_hours.saturating_mul(3600)),
+            rules_sync_enabled: env != Env::Test
+                && vars.get("RULES_SYNC_ENABLED").as_deref() != Some("false"),
+            rules_page_url: RULES_PAGE.into(),
+            openrouter_api_base: OPENROUTER_API.into(),
             webcam_table_pruning_enabled: env != Env::Test,
             webcam_table: WebcamTableConfig {
                 stun_urls,
@@ -698,6 +720,9 @@ impl Config {
             cardid_bundle_releases: RELEASES_API.into(),
             catalog_sync_enabled: false,
             catalog_sync_interval: Duration::from_hours(168),
+            rules_sync_enabled: false,
+            rules_page_url: RULES_PAGE.into(),
+            openrouter_api_base: OPENROUTER_API.into(),
             webcam_table_pruning_enabled: false,
             webcam_table: WebcamTableConfig::default(),
             cloudflare_turn: CloudflareTurnConfig {

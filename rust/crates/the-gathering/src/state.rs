@@ -17,6 +17,7 @@ use crate::decklists::Decklists;
 use crate::games::Games;
 use crate::logs::LogHub;
 use crate::rate_limit::RateLimiter;
+use crate::rules::sync::RulesSync;
 use crate::self_update::SelfUpdate;
 use crate::web::channels::presence::Presence;
 use crate::webcam::WebcamTables;
@@ -51,6 +52,8 @@ pub struct Inner {
     pub card_images: CardImages,
     /// The running/scheduled catalog sync.
     pub catalog_sync: SyncServer,
+    /// Comprehensive Rules update checks.
+    pub rules_sync: RulesSync,
     /// Deck-list resolution and members' remote deck listings.
     pub decklists: Decklists,
     /// Card-recognition corrections.
@@ -134,6 +137,7 @@ impl AppState {
             scryfall,
             card_images,
             catalog_sync: SyncServer::new(),
+            rules_sync: RulesSync::default(),
             decklists,
             corrections,
             io,

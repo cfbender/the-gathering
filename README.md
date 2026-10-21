@@ -19,6 +19,8 @@ services required.
   [Oracle](https://github.com/cfbender/oracle)'s models, then shows its printing, rules text,
   and rulings to the whole table, favouring cards in that player's linked deck list.
 - **Virtual board:** play from a deck's linked list on a virtual tabletop instead of a camera.
+- **AI rulings:** ask an AI judge rules questions at the table; it looks up the current
+  Comprehensive Rules and each card's Oracle text and rulings, and cites the rules it used.
 - **Discord:** member sign-in, `/newgame` queues that open a table once enough players join,
   SpellBot game tracking, and `/log` and `/summary` commands.
 - **Game history and stats:** results recorded from the table, logged by hand, or imported from
@@ -61,6 +63,23 @@ flying, tokens, nontoken, or any creature type) and the overlay shows the combin
 kind of creature ("Attacking token creatures +4/+4 · vigilance"). Each counter and the buff list has
 its own "Show to table" switch; shared ones appear on your seat for everyone and shared counter
 changes are logged, while private ones stay in your browser.
+
+**Rules** asks an AI judge for a ruling. The server sends the question, the earlier turns of the
+conversation, and (unless unticked) the commanders and identified cards at the table to a model on
+[OpenRouter](https://openrouter.ai), which answers with tools that search and read the Magic
+Comprehensive Rules and look cards up in the local catalog (current Oracle text plus Scryfall's
+rulings). Answers cite rule numbers, show the cited rules' text, and preview named cards on hover.
+The conversation stays in the browser tab. An administrator enables it under **Admin → Settings →
+AI rulings** with an OpenRouter API key (stored encrypted) and any model ID that supports tool
+calling; saving checks both with OpenRouter. Every question's cost, as OpenRouter reports it, is
+recorded per member: set **Monthly limit per member (USD)** to cap each member's spending per
+calendar month (UTC), and see this month's spending per member on the same page. Questions are also
+limited to 30 per member per 10 minutes.
+
+The server downloads the Comprehensive Rules from the text file linked on
+[magic.wizards.com/en/rules](https://magic.wizards.com/en/rules) shortly after boot, then checks that
+page daily and installs each new release (`RULES_SYNC_ENABLED=false` turns the checks off). **Admin →
+Catalog → Comprehensive Rules** shows the installed release and checks now.
 
 Design notes are in [docs/webcam-table.md](docs/webcam-table.md); to improve recognition or contribute training data,
 see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONTRIBUTING.md).
@@ -320,7 +339,7 @@ reported in the response's `errors`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `THE_GATHERING_SECRET_KEY` | required | Encrypts the session cookie, socket tokens, and stored ManaVault API keys. At least 64 bytes; keep it when upgrading, or stored keys stop decrypting. Releases up to 0.2 called it `SECRET_KEY_BASE`, which still works and logs a warning. |
+| `THE_GATHERING_SECRET_KEY` | required | Encrypts the session cookie, socket tokens, stored ManaVault API keys, and the OpenRouter API key. At least 64 bytes; keep it when upgrading, or stored keys stop decrypting. Releases up to 0.2 called it `SECRET_KEY_BASE`, which still works and logs a warning. |
 | `DATA_DIR` | `/data` | Where the database, uploaded files, and the `cardid/` recognizer bundles live. |
 | `DATABASE_PATH` | `$DATA_DIR/the_gathering.db` | SQLite database file. |
 | `THE_GATHERING_PUBLIC_URL` | `https://localhost` | Origin users reach the app at (scheme, host, and a non-default port), used for generated links and the Discord OAuth redirect. Replaces `PHX_SCHEME`, `PHX_HOST`, and `PHX_URL_PORT`, which still work and log a warning. |
@@ -328,6 +347,7 @@ reported in the response's `errors`.
 | `TRUST_PROXY_HEADERS` | unset | Set to `true` behind a reverse proxy so rate limiting identifies clients by `x-real-ip` / `x-forwarded-for` instead of the proxy address. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, or `error`. `debug` explains why the Discord bot ignored a message. |
 | `CATALOG_SYNC_INTERVAL_HOURS` | `168` | Hours between automatic Scryfall catalog refreshes. |
+| `RULES_SYNC_ENABLED` | `true` | Set to `false` to stop downloading the Comprehensive Rules for AI rulings and checking daily for new releases. |
 | `CARDID_BUNDLE_SOURCE` | `github` (`off` in development) | Where the card-recognition bundle is downloaded from, at boot and every six hours: `github` installs the newest published `scanner-bundle-*` release of this repository, an `https://.../manifest.json` URL installs the bundle beside it, and `off` only serves bundles copied in with `cardid.publish --to host:DATA_DIR/cardid`. |
 | `WEBRTC_SFU_PORT_RANGE` | `50000-50100` | UDP ports the built-in webcam-table SFU listens on, one per connected browser. Forward the same range from your router to the host (Docker: publish it as `/udp`). |
 | `WEBRTC_SFU_PUBLIC_IP` | unset | Public address browsers reach the SFU ports at, announced as an ICE candidate. Required for players outside your LAN unless `WEBRTC_SFU_RELAY_ONLY` is set. |

@@ -24,7 +24,7 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 use self::api::{
-    accounts, admin, cardid, cards, discord, games, imports, server_logs, stats, webcam,
+    accounts, admin, cardid, cards, discord, games, imports, rulings, server_logs, stats, webcam,
 };
 use self::auth::{require_admin, require_authenticated_user, require_sudo_mode};
 
@@ -106,6 +106,7 @@ pub fn router(state: AppState) -> Router {
             get(cards::printings_rulings),
         )
         .route("/api/catalog", get(cards::catalog_show))
+        .route("/api/ai-rulings", get(rulings::show).post(rulings::create))
         .route("/api/stats/overview", get(stats::overview))
         .route("/api/stats/players/{id}", get(stats::player))
         .route("/api/stats/decks/{id}", get(stats::deck))
@@ -244,6 +245,12 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/admin/catalog/sync", post(cards::catalog_sync))
         .route("/api/admin/catalog/backfill", post(cards::catalog_backfill))
+        .route(
+            "/api/admin/ai-settings",
+            get(rulings::settings_show).patch(rulings::settings_update),
+        )
+        .route("/api/admin/rules", get(rulings::rules_show))
+        .route("/api/admin/rules/sync", post(rulings::rules_sync))
         .route_layer(from_fn_with_state(state.clone(), require_sudo_mode))
         .route_layer(from_fn(require_admin))
         .route_layer(from_fn(require_authenticated_user));

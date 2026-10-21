@@ -24,6 +24,8 @@ import type { User } from "@/lib/auth"
 import { formValue } from "@/lib/form"
 import { getPlayers, invalidateGameRelated, linkUserPlayer } from "@/features/games/games"
 import type { PlayerSummary } from "@/features/games/games"
+import { AiRulingsSettings } from "./ai-rulings-settings"
+import { ComprehensiveRules } from "./comprehensive-rules"
 import { RegistrationInvite } from "./registration-invite"
 import { SoftwareUpdate } from "./software-update"
 
@@ -133,7 +135,7 @@ export function AdminSettingsPage() {
       <PageHeader
         eyebrow="Administration"
         title="Server settings"
-        description="Registration, statistics defaults, and updates for this server."
+        description="Registration, statistics defaults, AI rulings, and updates for this server."
         actions={
           <label className="bg-base-100/60 border-base-300 rounded-field flex cursor-pointer items-center gap-3 border px-4 py-3">
             <span className="text-sm font-medium">Open registration</span>
@@ -153,6 +155,7 @@ export function AdminSettingsPage() {
       />
       <RegistrationInvite />
       <StatsCutoff settings={settings.data} />
+      <AiRulingsSettings />
       <SoftwareUpdate />
     </div>
   )
@@ -164,9 +167,10 @@ export function AdminCatalogPage() {
       <PageHeader
         eyebrow="Administration"
         title="Catalog"
-        description="Refresh the local Scryfall catalog and repair imported card references against it."
+        description="Refresh the local Scryfall catalog and the Comprehensive Rules, and repair imported card references against the catalog."
       />
       <CatalogSync />
+      <ComprehensiveRules />
       <CatalogBackfill />
     </div>
   )
