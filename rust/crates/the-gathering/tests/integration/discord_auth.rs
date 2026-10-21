@@ -219,6 +219,28 @@ async fn callback_rejects_an_unknown_discord_account_when_registration_is_closed
 }
 
 #[tokio::test]
+async fn callback_only_returns_to_paths_on_this_site() {
+    let (app, _discord) = app().await;
+    create_admin(&app).await;
+    open_registration(&app).await;
+
+    for (return_to, expected) in [
+        ("/games/12?tab=seats", "/games/12?tab=seats"),
+        ("//evil.example/x", "/"),
+        ("https://evil.example/x", "/"),
+        ("/\\evil.example/x", "/"),
+        ("/\\/evil.example/x", "/"),
+        ("/\t/evil.example/x", "/"),
+        ("/\n/evil.example/x", "/"),
+    ] {
+        app.clear_cookies();
+        let response = callback_to(&app, "100000000000000020", return_to, &[]).await;
+        assert_eq!(response.redirected_to(), expected, "returnTo {return_to:?}");
+        assert!(signed_in_user(&app).await.is_some());
+    }
+}
+
+#[tokio::test]
 async fn one_invitation_admits_multiple_passwordless_members_without_opening_registration() {
     let (app, _discord) = app().await;
     create_admin(&app).await;

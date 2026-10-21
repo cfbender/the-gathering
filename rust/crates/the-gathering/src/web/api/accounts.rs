@@ -414,9 +414,19 @@ fn login_error(error: &str) -> Response {
     found(&format!("/login?{query}"))
 }
 
+/// `path` when it is a path on this site, otherwise `/`. Browsers read `\` as `/` and drop
+/// tabs and newlines, so `/\host` and `/<TAB>/host` would leave the site like `//host`.
 fn safe_return_to(path: Option<&str>) -> String {
     match path {
-        Some(path) if path.starts_with('/') && !path.starts_with("//") => path.to_owned(),
+        Some(path)
+            if path.starts_with('/')
+                && !path.starts_with("//")
+                && !path
+                    .chars()
+                    .any(|c| c == '\\' || c.is_control() || c.is_whitespace()) =>
+        {
+            path.to_owned()
+        }
         _ => "/".to_owned(),
     }
 }

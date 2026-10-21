@@ -47,8 +47,15 @@ export function useCurrentUser() {
   return useQuery(sessionQueryOptions)
 }
 
+// Browsers read `\` as `/` and drop tabs and newlines, so `/\host` and `/<TAB>/host` would
+// leave the site like `//host`.
 export function safeReturnTo(value: unknown) {
-  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") ? value : "/"
+  return typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    !/[\\\p{Cc}\s]/u.test(value)
+    ? value
+    : "/"
 }
 
 export async function requireUser(queryClient: QueryClient, returnTo: string) {

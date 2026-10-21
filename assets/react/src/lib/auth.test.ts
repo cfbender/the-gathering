@@ -18,6 +18,16 @@ describe("authentication error messages", () => {
     expect(safeReturnTo("/settings")).toBe("/settings")
     expect(safeReturnTo("//example.com/account")).toBe("/")
     expect(safeReturnTo("https://example.com/account")).toBe("/")
+    expect(safeReturnTo("/games/12?tab=seats")).toBe("/games/12?tab=seats")
+    for (const value of [
+      "/\\example.com/x",
+      "/\\/example.com/x",
+      "/\t/example.com/x",
+      "/\n/example.com/x",
+    ]) {
+      expect(new URL(value, "https://app.test").host).toBe("example.com")
+      expect(safeReturnTo(value)).toBe("/")
+    }
   })
 
   it("recognizes the structured sudo-mode error", () => {
