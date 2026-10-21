@@ -169,8 +169,8 @@ impl WeakAppState {
 }
 
 impl AppState {
-    /// Disconnects realtime sockets opened with this session token (on logging out or a
-    /// password change).
+    /// Disconnects realtime sockets opened with this session token (on logging out, a
+    /// password change, or an administrator changing the account).
     pub fn disconnect_session(&self, token: &[u8]) {
         let _ = self
             .session_disconnects

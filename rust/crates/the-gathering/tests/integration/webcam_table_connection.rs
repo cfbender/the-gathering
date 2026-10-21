@@ -62,6 +62,81 @@ async fn socket_connection_uses_the_tracked_cookie_session() {
 }
 
 #[tokio::test]
+async fn administrator_account_changes_close_the_targets_sockets() {
+    let server = Server::start().await;
+    let admin = server.admin().await;
+    server.app.log_in_sudo(&admin).await;
+
+    // Demoting deletes no session tokens, but the socket still holds the administrator `User`.
+    let eve = server.admin().await;
+    let session_token = server
+        .state()
+        .accounts
+        .generate_user_session_token(&eve)
+        .await
+        .unwrap();
+    let token = channels::socket_token(server.state(), &session_token);
+    let mut client = Client::connect(server.addr, &token).await.unwrap();
+    server
+        .app
+        .patch(
+            &format!("/api/admin/users/{}", eve.id),
+            json!({"role": "member"}),
+        )
+        .await
+        .assert_json(200);
+    client.expect("socket_closed").await;
+    // The session survives, so the client reconnects as a member.
+    let (reconnected, _) = channels::authenticate(server.state(), &token)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!reconnected.is_admin());
+
+    // A display-name edit leaves the socket open.
+    let mut client = Client::connect(server.addr, &token).await.unwrap();
+    server
+        .app
+        .patch(
+            &format!("/api/admin/users/{}", eve.id),
+            json!({"display_name": "Evelyn"}),
+        )
+        .await
+        .assert_json(200);
+    client.refute("socket_closed").await;
+
+    let disabled = server.user().await;
+    let mut client = server.connect(&disabled).await;
+    server
+        .app
+        .patch(
+            &format!("/api/admin/users/{}", disabled.id),
+            json!({"disabled": true}),
+        )
+        .await
+        .assert_json(200);
+    client.expect("socket_closed").await;
+
+    let revoked = server.user().await;
+    let mut client = server.connect(&revoked).await;
+    server
+        .app
+        .delete(&format!("/api/admin/users/{}/sessions", revoked.id))
+        .await
+        .assert_json(200);
+    client.expect("socket_closed").await;
+
+    let deleted = server.user().await;
+    let mut client = server.connect(&deleted).await;
+    let response = server
+        .app
+        .delete(&format!("/api/admin/users/{}", deleted.id))
+        .await;
+    assert_eq!(response.status, 204, "{}", response.text());
+    client.expect("socket_closed").await;
+}
+
+#[tokio::test]
 async fn socket_tokens_are_encrypted_and_tampered_or_expired_tokens_are_rejected() {
     let server = Server::start().await;
     let user = server.user().await;

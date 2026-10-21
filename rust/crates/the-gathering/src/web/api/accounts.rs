@@ -255,16 +255,29 @@ pub async fn update_password(
     AuthUser(user): AuthUser,
     JsonBody(update): JsonBody<PasswordUpdate>,
 ) -> ApiResult<Response> {
-    let tokens: Vec<Vec<u8>> =
-        sqlx::query_scalar!("SELECT token FROM users_tokens WHERE user_id = ?", user.id)
-            .fetch_all(&state.pool)
-            .await?;
+    let tokens = user_tokens(&state, user.id).await?;
     let updated = state.accounts.update_user_password(&user, &update).await?;
-    for token in tokens {
-        state.disconnect_session(&token);
-    }
+    disconnect_sessions(&state, &tokens);
     // The old session token is gone, so this signs in afresh.
     sign_in_response(&state, &session, Some(&user), &updated, StatusCode::OK).await
+}
+
+/// The user's tokens, read before an account change deletes them so the change can close the
+/// realtime sockets opened with them.
+async fn user_tokens(state: &AppState, user_id: i64) -> ApiResult<Vec<Vec<u8>>> {
+    Ok(
+        sqlx::query_scalar!("SELECT token FROM users_tokens WHERE user_id = ?", user_id)
+            .fetch_all(&state.pool)
+            .await?,
+    )
+}
+
+/// Closes the realtime sockets opened with these session tokens; they keep the `User` loaded
+/// when they connected, so account changes must not leave them open.
+fn disconnect_sessions(state: &AppState, tokens: &[Vec<u8>]) {
+    for token in tokens {
+        state.disconnect_session(token);
+    }
 }
 
 /// `GET /api/session/api-keys`.
@@ -326,7 +339,12 @@ pub async fn admin_users_update(
     JsonBody(update): JsonBody<AccountUpdate>,
 ) -> ApiResult<Json<Value>> {
     let user = fetch_user(&state, id).await?;
+    let tokens = user_tokens(&state, user.id).await?;
     let updated = state.accounts.update_user(&user, &update).await?;
+    // Sockets reconnect with the new role; disabling also deleted their session tokens.
+    if updated.role != user.role || updated.disabled_at != user.disabled_at {
+        disconnect_sessions(&state, &tokens);
+    }
     Ok(user_response(&updated))
 }
 
@@ -336,7 +354,9 @@ pub async fn admin_users_revoke_sessions(
     PathParam(id): PathParam<i64>,
 ) -> ApiResult<Json<Value>> {
     let user = fetch_user(&state, id).await?;
+    let tokens = user_tokens(&state, user.id).await?;
     state.accounts.revoke_all_sessions(user.id).await?;
+    disconnect_sessions(&state, &tokens);
     Ok(user_response(&user))
 }
 
@@ -347,7 +367,9 @@ pub async fn admin_users_delete(
     PathParam(id): PathParam<i64>,
 ) -> ApiResult<StatusCode> {
     let user = fetch_user(&state, id).await?;
+    let tokens = user_tokens(&state, user.id).await?;
     state.accounts.delete_user(&user, &actor).await?;
+    disconnect_sessions(&state, &tokens);
     Ok(StatusCode::NO_CONTENT)
 }
 
