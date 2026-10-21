@@ -72,13 +72,10 @@ it("asks with the table's cards and earlier turns, and keeps the conversation", 
   const tab = renderTab(client)
   await screen.findByText(/\$0\.25 of \$2\.00 used this month/)
 
+  // The table's cards are sent only after opting in.
   ask("Deathtouch and trample?")
   expect((await screen.findByText("Answer 1.")).tagName).toBe("STRONG")
-  expect(bodies[0]).toEqual({
-    question: "Deathtouch and trample?",
-    history: [],
-    cards: ["Questing Beast", "Sol Ring"],
-  })
+  expect(bodies[0]).toEqual({ question: "Deathtouch and trample?", history: [], cards: [] })
   // Card names render as hover targets, bracketed or not, without literal brackets.
   expect(screen.getByText("Questing Beast").className).toContain("underline")
   expect(screen.getByText("Sol Ring").className).toContain("underline")
@@ -89,13 +86,17 @@ it("asks with the table's cards and earlier turns, and keeps the conversation", 
   tab.unmount()
   renderTab(client)
   await screen.findByText("Answer 1.")
-  fireEvent.click(screen.getByRole("checkbox", { name: /Include the 2 cards in play/ }))
+  const include = screen.getByRole<HTMLInputElement>("checkbox", {
+    name: /Include the 2 cards in play/,
+  })
+  expect(include.checked).toBe(false)
+  fireEvent.click(include)
   ask("And with first strike?")
   await screen.findByText("Answer 2.")
   expect(bodies[1]).toMatchObject({
     question: "And with first strike?",
     history: [{ question: "Deathtouch and trample?", answer: expect.stringContaining("Answer 1") }],
-    cards: [],
+    cards: ["Questing Beast", "Sol Ring"],
   })
 
   budgetSpent = true

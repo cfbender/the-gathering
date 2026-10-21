@@ -3,7 +3,8 @@
 //!
 //! Administrators configure the OpenRouter API key, the model, and a monthly spend limit
 //! per member ([`settings`]); every question's cost is recorded ([`record_usage`]) and a
-//! member past the limit is refused until the next calendar month (UTC). [`openrouter`]
+//! member past the limit is refused until the next calendar month (UTC). Administrators
+//! are not limited. [`openrouter`]
 //! talks to OpenRouter and [`ruling`] holds the prompt, the tools, and the question flow.
 
 pub mod openrouter;

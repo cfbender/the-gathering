@@ -85,7 +85,8 @@ export function RulingsTab({ roomId, tableCards }: RulingsTabProps) {
   const status = useQuery({ queryKey: rulingStatusKey, queryFn: getRulingStatus })
   const [turns, setTurns] = useState(() => readConversation(roomId))
   const [question, setQuestion] = useState("")
-  const [includeCards, setIncludeCards] = useState(true)
+  // Sending the table's cards to the model is opt-in.
+  const [includeCards, setIncludeCards] = useState(false)
   const mutationKey = ["ai-rulings", roomId]
   const ask = useMutation({
     mutationKey,

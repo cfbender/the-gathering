@@ -41,7 +41,7 @@ fn detail(status: StatusCode, message: &str) -> ApiError {
 }
 
 /// `GET /api/ai-rulings`: whether rulings are available, the model, the rules release, and
-/// the member's spending this month against the limit.
+/// the member's spending this month against the limit (none for administrators).
 pub async fn show(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -55,7 +55,8 @@ pub async fn show(
         "rules_effective_on": rules.effective_on,
         "usage": {
             "spent_usd": spent_this_month(&state.pool, user.id).await?,
-            "limit_usd": settings.monthly_limit_usd,
+            // Administrators have no limit.
+            "limit_usd": settings.monthly_limit_usd.filter(|_| !user.is_admin()),
             "resets_on": resets_on,
         },
     })))
@@ -122,7 +123,7 @@ pub async fn create(
             .map(str::to_owned)
             .collect(),
     };
-    match ruling::ask(&state, user.id, &question).await {
+    match ruling::ask(&state, &user, &question).await {
         Ok(answer) => Ok(data(json!(answer))),
         Err(AskError::NotConfigured) => Err(detail(
             StatusCode::SERVICE_UNAVAILABLE,

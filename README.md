@@ -65,7 +65,7 @@ its own "Show to table" switch; shared ones appear on your seat for everyone and
 changes are logged, while private ones stay in your browser.
 
 **Rules** asks an AI judge for a ruling. The server sends the question, the earlier turns of the
-conversation, and (unless unticked) the commanders and identified cards at the table to a model on
+conversation, and (when the player ticks the box) the commanders and identified cards at the table to a model on
 [OpenRouter](https://openrouter.ai), which answers with tools that search and read the Magic
 Comprehensive Rules and look cards up in the local catalog (current Oracle text plus Scryfall's
 rulings). Answers cite rule numbers, show the cited rules' text, and preview named cards on hover.
@@ -73,7 +73,7 @@ The conversation stays in the browser tab. An administrator enables it under **A
 AI rulings** with an OpenRouter API key (stored encrypted) and any model ID that supports tool
 calling; saving checks both with OpenRouter. Every question's cost, as OpenRouter reports it, is
 recorded per member: set **Monthly limit per member (USD)** to cap each member's spending per
-calendar month (UTC), and see this month's spending per member on the same page. Questions are also
+calendar month (UTC); administrators are not limited. This month's spending per member is on the same page. Questions are also
 limited to 30 per member per 10 minutes.
 
 The server downloads the Comprehensive Rules from the text file linked on

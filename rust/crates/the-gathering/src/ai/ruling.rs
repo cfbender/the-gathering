@@ -8,6 +8,8 @@ use std::sync::LazyLock;
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use crate::accounts::User;
+
 use super::openrouter::{ChatError, Client, ToolCall, Usage};
 use crate::catalog::{Card, Catalog, printings};
 use crate::db::{IsoDate, Pool};
@@ -479,12 +481,14 @@ async fn card_references(
     Ok(references)
 }
 
-/// Answers `user_id`'s `question` with the configured model, within their monthly limit,
-/// and records what it cost.
-pub async fn ask(state: &AppState, user_id: i64, question: &Question) -> Result<Answer, AskError> {
+/// Answers `user`'s `question` with the configured model, within the monthly limit
+/// (administrators have none), and records what it cost.
+pub async fn ask(state: &AppState, user: &User, question: &Question) -> Result<Answer, AskError> {
+    let user_id = user.id;
     let settings = super::settings(&state.pool, &state.config.secret_key).await?;
     let (api_key, model) = settings.credentials().ok_or(AskError::NotConfigured)?;
     if let Some(limit_usd) = settings.monthly_limit_usd
+        && !user.is_admin()
         && super::spent_this_month(&state.pool, user_id).await? >= limit_usd
     {
         let (_, resets_on) = super::budget_month(crate::db::UtcDateTime::now());

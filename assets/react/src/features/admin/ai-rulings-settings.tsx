@@ -111,8 +111,8 @@ export function AiRulingsSettings() {
                   placeholder="No limit"
                 />
                 <span className="text-base-content/60 text-xs">
-                  Each member&apos;s spending resets on the first of the month (UTC). Leave blank
-                  for no limit.
+                  Each member&apos;s spending resets on the first of the month (UTC). Administrators
+                  are not limited. Leave blank for no limit.
                 </span>
                 {fieldError("monthly_limit_usd")}
               </label>

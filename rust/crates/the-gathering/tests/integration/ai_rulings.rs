@@ -548,14 +548,26 @@ async fn members_over_the_monthly_limit_are_refused() {
 
     // The limit is per member.
     app.log_in(&other).await;
-    app.post("/api/ai-rulings", ask).await.assert_json(200);
+    app.post("/api/ai-rulings", ask.clone())
+        .await
+        .assert_json(200);
 
+    // Administrators have no limit, though their spending is recorded.
     let admin = app.unique_admin().await;
     app.log_in_sudo(&admin).await;
+    for _ in 0..4 {
+        app.post("/api/ai-rulings", ask.clone())
+            .await
+            .assert_json(200);
+    }
+    let status = app.get("/api/ai-rulings").await.assert_json(200);
+    assert_eq!(status["data"]["usage"]["limit_usd"], Value::Null);
+    assert!(status["data"]["usage"]["spent_usd"].as_f64().unwrap() > 0.02);
     let body = app.get("/api/admin/ai-settings").await.assert_json(200);
     let usage = body["data"]["usage"].as_array().unwrap();
-    assert_eq!(usage.len(), 2);
-    assert_eq!(usage[0]["questions"], 1);
+    assert_eq!(usage.len(), 3);
+    assert_eq!(usage[0]["user_id"], admin.id);
+    assert_eq!(usage[0]["questions"], 4);
 }
 
 #[tokio::test]
