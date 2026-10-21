@@ -131,7 +131,12 @@ pub async fn create(
             .map(str::to_owned)
             .collect(),
     };
-    match ruling::ask(&state, &user, &question).await {
+    // The question runs in its own task so a member who disconnects mid-answer cannot skip
+    // recording what the model rounds cost, which the monthly limit is checked against.
+    let asked = tokio::spawn(async move { ruling::ask(&state, &user, &question).await })
+        .await
+        .map_err(|error| ApiError::Internal(error.into()))?;
+    match asked {
         Ok(answer) => Ok(data(json!(answer))),
         Err(AskError::NotConfigured) => Err(detail(
             StatusCode::SERVICE_UNAVAILABLE,

@@ -657,6 +657,69 @@ async fn members_over_the_monthly_limit_are_refused() {
 }
 
 #[tokio::test]
+async fn disconnecting_mid_answer_still_counts_against_the_limit() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/chat/completions"))
+        .respond_with(completion(
+            &json!({
+                "role": "assistant",
+                "content": null,
+                "tool_calls": [
+                    { "id": "call-1", "type": "function", "function": { "name": "get_rules", "arguments": "{\"numbers\":[\"702.19c\"]}" } },
+                ],
+            }),
+            0.0125,
+        ))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/chat/completions"))
+        .respond_with(
+            completion(&json!({ "role": "assistant", "content": ANSWER }), 0.0075)
+                .set_delay(std::time::Duration::from_millis(300)),
+        )
+        .mount(&server)
+        .await;
+    let app = app(&server).await;
+    install_rules(&app).await;
+    configure(&app, Some(0.02)).await;
+    let member = app.unique_member().await;
+    app.log_in(&member).await;
+    let ask = json!({ "question": "Does trample work with deathtouch?" });
+
+    // The member hangs up once the second model round is under way.
+    tokio::select! {
+        response = app.post("/api/ai-rulings", ask.clone()) => {
+            panic!("the question finished before the disconnect: {}", response.status);
+        }
+        () = async {
+            while server.received_requests().await.unwrap().len() < 2 {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        } => {}
+    }
+
+    let mut spent: Option<f64> = None;
+    for _ in 0..200 {
+        spent = sqlx::query_scalar("SELECT SUM(cost_usd) FROM ai_ruling_usage WHERE user_id = ?")
+            .bind(member.id)
+            .fetch_one(app.pool())
+            .await
+            .unwrap();
+        if spent.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!((spent.expect("no usage recorded") - 0.02).abs() < 1e-9);
+
+    let body = app.post("/api/ai-rulings", ask).await.assert_json(429);
+    assert_eq!(body["errors"]["code"], "ai_budget_exhausted");
+}
+
+#[tokio::test]
 async fn questions_need_a_configured_model() {
     let server = MockServer::start().await;
     let app = app(&server).await;
