@@ -1,5 +1,5 @@
 [tools]
-aube = "1.21.0"
+aube = "2.8.1"
 node = "26.9.0"
 # The minimal profile skips rust-docs (about 900 MB, slow to unpack and snapshot).
 rust = { version = "1.99.0", profile = "minimal", components = "clippy,rustfmt" }

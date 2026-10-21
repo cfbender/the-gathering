@@ -4,7 +4,7 @@ ARG RUST_VERSION=1.99.0
 ARG ALPINE_VERSION=3.24
 ARG DEBIAN_RELEASE=trixie
 ARG NODE_VERSION=26.9.0
-ARG AUBE_VERSION=1.21.0
+ARG AUBE_VERSION=2.8.1
 
 FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS assets
 
@@ -17,8 +17,8 @@ WORKDIR /app
 # Pin the release and verify its checksum. Update AUBE_VERSION and both
 # checksums together (musl builds, since the builder is Alpine).
 ARG TARGETARCH
-ARG AUBE_SHA256_AMD64=6761c69514475a87b375d02a3782ebbab1dfdf181a584ee6b6c91814a882cb37
-ARG AUBE_SHA256_ARM64=07da9245c5ac2ef540ed59f795aeee6986d8a9ed5127d4d9c97cbfd1cc05c308
+ARG AUBE_SHA256_AMD64=5a8bb76fb728cc8d130014e660dd229fd908648ab8d1a8f2e005210f2c472a0d
+ARG AUBE_SHA256_ARM64=b067a7b4633f8ecafcf9e8d2d8ffe0de7c36af5dc7f632aff079782d11c5e49f
 RUN set -eu; \
   arch="${TARGETARCH:-$(uname -m)}"; \
   case "$arch" in \
