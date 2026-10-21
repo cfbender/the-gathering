@@ -22,6 +22,8 @@ export interface CitedRule {
 export interface RulingTurn {
   question: string
   answer: string
+  /** Lets the server trust this turn when it comes back as history. */
+  signature: string
   model: string
   rules: CitedRule[]
   cards: { name: string; id: string }[]
@@ -35,15 +37,15 @@ export async function getRulingStatus() {
 
 /** Asks a question; earlier turns of the conversation and the table's cards give it context. */
 export async function askRuling(question: string, history: RulingTurn[], cards: string[]) {
-  const { data } = await api<Data<Omit<RulingTurn, "question">>>("/api/ai-rulings", {
+  const { data } = await api<Data<RulingTurn>>("/api/ai-rulings", {
     method: "POST",
     body: JSON.stringify({
       question,
-      history: history.map(({ question, answer }) => ({ question, answer })),
+      history: history.map(({ question, answer, signature }) => ({ question, answer, signature })),
       cards,
     }),
   })
-  return { ...data, question }
+  return data
 }
 
 /** Why a question went unanswered; a spent budget explains when it resets. */

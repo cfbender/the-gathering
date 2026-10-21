@@ -4,11 +4,14 @@
 //! [`seal`]/[`open`] use XChaCha20-Poly1305 with a key derived from the server secret and a
 //! purpose label, so a value sealed for one purpose (a socket token) never opens as another
 //! (a stored credential). Sealed values are `base64url(nonce || ciphertext || tag)`.
+//! [`sign`]/[`verify`] authenticate values the client holds and sends back, with the same
+//! per-purpose keys.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
+use hmac::{Hmac, Mac};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -54,6 +57,28 @@ fn purpose_key(secret: &str, purpose: &str) -> [u8; 32] {
     hasher.update([0]);
     hasher.update(secret.as_bytes());
     hasher.finalize().into()
+}
+
+fn mac(secret: &str, purpose: &str, data: &[u8]) -> Vec<u8> {
+    // HMAC accepts keys of any length, so this never falls back to empty.
+    <Hmac<Sha256> as Mac>::new_from_slice(&purpose_key(secret, purpose))
+        .map(|mut mac| {
+            mac.update(data);
+            mac.finalize().into_bytes().to_vec()
+        })
+        .unwrap_or_default()
+}
+
+/// An HMAC-SHA256 signature of `data` for `purpose`, as unpadded base64url.
+pub fn sign(secret: &str, purpose: &str, data: &[u8]) -> String {
+    URL_SAFE_NO_PAD.encode(mac(secret, purpose, data))
+}
+
+/// Whether `signature` is [`sign`]'s signature of `data` for `purpose`.
+pub fn verify(secret: &str, purpose: &str, data: &[u8], signature: &str) -> bool {
+    URL_SAFE_NO_PAD
+        .decode(signature)
+        .is_ok_and(|signature| secure_compare(&mac(secret, purpose, data), &signature))
 }
 
 /// Encrypts and authenticates `plain` for `purpose`.

@@ -31,8 +31,6 @@ static MODEL_ID: LazyLock<Regex> = LazyLock::new(|| compile(r"^[A-Za-z0-9][A-Za-
 
 /// Characters a question may have.
 const MAX_QUESTION: usize = 2_000;
-/// Characters an earlier answer sent back may have.
-const MAX_ANSWER: usize = 20_000;
 /// Table cards sent as context.
 const MAX_TABLE_CARDS: usize = 100;
 
@@ -67,6 +65,9 @@ pub async fn show(
 pub struct TurnInput {
     question: String,
     answer: String,
+    /// The signature the answer came with; turns without a valid one are ignored.
+    #[serde(default)]
+    signature: Option<String>,
 }
 
 /// `POST /api/ai-rulings` body.
@@ -91,13 +92,6 @@ pub async fn create(
     let question = request.question.as_deref().map(str::trim);
     cs.required("question", question);
     cs.length("question", question, None, Some(MAX_QUESTION));
-    let history_start = request.history.len().saturating_sub(ruling::HISTORY_TURNS);
-    let history = request.history.get(history_start..).unwrap_or_default();
-    if history.iter().any(|turn| {
-        turn.question.chars().count() > MAX_QUESTION || turn.answer.chars().count() > MAX_ANSWER
-    }) {
-        cs.add_error("history", "is too long");
-    }
     cs.finish()?;
     check_user_limit(
         &state,
@@ -105,10 +99,24 @@ pub async fn create(
         user.id,
         state.config.rate_limits.ai_rulings,
     )?;
+    // Only turns this server answered for this member go to the model; others are dropped.
+    let history_start = request.history.len().saturating_sub(ruling::HISTORY_TURNS);
+    let history = request.history.get(history_start..).unwrap_or_default();
     let question = Question {
         text: question.unwrap_or_default().to_owned(),
         history: history
             .iter()
+            .filter(|turn| {
+                turn.signature.as_deref().is_some_and(|signature| {
+                    ruling::turn_verifies(
+                        &state.config.secret_key,
+                        user.id,
+                        &turn.question,
+                        &turn.answer,
+                        signature,
+                    )
+                })
+            })
             .map(|turn| Turn {
                 question: turn.question.clone(),
                 answer: turn.answer.clone(),

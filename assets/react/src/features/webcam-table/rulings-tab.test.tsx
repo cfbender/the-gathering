@@ -37,7 +37,8 @@ it("asks with the table's cards and earlier turns, and keeps the conversation", 
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
       if (url === "/api/ai-rulings" && init?.method === "POST") {
-        bodies.push(JSON.parse(init.body as string))
+        const body = JSON.parse(init.body as string) as { question: string }
+        bodies.push(body)
         if (budgetSpent)
           return Promise.resolve(
             Response.json(
@@ -53,6 +54,8 @@ it("asks with the table's cards and earlier turns, and keeps the conversation", 
         return Promise.resolve(
           Response.json({
             data: {
+              question: body.question,
+              signature: `signature-${bodies.length}`,
               answer: `**Answer ${bodies.length}.** [[Questing Beast]] has deathtouch; Sol Ring does not (CR 702.2c).`,
               model: "anthropic/claude-sonnet-5.5",
               rules: [{ number: "702.2c", text: "Any nonzero amount of combat damage…" }],
@@ -95,7 +98,13 @@ it("asks with the table's cards and earlier turns, and keeps the conversation", 
   await screen.findByText("Answer 2.")
   expect(bodies[1]).toMatchObject({
     question: "And with first strike?",
-    history: [{ question: "Deathtouch and trample?", answer: expect.stringContaining("Answer 1") }],
+    history: [
+      {
+        question: "Deathtouch and trample?",
+        answer: expect.stringContaining("Answer 1"),
+        signature: "signature-1",
+      },
+    ],
     cards: ["Questing Beast", "Sol Ring"],
   })
 
