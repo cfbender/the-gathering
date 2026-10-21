@@ -268,6 +268,7 @@ pub async fn session_layer(
             .path("/")
             .http_only(true)
             .same_site(SameSite::Lax)
+            .secure(state.config.secure_cookies())
             .max_age(MAX_AGE);
         response = (jar.add(cookie), response).into_response();
     }

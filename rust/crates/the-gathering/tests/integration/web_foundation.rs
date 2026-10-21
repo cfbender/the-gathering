@@ -197,6 +197,35 @@ async fn the_browser_pipeline_sends_secure_headers() {
 }
 
 #[tokio::test]
+async fn the_session_cookie_is_secure_only_behind_an_https_public_url() {
+    for (public_url, secure) in [
+        ("https://games.example.com", true),
+        ("https://games.example.com:8443", true),
+        ("http://localhost:4000", false),
+        ("http://10.0.0.5:4000", false),
+        // The default when no public URL is configured, often browsed over plain HTTP.
+        ("https://localhost", false),
+    ] {
+        let app = TestApp::with_config(|config| config.public_url = public_url.into()).await;
+        let response = app.get("/").await;
+        let cookie = response
+            .headers
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .find(|value| value.starts_with("the_gathering_session="))
+            .unwrap_or_else(|| panic!("no session cookie for {public_url}"));
+        let attributes: Vec<&str> = cookie.split(';').map(str::trim).collect();
+        assert_eq!(
+            attributes.contains(&"Secure"),
+            secure,
+            "{public_url}: {cookie}"
+        );
+        assert!(attributes.contains(&"HttpOnly"), "{public_url}: {cookie}");
+    }
+}
+
+#[tokio::test]
 async fn head_requests_are_answered_like_gets_without_a_body() {
     let app = TestApp::new().await;
     for path in ["/", "/api/health"] {

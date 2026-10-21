@@ -142,6 +142,7 @@ Requirements: Docker with Compose.
    ```
 
 The app listens on port 4000 and stores its SQLite database and files under `./data` (mounted at `/data`). Back up that directory to back up everything. TLS is left to your reverse proxy.
+When `THE_GATHERING_PUBLIC_URL` is an `https://` address (other than `localhost`), the session cookie is marked `Secure`, so browsers send it only over HTTPS and signing in over plain `http://<host>:4000` stops working; use the public address. HSTS (`Strict-Transport-Security`) belongs on the reverse proxy that terminates TLS, so enable it there, and keep port 4000 off the public network.
 
 Health check: `GET /api/health` returns `{"status":"ok"}` when the database is reachable.
 
@@ -345,7 +346,7 @@ reported in the response's `errors`.
 | `THE_GATHERING_SECRET_KEY` | required | Encrypts the session cookie, socket tokens, stored ManaVault API keys, and the OpenRouter API key. At least 64 bytes; keep it when upgrading, or stored keys stop decrypting. Releases up to 0.2 called it `SECRET_KEY_BASE`, which still works and logs a warning. |
 | `DATA_DIR` | `/data` | Where the database, uploaded files, and the `cardid/` recognizer bundles live. |
 | `DATABASE_PATH` | `$DATA_DIR/the_gathering.db` | SQLite database file. |
-| `THE_GATHERING_PUBLIC_URL` | `https://localhost` | Origin users reach the app at (scheme, host, and a non-default port), used for generated links and the Discord OAuth redirect. Replaces `PHX_SCHEME`, `PHX_HOST`, and `PHX_URL_PORT`, which still work and log a warning. |
+| `THE_GATHERING_PUBLIC_URL` | `https://localhost` | Origin users reach the app at (scheme, host, and a non-default port), used for generated links and the Discord OAuth redirect. An `https://` origin other than `localhost` also marks the session cookie `Secure`. Replaces `PHX_SCHEME`, `PHX_HOST`, and `PHX_URL_PORT`, which still work and log a warning. |
 | `PORT` | `4000` | Port the server binds inside the container. |
 | `TRUST_PROXY_HEADERS` | unset | Set to `true` behind a reverse proxy so rate limiting identifies clients by `x-real-ip` / `x-forwarded-for` instead of the proxy address. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, or `error`. `debug` explains why the Discord bot ignored a message. |

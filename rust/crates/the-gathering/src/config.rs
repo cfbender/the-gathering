@@ -767,6 +767,16 @@ impl Config {
         &self.public_url
     }
 
+    /// Whether the session cookie is `Secure`: the public URL is `https` on a real host.
+    ///
+    /// `https://localhost` is excluded because it is the default when no public URL is
+    /// configured, and such installs are often browsed over plain HTTP at the server's
+    /// address, where browsers would drop a `Secure` cookie and nobody could sign in.
+    pub fn secure_cookies(&self) -> bool {
+        url::Url::parse(&self.public_url)
+            .is_ok_and(|url| url.scheme() == "https" && url.host_str() != Some("localhost"))
+    }
+
     /// `priv/static`.
     pub fn static_dir(&self) -> PathBuf {
         self.priv_dir.join("static")
