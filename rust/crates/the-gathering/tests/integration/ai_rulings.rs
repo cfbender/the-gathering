@@ -472,8 +472,8 @@ async fn answers_with_rules_and_cards_the_model_looked_up() {
     let requests = server.received_requests().await.unwrap();
     let first: Value = serde_json::from_slice(&requests[0].body).unwrap();
     assert_eq!(first["model"], "test/model");
-    // The first round must look something up; later rounds may answer.
-    assert_eq!(first["tool_choice"], "required");
+    // Some providers accept only the default tool choice, so none is sent.
+    assert!(first.get("tool_choice").is_none());
     assert_eq!(requests[0].headers["authorization"], "Bearer sk-or-test");
     let messages = first["messages"].as_array().unwrap();
     // Cache breakpoints follow the system prompt and the newest message only.
@@ -717,6 +717,57 @@ async fn disconnecting_mid_answer_still_counts_against_the_limit() {
 
     let body = app.post("/api/ai-rulings", ask).await.assert_json(429);
     assert_eq!(body["errors"]["code"], "ai_budget_exhausted");
+}
+
+#[tokio::test]
+async fn tool_calls_past_the_round_limit_are_refused_then_fail_the_question() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/chat/completions"))
+        .respond_with(completion(
+            &json!({
+                "role": "assistant",
+                "content": null,
+                "tool_calls": [
+                    { "id": "call-1", "type": "function", "function": { "name": "get_rules", "arguments": "{\"numbers\":[\"702.19c\"]}" } },
+                ],
+            }),
+            0.001,
+        ))
+        .mount(&server)
+        .await;
+    let app = app(&server).await;
+    install_rules(&app).await;
+    configure(&app, None).await;
+    let member = app.unique_member().await;
+    app.log_in(&member).await;
+
+    let body = app
+        .post(
+            "/api/ai-rulings",
+            json!({ "question": "Does trample work with deathtouch?" }),
+        )
+        .await;
+    let body = body.assert_json(502);
+    assert_eq!(
+        body["errors"]["detail"],
+        "The model kept calling tools instead of answering."
+    );
+    // Eight rounds run the tools, the ninth is refused, and the tenth gives up.
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 10);
+    let last: Value = serde_json::from_slice(&requests[9].body).unwrap();
+    assert!(last.get("tool_choice").is_none());
+    let messages = last["messages"].as_array().unwrap();
+    let refused = messages.last().unwrap()["content"][0]["text"]
+        .as_str()
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(refused).unwrap(),
+        json!({ "error": "No more tool calls are allowed. Answer now from the results you already have." })
+    );
+    let ran = messages[messages.len() - 3]["content"].as_str().unwrap();
+    assert!(ran.contains("702.19c"), "{ran}");
 }
 
 #[tokio::test]

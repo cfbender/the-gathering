@@ -20,6 +20,9 @@ const COMPLETION_TIMEOUT: Duration = Duration::from_secs(120);
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 /// Room for reasoning and the answer.
 const MAX_TOKENS: u32 = 16_000;
+/// The tool result for calls past a conversation's round limit.
+const TOOL_LIMIT_REACHED: &str =
+    "No more tool calls are allowed. Answer now from the results you already have.";
 
 /// An OpenRouter account and model.
 #[derive(Clone, Copy, Debug)]
@@ -302,9 +305,10 @@ impl Client<'_> {
     }
 
     /// Runs the conversation: each round sends `messages`, runs the tools the model calls
-    /// with `call`, and appends the results, until the model answers. The first round must
-    /// call a tool, so the answer rests on what the tools return rather than the model's
-    /// memory; after `max_rounds` rounds of tool calls the model must answer without tools.
+    /// with `call`, and appends the results, until the model answers. Requests leave
+    /// `tool_choice` at its default, the only value some providers accept, so the prompt asks
+    /// for lookups; after `max_rounds` rounds of tool calls, further calls get a result telling
+    /// the model to answer, and a model that keeps calling tools after that fails.
     /// Adds what every request cost to `usage`, including requests before a failure.
     pub async fn converse<F, Fut>(
         &self,
@@ -318,24 +322,14 @@ impl Client<'_> {
         F: FnMut(ToolCall) -> Fut,
         Fut: Future<Output = Value>,
     {
-        for round in 0..=max_rounds {
-            let mut body = json!({
+        for round in 0..=max_rounds + 1 {
+            let body = json!({
                 "model": self.model,
                 "session_id": self.session_id,
                 "messages": with_cache_breakpoints(&messages),
                 "tools": tools,
                 "max_tokens": MAX_TOKENS,
             });
-            let tool_choice = if round == max_rounds {
-                Some("none")
-            } else if round == 0 {
-                Some("required")
-            } else {
-                None
-            };
-            if let (Some(tool_choice), Some(body)) = (tool_choice, body.as_object_mut()) {
-                body.insert("tool_choice".into(), json!(tool_choice));
-            }
             let response = self.post(&body, usage).await?;
             let message = response
                 .get("choices")
@@ -344,7 +338,7 @@ impl Client<'_> {
                 .cloned()
                 .ok_or_else(|| ChatError("OpenRouter sent no answer.".to_owned()))?;
             let calls = tool_calls(&message);
-            if calls.is_empty() || round == max_rounds {
+            if calls.is_empty() {
                 let content = message
                     .get("content")
                     .and_then(Value::as_str)
@@ -360,12 +354,19 @@ impl Client<'_> {
                     model: model.to_owned(),
                 });
             }
+            if round > max_rounds {
+                break;
+            }
             // The assistant turn goes back as sent (with any reasoning), then each result.
             messages.push(message);
             for tool_call in calls {
                 let id = tool_call.id.clone();
                 let name = tool_call.name.clone();
-                let result = call(tool_call).await;
+                let result = if round == max_rounds {
+                    json!({ "error": TOOL_LIMIT_REACHED })
+                } else {
+                    call(tool_call).await
+                };
                 messages.push(json!({
                     "role": "tool",
                     "tool_call_id": id,
@@ -374,6 +375,8 @@ impl Client<'_> {
                 }));
             }
         }
-        Err(ChatError("The model did not finish its answer.".to_owned()))
+        Err(ChatError(
+            "The model kept calling tools instead of answering.".to_owned(),
+        ))
     }
 }
