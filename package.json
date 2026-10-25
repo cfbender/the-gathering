@@ -48,10 +48,10 @@
     "daisyui": "^5.7.47",
     "jsdom": "^30.1.1",
     "tailwindcss": "^4.3.3",
-    "vite": "npm:@voidzero-dev/vite-plus-core@^1.0.0",
-    "vite-plus": "^1.0.0"
+    "vite": "npm:@voidzero-dev/vite-plus-core@^1.4.0",
+    "vite-plus": "^1.4.0"
   },
   "overrides": {
-    "vite": "npm:@voidzero-dev/vite-plus-core@^1.0.0"
+    "vite": "npm:@voidzero-dev/vite-plus-core@^1.4.0"
   }
 }
