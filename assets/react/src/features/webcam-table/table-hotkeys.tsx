@@ -73,6 +73,22 @@ export const TABLE_HOTKEYS = [
     description: "Add 2 tax to your primary commander.",
   },
   {
+    keys: ["-"],
+    chips: ["-"],
+    action: "loseCounter",
+    section: "Turn & counters",
+    title: "Decrease last counter",
+    description: "Subtract 1 from the custom counter you last created or changed.",
+  },
+  {
+    keys: ["=", "+"],
+    chips: ["="],
+    action: "gainCounter",
+    section: "Turn & counters",
+    title: "Increase last counter",
+    description: "Add 1 to the custom counter you last created or changed.",
+  },
+  {
     keys: ["c"],
     chips: ["C"],
     action: "camera",
@@ -151,6 +167,14 @@ export const TABLE_HOTKEYS = [
     section: "View & panels",
     title: "Grid view",
     description: "Switch between all cameras and following the active turn.",
+  },
+  {
+    keys: ["f"],
+    chips: ["F"],
+    action: "followTurn",
+    section: "View & panels",
+    title: "Follow turn",
+    description: "Release a pinned board and follow the active turn, leaving grid view.",
   },
   {
     keys: ["?", "h"],

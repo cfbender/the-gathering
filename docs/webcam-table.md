@@ -480,9 +480,12 @@ board is large, everyone else is small, and controls live in a collapsible colum
   `Space` passes the turn after the match starts and `Shift+Space` un-passes it; `↑` / `↓` gains/loses one life and
   `Shift+↑` / `Shift+↓` gains/loses ten life (always your own seat). `[` / `]` subtracts/adds
   two commander tax by changing your primary commander's cast count by one; partner commanders
-  retain individual counter rows. `C` toggles your camera, `B` collapses/expands the panel,
+  retain individual counter rows. `-` / `=` (or `+`) subtracts/adds one on the custom counter
+  (Trackers) you last created or changed, falling back to the newest one. `C` toggles your
+  camera, `B` collapses/expands the panel,
   `T` / `D` / `A` / `L` / `S` opens Table / Decks / Cards / Log / Settings, and `,` / `.`
-  soft-pins the previous/next board, and `G` toggles grid view. `?` or `H` toggles the grouped
+  soft-pins the previous/next board, `G` toggles grid view, and `F` releases any pin and
+  follows the active turn (leaving grid view). `?` or `H` toggles the grouped
   shortcut dialog.
   All table actions, including Space, honor the enable preference and pause while typing,
   using a keyboard widget, or while an overlay/picker is open. Ctrl/Alt/Meta, composing and

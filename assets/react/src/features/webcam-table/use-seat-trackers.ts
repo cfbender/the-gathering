@@ -30,6 +30,7 @@ export function useSeatTrackers(link: RoomLink, roomId: string, playerId: number
   const key = storageKey(roomId, playerId)
   const [trackers, setTrackersState] = useState(() => load(key))
   const trackersRef = useRef(trackers)
+  const lastCounterRef = useRef<string | null>(null)
 
   const publish = useCallback(
     (next: SeatTrackers) => {
@@ -44,6 +45,9 @@ export function useSeatTrackers(link: RoomLink, roomId: string, playerId: number
       const previous = trackersRef.current
       const next = typeof update === "function" ? update(previous) : update
       if (next === previous) return
+      // Edits replace only the counter they touch, so a new object is a created or changed one.
+      const touched = next.counters.find((counter) => !previous.counters.includes(counter))
+      if (touched) lastCounterRef.current = touched.id
       trackersRef.current = next
       setTrackersState(next)
       try {
@@ -71,6 +75,13 @@ export function useSeatTrackers(link: RoomLink, roomId: string, playerId: number
     setTrackers,
     adjustCounter: (id: string, delta: number) =>
       setTrackers((current) => adjustCounter(current, id, delta)),
+    /** Adjusts the counter created or changed most recently, else the newest one. */
+    adjustLastCounter: (delta: number) => {
+      const { counters } = trackersRef.current
+      const counter =
+        counters.find((candidate) => candidate.id === lastCounterRef.current) ?? counters.at(-1)
+      if (counter) setTrackers((current) => adjustCounter(current, counter.id, delta))
+    },
     bindChannel,
     /** Re-sends the shared subset after a (re)join so the room has this browser's copy. */
     publish: () => publish(trackersRef.current),

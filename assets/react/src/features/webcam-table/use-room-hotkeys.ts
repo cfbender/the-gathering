@@ -45,6 +45,10 @@ export function useRoomHotkeys(
           )
         return
       }
+      case "gainCounter":
+        return room.trackers.adjustLastCounter(1)
+      case "loseCounter":
+        return room.trackers.adjustLastCounter(-1)
       case "camera":
         return view.toggleCamera()
       case "panel":
@@ -53,6 +57,10 @@ export function useRoomHotkeys(
         return panel.openHelp()
       case "grid":
         return preferences.update({ viewMode: preferences.viewMode === "grid" ? "follow" : "grid" })
+      case "followTurn":
+        view.releaseBoard()
+        if (preferences.viewMode !== "follow") preferences.update({ viewMode: "follow" })
+        return
       case "dismiss":
         return flow.dismissPicker()
       case "previous":

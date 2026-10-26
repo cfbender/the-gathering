@@ -32,8 +32,12 @@ describe("table hotkeys", () => {
       ["s", "settings"],
       ["[", "loseTax"],
       ["]", "gainTax"],
+      ["-", "loseCounter"],
+      ["=", "gainCounter"],
+      ["+", "gainCounter"],
       [",", "previous"],
       [".", "next"],
+      ["F", "followTurn"],
       ["?", "help"],
       ["H", "help"],
     ]) {
@@ -99,6 +103,7 @@ describe("table hotkeys", () => {
     expect(tableHotkeyAction(key(" ", { shiftKey: true }), context)).toBe("unpassTurn")
     expect(tableHotkeyAction(key("ArrowUp", { shiftKey: true }), context)).toBe("gainTenLife")
     expect(tableHotkeyAction(key("ArrowDown", { shiftKey: true }), context)).toBe("loseTenLife")
+    expect(tableHotkeyAction(key("+", { shiftKey: true }), context)).toBe("gainCounter")
     const target = document.createElement("input")
     target.type = "search"
     for (const input of ["ArrowUp", "ArrowDown", " "]) {
