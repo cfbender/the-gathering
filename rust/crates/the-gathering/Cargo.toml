@@ -23,9 +23,17 @@ bytes = "1"
 chacha20poly1305 = "0.10"
 csv = "1"
 eetf = "0.10"
-futures-util = "0.3"
+futures-util = { version = "0.3", features = ["channel"] }
 hmac = "0.12"
 http = "1"
+# Not used directly. The dev-dependencies (wiremock, tempfile) enable these features, and
+# Cargo unifies features per build, so without them `cargo test` recompiles axum, reqwest,
+# lotus, and this crate a second time instead of reusing the `cargo build` artifacts. Keep
+# them matched to the dev-dependencies: `cargo tree -e normal,build` and
+# `cargo tree -e normal,build,dev` should list the same features for shared crates.
+bitflags = { version = "2", features = ["std"] }
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["http2"] }
 ipnet = "2"
 jiff = { version = "0.2", features = ["tzdb-bundle-always"] }
 memchr = "2"

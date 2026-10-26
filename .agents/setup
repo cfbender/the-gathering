@@ -159,9 +159,12 @@ run_step "Installing JavaScript dependencies" \
 
 # Build the server and its tests against the committed sqlx metadata so the first
 # `mise run dev` / `mise run test` starts quickly. This stays incremental (unlike CI and the
-# release builds): it is the cache the next edit-and-build in this orb reuses.
+# release builds): it is the cache the next edit-and-build in this orb reuses. Building the
+# tests also builds rust/target/debug/the-gathering, and because the server's dependencies
+# carry the dev-dependencies' features (crates/the-gathering/Cargo.toml), `cargo build`
+# reuses these artifacts instead of compiling them again.
 run_step "Building the Rust server and tests" \
-  bash -c 'cd rust && mise exec -- cargo build --locked --bin the-gathering && mise exec -- cargo test --locked --no-run'
+  bash -c 'cd rust && mise exec -- cargo test --locked --no-run'
 
 run_step "Migrating and seeding the development database" \
   env THE_GATHERING_ENV=dev bash -c 'rust/target/debug/the-gathering migrate && rust/target/debug/the-gathering seed'

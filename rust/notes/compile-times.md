@@ -40,6 +40,14 @@ one constant to `crates/the-gathering/src/games/color_identity.rs`. Times are wa
   edit-then-test win and the target-size drop. The tests now run in parallel in one process.
   The one test that installed its own global log subscriber now uses the shared per-thread
   `support::capture_logs()`.
+- **Shared features for build and test:** wiremock and tempfile enabled extra features of
+  hyper (HTTP/2), hyper-util, futures-util, and bitflags in test builds only, so `cargo test`
+  recompiled about 30 dependencies (axum, reqwest, lotus, socketioxide) and the server crate
+  that `cargo build` had already built. The server now enables those features itself, and
+  `.agents/setup` runs only `cargo test --no-run`, which also builds the server binary. On a
+  4-core orb the cold setup build went from 337 s (build, then test) to about 260 s, and
+  `rust/target` from 3.8 GB to 2.9 GB. A side effect: the release server also accepts
+  cleartext HTTP/2 (h2c), as the test server already did.
 
 ## Why the server is still one crate
 
