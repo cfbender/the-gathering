@@ -567,8 +567,9 @@ mise run rust:sqlx-prepare             # after a migration or a query change
 
 Layout: `rust/` (server, with the SQL migrations in `rust/migrations`), `assets/react`
 (frontend), `priv/static` (static files). The version lives in `rust/crates/the-gathering/Cargo.toml`
-and `package.json`; releases are cut by tagging `vX.Y.Z`. See [`AGENTS.md`](AGENTS.md) for
-conventions.
+and `package.json`; releases are cut with `mise run release -- major|minor|patch`, which updates
+[`CHANGELOG.md`](CHANGELOG.md) and tags `vX.Y.Z` (see [`docs/releasing.md`](docs/releasing.md)).
+See [`AGENTS.md`](AGENTS.md) for conventions.
 
 ## License
 

@@ -28,6 +28,7 @@ mise run rust:check                    # schema dump check, cargo fmt --check, c
 mise run precommit                     # rust:check + aube run precommit
 mise run rust:new-migration add_thing  # creates rust/migrations/<UTC timestamp>_add_thing.sql
 mise run rust:sqlx-prepare             # rebuild rust/schema.sql and rust/.sqlx after a schema or query change
+mise run release -- major|minor|patch  # git-cliff CHANGELOG.md, version bump, tag, push (docs/releasing.md)
 ```
 
 Run cargo directly in `rust/` with `mise exec -- cargo ...`. While developing Rust code, check queries against the schema directly: `mise run rust:schema`, then in `rust/` export `SQLX_OFFLINE=false DATABASE_URL="sqlite://$PWD/target/schema.db?mode=ro"`.

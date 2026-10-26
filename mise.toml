@@ -1,5 +1,6 @@
 [tools]
 aube = "2.8.1"
+git-cliff = "latest"
 node = "26.9.0"
 # The minimal profile skips rust-docs (about 900 MB, slow to unpack and snapshot).
 rust = { version = "1.99.0", profile = "minimal", components = "clippy,rustfmt" }
@@ -25,6 +26,24 @@ run = "bash rust/scripts/dev.sh"
 description = "Run the Rust test suite."
 dir = "rust"
 run = "cargo test --locked"
+
+[tasks.changelog]
+description = "Generate CHANGELOG.md for the next major/minor/patch version."
+usage = '''
+arg "<part>" help="Version part to bump" {
+  choices "major" "minor" "patch"
+}
+'''
+run = "bash ./scripts/changelog.sh ${usage_part?}"
+
+[tasks.release]
+description = "Generate the changelog, then tag, push, and publish the next major/minor/patch version."
+usage = '''
+arg "<part>" help="Version part to bump" {
+  choices "major" "minor" "patch"
+}
+'''
+run = ["bash ./scripts/changelog.sh ${usage_part?}", "bash ./scripts/bump.sh ${usage_part?}"]
 
 [tasks.precommit]
 description = "Run tests and linting before committing code."
