@@ -95,7 +95,8 @@ export function RulingsTab({ roomId, tableCards }: RulingsTabProps) {
       writeConversation(roomId, [...readConversation(roomId), turn])
       return turn
     },
-    onSuccess: () => setQuestion(""),
+    // Put a failed question back so it can be retried, unless a new one was started.
+    onError: (_error, text) => setQuestion((current) => current || text),
     onSettled: () => {
       setTurns(readConversation(roomId))
       void queryClient.invalidateQueries({ queryKey: rulingStatusKey })
@@ -113,7 +114,10 @@ export function RulingsTab({ roomId, tableCards }: RulingsTabProps) {
   function submit(event?: FormEvent) {
     event?.preventDefault()
     const text = question.trim()
-    if (text && pending.length === 0) ask.mutate(text)
+    if (text && pending.length === 0) {
+      setQuestion("")
+      ask.mutate(text)
+    }
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {

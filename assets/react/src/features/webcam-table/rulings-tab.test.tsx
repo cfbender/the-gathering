@@ -77,6 +77,10 @@ it("asks with the table's cards and earlier turns, and keeps the conversation", 
 
   // The table's cards are sent only after opting in.
   ask("Deathtouch and trample?")
+  // The box clears as soon as the question is sent, before the answer arrives.
+  expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Rules question" }).value).toBe(
+    "",
+  )
   expect((await screen.findByText("Answer 1.")).tagName).toBe("STRONG")
   expect(bodies[0]).toEqual({ question: "Deathtouch and trample?", history: [], cards: [] })
   // Card names render as hover targets, bracketed or not, without literal brackets.
@@ -112,6 +116,10 @@ it("asks with the table's cards and earlier turns, and keeps the conversation", 
   ask("One more?")
   expect((await screen.findByRole("alert")).textContent).toBe(
     "You have used this month's $2.00 of AI rulings.",
+  )
+  // A failed question goes back in the box for a retry.
+  expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Rules question" }).value).toBe(
+    "One more?",
   )
 
   fireEvent.click(screen.getByRole("button", { name: /New conversation/ }))
