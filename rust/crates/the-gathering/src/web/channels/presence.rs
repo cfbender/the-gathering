@@ -84,25 +84,45 @@ impl Presence {
         self.0.leaves.subscribe()
     }
 
-    /// `owner` is present on `topic` under `key` with `meta`.
+    /// `owner` is present on `topic` under `key` with `meta` (replacing its earlier meta there).
     pub fn track(&self, topic: &str, owner: u64, key: &str, meta: Value) {
         let mut topics = self.topics();
-        topics
+        let entries = topics
             .entry(topic.to_owned())
             .or_default()
             .entry(key.to_owned())
-            .or_default()
-            .push(Tracked { owner, meta });
+            .or_default();
+        match entries.iter_mut().find(|entry| entry.owner == owner) {
+            Some(tracked) => tracked.meta = meta,
+            None => entries.push(Tracked { owner, meta }),
+        }
         self.publish(&topics, topic);
     }
 
-    /// Replaces `owner`'s meta under `key`. Untracked keys are ignored.
+    /// Everything `from` tracks now belongs to `to`, unchanged and without a roster: the same
+    /// seat on a new connection, which tracks (and so publishes) itself next. Its keys never
+    /// leave in between.
+    pub fn transfer(&self, from: u64, to: u64) {
+        let mut topics = self.topics();
+        for entry in topics
+            .values_mut()
+            .flat_map(|keys| keys.values_mut())
+            .flatten()
+        {
+            if entry.owner == from {
+                entry.owner = to;
+            }
+        }
+    }
+
+    /// Replaces `owner`'s meta under `key`. Untracked keys and unchanged metas are ignored.
     pub fn update(&self, topic: &str, owner: u64, key: &str, meta: Value) {
         let mut topics = self.topics();
         let Some(tracked) = topics
             .get_mut(topic)
             .and_then(|keys| keys.get_mut(key))
             .and_then(|entries| entries.iter_mut().find(|entry| entry.owner == owner))
+            .filter(|entry| entry.meta != meta)
         else {
             return;
         };

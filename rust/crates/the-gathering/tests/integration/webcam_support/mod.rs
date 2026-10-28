@@ -357,8 +357,8 @@ impl Client {
         assert_eq!(status, "ok");
     }
 
-    /// Closes the WebSocket.
-    pub fn close(self) {
+    /// Closes the WebSocket without leaving the table.
+    pub fn close(&self) {
         let _ = self.out.send(Message::Close(None));
     }
 

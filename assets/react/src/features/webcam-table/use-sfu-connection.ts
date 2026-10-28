@@ -375,7 +375,13 @@ export function useSfuConnection(
   /** Opens this seat's connection: its camera (or nothing, for a spectator) offered to the
    * server, which answers and then offers back every other board as it appears. */
   const connect = useCallback(() => {
-    if (connectionRef.current) return
+    if (connectionRef.current) {
+      // A resumed join keeps the connection, but layer requests made while the socket was
+      // down were dropped with it: ask for every board's layer again.
+      requestedLayersRef.current.clear()
+      updateLayers()
+      return
+    }
     const pc = new RTCPeerConnection({ iceServers: iceServersRef.current })
     const media = stream()
     let sender: RTCRtpSender | null = null
@@ -455,7 +461,14 @@ export function useSfuConnection(
       if (connectionRef.current === connection && !pc.remoteDescription)
         setError("Could not connect to the table's video server.")
     })
-  }, [flushCandidates, link, negotiate, pushOffer, refreshVideo, setError, stream])
+  }, [flushCandidates, link, negotiate, pushOffer, refreshVideo, setError, stream, updateLayers])
+
+  /** Whether the connection is established enough for a socket reconnect to resume it
+   * rather than start over. */
+  const resumable = useCallback(() => {
+    const pc = connectionRef.current?.pc
+    return !!pc?.remoteDescription && pc.connectionState !== "closed"
+  }, [])
 
   /** A server offer: boards added or removed. Answered in order behind earlier steps. */
   const receiveOffer = useCallback(
@@ -614,6 +627,7 @@ export function useSfuConnection(
     listen,
     send,
     connect,
+    resumable,
     receiveOffer,
     receiveCandidate,
     receivePeerMessage,

@@ -42,10 +42,17 @@ export interface RoomChannelHandlers {
   /** Every successful (re)join, after `link.spectator` is set. `owner` is the server's
    * decision that this seat holds the table controls (room creator or an admin). */
   onJoined: (participant: TableParticipant | undefined, owner: boolean) => void
-  /** The seat is about to rejoin after a drop; `link.peerId` is already a new media
-   * generation. Runs when the rejoin is sent, not when the connection drops, so a brief drop
-   * leaves the table on screen as it was. */
+  /** Whether this seat's media connection is worth keeping across a socket reconnect: the
+   * rejoin then reuses the peer id so the server can hand the connection back. */
+  canResume: () => boolean
+  /** This seat's media connection is starting over: after a drop the server asked for (with
+   * `link.peerId` already a new media generation), or after a resume the server could not
+   * honor. Runs when the rejoin is sent or answered, not when the connection drops, so a
+   * brief drop leaves the table on screen as it was. */
   onChannelError: () => void
+  /** The server told this seat its connection is struggling (it reconnected, or its media
+   * stopped getting through). */
+  onUnhealthy: (reason: string) => void
   /** The room owner ended the table; the channel and socket are already closed. */
   onClosed: () => void
   onRemoved: () => void
@@ -56,6 +63,8 @@ interface JoinReply {
   participant?: TableParticipant
   owner?: boolean
   can_moderate?: boolean
+  /** The server kept this peer id's media connection (a socket reconnect it resumed). */
+  resumed?: boolean
 }
 
 /** The table socket, this seat's channel, and the presence roster for one seat. */
@@ -144,12 +153,16 @@ export function useRoomChannel(
           if (current.active) void refreshToken()
           else reconnect()
         })
-        // Set when the seat drops. The next join starts a new media generation: a retry that
-        // reused the peer ID could leave this browser offering to the old connection.
+        // Set when the server drops the seat. The next join starts a new media generation: a
+        // retry that reused the peer ID could leave this browser offering to the old connection.
         let dropped = false
+        // Set when only the socket dropped. The next join keeps the peer ID, and the server
+        // hands this seat's connection, presence and media back, so the table sees nothing.
+        let resuming = false
         const room = new TableChannel(socket, () => {
           if (dropped) {
             dropped = false
+            resuming = false
             link.peerId = crypto.randomUUID()
             on().onChannelError()
           }
@@ -175,6 +188,9 @@ export function useRoomChannel(
         room.on("peer_message", (payload: { from: string; message: unknown }) =>
           on().onPeerMessage(payload),
         )
+        room.on("connection_unhealthy", ({ reason }: { reason: string }) =>
+          on().onUnhealthy(reason),
+        )
         // The owner ended the table; the server ends this seat's channel right after.
         room.on("table_closed", () => {
           room.leave()
@@ -198,13 +214,23 @@ export function useRoomChannel(
           socket?.disconnect()
         })
         room.onError((reason) => {
-          console.warn("Table channel error; rejoining with a new seat connection", reason)
-          dropped = true
+          if (reason === "disconnected" && on().canResume()) {
+            console.warn("Table socket dropped; rejoining to resume this seat")
+            resuming = true
+          } else {
+            console.warn("Table channel error; rejoining with a new seat connection", reason)
+            dropped = true
+          }
           on().setStatus("Reconnecting… Your game is saved.")
         })
         room
           .join()
-          .receive("ok", ({ participant, owner = false, can_moderate = false }: JoinReply) => {
+          .receive("ok", (reply: JoinReply) => {
+            const { participant, owner = false, can_moderate = false, resumed = false } = reply
+            // The server no longer had this seat's media connection: start a new one under
+            // the same peer ID (queued signals for the old one were dropped with the socket).
+            if (resuming && !resumed) on().onChannelError()
+            resuming = false
             on().setError(null)
             setCanModerate(can_moderate)
             link.spectator = participant?.spectator ?? false

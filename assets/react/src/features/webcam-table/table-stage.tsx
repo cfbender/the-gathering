@@ -26,6 +26,21 @@ import {
 import type { CardIdentificationFlow } from "./use-card-identification-flow"
 import type { useVideoStats } from "./video-stats"
 
+/** A quiet note, shown only to this player, that their own connection is struggling. */
+export function ConnectionWarning({ reason }: { reason: string }) {
+  return (
+    <p
+      role="status"
+      className="pointer-events-none absolute right-2 bottom-14 z-20 flex items-center gap-1.5 rounded-full bg-black/70 px-2.5 py-1 text-xs text-warning"
+    >
+      <TriangleAlert className="size-3.5" aria-hidden="true" />
+      {reason === "reconnected"
+        ? "Your connection dropped and reconnected"
+        : "Your connection is unstable"}
+    </p>
+  )
+}
+
 function StageBoard({
   view,
   participant,
@@ -287,6 +302,7 @@ export function TableStage({
         )}
         <IdentificationOverlays view={view} flow={flow} />
         <StartOverlay view={view} />
+        {room.unhealthy && <ConnectionWarning reason={room.unhealthy} />}
       </div>
     </section>
   )

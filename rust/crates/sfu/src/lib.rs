@@ -121,6 +121,9 @@ pub enum SfuEvent {
     Candidate(Value),
     /// Push `peer_message` with this payload (another seat addressed this one).
     PeerMessage(Value),
+    /// The seat's media connection stopped getting through (ICE disconnected or restarted);
+    /// the browser shows its player a connection warning.
+    Unhealthy,
     /// The media connection failed or crashed; the channel stops with an error so the
     /// client rejoins under a new peer id.
     Down(String),
@@ -233,6 +236,29 @@ impl Sfu {
             },
             false,
         );
+    }
+
+    /// Moves `peer_id`'s connection to a new channel's `events`, when the same browser joins
+    /// again on a new socket while its media connection is still up. Its connection, layers
+    /// and everyone's subscription to its video are kept; an offer it has not answered is
+    /// sent again. Returns false (and changes nothing) when the peer has no connection here.
+    /// The earlier channel's receiver closes once the SFU lets go of its sender.
+    pub async fn resume(
+        &self,
+        room_id: &str,
+        peer_id: &str,
+        events: mpsc::UnboundedSender<SfuEvent>,
+    ) -> bool {
+        let (reply, response) = oneshot::channel();
+        let command = Command::Resume {
+            peer: PeerId::from(peer_id),
+            events,
+            reply,
+        };
+        if self.send(&RoomId::from(room_id), command, false).is_err() {
+            return false;
+        }
+        response.await.unwrap_or(false)
     }
 
     /// Applies the browser's initial offer and returns the answer SDP.
@@ -517,6 +543,8 @@ mod tests {
         let (events, _receiver) = mpsc::unbounded_channel();
         assert_send(&sfu.join("r", "p", false, events));
         assert_send(&sfu.leave("r", "p"));
+        let (events, _receiver) = mpsc::unbounded_channel();
+        assert_send(&sfu.resume("r", "p", events));
         assert_send(&sfu.offer("r", "p", ""));
         assert_send(&sfu.answer("r", "p", ""));
         assert_send(&sfu.candidate("r", "p", &Value::Null));

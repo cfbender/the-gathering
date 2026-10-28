@@ -9,7 +9,9 @@
 //! * Table broadcasts go to the Socket.IO room named after the table's topic, and every presence
 //!   change sends the room the full roster ([`presence`]).
 //! * When a channel fails (its room or SFU connection crashed) the client gets `rejoin` and joins
-//!   again with a new peer id. When the socket disconnects, its channel stops silently.
+//!   again with a new peer id. When the socket disconnects, its channel keeps the seat for the
+//!   reconnect grace, and a join from the same tab (same peer id) resumes it
+//!   ([`webcam_table`]).
 //! * Logging out broadcasts the session's topic on `state.session_disconnects`; sockets opened with
 //!   that session disconnect.
 
@@ -42,6 +44,10 @@ pub const MAX_FRAME_SIZE: usize = 393_216;
 /// Packets queued for one socket before further emits to it are dropped. A table sends bursts
 /// (a join's snapshot, every seat's candidates), so this is well above socketioxide's 128.
 const MAX_BUFFERED_PACKETS: usize = 1_024;
+/// How long the server waits for the browser's PONG. The PING queues behind everything already
+/// sent to the socket, so on a downlink saturated by video it arrives late; socketioxide's 20 s
+/// default dropped such players over and over. Browsers learn this in the handshake.
+const PING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// What a socket token carries.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -94,6 +100,7 @@ pub fn build() -> (SocketIoLayer, SocketIo) {
         .ws_max_frame_size(MAX_FRAME_SIZE)
         .max_payload(u64::try_from(MAX_FRAME_SIZE).unwrap_or(u64::MAX))
         .max_buffer_size(MAX_BUFFERED_PACKETS)
+        .ping_timeout(PING_TIMEOUT)
         .build_layer()
 }
 

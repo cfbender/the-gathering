@@ -282,6 +282,9 @@ pub struct WebcamTableConfig {
     pub turn_username: Option<String>,
     /// TURN credential.
     pub turn_credential: Option<String>,
+    /// How long a seat whose socket went away without leaving stays at the table, so the same
+    /// tab can reconnect and resume it unnoticed. Zero (the test default) ends it at once.
+    pub reconnect_grace: Duration,
 }
 
 /// Cloudflare Realtime TURN key.
@@ -742,6 +745,7 @@ impl Config {
                 turn_urls: vars.split("WEBRTC_TURN_URLS"),
                 turn_username: vars.get("WEBRTC_TURN_USERNAME"),
                 turn_credential: vars.get("WEBRTC_TURN_CREDENTIAL"),
+                reconnect_grace: Duration::from_secs(30),
             },
             cloudflare_turn: CloudflareTurnConfig {
                 key_id: vars.get("CLOUDFLARE_TURN_KEY_ID"),

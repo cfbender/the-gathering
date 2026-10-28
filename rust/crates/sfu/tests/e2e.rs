@@ -166,6 +166,59 @@ async fn a_rejoin_replaces_the_connection_and_a_dropped_channel_counts_as_leavin
     assert_eq!(sfu.offer(ROOM, A, "v=0").await, Err(SfuError::NotJoined));
 }
 
+/// A browser whose socket reconnected keeps its media connection: the new channel gets the
+/// offer the old one never delivered, the old channel's receiver closes, and nobody else is
+/// re-offered anything.
+#[tokio::test]
+async fn a_resumed_seat_keeps_its_connection_and_gets_its_unanswered_offer_again() {
+    let sfu =
+        Sfu::with_host_addresses(settings(53_500, 53_599), vec!["127.0.0.1".parse().unwrap()]);
+    let mut publisher = Box::pin(Client::publisher(&sfu, ROOM, A)).await;
+    let mut viewer = Box::pin(Client::viewer(&sfu, ROOM, B)).await;
+    let mut old_events = viewer.events.take().unwrap();
+    let publisher_events = publisher.events.take().unwrap();
+    let unanswered = next_offer(&mut old_events).await;
+
+    assert!(
+        !sfu.resume(ROOM, "nobody", tokio::sync::mpsc::unbounded_channel().0)
+            .await
+    );
+    assert!(
+        !sfu.resume("no-such-table", B, tokio::sync::mpsc::unbounded_channel().0)
+            .await
+    );
+
+    let (events, mut new_events) = tokio::sync::mpsc::unbounded_channel();
+    assert!(sfu.resume(ROOM, B, events).await);
+    assert_eq!(next_offer(&mut new_events).await, unanswered);
+    let closed = tokio::time::timeout(Duration::from_secs(5), old_events.recv())
+        .await
+        .expect("the old channel closes");
+    assert_eq!(closed, None);
+
+    // The connection is the same one: the re-sent offer is answered on it.
+    let offer =
+        str0m::change::SdpOffer::from_sdp_string(unanswered["sdp"].as_str().unwrap()).unwrap();
+    let answer = viewer.rtc.sdp_api().accept_offer(offer).unwrap();
+    assert_eq!(sfu.answer(ROOM, B, &answer.to_sdp_string()).await, Ok(()));
+
+    // Resuming the publisher changes nothing for its viewer, and dropping the replaced
+    // receiver late does not count as the seat leaving.
+    let (events, _publisher_new) = tokio::sync::mpsc::unbounded_channel();
+    assert!(sfu.resume(ROOM, A, events).await);
+    drop(publisher_events);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        new_events.try_recv().is_err(),
+        "the viewer was not re-offered"
+    );
+    assert_eq!(
+        sfu.layer(ROOM, B, A, "h").await,
+        Ok(()),
+        "the publisher is still at the table"
+    );
+}
+
 async fn next_offer(
     events: &mut tokio::sync::mpsc::UnboundedReceiver<SfuEvent>,
 ) -> serde_json::Value {

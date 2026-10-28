@@ -4,6 +4,12 @@
 //! until it stops. While joined, the socket is in the table topic's Socket.IO room, which carries
 //! the room's broadcasts and presence rosters.
 //!
+//! A socket that goes away without leaving (a stale connection the heartbeat gave up on) keeps
+//! its seat, presence and SFU connection for the configured reconnect grace. When the same tab
+//! joins again with the same peer id, from a new socket or before the old one is noticed, the
+//! new channel resumes all three and the old one stops quietly, so the rest of the table sees
+//! nothing. The join reply's `resumed` says whether the media connection was kept.
+//!
 //! Every event spends a token from the connection's bucket before it is handled, so floods
 //! are refused before they validate, broadcast or write SQLite. Signals have their own,
 //! larger bucket because connecting to a table sends dozens of candidates at once. Joins are
@@ -14,7 +20,7 @@
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use rand::Rng;
 use serde_json::{Map, Value, json};
@@ -71,6 +77,9 @@ static PLAYER_KEY: LazyLock<Regex> = LazyLock::new(|| compile(r"^[1-9][0-9]{0,15
 
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
+/// How long a resumed channel waits for the new one to take its SFU connection over.
+const HANDOVER: Duration = Duration::from_secs(5);
+
 /// Clients generate peer ids with `crypto.randomUUID()`; only that canonical form passes.
 pub fn uuid(value: &str) -> bool {
     UUID.is_match(value)
@@ -90,6 +99,9 @@ enum Stop {
     Error(String),
     /// The socket went away.
     Silent,
+    /// The same tab took the seat over on a new connection, which keeps its presence and SFU
+    /// connection: stop without leaving either or telling the client.
+    Resumed,
 }
 
 impl From<RoomGone> for Stop {
@@ -323,6 +335,10 @@ struct Channel {
     events: TokenBucket,
     signals: TokenBucket,
     joined_at: Instant,
+    /// This join replaced a stale connection of the same tab.
+    reconnected: bool,
+    /// ... and kept its SFU connection, so `after_join` does not open another.
+    media_resumed: bool,
     /// Held until the channel has left the table and its SFU room.
     _claim: TableClaim,
 }
@@ -348,17 +364,23 @@ pub async fn run(
     join: ClientEvent,
     mut client: mpsc::UnboundedReceiver<ClientMsg>,
 ) {
-    let (mut channel, mut inboxes, response) = match Channel::join(&socket, &join.payload).await {
-        Ok(joined) => joined,
-        Err(reply) => {
-            reply.send(join.ack);
-            return;
-        }
-    };
+    let (sfu_tx, mut sfu_rx) = mpsc::unbounded_channel();
+    let (mut channel, mut inboxes, response) =
+        match Channel::join(&socket, &join.payload, &sfu_tx).await {
+            Ok(joined) => joined,
+            Err(reply) => {
+                reply.send(join.ack);
+                return;
+            }
+        };
     Reply::Ok(response).send(join.ack);
 
-    let (sfu_tx, mut sfu_rx) = mpsc::unbounded_channel();
     let mut stop = channel.after_join(sfu_tx).await.err();
+    // Armed when the socket goes away without leaving: the seat stays until a reconnect from
+    // the same tab resumes it or the grace runs out.
+    let grace = tokio::time::sleep(Duration::ZERO);
+    tokio::pin!(grace);
+    let mut socket_gone = false;
     while stop.is_none() {
         // Biased: room, presence and SFU events that arrived before a client event are handled
         // first, in mailbox order.
@@ -384,8 +406,14 @@ pub async fn run(
                 // session.
                 _ => Stop::Error("room_down".into()),
             }),
-            message = client.recv() => match message {
-                None => Err(Stop::Silent),
+            () = &mut grace, if socket_gone => Err(Stop::Silent),
+            message = client.recv(), if !socket_gone => match message {
+                None => {
+                    socket_gone = true;
+                    let wait = channel.socket.state.config.webcam_table.reconnect_grace;
+                    grace.as_mut().reset(tokio::time::Instant::now() + wait);
+                    Ok(())
+                }
                 Some(ClientMsg::Shutdown) => Err(Stop::Close("replaced by a new join on the same socket")),
                 Some(ClientMsg::Event(event)) if event.event == "leave" => {
                     Reply::ok().send(event.ack);
@@ -403,7 +431,16 @@ pub async fn run(
         };
         stop = outcome.err();
     }
-    channel.terminate(stop.unwrap_or(Stop::Silent)).await;
+    let stop = stop.unwrap_or(Stop::Silent);
+    if let Stop::Resumed = stop {
+        // The new channel takes the SFU connection over, and the SFU then drops this channel's
+        // sender. Dropping the receiver before that would count as the seat leaving.
+        let _ =
+            tokio::time::timeout(HANDOVER, async { while sfu_rx.recv().await.is_some() {} }).await;
+    }
+    // Ends this channel's SFU connection unless another channel has resumed it.
+    drop(sfu_rx);
+    channel.terminate(stop);
 }
 
 impl Channel {
@@ -415,7 +452,11 @@ impl Channel {
         &self.socket.state.webcam_tables
     }
 
-    async fn join(socket: &SocketCtx, payload: &Value) -> Result<(Self, Inboxes, Value), Reply> {
+    async fn join(
+        socket: &SocketCtx,
+        payload: &Value,
+        sfu: &mpsc::UnboundedSender<SfuEvent>,
+    ) -> Result<(Self, Inboxes, Value), Reply> {
         let state = &socket.state;
         let user = &socket.user;
         let limits = &state.config.rate_limits;
@@ -465,6 +506,16 @@ impl Channel {
         // never hold table controls.
         let owner = !participant.spectator
             && (user.is_admin() || admitted.snapshot.owner_id == participant.player_id);
+        // The stale connection's presence becomes this one's before it could leave, and its
+        // SFU connection moves here when it is still up.
+        let mut media_resumed = false;
+        if let Some(previous) = admitted.resumed {
+            state.presence.transfer(previous, conn_id);
+            media_resumed = state
+                .sfu
+                .resume(&room_id, &participant.peer_id, sfu.clone())
+                .await;
+        }
 
         // Subscribed before the reply, so no broadcast after the snapshot is missed.
         let topic = webcam::topic(&room_id);
@@ -472,7 +523,7 @@ impl Channel {
         socket.socket.join(topic.clone());
         let response = json!({
             "participant": participant, "table_state": admitted.snapshot, "owner": owner,
-            "can_moderate": owner || user.is_admin(),
+            "can_moderate": owner || user.is_admin(), "resumed": media_resumed,
         });
         let channel = Self {
             socket: socket.clone(),
@@ -484,6 +535,8 @@ impl Channel {
             events: TokenBucket::new(limits.webcam_table_events),
             signals: TokenBucket::new(limits.webcam_table_signals),
             joined_at: Instant::now(),
+            reconnected: admitted.resumed.is_some(),
+            media_resumed,
             _claim: claim,
         };
         Ok((
@@ -531,20 +584,25 @@ impl Channel {
         // Likewise every virtual board; changes follow as `board`.
         let boards = self.tables().boards(&self.room_id).await?;
         self.push("table_boards", &json!({ "boards": boards }));
+        if self.reconnected {
+            self.push("connection_unhealthy", &json!({ "reason": "reconnected" }));
+        }
         // The seat's media connection lives in the SFU; the browser offers once the join
         // reply arrives. A new SFU peer forwards to everyone, so a remembered reveal is
         // reapplied before this channel handles that offer.
         let unavailable = |error| Stop::Error(format!("sfu_unavailable: {error}"));
-        state
-            .sfu
-            .join(
-                &self.room_id,
-                &self.participant.peer_id,
-                self.participant.spectator,
-                sfu,
-            )
-            .await
-            .map_err(unavailable)?;
+        if !self.media_resumed {
+            state
+                .sfu
+                .join(
+                    &self.room_id,
+                    &self.participant.peer_id,
+                    self.participant.spectator,
+                    sfu,
+                )
+                .await
+                .map_err(unavailable)?;
+        }
         state
             .sfu
             .reveal(
@@ -556,13 +614,14 @@ impl Channel {
             .map_err(unavailable)
     }
 
-    async fn terminate(self, stop: Stop) {
+    fn terminate(self, stop: Stop) {
         let state = &self.socket.state;
         let lifetime = self.joined_at.elapsed().as_millis();
         let reason = match &stop {
             Stop::Close(reason) => reason,
             Stop::Error(reason) => reason.as_str(),
             Stop::Silent => "socket closed",
+            Stop::Resumed => "resumed by a new connection from the same tab",
         };
         tracing::info!(
             "Webcam table seat {} (socket {}) left after {lifetime}ms: {reason}",
@@ -570,12 +629,10 @@ impl Channel {
             self.socket.socket.id
         );
         self.socket.socket.leave(self.topic.clone());
-        state.presence.untrack(&self.topic, self.conn_id);
-        state.presence.untrack(LOBBY_TOPIC, self.conn_id);
-        state
-            .sfu
-            .leave(&self.room_id, &self.participant.peer_id)
-            .await;
+        if !matches!(stop, Stop::Resumed) {
+            state.presence.untrack(&self.topic, self.conn_id);
+            state.presence.untrack(LOBBY_TOPIC, self.conn_id);
+        }
         if let Stop::Error(reason) = stop {
             self.push("rejoin", &json!({ "reason": reason }));
         }
@@ -610,6 +667,7 @@ impl Channel {
             SfuEvent::Offer(payload) => self.push("sfu_offer", &payload),
             SfuEvent::Candidate(payload) => self.push("sfu_candidate", &payload),
             SfuEvent::PeerMessage(payload) => self.push("peer_message", &payload),
+            SfuEvent::Unhealthy => self.push("connection_unhealthy", &json!({ "reason": "media" })),
             // The media connection failed or crashed: the client rejoins under a new peer id and
             // negotiates a fresh connection.
             SfuEvent::Down(reason) => return Err(Stop::Error(format!("sfu_down: {reason}"))),
@@ -623,6 +681,7 @@ impl Channel {
                 self.push("seat_replaced", &json!({}));
                 return Err(Stop::Close("the seat was taken by another connection"));
             }
+            ConnEvent::Resumed => return Err(Stop::Resumed),
             ConnEvent::Removed => {
                 self.push("removed", &json!({}));
                 return Err(Stop::Close("removed from the table"));

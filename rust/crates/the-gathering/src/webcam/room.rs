@@ -255,6 +255,9 @@ pub enum RoomExit {
 pub enum ConnEvent {
     /// A newer connection took this seat.
     SeatReplaced,
+    /// The same tab reconnected on a new socket and took this connection's place; the new
+    /// connection takes over its presence and media connection.
+    Resumed,
     /// A host or admin removed this participant.
     Removed,
     /// The seat was knocked out or restored.
@@ -292,6 +295,8 @@ pub struct Admitted {
     pub participant: Seat,
     /// Watches the room for its end.
     pub exit: watch::Receiver<Option<RoomExit>>,
+    /// The connection this join resumed (the same peer id, from a socket that went stale).
+    pub resumed: Option<u64>,
 }
 
 /// Room debugging state (tests).
@@ -1027,7 +1032,7 @@ impl Room {
         let returning = self.connections.contains_key(&participant.player_id)
             || self.departing.contains_key(&participant.player_id);
         self.departing.remove(&participant.player_id);
-        self.replace_connection(conn, &participant);
+        let resumed = self.replace_connection(conn, &participant);
         let entry = if spectator {
             entry
         } else {
@@ -1039,19 +1044,30 @@ impl Room {
             entry.log(vec![log::joined(&participant.player_name)])
         };
         let snapshot = entry.snapshot();
-        self.commit(entry, vec![Broadcast::TableState]).await?;
+        // A resumed connection changes nothing; other seats are not sent the table again.
+        if self.entry.as_ref() != Some(&entry) {
+            self.commit(entry, vec![Broadcast::TableState]).await?;
+        }
         Ok(Admitted {
             snapshot,
             participant,
             exit: self.exit.subscribe(),
+            resumed,
         })
     }
 
-    /// One live connection per player: a reload replaces the older tab.
-    fn replace_connection(&mut self, conn: Conn, participant: &Seat) {
+    /// One live connection per player: a reload replaces the older tab, and the same tab
+    /// reconnecting (same peer id) resumes its connection. Returns the resumed connection's id.
+    fn replace_connection(&mut self, conn: Conn, participant: &Seat) -> Option<u64> {
+        let mut resumed = None;
         if let Some(old) = self.connections.remove(&participant.player_id) {
             self.monitors.remove(&old.monitor);
-            let _ = old.conn.tx.send(ConnEvent::SeatReplaced);
+            if old.peer_id == participant.peer_id {
+                resumed = Some(old.conn.id);
+                let _ = old.conn.tx.send(ConnEvent::Resumed);
+            } else {
+                let _ = old.conn.tx.send(ConnEvent::SeatReplaced);
+            }
         }
         self.next_ref += 1;
         let monitor = self.next_ref;
@@ -1075,6 +1091,7 @@ impl Room {
                 peer_id: participant.peer_id.clone(),
             },
         );
+        resumed
     }
 
     fn down(&mut self, monitor: u64) {
@@ -1196,6 +1213,10 @@ impl Room {
         } else {
             entry.reconcile_turn()
         };
+        // A seat republishes its status when it reconnects; an unchanged one is not news.
+        if self.entry.as_ref() == Some(&entry) {
+            return Ok(true);
+        }
         let events = if old_eliminated_seats == entry.eliminated_seats {
             vec![Broadcast::TableState]
         } else {

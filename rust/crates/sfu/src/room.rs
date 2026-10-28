@@ -48,6 +48,11 @@ const PLI_INTERVAL: Duration = Duration::from_millis(300);
 const ADAPT_INTERVAL: Duration = Duration::from_millis(500);
 const STALE: Duration = Duration::from_millis(500);
 const RECOVERED: Duration = Duration::from_secs(2);
+/// A viewer moved up to a sharper layer than it wants loses nothing by staying there, so it
+/// moves back down only once the wanted layer has been steady this long. Browsers drop the
+/// lowest layer when they scale the camera down for CPU or bandwidth and add it back minutes
+/// later; following every return re-keyframes and resizes the viewer's tile each time.
+const SETTLED: Duration = Duration::from_secs(300);
 
 /// str0m's ICE agent reports `disconnected` as soon as its checks stop succeeding and never
 /// reports `failed`; a connection that has not been connected for this long counts as failed
@@ -90,6 +95,11 @@ pub(crate) enum Command {
     },
     Leave {
         peer: PeerId,
+    },
+    Resume {
+        peer: PeerId,
+        events: mpsc::UnboundedSender<SfuEvent>,
+        reply: oneshot::Sender<bool>,
     },
     Offer {
         peer: PeerId,
@@ -167,6 +177,8 @@ struct LayerSeen {
 /// A server offer the browser has not answered yet.
 struct Negotiation {
     pending: SdpPendingOffer,
+    /// The `sfu_offer` payload, sent again when the seat resumes on a new channel.
+    offer: Value,
     /// Media sections the offer added, by board owner.
     added: Vec<(PeerId, Mid)>,
 }
@@ -369,6 +381,13 @@ impl Room {
                     self.remove_peer(&peer);
                 }
             }
+            Command::Resume {
+                peer,
+                events,
+                reply,
+            } => {
+                let _ = reply.send(self.resume(&peer, events));
+            }
             Command::Offer { peer, sdp, reply } => {
                 let result = self.offer(&peer, &sdp);
                 let _ = reply.send(result);
@@ -420,10 +439,11 @@ impl Room {
                 let _ = reply.send(result);
             }
             Command::ChannelClosed { peer, generation } => {
+                // A resumed seat has a live channel again; only the one it replaced closed.
                 if self
                     .peers
                     .get(&peer)
-                    .is_some_and(|p| p.generation == generation)
+                    .is_some_and(|p| p.generation == generation && p.events.is_closed())
                 {
                     tracing::info!("SFU seat {peer} left table {} (channel closed)", self.id);
                     self.remove_peer(&peer);
@@ -475,17 +495,7 @@ impl Room {
 
         let generation = self.next_generation;
         self.next_generation += 1;
-        let watcher = {
-            let events = events.clone();
-            let commands = self.commands.clone();
-            let peer = id.clone();
-            tokio::spawn(async move {
-                events.closed().await;
-                if let Some(commands) = commands.upgrade() {
-                    let _ = commands.send(Command::ChannelClosed { peer, generation });
-                }
-            })
-        };
+        let watcher = self.watch(id, &events, generation);
 
         let peer = Peer {
             generation,
@@ -531,6 +541,48 @@ impl Room {
         let role = if spectator { "spectator" } else { "seat" };
         tracing::info!("SFU {role} {id} joined table {}", self.id);
         Ok(())
+    }
+
+    /// Treats the channel's receiver going away as the seat leaving.
+    fn watch(
+        &self,
+        id: &PeerId,
+        events: &mpsc::UnboundedSender<SfuEvent>,
+        generation: u64,
+    ) -> JoinHandle<()> {
+        let events = events.clone();
+        let commands = self.commands.clone();
+        let peer = id.clone();
+        tokio::spawn(async move {
+            events.closed().await;
+            if let Some(commands) = commands.upgrade() {
+                let _ = commands.send(Command::ChannelClosed { peer, generation });
+            }
+        })
+    }
+
+    /// Hands the seat's connection to a new channel (the same browser reconnected its
+    /// socket), so its media and everyone's copy of its video carry on. An offer the old
+    /// channel could not deliver is sent again. False when the seat has no connection here.
+    fn resume(&mut self, id: &PeerId, events: mpsc::UnboundedSender<SfuEvent>) -> bool {
+        let Some(generation) = self.peers.get(id).map(|peer| peer.generation) else {
+            return false;
+        };
+        let watcher = self.watch(id, &events, generation);
+        let Some(peer) = self.peers.get_mut(id) else {
+            return false;
+        };
+        peer.watcher.abort();
+        peer.watcher = watcher;
+        peer.events = events;
+        if let Some(negotiation) = &peer.negotiation {
+            let _ = peer.events.send(SfuEvent::Offer(negotiation.offer.clone()));
+        }
+        tracing::info!(
+            "SFU seat {id} resumed on a new channel at table {}",
+            self.id
+        );
+        true
     }
 
     fn offer(&mut self, id: &PeerId, sdp: &str) -> Result<String, SfuError> {
@@ -998,6 +1050,9 @@ impl Room {
                     return;
                 };
                 tracing::debug!("SFU ICE for {id}: {state:?}");
+                if peer.ice.state.is_connected() && !state.is_connected() {
+                    let _ = peer.events.send(SfuEvent::Unhealthy);
+                }
                 peer.ice.state = state;
                 if state.is_connected() {
                     peer.ice.unconnected_since = None;
@@ -1246,9 +1301,15 @@ impl Room {
                     .filter(|(_, seen)| now.saturating_duration_since(seen.last) < STALE)
                     .map(|(rid, _)| *rid)
                     .collect();
+                let steady = match (current, sub.wanted) {
+                    (Encoding::Layer(current), Encoding::Layer(wanted)) if wanted < current => {
+                        SETTLED
+                    }
+                    _ => RECOVERED,
+                };
                 let target = if !live.contains(&current) {
                     nearest_live(sub.wanted, &live, rids)
-                } else if current != sub.wanted && recovered(publisher, sub.wanted, now) {
+                } else if current != sub.wanted && recovered(publisher, sub.wanted, now, steady) {
                     Some(sub.wanted)
                 } else {
                     None
@@ -1340,10 +1401,13 @@ impl Room {
         let sdp = simulcast_sdp::restore(&offer.to_sdp_string(), &peer.simulcast);
         let restart = if restart { " with an ICE restart" } else { "" };
         tracing::info!("SFU offered {} board(s) to {id}{restart}", tracks.len());
-        let _ = peer
-            .events
-            .send(SfuEvent::Offer(json!({ "sdp": sdp, "tracks": tracks })));
-        peer.negotiation = Some(Negotiation { pending, added });
+        let offer = json!({ "sdp": sdp, "tracks": tracks });
+        let _ = peer.events.send(SfuEvent::Offer(offer.clone()));
+        peer.negotiation = Some(Negotiation {
+            pending,
+            offer,
+            added,
+        });
         self.drive(id);
     }
 
@@ -1513,6 +1577,7 @@ impl Room {
                 peer.ice_restarts.len() + 1
             );
             peer.ice_restarts.push(now);
+            let _ = peer.events.send(SfuEvent::Unhealthy);
             peer.restart_ice = true;
             peer.dirty = true;
             peer.ice.unconnected_since = Some(now);
@@ -1800,10 +1865,11 @@ fn note_layer(publisher: &mut Publisher, rid: Encoding, now: Instant) {
     publisher.layers.insert(rid, LayerSeen { last: now, since });
 }
 
-fn recovered(publisher: &Publisher, rid: Encoding, now: Instant) -> bool {
+/// Whether the layer is arriving and has been, without a pause, for at least `steady`.
+fn recovered(publisher: &Publisher, rid: Encoding, now: Instant, steady: Duration) -> bool {
     publisher.layers.get(&rid).is_some_and(|seen| {
         now.saturating_duration_since(seen.last) < STALE
-            && now.saturating_duration_since(seen.since) >= RECOVERED
+            && now.saturating_duration_since(seen.since) >= steady
     })
 }
 
@@ -1925,6 +1991,73 @@ mod tests {
         assert_eq!(peer.ice.remote.len(), MAX_REMOTE_CANDIDATES - 1);
         assert_eq!(peer.candidates.len(), MAX_REMOTE_CANDIDATES - 1);
         assert_eq!(peer.ice.mdns.len(), 1);
+    }
+
+    /// A viewer whose wanted layer paused is moved to one still arriving. It returns to a
+    /// sharper wanted layer as soon as that is steady again, but back down to a softer one
+    /// only after a long steady stretch, so a publisher that keeps dropping and restoring its
+    /// lowest layer does not re-key the viewer's tile every time.
+    #[tokio::test]
+    async fn a_viewer_moved_to_a_sharper_layer_returns_only_once_its_layer_has_settled() {
+        let (mut room, _commands) = room();
+        let (publisher_id, viewer_id) = (PeerId::from("p"), PeerId::from("v"));
+        for id in [&publisher_id, &viewer_id] {
+            room.join(id, false, mpsc::unbounded_channel().0, None)
+                .unwrap();
+        }
+        let now = Instant::now();
+        let [low, medium, high] = [Layer::Low, Layer::Medium, Layer::High].map(Encoding::Layer);
+        // `l` has been back for a minute; `m` and `h` never paused.
+        let seen = |since: Duration| LayerSeen {
+            last: now,
+            since: now.checked_sub(since).unwrap(),
+        };
+        room.peers.get_mut(&publisher_id).unwrap().publisher = Some(Publisher {
+            mid: Mid::from("0"),
+            rids: Some(vec![low, medium, high]),
+            codec: None,
+            layers: HashMap::from([
+                (low, seen(Duration::from_secs(60))),
+                (medium, seen(SETTLED)),
+                (high, seen(SETTLED)),
+            ]),
+        });
+        let subscribe = |room: &mut Room, wanted: Encoding, current: Encoding| {
+            let mut sub = Subscription::new(wanted);
+            sub.layer = Some(current);
+            sub.pending = None;
+            let viewer = room.peers.get_mut(&viewer_id).unwrap();
+            viewer.subs.insert(publisher_id.clone(), sub);
+        };
+        let pending = |room: &Room| room.peers[&viewer_id].subs[&publisher_id].pending;
+
+        // Wants `l`, fell back up to `m`: a minute of `l` is not enough to go back down.
+        subscribe(&mut room, low, medium);
+        room.adapt_layers(now);
+        assert_eq!(pending(&room), None);
+        room.peers
+            .get_mut(&publisher_id)
+            .unwrap()
+            .publisher
+            .as_mut()
+            .unwrap()
+            .layers
+            .insert(low, seen(SETTLED));
+        room.adapt_layers(now);
+        assert_eq!(pending(&room), Some(low));
+
+        // Wants `h`, fell back down to `m`: it returns once `h` is steady for a moment.
+        room.peers
+            .get_mut(&publisher_id)
+            .unwrap()
+            .publisher
+            .as_mut()
+            .unwrap()
+            .layers
+            .insert(high, seen(RECOVERED));
+        subscribe(&mut room, high, medium);
+        room.adapt_layers(now);
+        assert_eq!(pending(&room), Some(high));
     }
 
     #[tokio::test]

@@ -23,6 +23,9 @@ export { CAPTURE_TIMEOUT_MS } from "./use-card-capture"
 export { describeConnection } from "./use-sfu-connection"
 export { STARTING_LIFE } from "./use-table-game-state"
 
+/** How long a connection warning from the server stays up after the last one. */
+export const UNHEALTHY_MS = 30_000
+
 /** One seat at a webcam table: wires the local camera, the SFU connection, card captures,
  * the server's card list, and game state to the room channel, and exposes them as one object. */
 export function useWebcamRoom(
@@ -46,6 +49,13 @@ export function useWebcamRoom(
   const endingRef = useRef(false)
   const [closedByOwner, setClosedByOwner] = useState(false)
   const [removed, setRemoved] = useState(false)
+  const [unhealthy, setUnhealthy] = useState<{ reason: string } | null>(null)
+  // Each warning from the server shows for a while; a new one restarts the wait.
+  useEffect(() => {
+    if (!unhealthy) return
+    const timer = setTimeout(() => setUnhealthy(null), UNHEALTHY_MS)
+    return () => clearTimeout(timer)
+  }, [unhealthy])
 
   const { spectating, canModerate } = useRoomChannel(link, roomId, playerId, deckId, {
     setStatus,
@@ -85,9 +95,13 @@ export function useWebcamRoom(
       }
       peers.refreshVideo()
     },
+    canResume: peers.resumable,
     onChannelError() {
       captures.cancelAll()
       peers.reset()
+    },
+    onUnhealthy(reason) {
+      setUnhealthy({ reason })
     },
     onClosed() {
       captures.cancelAll()
@@ -210,6 +224,10 @@ export function useWebcamRoom(
     iceServers: peers.iceServers,
     /** How this seat's media reaches the server: forwarded UDP ports or a TURN relay. */
     transport: peers.transport,
+    /** Why the server last said this seat's connection is struggling, while that is recent:
+     * `reconnected` (its socket dropped and was resumed) or `media` (video stopped getting
+     * through). */
+    unhealthy: unhealthy?.reason ?? null,
     /** Lets a `<video>` report how large it draws a board, so the right layer is requested. */
     watchTile: peers.watchTile,
     localStream: camera.localStream,

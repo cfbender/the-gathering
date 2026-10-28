@@ -13,8 +13,11 @@
 use crate::webcam_support;
 
 use serde_json::{Value, json};
+use the_gathering::web::channels::rooms::LOBBY_TOPIC;
 use the_gathering::webcam::{IDLE_TIMEOUT_MS, session};
-use webcam_support::{PEER_A, PEER_B, PEER_C, PEER_D, Table, peer, room_id, wait_until};
+use webcam_support::{
+    Client, PEER_A, PEER_B, PEER_C, PEER_D, Table, listed, peer, room_id, wait_until,
+};
 
 const NEW_PEER: &str = "00000000-0000-4000-8000-00000000a0a0";
 const AFTER_RESTART: &str = "00000000-0000-4000-8000-00000000a0a1";
@@ -54,6 +57,87 @@ async fn reload_replaces_a_stale_channel_at_capacity_and_its_exit_cannot_erase_t
     assert_eq!(t.snapshot().await.seats.len(), 10);
     replacement.ok("update_status", json!({ "life": 22 })).await;
     assert_eq!(t.seat(NEW_PEER).await.life, 22);
+}
+
+/// The same tab reconnecting (same peer id) before or after the server notices its socket went
+/// stale: the new connection resumes the seat, its presence and its SFU connection, and the
+/// other seats are sent nothing that would redraw it.
+async fn resumes_quietly(t: &mut Table, bob: &mut Client) {
+    let (status, response, mut resumed) =
+        t.server.try_join(&t.user, t.player, &t.room, PEER_A).await;
+    assert_eq!(status, "ok", "{response}");
+    assert_eq!(response["resumed"], true, "the SFU connection was kept");
+    assert_eq!(response["participant"]["life"], 23);
+    assert_eq!(
+        resumed.expect("connection_unhealthy").await,
+        json!({ "reason": "reconnected" })
+    );
+    resumed.ok("update_status", json!({ "life": 21 })).await;
+    assert_eq!(t.seat(PEER_A).await.life, 21);
+
+    bob.refute_where("presence", |roster| listed(roster, PEER_A).is_none())
+        .await;
+    bob.refute_where("table_state", |state| {
+        state["seats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|seat| seat["peer_id"] == PEER_A && seat["life"] == 23)
+    })
+    .await;
+    let debug = t.server.state().webcam_tables.debug(&t.room).await.unwrap();
+    assert!(debug.connections.contains(&t.player));
+    assert!(debug.departing.is_empty());
+    // One presence entry per seat, at the table and in the lobby.
+    let presence = &t.server.state().presence;
+    assert_eq!(presence.metas(&t.topic()).len(), 2);
+    assert_eq!(presence.metas(LOBBY_TOPIC).len(), 2);
+}
+
+#[tokio::test]
+async fn a_stale_socket_is_resumed_by_the_same_tab_without_the_table_noticing() {
+    let mut t = Table::new().await;
+    t.alice.ok("update_status", json!({ "life": 23 })).await;
+    let mut bob = t.join_player(PEER_B, "Bob").await;
+    bob.settle(std::time::Duration::from_millis(100)).await;
+    bob.drain();
+
+    // The old socket is still open as far as the server knows.
+    resumes_quietly(&mut t, &mut bob).await;
+    t.alice.refute("seat_replaced").await;
+    t.alice
+        .refused("update_status", json!({ "life": 1 }), "not joined")
+        .await;
+}
+
+#[tokio::test]
+async fn a_dropped_socket_keeps_its_seat_for_the_reconnect_grace() {
+    let mut t = Table::with_config(|config| {
+        config.webcam_table.reconnect_grace = std::time::Duration::from_secs(30);
+    })
+    .await;
+    t.alice.ok("update_status", json!({ "life": 23 })).await;
+    let mut bob = t.join_player(PEER_B, "Bob").await;
+    bob.settle(std::time::Duration::from_millis(100)).await;
+    bob.drain();
+
+    t.alice.close();
+    bob.refute_where("presence", |roster| listed(roster, PEER_A).is_none())
+        .await;
+    assert!(t.server.state().presence.has_key(&t.topic(), PEER_A));
+    resumes_quietly(&mut t, &mut bob).await;
+}
+
+#[tokio::test]
+async fn a_dropped_socket_that_is_not_resumed_leaves_after_the_grace() {
+    let t = Table::with_config(|config| {
+        config.webcam_table.reconnect_grace = std::time::Duration::from_millis(300);
+    })
+    .await;
+    let mut bob = t.join_player(PEER_B, "Bob").await;
+    t.alice.close();
+    bob.expect_where("presence", |roster| listed(roster, PEER_A).is_none())
+        .await;
 }
 
 #[tokio::test]

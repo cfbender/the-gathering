@@ -16,6 +16,7 @@ import {
 } from "./test-support/fake-webrtc"
 import {
   CAPTURE_TIMEOUT_MS,
+  UNHEALTHY_MS,
   useWebcamRoom,
   type BoardCard,
   type TableParticipant,
@@ -915,6 +916,65 @@ it("reconnects with a fresh offer after a channel retry and abandons the old con
   await waitFor(() => expect(FakePeerConnection.instances).toHaveLength(2))
   await waitFor(() => expect(wire.sent("sfu_offer")).toHaveLength(2))
   expect(result.current.error).toBeNull()
+})
+
+it("resumes the seat and its media connection when only the socket drops", async () => {
+  const { result, connection } = await roomWithTheo()
+  const peerId = result.current.peerId
+  const stream = { id: theo.peer_id } as unknown as MediaStream
+  await serveTheoBoard(connection, stream)
+  const answers = wire.sent("sfu_answer").length
+
+  act(() => wire.reconnect())
+  expect(wire.joinParams().peer_id).toBe(peerId)
+  await act(async () => wire.joinPush().reply("ok", { participant: saved, resumed: true }))
+  expect(result.current.peerId).toBe(peerId)
+  expect(FakePeerConnection.instances).toEqual([connection])
+  expect(connection.connectionState).not.toBe("closed")
+  expect(result.current.streams).toEqual({ [theo.peer_id]: stream })
+  expect(result.current.status).toMatch(/Live/)
+
+  // The server resends the offer the dropped socket missed; it is answered on the same
+  // connection.
+  act(() => wire.emit("sfu_offer", { sdp: "server-offer", tracks: { "1": theo.peer_id } }))
+  await waitFor(() => expect(wire.sent("sfu_answer")).toHaveLength(answers + 1))
+  expect(wire.sent("sfu_offer")).toHaveLength(1)
+})
+
+it("starts a new media connection under the same peer id when the server could not resume it", async () => {
+  const { result, connection } = await roomWithTheo()
+  const peerId = result.current.peerId
+
+  act(() => wire.reconnect())
+  expect(wire.joinParams().peer_id).toBe(peerId)
+  await act(async () => wire.joinPush().reply("ok", { participant: saved, resumed: false }))
+  expect(connection.connectionState).toBe("closed")
+  await waitFor(() => expect(FakePeerConnection.instances).toHaveLength(2))
+  await waitFor(() => expect(wire.sent("sfu_offer")).toHaveLength(2))
+  expect(result.current.peerId).toBe(peerId)
+})
+
+it("starts a new media generation when the server asks for a rejoin", async () => {
+  const { result, connection } = await roomWithTheo()
+  const peerId = result.current.peerId
+
+  act(() => wire.emit("rejoin", { reason: "sfu_down: failed" }))
+  await act(() => new Promise((resolve) => setTimeout(resolve, 1_100)))
+  expect(wire.joinParams().peer_id).not.toBe(peerId)
+  expect(connection.connectionState).toBe("closed")
+})
+
+it("shows the server's connection warning for a while after the last one", async () => {
+  const { result } = await joinedRoom()
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+  act(() => wire.emit("connection_unhealthy", { reason: "reconnected" }))
+  expect(result.current.unhealthy).toBe("reconnected")
+  act(() => void vi.advanceTimersByTime(UNHEALTHY_MS - 1_000))
+  act(() => wire.emit("connection_unhealthy", { reason: "media" }))
+  act(() => void vi.advanceTimersByTime(UNHEALTHY_MS - 1))
+  expect(result.current.unhealthy).toBe("media")
+  act(() => void vi.advanceTimersByTime(1))
+  expect(result.current.unhealthy).toBeNull()
 })
 
 it("reports a rejected offer and logs later failed steps instead of leaving unhandled rejections", async () => {

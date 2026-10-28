@@ -327,6 +327,7 @@ impl Client {
                 self.drain();
             }
             SfuEvent::Down(reason) => panic!("{} went down: {reason}", self.peer),
+            SfuEvent::Unhealthy => {}
         }
     }
 }

@@ -64,6 +64,18 @@ first re-offers with an ICE restart (new credentials and candidates, DTLS and tr
 browser sees a blip rather than a rejoin); after three restarts in two minutes it stops the
 channel and the browser rejoins with a fresh peer id.
 
+The table socket and the media connection fail independently, so a socket that drops does not
+cost the seat. A socket the server gives up on (no PONG within 30 s) keeps its seat, presence and
+SFU connection for a 30-second reconnect grace. The browser rejoins with the same peer id while
+its `RTCPeerConnection` is up; the server sees the same player and peer id, moves the presence
+entry and the SFU connection to the new channel (re-sending any offer the old socket missed),
+stops the old channel quietly, and replies `resumed: true`, so the other seats see nothing. The
+same happens when the browser notices first and reconnects while the server still holds the
+stale socket. When the server no longer has the media connection it replies `resumed: false`
+and the browser starts a new one under the same peer id. The resumed socket gets
+`connection_unhealthy {reason: "reconnected"}`, and a seat whose media connection stops getting
+through gets `{reason: "media"}`; the browser shows that player a small warning for 30 seconds.
+
 The table used to be a full mesh. Measured on a real four-seat game in Chrome 154, each browser
 ran three 1080p software encoders plus three decoders at 150–200% of a core, rebuilt the encoders
 on every adaptation step, and burned one TURN allocation per pair; the SFU exists to cut that to
@@ -86,7 +98,11 @@ decoder sees one continuous stream across switches. A switch waits for a keyfram
 layer; the room asks the publisher for one with a PLI on that rid, rate-limited to one per
 300 ms per layer so several viewers switching at once do not make the browser spend its whole
 bitrate on keyframes. A viewer showing nothing yet adopts a keyframe of any layer rather than
-staying black while its wanted layer is paused under CPU pressure. Browsers also resend recent
+staying black while its wanted layer is paused under CPU pressure. A viewer whose layer pauses is
+moved to the nearest one still arriving. It moves back up to a sharper wanted layer once that has
+been steady for 2 s, but back down to a softer one only after 5 minutes: Chrome drops the lowest
+layer while it scales the camera down and restores it minutes later, and following each return
+re-keyed and resized the viewer's tile every couple of minutes. Browsers also resend recent
 packets over RTX to probe bandwidth and those are recovered into the original packets
 again, so the subscription keeps a 256-packet window of forwarded sequence numbers and drops the
 duplicates (forwarding one twice fails the viewer's SRTP replay check).
