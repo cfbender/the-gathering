@@ -98,6 +98,23 @@ describe("table deck chooser", () => {
     await waitFor(() => expect(screen.queryByText("Second deck")).toBeNull())
   })
 
+  it("keeps the rolled deck when the window regains focus", async () => {
+    let rolls = 0
+    const calls = stubChooser(() => {
+      rolls += 1
+      return rolls === 1 ? pick(1, "First deck") : pick(2, "Second deck")
+    })
+    renderButton()
+
+    fireEvent.click(screen.getByRole("button", { name: "Pick a deck for me" }))
+    await screen.findByText("First deck")
+    fireEvent(window, new Event("visibilitychange"))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(screen.getByText("First deck")).toBeTruthy()
+    expect(calls).toHaveLength(1)
+  })
+
   it("explains when there is nothing to pick", async () => {
     stubChooser(() => ({ data: { deck: null, reason: "no_eligible_decks" } }))
     renderButton()

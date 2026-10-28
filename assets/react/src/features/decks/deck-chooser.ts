@@ -56,6 +56,9 @@ export function useDeckChooser({ enabled = true }: { enabled?: boolean } = {}) {
     queryKey: ["deck-chooser", excludeId ?? null],
     queryFn: () => getDeckPick(excludeId),
     enabled,
+    // Every fetch is a new random roll, so the pick must not refresh on focus, remount, or
+    // reconnect; only skipping or playing it asks for another.
+    staleTime: Infinity,
   })
   const outcome = useMutation({
     mutationFn: ({ deckId, outcome }: { deckId: number; outcome: "played" | "skipped" }) =>
