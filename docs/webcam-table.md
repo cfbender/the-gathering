@@ -355,7 +355,10 @@ Ending the game closes the room. After the owner records the result, or chooses 
 recording (confirmed inline), the browser sends `end_game`. `WebcamTables::close` deletes the
 snapshot and stops the room. Every joined channel sees that exit on the room's exit watch, pushes
 `table_closed`, and stops normally, so browsers leave instead of rejoining a fresh room under the
-same id. Other seats return to the games list with a notice. The table drops
+same id. A tab whose socket was away at that moment (a background tab, a dropped network) never
+gets `table_closed`, so every join after a tab's first one carries `rejoin: true`: the server
+refuses a rejoin to a room with no saved snapshot with "This table has ended." instead of opening
+a fresh lobby, and that tab leaves the same way. Other seats return to the games list with a notice. The table drops
 off the Play/Join list at once, and its seats no longer count as taken.
 
 **End and rematch** is the form's other *After this game* choice. It records the result (**Record

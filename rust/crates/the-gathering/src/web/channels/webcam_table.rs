@@ -354,6 +354,9 @@ struct Inboxes {
 #[derive(serde::Deserialize)]
 struct JoinParams {
     room_id: String,
+    /// The tab was already at this table, so it must not reopen it after it ended.
+    #[serde(default)]
+    rejoin: bool,
     #[serde(flatten)]
     seat: Value,
 }
@@ -469,7 +472,12 @@ impl Channel {
         let params = serde_json::from_value::<JoinParams>(payload.clone())
             .ok()
             .filter(|params| valid_room_id(&params.room_id));
-        let Some(JoinParams { room_id, seat }) = params else {
+        let Some(JoinParams {
+            room_id,
+            rejoin,
+            seat,
+        }) = params
+        else {
             return Err(Reply::error("invalid room"));
         };
         // Checked before the room starts, so refused joins open neither a table nor SFU ports.
@@ -494,6 +502,7 @@ impl Channel {
                     id: conn_id,
                     tx: conn_tx,
                 },
+                rejoin,
             )
             .await
         {

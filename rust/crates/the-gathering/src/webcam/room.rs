@@ -314,8 +314,8 @@ type Outcome = Result<(), String>;
 /// A request to a room.
 #[derive(Debug)]
 pub enum RoomMsg {
-    /// Admit a participant.
-    Join(Box<Seat>, Conn, Reply<Result<Admitted, String>>),
+    /// Admit a participant; `true` when the tab was already at this table (a rejoin).
+    Join(Box<Seat>, Conn, bool, Reply<Result<Admitted, String>>),
     /// The table.
     Snapshot(Reply<Snapshot>),
     /// The log.
@@ -576,7 +576,14 @@ impl Room {
 
     async fn handle(&mut self, message: RoomMsg) -> Result<Flow, sqlx::Error> {
         let entry = match message {
-            RoomMsg::Join(participant, conn, reply) => {
+            // A room with no saved table has never been joined, or its table ended (closed by
+            // its owner, closed as idle, or expired). A tab that was at the table must not
+            // reopen it as a fresh lobby, so it is told the table ended and this room stops.
+            RoomMsg::Join(_, _, true, reply) if self.entry.is_none() => {
+                let _ = reply.send(Err(super::TABLE_ENDED.into()));
+                return Ok(Flow::Stop(RoomExit::Normal));
+            }
+            RoomMsg::Join(participant, conn, _, reply) => {
                 let result = self.join(*participant, conn).await?;
                 let _ = reply.send(result);
                 return Ok(Flow::Continue);

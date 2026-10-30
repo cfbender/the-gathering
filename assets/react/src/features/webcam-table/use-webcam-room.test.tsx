@@ -291,6 +291,22 @@ it.each(["removed", "join denied"])("stops media and reconnects when %s", async 
   expect(wire.connects).toBe(0)
 })
 
+it("leaves for good when the table ended while its socket was away", async () => {
+  const { result } = await joinedRoom()
+  vi.useFakeTimers()
+  act(() => wire.socketError())
+  act(() => wire.reconnect())
+  expect(wire.joinParams().rejoin).toBe(true)
+  act(() => wire.joinPush().reply("error", { reason: "This table has ended." }))
+  expect(result.current.closedByOwner).toBe(true)
+  expect(wire.socket!.connected).toBe(false)
+  const joins = wire.sent("join").length
+  act(() => {
+    vi.advanceTimersByTime(60_000)
+  })
+  expect(wire.sent("join")).toHaveLength(joins)
+})
+
 it("late spectators never request a camera or publish life/counters", async () => {
   const { result } = await joinedRoom({ ...saved, spectator: true })
   expect(result.current.spectating).toBe(true)
@@ -372,6 +388,7 @@ it("joins the room with only the seat identity", async () => {
     peer_id: result.current.peerId,
     player_id: 7,
     deck_id: null,
+    rejoin: false,
   })
 })
 

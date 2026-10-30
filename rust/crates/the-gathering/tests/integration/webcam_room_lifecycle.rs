@@ -270,6 +270,45 @@ async fn the_owner_ends_the_table_for_everyone_and_its_seats_leave_instead_of_re
     );
 }
 
+/// A tab whose socket was away when the table ended never got `table_closed`; its rejoin must
+/// not reopen the table as a fresh lobby. Rejoining a running or crashed table still works.
+#[tokio::test]
+async fn a_rejoin_after_the_table_ended_is_refused_without_opening_a_new_lobby() {
+    let mut t = Table::new().await;
+    let tables = &t.server.state().webcam_tables;
+    let (user, player) = t.server.linked_player("Cara").await;
+    let other = room_id();
+    let mut cara = t.server.join_as(&user, player, &other, PEER_C).await;
+    cara.ok("update_status", json!({ "life": 31 })).await;
+
+    t.alice.ok("end_game", json!({})).await;
+    t.alice.expect("table_closed").await;
+    let mut client = t.server.connect(&t.user).await;
+    let (status, response) = client
+        .join(
+            &t.room,
+            json!({ "peer_id": PEER_A, "player_id": t.player, "rejoin": true }),
+        )
+        .await;
+    assert_eq!(
+        (status.as_str(), &response),
+        ("error", &json!({ "reason": "This table has ended." }))
+    );
+    wait_until(|| async { tables.instance(&t.room).is_none() }).await;
+    assert!(!tables.rooms().iter().any(|room| room.id == t.room));
+
+    tables.kill(&other);
+    let mut again = t.server.connect(&user).await;
+    let (status, response) = again
+        .join(
+            &other,
+            json!({ "peer_id": PEER_C, "player_id": player, "rejoin": true }),
+        )
+        .await;
+    assert_eq!(status, "ok", "{response}");
+    assert_eq!(response["participant"]["life"], 31);
+}
+
 #[tokio::test]
 async fn a_rematch_resets_the_same_room_to_a_lobby_keeping_present_seats_connected() {
     let mut t = Table::new().await;
@@ -520,6 +559,7 @@ async fn tlc_rematch_preserves_reset_life_when_an_in_flight_seat_update_arrives(
                 &room,
                 Seat::new(peer_id.into(), id, name.into(), id),
                 Conn { id: conn_id, tx },
+                false,
             )
             .await
             .unwrap()
@@ -592,6 +632,7 @@ async fn tlc_rematch_preserves_reset_life_when_an_in_flight_seat_update_arrives(
             &room,
             Seat::new(PEER_B.into(), 2, "Bob".into(), 2),
             Conn { id: 3, tx },
+            true,
         )
         .await
         .unwrap()

@@ -44,6 +44,9 @@ pub const IDLE_TIMEOUT_MS: i64 = 30 * 60 * 1000;
 /// binds its own UDP ports from a shared range, so one account must not be able to hold them all.
 pub const MAX_TABLES_PER_USER: usize = 3;
 
+/// Why a rejoin is refused once its table has ended.
+pub const TABLE_ENDED: &str = "This table has ended.";
+
 /// The presence topic and Socket.IO room of the table `room_id`.
 pub fn topic(room_id: &str) -> String {
     format!("webcam_table:{room_id}")
@@ -274,7 +277,9 @@ impl WebcamTables {
         Self::ask(&handle, message).await
     }
 
-    /// Admits `participant` with `conn` as its connection, starting the room if needed.
+    /// Admits `participant` with `conn` as its connection, starting the room if needed. A
+    /// `rejoin` (from a tab that was already at the table) is refused with [`TABLE_ENDED`]
+    /// instead when the table no longer exists.
     ///
     /// Returns the table snapshot, the admitted participant (a returning player gets their
     /// saved seat back; late arrivals become spectators) and a watch on the room's end.
@@ -283,13 +288,18 @@ impl WebcamTables {
         room: &str,
         participant: Seat,
         conn: Conn,
+        rejoin: bool,
     ) -> Result<Result<Admitted, String>, RoomGone> {
         let mut attempts = 3;
         loop {
             let handle = self.start_room(room);
             let participant = Box::new(participant.clone());
             let conn = conn.clone();
-            match Self::ask(&handle, |reply| RoomMsg::Join(participant, conn, reply)).await {
+            match Self::ask(&handle, |reply| {
+                RoomMsg::Join(participant, conn, rejoin, reply)
+            })
+            .await
+            {
                 // The room closed as idle just before this join reached it; start anew.
                 Err(RoomGone) if attempts > 1 => attempts -= 1,
                 other => return other,

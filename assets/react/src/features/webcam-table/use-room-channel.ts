@@ -9,6 +9,8 @@ import type { SfuOffer } from "./use-sfu-connection"
 /** Minimum gap between socket-token refreshes while reconnecting. The config endpoint allows
  * 20 requests per 5 minutes per account, and the page-load fetch is not counted here. */
 export const TOKEN_REFRESH_INTERVAL_MS = 30_000
+/** The server's refusal of a rejoin once the table has ended (`webcam::TABLE_ENDED`). */
+const TABLE_ENDED = "This table has ended."
 
 export interface SfuInfo {
   /** Whether media reaches the server directly (forwarded UDP ports) or through TURN. */
@@ -159,6 +161,10 @@ export function useRoomChannel(
         // Set when only the socket dropped. The next join keeps the peer ID, and the server
         // hands this seat's connection, presence and media back, so the table sees nothing.
         let resuming = false
+        // Set once this tab has joined. Its later joins are rejoins, which the server refuses
+        // once the table has ended instead of opening a fresh lobby under the same id (the
+        // `table_closed` push never reaches a socket that had dropped, as in a background tab).
+        let joined = false
         const room = new TableChannel(socket, () => {
           if (dropped) {
             dropped = false
@@ -166,7 +172,13 @@ export function useRoomChannel(
             link.peerId = crypto.randomUUID()
             on().onChannelError()
           }
-          return { room_id: roomId, peer_id: link.peerId, player_id: playerId, deck_id: deckId }
+          return {
+            room_id: roomId,
+            peer_id: link.peerId,
+            player_id: playerId,
+            deck_id: deckId,
+            rejoin: joined,
+          }
         })
         link.channel = room
         on().bind(room)
@@ -192,11 +204,14 @@ export function useRoomChannel(
           on().onUnhealthy(reason),
         )
         // The owner ended the table; the server ends this seat's channel right after.
-        room.on("table_closed", () => {
+        const closed = () => {
+          disposed = true
+          clearTimeout(retryTimer)
           room.leave()
           socket?.disconnect()
           on().onClosed()
-        })
+        }
+        room.on("table_closed", closed)
         const removed = () => {
           disposed = true
           clearTimeout(retryTimer)
@@ -231,6 +246,7 @@ export function useRoomChannel(
             // the same peer ID (queued signals for the old one were dropped with the socket).
             if (resuming && !resumed) on().onChannelError()
             resuming = false
+            joined = true
             on().setError(null)
             setCanModerate(can_moderate)
             link.spectator = participant?.spectator ?? false
@@ -240,6 +256,7 @@ export function useRoomChannel(
           })
           .receive("error", ({ reason }: { reason: string }) => {
             if (reason === "You were removed from this table.") removed()
+            else if (reason === TABLE_ENDED) closed()
             else on().setError(reason)
           })
       } catch (reason) {
