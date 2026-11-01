@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DeckSummary } from "@/features/decks/decks"
 import { isClear, type Recognition } from "./card-suggestions"
 import { applyDeckHint, deckFirst, deckHint, listPrintingIds, type DeckHint } from "./deck-hint"
-import type { GalleryArt } from "./recognition/pipeline"
+import { BLANK_ARTS, type GalleryArt } from "./recognition/pipeline"
 import { decodeImage, useRecognizer } from "./recognition/use-recognizer"
 import type { BoardCard, CapturedCard, IdentifiedCard, TableParticipant } from "./room-types"
 import type { SeatDecklists } from "./seat-decklists"
@@ -129,24 +129,20 @@ export function useCardIdentificationFlow({
   const suggestions = captureIsLocal ? ownerDecks.slice(0, 5) : []
   const ownerHint = captureOwner ? hints.get(captureOwner.peer_id) : undefined
   // The owner's deck list re-ranks the recognizer's answer; everything below (the picker, the
-  // clear-answer shortcut, keys 1–5) sees the hinted order. Corrections keep the raw result.
-  const recognition = useMemo<Recognition>(
-    () =>
-      raw.status === "done"
-        ? {
-            status: "done",
-            result: {
-              ...raw.result,
-              candidates: applyDeckHint(raw.result.candidates, ownerHint?.names),
-            },
-          }
-        : raw,
-    [raw, ownerHint],
-  )
+  // clear-answer shortcut, keys 1–5) sees the hinted order. A blank art on top means the card's
+  // artwork was washed out (glare, blur): the card was seen but not identified, so no candidate
+  // is offered and the picker opens on the search. Corrections keep the raw result.
+  const recognition = useMemo<Recognition>(() => {
+    if (raw.status !== "done") return raw
+    const [top] = raw.result.candidates
+    const candidates =
+      top && BLANK_ARTS.has(top.id) ? [] : applyDeckHint(raw.result.candidates, ownerHint?.names)
+    return { status: "done", result: { ...raw.result, candidates } }
+  }, [raw, ownerHint])
   const candidates = recognition.status === "done" ? recognition.result.candidates : []
-  // The picker is for the cases a human has to settle: no recognizer, a near-tie, an
-  // outlined card (Shift+click corners), or "Wrong card?" on a result. A clear answer to a plain
-  // click is recorded without it and shown as the card itself.
+  // The picker is for the cases a human has to settle: no recognizer, a near-tie or washed-out
+  // art, an outlined card (Shift+click corners), or "Wrong card?" on a result. A clear answer to
+  // a plain click is recorded without it and shown as the card itself.
   const needsChoice =
     room.capture !== null &&
     (room.capture.inspect ||

@@ -15,6 +15,7 @@ import wasmUrl from "onnxruntime-web/ort-wasm-simd-threaded.wasm?url"
 import { galleryPrintings } from "./gallery"
 import type { BundleInfo, Identification, WorkerRequest, WorkerResponse } from "./messages"
 import {
+  BLANK_ARTS,
   fromWindow,
   portraitQuad,
   refineSide,
@@ -222,10 +223,10 @@ async function identifyOutline(image: RgbaImage, corners: Quad): Promise<Identif
     readings.push({ quad, ...(await embedAndSearch(image, quad)) })
   }
   const [first, second] = readings as [(typeof readings)[0], (typeof readings)[0]]
-  const best =
-    (second.candidates[0]?.score ?? -Infinity) > (first.candidates[0]?.score ?? -Infinity)
-      ? second
-      : first
+  // A blank art on top is no reading at all, so it never outvotes a real match.
+  const topScore = ({ candidates: [top] }: { candidates: Candidate[] }) =>
+    top && !BLANK_ARTS.has(top.id) ? top.score : -Infinity
+  const best = topScore(second) > topScore(first) ? second : first
   return {
     quad: best.quad,
     upVote: null,

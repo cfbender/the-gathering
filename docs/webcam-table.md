@@ -896,6 +896,18 @@ answers from the exact printing the catalog sync imported into `card_printings` 
 in Scryfall's `default_cards` file), without a Scryfall request. "Wrong card?" on the preview
 reopens the picker for the same crop and the chosen card replaces the entry.
 
+A best match on a blank gallery art (`BLANK_ARTS` in `recognition/pipeline.ts`) means the card
+was seen but not identified. Mystery Booster 2's playtest Whiteout has an all-white art crop, and
+any card whose art is washed out by glare or blur matches it at 0.96–0.99 (bundle
+retrain-20261026T052522727512Z). It stays in the gallery as that signal: the click records
+nothing, does not fall through to the runner-up, and opens the picker with no candidates, a
+"No card detected" note, and the gallery search. The correction upload still carries the raw answer.
+For an outlined card, a reading whose best match is blank never wins the upright vote. The Ice
+Age Whiteout has real art and is identified normally. ManaVault's scanner also waits for a card
+to hold still across agreeing frames before logging it; the table identifies a single crop per
+click, so there is no frame sequence to apply that to, and a blurred click simply opens the
+picker when its answer is not clear.
+
 For separate-side gallery entries, details select that face's name, image, mana cost, type
 and rules text. The suffix is stripped only to find the stored printing, not for the details/query
 cache key or correction label. The printing `show` endpoint returns whole printings only.
@@ -903,7 +915,8 @@ Rulings use the base card's shared ruling list. Malformed gallery IDs return HTT
 details/rulings.
 
 The **picker** (`card-suggestions.tsx`) is user-initiated only: it opens for a near-tie, when
-no bundle is published (deck suggestions stand in), on "Wrong card?", or for an outlined card.
+no bundle is published (deck suggestions stand in), for a washed-out art, on "Wrong card?", or
+for an outlined card.
 It shows five numbered candidates (`1`–`5`), the crop
 with the detected quad and per-stage timings; low similarity never suppresses results. `/`
 focuses a gallery search that understands names, set codes (`forest fin`, `set:fin`),

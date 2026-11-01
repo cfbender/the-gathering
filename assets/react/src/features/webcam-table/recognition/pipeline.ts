@@ -49,6 +49,14 @@ export interface Candidate extends GalleryArt {
   score: number
 }
 
+/**
+ * Gallery arts whose artwork is blank, so a best match on one means "no artwork visible"
+ * rather than a card. Mystery Booster 2's playtest Whiteout has an all-white art crop; any card
+ * whose art is washed out by glare or blur matches it at 0.96–0.99 (bundle
+ * retrain-20261026T052522727512Z). The Ice Age Whiteout is real art and stays identifiable.
+ */
+export const BLANK_ARTS: ReadonlySet<string> = new Set(["8cef2ecb-4c23-4af8-940e-86a381e92330"])
+
 export type Point = [number, number]
 /** Card corners in image pixels, printed order (top-left, top-right, bottom-right, bottom-left). */
 export type Quad = [Point, Point, Point, Point]

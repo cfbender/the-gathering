@@ -249,3 +249,40 @@ it("reorders a close call so the deck card is option 1 in the picker", async () 
   expect(recognition.result.candidates.map((art) => art.name)).toEqual(["Sol Ring", "Mind Stone"])
   expect(room.announceCard).not.toHaveBeenCalled()
 })
+
+it("leaves a click whose art matches the blank Whiteout unidentified", async () => {
+  // Glare washes out the art, so Mystery Booster 2's all-white Whiteout outscores the real card.
+  const raw = identification([
+    candidate("8cef2ecb-4c23-4af8-940e-86a381e92330", "Whiteout", 0.98),
+    candidate("sol-ring-art", "Sol Ring", 0.72),
+  ])
+  recognizer.identify.mockResolvedValue(raw)
+  const { result } = renderFlow(new Map([["peer-cody", list]]))
+
+  await waitFor(() => expect(result.current.pickerOpen).toBe(true))
+  const recognition = result.current.recognition
+  expect(recognition).toMatchObject({ status: "done", result: { candidates: [] } })
+  // Number keys do not fall through to the runner-up either.
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "1", bubbles: true }))
+  expect(room.announceCard).not.toHaveBeenCalled()
+  // A card searched for by hand is still a correction against the recognizer's own answer.
+  result.current.chooseCard(candidate("sol-ring-art", "Sol Ring", 0))
+  expect(saveCorrection).toHaveBeenCalledWith(capture, raw, "sol-ring-art", "v1", true)
+})
+
+it("still records the Ice Age Whiteout, whose art is real", async () => {
+  recognizer.identify.mockResolvedValue(
+    identification([
+      candidate("a8645e4f-ice-age-whiteout", "Whiteout", 0.9),
+      candidate("sol-ring-art", "Sol Ring", 0.7),
+    ]),
+  )
+  renderFlow(new Map())
+
+  await waitFor(() => expect(room.announceCard).toHaveBeenCalled())
+  expect(room.announceCard).toHaveBeenCalledWith(
+    "peer-cody",
+    "Cody",
+    expect.objectContaining({ id: "a8645e4f-ice-age-whiteout", name: "Whiteout" }),
+  )
+})

@@ -252,6 +252,11 @@ export function CardSuggestions({
                   </button>
                 </CommanderHover>
               ))}
+            {recognition.status === "done" && candidates.length === 0 && (
+              <p className="text-xs text-white/65">
+                No card detected. Click again, or search for it.
+              </p>
+            )}
             {recognition.status === "skipped" && deckSuggestions.length === 0 && (
               <p className="text-xs text-white/65">No decks are recorded for {playerName} yet.</p>
             )}
