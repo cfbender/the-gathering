@@ -2,13 +2,20 @@ import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { ColorIdentity } from "@/components/mana-symbols"
-import { Dices, Library } from "lucide-react"
+import { ChevronDown, Dices, Library, SlidersHorizontal } from "lucide-react"
 import { CardArtBackground } from "@/components/card-art-background"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useCurrentUser } from "@/lib/auth"
 import { cn } from "@/lib/cn"
 import { getDecks } from "@/features/decks/decks"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
+import { NewDeckButton } from "@/features/decks/new-deck-dialog"
 import {
   type DeckScope,
   ownDecks,
@@ -45,9 +52,30 @@ function DecksPage() {
         actions={
           query.data && (
             <>
-              <Link to="/decks/choose" className="btn btn-primary btn-sm">
-                <Dices className="size-4" /> Choose a deck
-              </Link>
+              <NewDeckButton />
+              <div className="join">
+                <Link to="/decks/choose" className="btn btn-primary btn-sm join-item">
+                  <Dices className="size-4" /> Choose a deck
+                </Link>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm join-item border-l-primary-content/25 px-2"
+                      aria-label="More deck chooser options"
+                    >
+                      <ChevronDown className="size-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="glass-menu">
+                    <DropdownMenuItem asChild>
+                      <Link to="/decks/choose/script">
+                        <SlidersHorizontal className="size-4" /> Customize the chooser
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
               <ToggleGroup
                 type="single"
                 value={scope}
