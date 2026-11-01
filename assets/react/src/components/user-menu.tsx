@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { ChevronDown, LogOut, Settings, Shield, UserRound } from "lucide-react"
 import {
@@ -8,15 +9,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { getPlayers } from "@/features/games/games"
 import { useCurrentUser, useLogout } from "@/lib/auth"
 
 export function UserMenu() {
   const session = useCurrentUser()
   const logout = useLogout()
+  const players = useQuery({
+    queryKey: ["players"],
+    queryFn: getPlayers,
+    enabled: Boolean(session.data),
+  })
 
   if (!session.data) return null
 
   const user = session.data
+  // The profile is the player linked to this account; unlinked accounts have none.
+  const player = players.data?.find((candidate) => candidate.user_id === user.id)
 
   return (
     <DropdownMenu>
@@ -57,6 +66,13 @@ export function UserMenu() {
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {player && (
+          <DropdownMenuItem asChild>
+            <Link to="/players/$playerId" params={{ playerId: String(player.id) }}>
+              <UserRound className="size-4" /> Profile
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <Link to="/settings">
             <Settings className="size-4" /> Settings
