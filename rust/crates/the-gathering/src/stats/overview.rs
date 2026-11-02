@@ -9,13 +9,20 @@ use crate::games::{Game, Seat};
 use super::records::{self, group_by, grouped_records, player_entity, seat_entity};
 use super::{commanders, elo, outcomes, query, summaries};
 
+/// Table size that seat win rates are computed over.
+const SEAT_RATE_PLAYERS: usize = 4;
+
 /// The group overview for a date range.
 pub async fn get(conn: &mut SqliteConnection, params: &DateRange) -> Result<Value, sqlx::Error> {
     let games = query::games(conn, params, None, None).await?;
     let seats: Vec<&Seat> = games.iter().flat_map(|game| &game.seats).collect();
     let cutoff = query::detailed_stats_from(conn).await?;
     let detailed = query::detailed(&games, cutoff);
-    let detailed_seats: Vec<&Seat> = detailed.iter().flat_map(|game| &game.seats).collect();
+    // Seat advantage depends on table size, so seat win rates compare four-player games only.
+    let seat_rate_seats = detailed
+        .iter()
+        .filter(|game| game.seats.len() == SEAT_RATE_PLAYERS)
+        .flat_map(|game| &game.seats);
 
     // Ratings carry in from before the window, so a `date_from` bound replays every
     // earlier game too.
@@ -51,7 +58,7 @@ pub async fn get(conn: &mut SqliteConnection, params: &DateRange) -> Result<Valu
         "elo": ratings.iter().map(elo::Rating::to_json).collect::<Vec<_>>(),
         "matchups": records::matchups(all_games.iter().copied()),
         "games_by_month": by_month,
-        "seat_win_rates": grouped_records(detailed_seats.iter().copied(), seat_entity, |seat| seat.seat),
+        "seat_win_rates": grouped_records(seat_rate_seats, seat_entity, |seat| seat.seat),
         "color_win_rates": records::color_records(seats.iter().copied()),
         "color_exposure": records::color_exposure(seats.iter().copied()),
         "commanders": top_commanders,

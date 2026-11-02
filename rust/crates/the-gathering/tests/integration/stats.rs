@@ -225,7 +225,7 @@ async fn date_ranges_follow_the_requested_time_zones_calendar_days() {
 }
 
 #[tokio::test]
-async fn overview_reports_asymmetric_records_draws_seats_colors_and_inclusive_boundaries() {
+async fn overview_reports_asymmetric_records_draws_colors_and_inclusive_boundaries() {
     let f = setup().await;
     let stats = f
         .overview(json!({"date_from": "2026-01-01", "date_to": "2026-02-01"}))
@@ -238,15 +238,6 @@ async fn overview_reports_asymmetric_records_draws_seats_colors_and_inclusive_bo
     assert_eq!(
         find(&stats["leaderboard"], "id", json!(f.id("Alice"))),
         &json!({"id": f.id("Alice"), "name": "Alice", "games": 3, "wins": 2, "losses": 1, "draws": 0, "win_rate": 66.7})
-    );
-    let seat_two = find(&stats["seat_win_rates"], "id", json!(2));
-    assert_eq!(
-        (
-            seat_two["games"].clone(),
-            seat_two["wins"].clone(),
-            seat_two["win_rate"].clone()
-        ),
-        (json!(3), json!(1), json!(33.3))
     );
     let wu = find(&stats["color_win_rates"], "id", json!("WU"));
     assert_eq!(wu["name"], "Azorius");
@@ -277,6 +268,44 @@ async fn overview_reports_asymmetric_records_draws_seats_colors_and_inclusive_bo
             kangee["losses"].clone()
         ),
         (json!(3), json!(2), json!(1))
+    );
+}
+
+#[tokio::test]
+async fn overview_seat_win_rates_count_only_four_player_games_since_the_detailed_cutoff() {
+    let mut f = setup().await;
+    let dee = f.app.player("Dee").await;
+    let deck = f
+        .app
+        .deck_with(json!({"player_id": dee.id, "name": "Dragons", "commander_name": "The Ur-Dragon", "color_identity": "WUBRG"}))
+        .await;
+    f.players.insert("Dee", dee);
+    f.decks.insert("Dee", deck);
+    let decks = f.decks.clone();
+    let table = ["Alice", "Bob", "Cara", "Dee"];
+    f.game(&decks, "2026-03-10T12:00:00Z", "Dee", &table).await;
+    f.game(&decks, "2026-04-01T12:00:00Z", "Bob", &table).await;
+    f.game(
+        &decks,
+        "2026-04-02T12:00:00Z",
+        "Alice",
+        &["Alice", "Bob", "Cara"],
+    )
+    .await;
+    f.app
+        .settings(json!({"detailed_stats_from": "2026-03-15"}))
+        .await;
+
+    let overview = f.overview(json!({})).await;
+    let mut seats = pairs(&overview["seat_win_rates"], &["id", "games", "wins"]);
+    seats.sort_by_key(|row| row[0].as_i64());
+    assert_eq!(
+        seats,
+        [(1, 0), (2, 1), (3, 0), (4, 0)].map(|(seat, wins)| vec![
+            json!(seat),
+            json!(1),
+            json!(wins)
+        ])
     );
 }
 
@@ -949,12 +978,6 @@ async fn the_detailed_stats_cutoff_keeps_records_but_drops_earlier_seat_timing_a
         (alice["games"].clone(), alice["wins"].clone()),
         (json!(6), json!(3))
     );
-    let seat_one = find(&overview["seat_win_rates"], "id", json!(1));
-    assert_eq!(
-        pairs(&json!([seat_one]), &["games", "wins", "win_rate"])[0],
-        [json!(3), json!(1), json!(33.3)]
-    );
-
     let player = f.player("Alice", json!({})).await;
     assert_eq!(
         player["record"],

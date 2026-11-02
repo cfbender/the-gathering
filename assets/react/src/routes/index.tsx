@@ -172,14 +172,14 @@ function HomePage() {
           <p className="text-primary text-xs font-bold uppercase">Opening advantage</p>
           <h2 className="mb-5 text-xl font-bold">
             Wins by seat
-            {since && (
-              <span className="text-base-content/50 ml-2 text-sm font-medium">{since}</span>
-            )}
+            <span className="text-base-content/50 ml-2 text-sm font-medium">
+              {["4-player games", since].filter(Boolean).join(" · ")}
+            </span>
           </h2>
           <BarChart
             rows={stats.seat_win_rates}
             columns={2}
-            linkTo={(row) => gamesLink(detailedGames, { winner_seat: row.id })}
+            linkTo={(row) => gamesLink(detailedGames, { winner_seat: row.id, player_count: 4 })}
           />
         </section>
       </div>
