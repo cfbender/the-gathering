@@ -10,6 +10,7 @@ import { CardSuggestions } from "./card-suggestions"
 import { useOutlineDrawing, type OutlineDrawing } from "./outline-drawing"
 import type { TableParticipant } from "./room-types"
 import { describeRoll } from "./table-rolls"
+import { TableVoteOverlay } from "./table-votes"
 import { StartOverlay } from "./start-overlay"
 import { SeatActions, SeatLife, SeatTile, SeatTrackers, TeamHeader } from "./table-seat"
 import { SeatBoard } from "./virtual-board-view"
@@ -283,6 +284,7 @@ export function TableStage({
           {describeRoll(room.roll)}
         </div>
       )}
+      <TableVoteOverlay view={view} />
       {room.mode === "two_headed_giant" && !view.showGrid && (
         <TeamHeader view={view} group={view.activeGroup} />
       )}

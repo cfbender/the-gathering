@@ -12,12 +12,14 @@ import type { GameTimerState } from "./game-timer"
 import { RevealControl } from "./reveal-control"
 import { HotkeyHelp } from "./table-hotkeys"
 import type { TableView } from "./table-view"
+import { StartVoteDialog } from "./table-votes"
 
 /** Which table dialog is open; only one is at a time. `finish` carries the paused timer the
  * result form records. */
 export type TableDialog =
   | { kind: "reveal" }
   | { kind: "help" }
+  | { kind: "vote" }
   | { kind: "finish"; timer: GameTimerState }
   | null
 
@@ -58,6 +60,9 @@ export function TableDialogs({
         </DialogContent>
       </Dialog>
       <HotkeyHelp open={dialog?.kind === "help"} onOpenChange={close} />
+      {dialog?.kind === "vote" && (
+        <StartVoteDialog onStart={room.votes.start} onClose={() => onDialogChange(null)} />
+      )}
       {dialog?.kind === "finish" && !isGameFormat(room.mode) && (
         <EndUnrecordedGame
           mode={room.mode}

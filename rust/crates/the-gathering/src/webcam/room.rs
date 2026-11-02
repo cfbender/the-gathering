@@ -25,6 +25,7 @@ use super::log::{self, LogEntry, RollKind, RollResult};
 use super::seat::{Holder, Seat};
 use super::timer::{Action, Timer};
 use super::turns::{self, Turns};
+use super::vote::{Audience, Vote, VoteRequest, Voter};
 use super::{Mode, Shared, now};
 
 const MAX_SEATS: usize = 10;
@@ -78,6 +79,9 @@ pub struct Entry {
     /// Virtual boards by player id: each owner's public view of their game, client-shaped.
     #[serde(default)]
     pub boards: BTreeMap<i64, Value>,
+    /// The open or latest vote.
+    #[serde(default)]
+    pub vote: Option<Vote>,
     /// The player who opened the table.
     pub owner_id: i64,
 }
@@ -103,6 +107,7 @@ impl Entry {
             cards: Vec::new(),
             log: Vec::new(),
             boards: BTreeMap::new(),
+            vote: None,
             owner_id,
         }
     }
@@ -326,6 +331,14 @@ pub enum RoomMsg {
     Board(i64, Option<Value>, Reply<Outcome>),
     /// A roll by a seat.
     Roll(Holder, RollKind, RollResult, Reply<()>),
+    /// The open or latest vote, as seats see it.
+    Vote(Reply<Option<Value>>),
+    /// Start a vote asked by this seat.
+    StartVote(VoteRequest, Voter, Reply<Outcome>),
+    /// A player's answer to the vote with this id.
+    CastVote(i64, String, usize, Reply<Outcome>),
+    /// Close the vote with this id before everyone answered.
+    EndVote(Actor, String, Reply<Outcome>),
     /// Close when empty and idle; answers whether it closed.
     CloseIfIdle(i64, Reply<bool>),
     /// Seated anywhere in this room.
@@ -684,6 +697,47 @@ impl Room {
                 self.commit(entry, vec![Broadcast::Event("roll", roll)])
                     .await?;
                 let _ = reply.send(());
+            }
+            RoomMsg::Vote(reply) => {
+                let _ = reply.send(entry.vote.as_ref().map(Vote::view));
+            }
+            RoomMsg::StartVote(request, creator, reply) => {
+                let outcome = self.start_vote(entry, request, creator).await?;
+                let _ = reply.send(outcome);
+            }
+            RoomMsg::CastVote(player_id, vote_id, choice, reply) => {
+                let vote = entry.vote.clone().filter(|vote| vote.id == vote_id);
+                let outcome = match vote {
+                    None => Err("this vote has ended".to_owned()),
+                    Some(mut vote) => match vote.cast(player_id, choice) {
+                        Ok(()) => {
+                            self.commit_vote(entry, vote).await?;
+                            Ok(())
+                        }
+                        Err(reason) => Err(reason.to_owned()),
+                    },
+                };
+                let _ = reply.send(outcome);
+            }
+            RoomMsg::EndVote(actor, vote_id, reply) => {
+                let vote = entry
+                    .vote
+                    .clone()
+                    .filter(|vote| vote.id == vote_id && !vote.closed);
+                let outcome = match (vote, actor) {
+                    (None, _) => Err("this vote has ended".to_owned()),
+                    (Some(vote), Actor::Player(player_id))
+                        if player_id != vote.creator.player_id =>
+                    {
+                        Err("only the player who started the vote or the host can end it".into())
+                    }
+                    (Some(mut vote), _) => {
+                        vote.closed = true;
+                        self.commit_vote(entry, vote).await?;
+                        Ok(())
+                    }
+                };
+                let _ = reply.send(outcome);
             }
             RoomMsg::Close(reply) => {
                 super::session::delete(&self.shared.pool, &self.id).await?;
@@ -1178,6 +1232,52 @@ impl Room {
             }
         }
         Ok(())
+    }
+
+    /// Opens a vote for the players still in the game who are connected (all of them, or all
+    /// but the asker). One vote is open at a time.
+    async fn start_vote(
+        &mut self,
+        entry: Entry,
+        request: VoteRequest,
+        creator: Voter,
+    ) -> Result<Outcome, sqlx::Error> {
+        if entry.vote.as_ref().is_some_and(|vote| !vote.closed) {
+            return Ok(Err("a vote is already open".into()));
+        }
+        let voters: Vec<Voter> = entry
+            .ordered_seats()
+            .into_iter()
+            .filter(|seat| !seat.eliminated && self.connections.contains_key(&seat.player_id))
+            .filter(|seat| {
+                request.audience == Audience::Everyone || seat.player_id != creator.player_id
+            })
+            .map(|seat| Voter {
+                player_id: seat.player_id,
+                player_name: seat.player_name,
+            })
+            .collect();
+        if voters.is_empty() {
+            return Ok(Err("nobody at the table can answer this vote".into()));
+        }
+        let vote = Vote::new(request, creator, voters);
+        let entry = entry.log(vec![log::vote_started(&vote)]);
+        self.commit_vote(entry, vote).await?;
+        Ok(Ok(()))
+    }
+
+    /// Saves `vote` and sends every seat its new state; a vote that just closed logs its
+    /// totals.
+    async fn commit_vote(&mut self, entry: Entry, vote: Vote) -> Result<(), sqlx::Error> {
+        let mut entry = if vote.closed {
+            entry.log(vec![log::vote_result(&vote)])
+        } else {
+            entry
+        };
+        let event = json!({ "vote": vote.view() });
+        entry.vote = Some(vote);
+        self.commit(entry, vec![Broadcast::Event("vote", event)])
+            .await
     }
 
     /// Only the seat's current connection and generation may update it. Apply an explicit

@@ -10,6 +10,7 @@ import { useRoomChannel } from "./use-room-channel"
 import { useSfuConnection } from "./use-sfu-connection"
 import { useSeatTrackers } from "./use-seat-trackers"
 import { useTableGameState } from "./use-table-game-state"
+import { useTableVote } from "./use-table-vote"
 
 export type {
   BoardCard,
@@ -45,6 +46,7 @@ export function useWebcamRoom(
   const cards = useBoardCards(link)
   const game = useTableGameState(link, playerId, setError)
   const trackers = useSeatTrackers(link, roomId, playerId)
+  const votes = useTableVote(link)
   // Set while this seat ends the table, so its own `table_closed` is not reported back to it.
   const endingRef = useRef(false)
   const [closedByOwner, setClosedByOwner] = useState(false)
@@ -69,6 +71,7 @@ export function useWebcamRoom(
       game.bindChannel(room)
       cards.bindChannel(room)
       trackers.bindChannel(room)
+      votes.bindChannel(room)
     },
     onPresence(everyone) {
       game.receivePresence(everyone)
@@ -218,6 +221,8 @@ export function useWebcamRoom(
     /** Another seat (the room owner) ended the table while this one was connected. */
     closedByOwner,
     rollDice: game.rollDice,
+    /** The open or latest vote and its commands; see `useTableVote`. */
+    votes,
     events: game.events,
     streams: peers.streams,
     connectionStates: peers.connectionStates,

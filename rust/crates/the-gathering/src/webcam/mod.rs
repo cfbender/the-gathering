@@ -16,6 +16,7 @@ pub mod seat;
 pub mod session;
 pub mod timer;
 pub mod turns;
+pub mod vote;
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -34,6 +35,7 @@ use self::log::{LogEntry, RollKind, RollResult};
 use self::room::{Actor, Admitted, Conn, Room, RoomDebug, RoomMsg, Snapshot, TimerState};
 use self::seat::{Holder, Seat};
 use self::timer::Action;
+use self::vote::{VoteRequest, Voter};
 
 /// How often the pruner runs.
 pub const PRUNE_INTERVAL: Duration = Duration::from_secs(60);
@@ -347,6 +349,47 @@ impl WebcamTables {
         result: RollResult,
     ) -> Result<(), RoomGone> {
         self.call(room, |reply| RoomMsg::Roll(actor, kind, result, reply))
+            .await
+    }
+
+    /// The open or latest vote, as seats see it.
+    pub async fn vote(&self, room: &str) -> Result<Option<Value>, RoomGone> {
+        self.call(room, RoomMsg::Vote).await
+    }
+
+    /// Opens a vote asked by `creator`.
+    pub async fn start_vote(
+        &self,
+        room: &str,
+        request: VoteRequest,
+        creator: Voter,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::StartVote(request, creator, reply))
+            .await
+    }
+
+    /// Records `player_id`'s answer to the vote `vote_id`.
+    pub async fn cast_vote(
+        &self,
+        room: &str,
+        player_id: i64,
+        vote_id: String,
+        choice: usize,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| {
+            RoomMsg::CastVote(player_id, vote_id, choice, reply)
+        })
+        .await
+    }
+
+    /// Closes the open vote `vote_id` early (its asker or the host).
+    pub async fn end_vote(
+        &self,
+        room: &str,
+        actor: Actor,
+        vote_id: String,
+    ) -> Result<Result<(), String>, RoomGone> {
+        self.call(room, |reply| RoomMsg::EndVote(actor, vote_id, reply))
             .await
     }
 

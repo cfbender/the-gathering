@@ -573,6 +573,243 @@ async fn server_generates_attributed_dice_and_coin_rolls_rejecting_forged_or_inv
     t.alice.refute("roll").await;
 }
 
+fn vote_request(secret: bool, audience: &str) -> Value {
+    json!({
+        "question": " Who is the threat? ",
+        "choices": ["Alice", " Bob ", "Cara"],
+        "secret": secret,
+        "audience": audience,
+    })
+}
+
+fn voted(vote: &Value) -> Vec<(String, bool, Value)> {
+    vote["voters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|voter| {
+            (
+                voter["player_name"].as_str().unwrap().to_owned(),
+                voter["voted"].as_bool().unwrap(),
+                voter["choice"].clone(),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn secret_vote_hides_every_choice_and_shows_totals_once_all_players_answer() {
+    let mut t = Table::new().await;
+    let mut bob = t.join_player(PEER_B, "Bob").await;
+    let mut cara = t.join_player(PEER_C, "Cara").await;
+    t.alice
+        .ok("start_vote", vote_request(true, "everyone"))
+        .await;
+    let started = cara.expect("vote").await["vote"].clone();
+    assert_eq!(started["question"], "Who is the threat?");
+    assert_eq!(started["choices"], json!(["Alice", "Bob", "Cara"]));
+    assert_eq!(
+        (&started["closed"], &started["tally"]),
+        (&json!(false), &Value::Null)
+    );
+    assert_eq!(
+        voted(&started),
+        [
+            ("Alice".into(), false, Value::Null),
+            ("Bob".into(), false, Value::Null),
+            ("Cara".into(), false, Value::Null),
+        ]
+    );
+    let id = started["id"].as_str().unwrap().to_owned();
+    t.alice
+        .refused(
+            "start_vote",
+            vote_request(false, "everyone"),
+            "a vote is already open",
+        )
+        .await;
+
+    bob.ok("cast_vote", json!({ "vote_id": id, "choice": 2 }))
+        .await;
+    bob.refused(
+        "cast_vote",
+        json!({ "vote_id": id, "choice": 0 }),
+        "you already voted",
+    )
+    .await;
+    t.alice
+        .refused(
+            "cast_vote",
+            json!({ "vote_id": id, "choice": 3 }),
+            "invalid choice",
+        )
+        .await;
+    t.alice
+        .ok("cast_vote", json!({ "vote_id": id, "choice": 1 }))
+        .await;
+    let progress = cara
+        .expect_where("vote", |event| event["vote"]["voters"][0]["voted"] == true)
+        .await["vote"]
+        .clone();
+    assert_eq!(
+        voted(&progress),
+        [
+            ("Alice".into(), true, Value::Null),
+            ("Bob".into(), true, Value::Null),
+            ("Cara".into(), false, Value::Null),
+        ]
+    );
+    // Players arriving mid-vote see it but do not answer it.
+    let mut dee = t.join_player(PEER_D, "Dee").await;
+    let late = dee.expect("vote_state").await["vote"].clone();
+    assert_eq!(
+        (&late["id"], late["voters"].as_array().unwrap().len()),
+        (&json!(id), 3)
+    );
+    dee.refused(
+        "cast_vote",
+        json!({ "vote_id": id, "choice": 0 }),
+        "you are not voting in this vote",
+    )
+    .await;
+
+    cara.ok("cast_vote", json!({ "vote_id": id, "choice": 2 }))
+        .await;
+    let closed = bob
+        .expect_where("vote", |event| event["vote"]["closed"] == true)
+        .await["vote"]
+        .clone();
+    assert_eq!(closed["tally"], json!([0, 1, 2]));
+    assert!(
+        voted(&closed)
+            .iter()
+            .all(|(_, voted, choice)| *voted && choice.is_null())
+    );
+    assert_eq!(
+        t.log().await[0].text,
+        "Vote results for \"Who is the threat?\": Alice 0, Bob 1, Cara 2"
+    );
+    cara.refused(
+        "cast_vote",
+        json!({ "vote_id": id, "choice": 0 }),
+        "this vote has ended",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn open_vote_for_opponents_skips_the_asker_and_names_choices_when_ended_early() {
+    let mut t = Table::new().await;
+    let mut bob = t.join_player(PEER_B, "Bob").await;
+    let mut cara = t.join_player(PEER_C, "Cara").await;
+    bob.ok("start_vote", vote_request(false, "opponents")).await;
+    let started = t.alice.expect("vote").await["vote"].clone();
+    assert_eq!(
+        voted(&started),
+        [
+            ("Alice".into(), false, Value::Null),
+            ("Cara".into(), false, Value::Null),
+        ]
+    );
+    assert_eq!(
+        t.log().await[0].text,
+        "Bob started a vote: Who is the threat?"
+    );
+    let id = started["id"].as_str().unwrap().to_owned();
+    bob.refused(
+        "cast_vote",
+        json!({ "vote_id": id, "choice": 0 }),
+        "you are not voting in this vote",
+    )
+    .await;
+    // Open votes keep choices private until the vote closes.
+    t.alice
+        .ok("cast_vote", json!({ "vote_id": id, "choice": 1 }))
+        .await;
+    let progress = cara
+        .expect_where("vote", |event| event["vote"]["voters"][0]["voted"] == true)
+        .await["vote"]
+        .clone();
+    assert_eq!(progress["voters"][0]["choice"], Value::Null);
+
+    cara.refused(
+        "end_vote",
+        json!({ "vote_id": id }),
+        "only the player who started the vote or the host can end it",
+    )
+    .await;
+    bob.ok("end_vote", json!({ "vote_id": id })).await;
+    let closed = cara
+        .expect_where("vote", |event| event["vote"]["closed"] == true)
+        .await["vote"]
+        .clone();
+    assert_eq!(closed["tally"], json!([0, 1, 0]));
+    assert_eq!(
+        voted(&closed),
+        [
+            ("Alice".into(), true, json!(1)),
+            ("Cara".into(), false, Value::Null),
+        ]
+    );
+    assert_eq!(
+        t.log().await[0].text,
+        "Vote results for \"Who is the threat?\": Alice 0, Bob 1, Cara 0 (1 of 2 voted)"
+    );
+    cara.refused(
+        "cast_vote",
+        json!({ "vote_id": id, "choice": 0 }),
+        "this vote has ended",
+    )
+    .await;
+    // A closed vote makes way for the next one.
+    t.alice
+        .ok("start_vote", vote_request(true, "everyone"))
+        .await;
+}
+
+#[tokio::test]
+async fn rejects_malformed_votes_and_ballots() {
+    let mut t = Table::new().await;
+    let base = vote_request(false, "everyone");
+    for payload in [
+        with(&base, "choices", json!(["Only one"])),
+        with(&base, "choices", json!(["Same", " Same"])),
+        with(&base, "choices", json!(["Fine", "  "])),
+        with(
+            &base,
+            "choices",
+            json!((0..21).map(|n| n.to_string()).collect::<Vec<_>>()),
+        ),
+        with(&base, "question", json!("   ")),
+        with(&base, "question", json!("?".repeat(201))),
+        with(&base, "audience", json!("spectators")),
+        with(&base, "secret", json!("yes")),
+        with(&base, "result", json!(0)),
+        without(&base, "audience"),
+    ] {
+        t.alice.refused("start_vote", payload, "invalid vote").await;
+    }
+    t.alice.ok("start_vote", base).await;
+    let id = t.alice.expect("vote").await["vote"]["id"].clone();
+    for payload in [
+        json!({ "vote_id": id, "choice": -1 }),
+        json!({ "vote_id": id, "choice": "1" }),
+        json!({ "vote_id": id }),
+        json!({ "vote_id": id, "choice": 0, "player_id": 1 }),
+    ] {
+        t.alice
+            .refused("cast_vote", payload, "invalid ballot")
+            .await;
+    }
+    t.alice
+        .refused(
+            "cast_vote",
+            json!({ "vote_id": ELSEWHERE, "choice": 0 }),
+            "this vote has ended",
+        )
+        .await;
+}
+
 #[tokio::test]
 async fn validates_elimination_in_own_status_without_changing_life() {
     let mut t = Table::new().await;

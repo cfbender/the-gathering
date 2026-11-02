@@ -265,6 +265,8 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           onUnpassTurn={room.unpassTurn}
           onAdjustTurn={room.adjustTurn}
           onRoll={room.rollDice}
+          onStartVote={() => setDialog({ kind: "vote" })}
+          voteOpen={room.votes.vote?.closed === false}
           onChangeTimer={(action) => {
             void room.changeTimer(action)
           }}

@@ -37,6 +37,7 @@ import type { TableParticipant } from "./room-types"
 import { SeatOrderTable } from "./seat-order-table"
 import { describeIceServers, describeRecognizer } from "./side-panel-labels"
 import { TableRolls, type RollRequest } from "./table-rolls"
+import { TableVoteSection } from "./table-votes"
 import { TimerBadge, TimerToggle } from "./table-timer"
 import { nextActiveSeat, unpassTarget, type TurnState } from "./turns"
 
@@ -76,6 +77,10 @@ export interface TableTabProps {
   onUnpassTurn: () => void
   onAdjustTurn: (playerId: number, delta: -1 | 1) => void
   onRoll: (request: RollRequest) => void
+  /** Opens the Start a vote dialog. */
+  onStartVote: () => void
+  /** A vote is open, so another cannot start yet. */
+  voteOpen: boolean
   onEndGame: () => void
   onChangeTimer: (action: "pause" | "resume") => void
   /** Private reveal: who the local camera is currently shown to, if anyone. */
@@ -488,6 +493,7 @@ export function TableTab(props: TableTabProps) {
       <SetupSection {...props} />
       <IdentifyCardsSection recognizer={props.recognizer} />
       <TableRolls onRoll={props.onRoll} />
+      <TableVoteSection voteOpen={props.voteOpen} onStart={props.onStartVote} />
       <ConnectionSection {...props} />
     </>
   )

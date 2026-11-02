@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use super::Mode;
 use super::seat::{Holder, Seat};
 use super::turns;
+use super::vote::Vote;
 
 const MAX_ENTRIES: usize = 200;
 const MERGE_WINDOW_MS: i64 = 5_000;
@@ -297,6 +298,39 @@ pub fn elimination(seat: &Seat, eliminated: bool) -> LogEntry {
             format!("{} was restored to the game", seat.player_name),
         )
     }
+}
+
+/// A seat asked the table a question.
+pub fn vote_started(vote: &Vote) -> LogEntry {
+    let kind = if vote.secret {
+        "a secret vote"
+    } else {
+        "a vote"
+    };
+    text(format!(
+        "{} started {kind}: {}",
+        vote.creator.player_name, vote.question
+    ))
+}
+
+/// A vote closed: its totals, and how many answered when it was ended early.
+pub fn vote_result(vote: &Vote) -> LogEntry {
+    let totals: Vec<String> = vote
+        .choices
+        .iter()
+        .zip(vote.tally())
+        .map(|(choice, count)| format!("{choice} {count}"))
+        .collect();
+    let early = if vote.ballots.len() < vote.voters.len() {
+        format!(" ({} of {} voted)", vote.ballots.len(), vote.voters.len())
+    } else {
+        String::new()
+    };
+    text(format!(
+        "Vote results for \"{}\": {}{early}",
+        vote.question,
+        totals.join(", ")
+    ))
 }
 
 /// What was rolled.

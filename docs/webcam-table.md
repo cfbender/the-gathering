@@ -663,6 +663,17 @@ event validates the request, generates the result on the server, stamps it with 
 seat's name/id and server time, then broadcasts to everyone. Results appear in a five-second
 overlay and in the Log. Clients cannot supply a result or impersonate the roller.
 
+The Table tab's **Start a vote…** asks the table a question with two to twenty choices. The asker
+picks whether everyone votes or only their opponents, and whether the vote is secret. The room
+(`webcam/vote.rs`) fixes the voters when the vote starts: connected seats still in the game, minus
+the asker for an opponents-only vote. One vote is open at a time. Each voter gets a ballot dialog
+(closing it leaves a **Vote now** button on the stage's progress banner) and answers once with
+`cast_vote`. Until the vote closes, seats see only who has voted, never a choice. It closes when
+the last voter answers, or when its asker or the host presses **End vote**, and every seat then
+gets the results dialog with the totals. Open votes also list who chose what; secret votes never
+send individual choices to any browser. The vote is saved with the table, sent as `vote_state` on
+every (re)join and as `vote` on each change, and its start and totals go to the Log.
+
 The Log tab is owned by the room (`webcam/log.rs`): the room task writes
 entries for joins and leaves, deck/life/camera/counter changes, eliminations, the monarch, seat
 order and rolls, keeps the newest 200 in the saved snapshot, and broadcasts each new or merged
@@ -739,7 +750,7 @@ Restart is hidden at the table (`canRestart={false}`): a rematch deals a fresh g
   signaling and targeted `peer_message`s, merges `update_status`/`set_eliminated` into presence,
   validates `seat_order`/`timer`/`timer_sync`,
   `start_game`/`turn_settings`/`pass_turn`/`unpass_turn`/`adjust_turn`, and generates
-  and broadcasts validated `roll` results.
+  and broadcasts validated `roll` results and `start_vote`/`cast_vote`/`end_vote` votes.
 - `webcam/` holds admission and game state. Each room is a tokio task (`webcam/room.rs`, one
   per room, started on first join) that loads its saved session (`webcam/session.rs`) on start,
   saves every change before broadcasting it, and stops when its last connection leaves. A failing
@@ -804,6 +815,8 @@ Restart is hidden at the table (`canRestart={false}`): a rematch deals a fresh g
 - `features/webcam-table/game-timer.ts` — elapsed-time interpolation, formatting, and duration
   prefill helpers (`game-timer.test.ts` also covers roll descriptions).
 - `features/webcam-table/table-rolls.tsx` — dice/coin controls, wire types, and result descriptions.
+- `features/webcam-table/table-votes.tsx` — the Start a vote dialog, ballot, results, and stage
+  progress banner; `use-table-vote.ts` holds the vote's wire types, state, and commands.
 - `features/webcam-table/table-events.ts` — pure helpers for log lines, seat ordering, and
   shuffling, active-turn filtering, departed eliminated seats, and event coalescing
   (unit-tested in `table-events.test.ts`).

@@ -38,6 +38,7 @@ use crate::webcam::log::{RollKind, RollResult};
 use crate::webcam::room::{Actor, Conn, ConnEvent, RoomExit};
 use crate::webcam::seat::{CombatEffect, CustomCounter, Seat};
 use crate::webcam::timer::Action;
+use crate::webcam::vote::{VoteRequest, Voter};
 use crate::webcam::{self, Mode, RoomGone, TableClaim};
 
 const LIFE_RANGE: std::ops::RangeInclusive<i64> = -999..=999;
@@ -593,6 +594,9 @@ impl Channel {
         // Likewise every virtual board; changes follow as `board`.
         let boards = self.tables().boards(&self.room_id).await?;
         self.push("table_boards", &json!({ "boards": boards }));
+        // Likewise the open or latest vote; changes follow as `vote`.
+        let vote = self.tables().vote(&self.room_id).await?;
+        self.push("vote_state", &json!({ "vote": vote }));
         if self.reconnected {
             self.push("connection_unhealthy", &json!({ "reason": "reconnected" }));
         }
@@ -792,6 +796,9 @@ impl Channel {
                 "unpass_turn",
                 "begin_play",
                 "roll",
+                "start_vote",
+                "cast_vote",
+                "end_vote",
                 "remove_participant",
                 "seat_spectator",
             ]
@@ -904,6 +911,47 @@ impl Channel {
             }
             "timer_sync" => error("invalid timer sync"),
             "roll" => self.roll(payload).await,
+            "start_vote" => match VoteRequest::parse(payload) {
+                Some(request) => {
+                    let creator = Voter {
+                        player_id: self.participant.player_id,
+                        player_name: self.participant.player_name.clone(),
+                    };
+                    reply(
+                        self.tables()
+                            .start_vote(&self.room_id, request, creator)
+                            .await?,
+                    )
+                }
+                None => error("invalid vote"),
+            },
+            "cast_vote" => {
+                let ballot = exactly(payload, 2).and_then(|map| {
+                    let vote_id = map.get("vote_id").filter(|id| short_string(id, 64))?;
+                    let choice = int(map.get("choice")).and_then(|c| usize::try_from(c).ok())?;
+                    Some((vote_id.as_str()?.to_owned(), choice))
+                });
+                match ballot {
+                    Some((vote_id, choice)) => reply(
+                        self.tables()
+                            .cast_vote(&self.room_id, self.participant.player_id, vote_id, choice)
+                            .await?,
+                    ),
+                    None => error("invalid ballot"),
+                }
+            }
+            "end_vote" => match exactly(payload, 1)
+                .and_then(|map| map.get("vote_id"))
+                .filter(|id| short_string(id, 64))
+                .and_then(Value::as_str)
+            {
+                Some(vote_id) => reply(
+                    self.tables()
+                        .end_vote(&self.room_id, self.actor(), vote_id.to_owned())
+                        .await?,
+                ),
+                None => error("invalid vote"),
+            },
             _ => error("unknown event"),
         }
     }
