@@ -182,6 +182,11 @@ function MatchControls(props: TableTabProps) {
               above to pair them. Randomization keeps pairs together.
             </p>
           )}
+          {mode === "pauper_commander" && (
+            <p className="text-[0.65rem] text-base-content/60">
+              Pauper Commander · 30 life. 16 combat damage from one commander is lethal.
+            </p>
+          )}
           {mode === "five_star" && (
             <p className="text-[0.65rem] text-base-content/60">
               Exactly 5 players. Neighbours can't be attacked until only three players remain.

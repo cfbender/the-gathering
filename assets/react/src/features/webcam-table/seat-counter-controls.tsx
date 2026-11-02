@@ -4,14 +4,22 @@ import { CardImage } from "@/components/card-image"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import type { DeckSummary } from "@/features/decks/decks"
+import type { TableMode } from "@/features/games/game-format"
 import { cn } from "@/lib/cn"
-import { commanderNames, counterValue, counterWarning, type Counter } from "./seat-counters"
+import {
+  commanderNames,
+  counterValue,
+  counterWarning,
+  lethalCommanderDamage,
+  type Counter,
+} from "./seat-counters"
 import type { TableParticipant } from "./use-webcam-room"
 
 interface Props {
   participant: TableParticipant
   participants: TableParticipant[]
   decks: DeckSummary[]
+  mode: TableMode
   local: boolean
   monarch: boolean
   onAdjust: (counter: Counter, delta: number) => void
@@ -136,6 +144,7 @@ export function SeatCounterControls({
   participant,
   participants,
   decks,
+  mode,
   local,
   monarch,
   onAdjust,
@@ -144,6 +153,7 @@ export function SeatCounterControls({
   onOpenChange,
 }: Props) {
   const deck = decks.find((candidate) => candidate.id === participant.deck_id)
+  const lethal = lethalCommanderDamage(mode)
   const opponents = participants.filter((seat) => seat.player_id !== participant.player_id)
   const sourceIds = new Set([
     ...opponents.map((seat) => String(seat.player_id)),
@@ -195,7 +205,7 @@ export function SeatCounterControls({
           type="button"
           className={cn(
             "flex h-6 w-full items-center justify-center rounded border border-white/20 bg-black/80 text-white/85 hover:bg-primary/80 data-[state=open]:bg-primary/80",
-            counterWarning(participant) && "text-error",
+            counterWarning(participant, mode) && "text-error",
           )}
           aria-label={`${participant.player_name}'s counters`}
           title="Counters & commander damage"
@@ -262,7 +272,8 @@ export function SeatCounterControls({
         <div className="mt-2 border-t border-base-content/10 pt-2">
           <h3 className="text-xs font-bold">Commander damage received</h3>
           <p className="my-1 text-[0.65rem] text-base-content/55">
-            21 from one commander is lethal. After adjusting, optionally apply the change to life.
+            {lethal} from one commander is lethal. After adjusting, optionally apply the change to
+            life.
           </p>
           {damageRows.map(({ playerId, commander, playerName, art }) => (
             <CounterRow
@@ -272,7 +283,7 @@ export function SeatCounterControls({
               art={art}
               value={counterValue(participant, { kind: "damage", playerId, commander })}
               local={local}
-              threshold={21}
+              threshold={lethal}
               onAdjust={(delta) => onAdjust({ kind: "damage", playerId, commander }, delta)}
               onChangeLife={onChangeLife}
             />

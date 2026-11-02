@@ -28,14 +28,17 @@ once only three players remain. These are
 advisory badges, not enforced attacks or alliances. Spectators see no restrictions. Seat order
 is fixed after starting either new mode, including across reconnects.
 
+Pauper Commander is free-for-all Commander with Pauper Commander's life totals: every seat starts
+at 30 life, and 16 combat damage from one commander is lethal.
+
 Duel Commander, Standard, Pauper, and Canadian Highlander are one-on-one modes: they require
 exactly two seats and start every seat at 20 life. Choosing a mode with a different starting
 life before the match resets each seat to it, and rematches restart at the mode's life. Only
 Commander formats are recorded: ending a Standard, Pauper, or Canadian Highlander game closes the
 table or starts a rematch without adding it to game history.
 
-Recorded games store `format` (`commander`, `two_headed_giant`, `five_star`, or
-`duel_commander`), also selectable in the manual game form. Existing games and imports default to Commander (the `add_format_to_games` migration, applied
+Recorded games store `format` (`commander`, `two_headed_giant`, `five_star`,
+`pauper_commander`, or `duel_commander`), also selectable in the manual game form. Existing games and imports default to Commander (the `add_format_to_games` migration, applied
 at boot). Room snapshot version 2 stores mode
 and team life; version 1 snapshots continue loading as Commander.
 

@@ -192,6 +192,7 @@ describe("seat counters", () => {
               partner_art_crop_url: "/api/card-images/thrasios",
             },
           ]}
+          mode="commander"
           local
           monarch={false}
           onTakeMonarch={vi.fn()}
@@ -275,6 +276,7 @@ describe("seat counters", () => {
               participant={participant}
               participants={[participant, opponent]}
               decks={[deck]}
+              mode="commander"
               local
               monarch={false}
               onOpenChange={onOpenChange}
@@ -325,6 +327,7 @@ describe("seat counters", () => {
         participant={{ ...seat, commander_casts: { Tymna: 999 } }}
         participants={[seat]}
         decks={[deck]}
+        mode="commander"
         local
         monarch={false}
         onAdjust={onAdjust}
@@ -355,6 +358,7 @@ describe("seat counters", () => {
         participant={seat}
         participants={[seat]}
         decks={[deck]}
+        mode="commander"
         local={false}
         monarch={false}
         onAdjust={vi.fn()}
@@ -370,6 +374,7 @@ describe("seat counters", () => {
         participant={seat}
         participants={[seat]}
         decks={[deck]}
+        mode="commander"
         local={false}
         monarch={false}
         onAdjust={vi.fn()}
@@ -390,6 +395,7 @@ describe("seat counters", () => {
         }}
         participants={[seat]}
         decks={[deck]}
+        mode="commander"
         local={false}
         monarch
         onAdjust={vi.fn()}

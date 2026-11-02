@@ -73,6 +73,8 @@ pub enum Mode {
     TwoHeadedGiant,
     /// Exactly five players.
     FiveStar,
+    /// Free-for-all Pauper Commander at 30 life.
+    PauperCommander,
     /// One-on-one Commander at 20 life.
     DuelCommander,
     /// One-on-one Standard. Played at the table but not recorded.
@@ -90,6 +92,7 @@ impl Mode {
             "commander" => Some(Self::Commander),
             "two_headed_giant" => Some(Self::TwoHeadedGiant),
             "five_star" => Some(Self::FiveStar),
+            "pauper_commander" => Some(Self::PauperCommander),
             "duel_commander" => Some(Self::DuelCommander),
             "standard" => Some(Self::Standard),
             "pauper" => Some(Self::Pauper),
@@ -110,6 +113,8 @@ impl Mode {
     pub fn starting_life(self) -> i64 {
         if self.is_duel() {
             20
+        } else if self == Self::PauperCommander {
+            30
         } else {
             seat::STARTING_LIFE
         }

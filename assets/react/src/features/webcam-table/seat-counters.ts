@@ -1,4 +1,5 @@
 import type { DeckSummary } from "@/features/decks/decks"
+import type { TableMode } from "@/features/games/game-format"
 
 export interface SeatCounters {
   poison: number
@@ -62,11 +63,17 @@ export function changeCounter(state: SeatCounters, counter: Counter, delta: numb
   }
 }
 
-export function counterWarning(state: SeatCounters) {
+/** Combat damage from one commander that knocks a player out. */
+export function lethalCommanderDamage(mode: TableMode) {
+  return mode === "pauper_commander" ? 16 : 21
+}
+
+export function counterWarning(state: SeatCounters, mode: TableMode) {
+  const lethal = lethalCommanderDamage(mode)
   return (
     state.poison >= 10 ||
     Object.values(state.commander_damage).some((counts) =>
-      Object.values(counts).some((damage) => damage >= 21),
+      Object.values(counts).some((damage) => damage >= lethal),
     )
   )
 }

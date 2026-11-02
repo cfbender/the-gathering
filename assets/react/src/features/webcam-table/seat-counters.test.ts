@@ -31,13 +31,23 @@ describe("seat counters", () => {
     state = changeCounter(state, { kind: "casts", commander: "Thrasios" }, 1)
     expect(state.commander_damage).toEqual({ "2": { Tymna: 20, Thrasios: 5 }, "3": { Tymna: 8 } })
     expect(state.commander_casts).toEqual({ Tymna: 3, Thrasios: 1 })
-    expect(counterWarning(state)).toBe(false)
+    expect(counterWarning(state, "commander")).toBe(false)
     expect(
       counterWarning(
         changeCounter(state, { kind: "damage", playerId: 2, commander: "Thrasios" }, 16),
+        "commander",
       ),
     ).toBe(true)
-    expect(counterWarning({ ...state, poison: 9 })).toBe(false)
-    expect(counterWarning({ ...state, poison: 10 })).toBe(true)
+    expect(counterWarning({ ...state, poison: 9 }, "commander")).toBe(false)
+    expect(counterWarning({ ...state, poison: 10 }, "commander")).toBe(true)
+  })
+
+  it("warns at 16 commander damage in Pauper Commander", () => {
+    const tymna = { kind: "damage", playerId: 2, commander: "Tymna" } as const
+    const fifteen = changeCounter(EMPTY_COUNTERS, tymna, 15)
+    const sixteen = changeCounter(fifteen, tymna, 1)
+    expect(counterWarning(fifteen, "pauper_commander")).toBe(false)
+    expect(counterWarning(sixteen, "pauper_commander")).toBe(true)
+    expect(counterWarning(sixteen, "commander")).toBe(false)
   })
 })

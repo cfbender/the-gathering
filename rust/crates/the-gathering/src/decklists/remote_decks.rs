@@ -240,7 +240,7 @@ fn moxfield_deck(row: &Value) -> RemoteDeck {
         updated_at: timestamp(row.get("lastUpdatedAtUtc")),
         is_commander: matches!(
             row.get("format").and_then(Value::as_str),
-            Some("commander" | "duelCommander")
+            Some("commander" | "duelCommander" | "pauperEdh")
         ),
     }
 }
@@ -256,7 +256,7 @@ fn manavault_deck(row: &Value, origin: &str) -> RemoteDeck {
         updated_at: timestamp(row.get("updated_at")),
         is_commander: matches!(
             row.get("format").and_then(Value::as_str),
-            Some("commander" | "duel_commander")
+            Some("commander" | "duel_commander" | "pauper_commander")
         ),
     }
 }
@@ -758,10 +758,10 @@ impl RemoteDecks {
                     url: format!("{PUBLIC_ARCHIDEKT}/decks/{id}"),
                     source: Source::Archidekt,
                     updated_at: timestamp(row.get("updatedAt")),
-                    // 3 is Commander / EDH and 12 Duel Commander.
+                    // 3 is Commander / EDH, 12 Duel Commander, and 17 Pauper Commander.
                     is_commander: matches!(
                         body.get("deckFormat").and_then(Value::as_u64),
-                        Some(3 | 12)
+                        Some(3 | 12 | 17)
                     ),
                 })
             }

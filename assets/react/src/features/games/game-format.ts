@@ -3,6 +3,7 @@ export const GAME_FORMATS = [
   { value: "commander", label: "Commander" },
   { value: "two_headed_giant", label: "2HG", name: "Two-Headed Giant Commander" },
   { value: "five_star", label: "Five Star" },
+  { value: "pauper_commander", label: "Pauper Commander" },
   { value: "duel_commander", label: "Duel Commander" },
 ] as const
 

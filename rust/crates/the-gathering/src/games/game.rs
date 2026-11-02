@@ -316,6 +316,7 @@ pub(crate) async fn validate_game(
             "commander",
             "two_headed_giant",
             "five_star",
+            "pauper_commander",
             "duel_commander",
         ],
     );

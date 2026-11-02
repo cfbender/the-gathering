@@ -68,6 +68,8 @@ text_enum! {
         TwoHeadedGiant => "two_headed_giant",
         /// Five-player Star.
         FiveStar => "five_star",
+        /// Free-for-all Pauper Commander.
+        PauperCommander => "pauper_commander",
         /// One-on-one Duel Commander.
         DuelCommander => "duel_commander",
     }

@@ -38,6 +38,7 @@ function SeatCounters({
       participant={participant}
       participants={view.seated}
       decks={view.decks}
+      mode={room.mode}
       local={isLocal(view, participant)}
       monarch={room.monarch?.peer_id === participant.peer_id}
       onAdjust={room.adjustCounter}

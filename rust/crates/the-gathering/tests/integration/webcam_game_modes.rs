@@ -114,6 +114,26 @@ async fn duel_modes_start_seats_at_20_life_and_need_exactly_two_players() {
     assert_eq!(t.seat(PEER_C).await.life, 40);
 }
 
+#[tokio::test]
+async fn pauper_commander_starts_seats_at_30_life_without_a_roster_limit() {
+    let mut t = Table::new().await;
+    let mut bob = t.join_seat(PEER_B).await;
+    t.alice
+        .ok("set_mode", json!({ "mode": "pauper_commander" }))
+        .await;
+    let reset = bob.expect("seat_reset").await;
+    assert_eq!(reset["participant"]["life"], 30);
+    assert_eq!(t.seat(PEER_A).await.life, 30);
+    let carol = t.join_seat(PEER_C).await;
+    assert_eq!(carol.participant["life"], 30);
+
+    t.alice.ok("start_game", json!({})).await;
+    bob.ok("update_status", json!({ "life": 4 })).await;
+    t.alice.ok("rematch", json!({})).await;
+    assert_eq!(t.snapshot().await.mode, Mode::PauperCommander);
+    assert_eq!(t.seat(PEER_B).await.life, 30);
+}
+
 async fn join_admin(t: &Table, peer: &str) -> Client {
     let user = t.server.admin().await;
     let player = t

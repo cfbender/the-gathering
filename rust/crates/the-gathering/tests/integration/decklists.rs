@@ -1416,7 +1416,7 @@ mod sync {
     }
 
     #[tokio::test]
-    async fn imports_only_explicit_commander_or_duel_commander_format_from_every_host() {
+    async fn imports_only_explicit_commander_variant_formats_from_every_host() {
         let server = MockServer::start().await;
         let (app, user, origin) = vault_app(&server).await;
         let player = app
@@ -1451,11 +1451,18 @@ mod sync {
                 (Some(json!("duelCommander")), Some(json!("duel_commander"))),
                 Some(json!(12)),
             ),
+            (
+                8,
+                (Some(json!("pauperEdh")), Some(json!("pauper_commander"))),
+                Some(json!(17)),
+            ),
+            (9, same(Some(json!("pauper"))), Some(json!(6))),
         ] {
             // Rejected decks have a commander and match a local name: neither is proof of format.
             let name = match id {
                 1 => "Commander",
                 7 => "Duel",
+                8 => "Pauper",
                 _ => "Existing",
             };
             let row = json!({
@@ -1494,6 +1501,7 @@ mod sync {
         ] {
             rows[0]["name"] = json!(name);
             rows[6]["name"] = json!(format!("{name} Duel"));
+            rows[7]["name"] = json!(format!("{name} PDH"));
         }
         stub_moxfield(&server, moxfield).await;
         for (endpoint, body) in [
@@ -1519,7 +1527,7 @@ mod sync {
             .assert_json(200);
         assert_eq!(
             result,
-            json!({"data": {"created": 6, "updated": 0, "errors": []}})
+            json!({"data": {"created": 9, "updated": 0, "errors": []}})
         );
         let saved = app
             .state
@@ -1534,11 +1542,14 @@ mod sync {
             [
                 "Arch",
                 "Arch Duel",
+                "Arch PDH",
                 "Existing",
                 "Mox",
                 "Mox Duel",
+                "Mox PDH",
                 "Vault",
-                "Vault Duel"
+                "Vault Duel",
+                "Vault PDH"
             ]
         );
         let untouched = app
