@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { EmptyPanel, PageHeader } from "@/components/app-shell"
-import { CalendarDays, Plus } from "lucide-react"
+import { CalendarDays, HeartPulse, Plus } from "lucide-react"
 import { useState } from "react"
 import { getGames } from "@/features/games/games"
 import { GameCard } from "@/features/games/game-card"
@@ -52,6 +52,9 @@ function GamesPage() {
         title="Games"
         actions={
           <>
+            <Link to="/tabletop" className="btn btn-outline">
+              <HeartPulse className="size-4" /> Tabletop
+            </Link>
             <PlayActions />
             <Link to="/games/new" className="btn btn-primary">
               <Plus className="size-4" /> Log game

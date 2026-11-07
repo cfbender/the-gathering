@@ -15,6 +15,9 @@ services required.
   dice rolls, open and secret votes, a shared log, spectators, private hand reveals, and
   Commander, Two-Headed Giant, Five Star, Pauper Commander, and Duel Commander modes, plus
   unrecorded one-on-one Standard, Pauper, and Canadian Highlander games.
+- **Tabletop:** one phone or tablet lying in the middle of an in-person table tracks everyone's
+  life, poison, commander damage, and turns, with each seat turned to face its player. Members
+  and guests can sit down; games where every seat is a member are recorded in game history.
 - **Installable app:** add The Gathering to a phone's home screen or a desktop as a progressive
   web app (Chrome's install prompt, or **Install app** in the account menu).
 - **Card recognition:** click a card on any board and the browser identifies it with
@@ -101,6 +104,21 @@ can Change time or Cancel. The queue and its buttons live in a thread on the
 `/newgame` reply, where the ready and maybe pings land too; the host or an Administrator runs `/close` in it to
 close it. See [Discord integration](docs/discord-integration.md#webcam-table-queues-with-newgame)
 for time syntax, permissions, and restart/delivery behavior.
+
+## Tabletop
+
+**Games → Tabletop** (`/tabletop`) turns one device into a life counter for a table where
+everyone plays in person. Pick a format, two to six players, how they sit around the device,
+and starting life; then each player taps their seat to sit down as a playgroup member (with one
+of their decks) or as a guest. Tap the left half of a seat to lose life and the right half to
+gain it; hold to change it by ten. Each seat's counters button tracks poison and commander
+damage from every opposing commander (which also comes off life). The hub in the middle rolls
+for the first player, tracks turns and the game clock, and ends the game.
+
+A game is recorded in game history only when every seat is a member and the format is one
+history records; a game with any guest (or empty seat), or in Standard, Pauper, or Canadian
+Highlander, just ends. The game in progress is saved in the browser, so a reload or reopening
+the installed app picks it up again, and the screen stays awake while the board is open.
 
 ## Game history
 

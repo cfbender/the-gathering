@@ -52,9 +52,9 @@ function navItemActive(pathname: string, to: (typeof navItems)[number]["to"]) {
   return pathname === to || pathname.startsWith(`${to}/`)
 }
 
-/** Webcam tables are a dark stage around live video regardless of the chosen theme, so the
- * shell omits the app header and forces the dark palette (restored on leave) so portalled
- * popovers and dialogs match too. */
+/** Webcam tables (a dark stage around live video) and the tabletop board (one device lying on
+ * the table) ignore the chosen light/dark theme, so the shell omits the app header and forces
+ * the dark palette (restored on leave) so portalled popovers and dialogs match too. */
 function TableShell() {
   const { resolved } = useTheme()
 
@@ -79,7 +79,10 @@ function RootLayout() {
   // starts, while the outlet keeps rendering the table until the next route is ready. Switching
   // shells early would remount the table under the app shell and rejoin (or reopen) its room.
   const showingTable = useChildMatches({
-    select: (matches) => matches.some((match) => match.routeId === "/table/$roomId"),
+    select: (matches) =>
+      matches.some(
+        (match) => match.routeId === "/table/$roomId" || match.routeId === "/tabletop/play",
+      ),
   })
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
