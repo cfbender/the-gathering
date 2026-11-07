@@ -127,3 +127,61 @@ async fn other_static_paths_are_served_without_the_immutable_header_or_directory
     assert_eq!(logo.header("set-cookie"), None);
     assert_eq!(logo.header("x-request-id"), None);
 }
+
+#[tokio::test]
+async fn the_app_is_installable_with_a_manifest_service_worker_and_offline_page() {
+    // The default test config serves the repository's real `priv/static`.
+    let app = TestApp::new().await;
+
+    assert!(
+        app.get("/")
+            .await
+            .text()
+            .contains(r#"<link rel="manifest" href="/site.webmanifest" />"#)
+    );
+
+    let manifest = app.get("/site.webmanifest").await;
+    assert_eq!(manifest.status, StatusCode::OK);
+    assert_eq!(
+        manifest.header("content-type"),
+        Some("application/manifest+json; charset=utf-8")
+    );
+    assert_eq!(manifest.header("set-cookie"), None);
+    let manifest = manifest.json();
+    assert_eq!(manifest["display"], "standalone");
+    assert_eq!(manifest["start_url"], "/");
+    // Chrome requires a 192px and a 512px icon; every icon and shortcut must resolve.
+    let icons = manifest["icons"].as_array().unwrap();
+    for size in ["192x192", "512x512"] {
+        for purpose in ["any", "maskable"] {
+            assert!(
+                icons
+                    .iter()
+                    .any(|icon| icon["sizes"] == size && icon["purpose"] == purpose),
+                "missing {size} {purpose} icon"
+            );
+        }
+    }
+    for icon in icons {
+        let src = icon["src"].as_str().unwrap();
+        let response = app.get(src).await;
+        assert_eq!(response.status, StatusCode::OK, "{src}");
+        assert_eq!(response.header("content-type"), Some("image/png"), "{src}");
+    }
+
+    let worker = app.get("/sw.js").await;
+    assert_eq!(worker.status, StatusCode::OK);
+    assert_eq!(
+        worker.header("content-type"),
+        Some("text/javascript; charset=utf-8")
+    );
+    assert_eq!(worker.header("service-worker-allowed"), Some("/"));
+    let source = worker.text();
+    assert!(source.contains(r#"const OFFLINE_URL = "/offline.html""#));
+
+    // Everything the worker precaches must exist, or its install fails.
+    for path in ["/offline.html", "/images/icon-192.png", "/images/logo.svg"] {
+        assert!(source.contains(&format!(r#""{path}""#)), "{path}");
+        assert_eq!(app.get(path).await.status, StatusCode::OK, "{path}");
+    }
+}

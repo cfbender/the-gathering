@@ -15,6 +15,8 @@ services required.
   dice rolls, open and secret votes, a shared log, spectators, private hand reveals, and
   Commander, Two-Headed Giant, Five Star, Pauper Commander, and Duel Commander modes, plus
   unrecorded one-on-one Standard, Pauper, and Canadian Highlander games.
+- **Installable app:** add The Gathering to a phone's home screen or a desktop as a progressive
+  web app (Chrome's install prompt, or **Install app** in the account menu).
 - **Card recognition:** click a card on any board and the browser identifies it with
   [Oracle](https://github.com/cfbender/oracle)'s models, then shows its printing, rules text,
   and rulings to the whole table, favouring cards in that player's linked deck list.

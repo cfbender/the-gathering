@@ -135,6 +135,10 @@ pub async fn index(
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="csrf-token" content="{csrf}" />
     <meta name="application-name" content="The Gathering" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="The Gathering" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     {manavault_meta}
     <meta name="theme-color" content="#f5e6e2" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#180810" media="(prefers-color-scheme: dark)" />
@@ -142,6 +146,7 @@ pub async fn index(
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/images/logo.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/images/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <script>
       (() => {{
         const key = "the-gathering:theme"

@@ -5,12 +5,14 @@ import { createRoot } from "react-dom/client"
 import "./app.css"
 import { RouteError } from "./components/route-error"
 import { ToastProvider } from "./components/ui/toast"
+import { installPwa } from "./lib/pwa"
 import { installStaleBundleReload } from "./lib/stale-bundle"
 import { StatsRangeProvider } from "./lib/stats-range"
 import { ThemeProvider } from "./lib/theme"
 import { routeTree } from "./routeTree.gen"
 
 installStaleBundleReload()
+installPwa()
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },

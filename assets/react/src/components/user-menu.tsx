@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { ChevronDown, LogOut, Settings, Shield, UserRound } from "lucide-react"
+import { ChevronDown, Download, LogOut, Settings, Shield, UserRound } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,10 +11,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { getPlayers } from "@/features/games/games"
 import { useCurrentUser, useLogout } from "@/lib/auth"
+import { promptInstall, useCanInstall } from "@/lib/pwa"
 
 export function UserMenu() {
   const session = useCurrentUser()
   const logout = useLogout()
+  const canInstall = useCanInstall()
   const players = useQuery({
     queryKey: ["players"],
     queryFn: getPlayers,
@@ -83,6 +85,11 @@ export function UserMenu() {
             <Link to="/admin/users">
               <Shield className="size-4" /> Admin
             </Link>
+          </DropdownMenuItem>
+        )}
+        {canInstall && (
+          <DropdownMenuItem onSelect={() => void promptInstall()}>
+            <Download className="size-4" /> Install app
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

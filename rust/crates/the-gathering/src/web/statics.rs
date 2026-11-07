@@ -31,7 +31,7 @@ fn dir(path: std::path::PathBuf) -> ServeDir {
         .append_index_html_on_directories(false)
 }
 
-/// Routes for the static paths (`assets fonts images favicon.ico robots.txt`).
+/// Routes for the static paths (`assets fonts images favicon.ico robots.txt offline.html`).
 pub fn router(state: &AppState) -> Router<AppState> {
     let root = state.config.static_dir();
     let react = Router::new()
@@ -51,4 +51,5 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .nest_service("/images", dir(root.join("images")))
         .route_service("/favicon.ico", ServeFile::new(root.join("favicon.ico")))
         .route_service("/robots.txt", ServeFile::new(root.join("robots.txt")))
+        .route_service("/offline.html", ServeFile::new(root.join("offline.html")))
 }

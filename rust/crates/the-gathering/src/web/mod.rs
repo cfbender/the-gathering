@@ -10,6 +10,7 @@ pub mod audit;
 pub mod auth;
 pub mod channels;
 pub mod extract;
+pub mod pwa;
 pub mod request_id;
 pub mod session;
 pub mod shell;
@@ -304,7 +305,7 @@ pub fn router(state: AppState) -> Router {
         .route_layer(from_fn_with_state(state.clone(), api::rate_limit_api_keys))
         .route_layer(from_fn_with_state(state.clone(), auth::api_key_layer));
 
-    // Static files and the table socket (the outermost layer) are not logged; routed requests
+    // Static files, PWA files, and the table socket (the outermost layer) are not logged; routed requests
     // get an id and a log line.
     let routed = Router::new()
         .merge(v1)
@@ -315,6 +316,7 @@ pub fn router(state: AppState) -> Router {
 
     Router::new()
         .merge(statics::router(&state))
+        .merge(pwa::router())
         .merge(routed)
         .layer(state.socket_layer.clone())
         .with_state(state)
