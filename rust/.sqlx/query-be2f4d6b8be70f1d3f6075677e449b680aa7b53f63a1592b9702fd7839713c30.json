@@ -1,0 +1,81 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", name, discord_guild_id,\n                      registration_invite_hash IS NOT NULL AS \"invite_enabled!: bool\",\n                      inserted_at AS \"inserted_at: UtcDateTime\", updated_at AS \"updated_at: UtcDateTime\"\n               FROM playgroups WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "playgroups",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "playgroups",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "discord_guild_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "playgroups",
+            "name": "discord_guild_id"
+          }
+        }
+      },
+      {
+        "name": "invite_enabled!: bool",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "inserted_at: UtcDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "playgroups",
+            "name": "inserted_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: UtcDateTime",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "playgroups",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "be2f4d6b8be70f1d3f6075677e449b680aa7b53f63a1592b9702fd7839713c30"
+}

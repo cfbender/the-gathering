@@ -19,6 +19,7 @@ const user: User = {
   disabled: false,
   palette: "claret",
   theme_style: "glass",
+  playgroup_id: 1,
   inserted_at: "2026-09-20T12:00:00Z",
 }
 

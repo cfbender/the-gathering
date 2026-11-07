@@ -10,7 +10,7 @@ use crate::support;
 
 use serde_json::{Value, json};
 use support::discord::{command, interaction, player, report};
-use support::{TestApp, utc};
+use support::{PLAYGROUP, TestApp, utc};
 use the_gathering::accounts::User;
 use the_gathering::config::DiscordBotConfig;
 use the_gathering::db::UtcDateTime;
@@ -58,7 +58,7 @@ async fn discord_game(app: &TestApp) -> Option<Game> {
     .await
     .unwrap();
     match id {
-        Some(id) => app.state.games.get_game(id).await.unwrap(),
+        Some(id) => app.state.games.get_game(PLAYGROUP, id).await.unwrap(),
         None => None,
     }
 }
@@ -374,7 +374,7 @@ async fn saving_creates_the_discord_identities_and_game_atomically_ignores_forge
         .app
         .state
         .games
-        .get_game(body["data"]["id"].as_i64().unwrap())
+        .get_game(PLAYGROUP, body["data"]["id"].as_i64().unwrap())
         .await
         .unwrap()
         .unwrap();
@@ -482,7 +482,7 @@ async fn rejects_changed_duplicate_or_missing_roster_identities_and_another_play
         .app
         .state
         .games
-        .resolve_player("Other", Some("777"), None)
+        .resolve_player(PLAYGROUP, "Other", Some("777"), None)
         .await
         .unwrap();
     let deck = ctx

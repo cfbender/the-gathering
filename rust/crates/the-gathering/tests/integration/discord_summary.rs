@@ -12,8 +12,8 @@ use crate::support;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use support::TestApp;
 use support::discord::{Call, RecordingApi, command, interaction, string};
+use support::{PLAYGROUP, TestApp};
 use the_gathering::accounts::User;
 use the_gathering::config::DiscordBotConfig;
 use the_gathering::discord::api::{
@@ -79,7 +79,7 @@ async fn latest_uses_played_at_then_id_not_creation_order_and_loads_seats() {
     let ctx = setup().await;
     let games = &ctx.app.state.games;
     assert!(matches!(
-        games.find_summary_game("").await,
+        games.find_summary_game(PLAYGROUP, "").await,
         Err(GamesError::NotFound)
     ));
     let first = game(&ctx, &ctx.attrs).await;
@@ -88,7 +88,7 @@ async fn latest_uses_played_at_then_id_not_creation_order_and_loads_seats() {
     older_attrs["played_at"] = json!("2025-01-01T00:00:00Z");
     let older = game(&ctx, &older_attrs).await;
     assert!(older.id > latest.id);
-    let found = games.find_summary_game("").await.unwrap();
+    let found = games.find_summary_game(PLAYGROUP, "").await.unwrap();
     assert_eq!(found.id, latest.id);
     let mut seats = found.seats.clone();
     seats.sort_by_key(|seat| seat.seat);
@@ -96,7 +96,7 @@ async fn latest_uses_played_at_then_id_not_creation_order_and_loads_seats() {
     assert_eq!(names, ["Alice", "Bob"]);
     assert_eq!(
         games
-            .find_summary_game(&first.id.to_string())
+            .find_summary_game(PLAYGROUP, &first.id.to_string())
             .await
             .unwrap()
             .id,
@@ -111,6 +111,7 @@ async fn spellbot_ids_are_explicit_source_scoped_and_case_insensitive() {
     let local = game(&ctx, &ctx.attrs).await;
     let discord = games
         .find_or_create_game_by_external_id(
+            PLAYGROUP,
             "discord",
             &format!("spellbot:SB{}", local.id),
             &support::input(ctx.attrs.clone()),
@@ -119,6 +120,7 @@ async fn spellbot_ids_are_explicit_source_scoped_and_case_insensitive() {
         .unwrap();
     games
         .find_or_create_game_by_external_id(
+            PLAYGROUP,
             "csv",
             "spellbot:SB7654",
             &support::input(ctx.attrs.clone()),
@@ -127,7 +129,7 @@ async fn spellbot_ids_are_explicit_source_scoped_and_case_insensitive() {
         .unwrap();
     assert_eq!(
         games
-            .find_summary_game(&format!(" #sb{} ", local.id))
+            .find_summary_game(PLAYGROUP, &format!(" #sb{} ", local.id))
             .await
             .unwrap()
             .id,
@@ -135,20 +137,20 @@ async fn spellbot_ids_are_explicit_source_scoped_and_case_insensitive() {
     );
     assert_eq!(
         games
-            .find_summary_game(&local.id.to_string())
+            .find_summary_game(PLAYGROUP, &local.id.to_string())
             .await
             .unwrap()
             .id,
         local.id
     );
     assert!(matches!(
-        games.find_summary_game("SB7654").await,
+        games.find_summary_game(PLAYGROUP, "SB7654").await,
         Err(GamesError::NotFound)
     ));
     for invalid in ["../../etc/passwd", "123abc", "-1", &"9".repeat(100)] {
         assert!(
             matches!(
-                games.find_summary_game(invalid).await,
+                games.find_summary_game(PLAYGROUP, invalid).await,
                 Err(GamesError::BadRequest)
             ),
             "{invalid}"

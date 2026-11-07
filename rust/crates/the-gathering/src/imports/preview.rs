@@ -103,9 +103,11 @@ pub struct Preview {
     pub review: Option<Vec<Review>>,
 }
 
-/// Parses an import and previews what it would create, match, and change, without writing.
+/// Parses an import and previews what it would create, match, and change in the
+/// playgroup, without writing.
 pub async fn run(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     source: Source,
     payload: &str,
 ) -> Result<Preview, sqlx::Error> {
@@ -115,8 +117,8 @@ pub async fn run(
     };
     match parsed {
         Ok((games, errors, warnings)) => {
-            let players = match_players(conn, &games).await?;
-            let decks = match_decks(conn, &games).await?;
+            let players = match_players(conn, playgroup_id, &games).await?;
+            let decks = match_decks(conn, playgroup_id, &games).await?;
             Ok(Preview {
                 valid: errors.is_empty(),
                 games,
@@ -175,6 +177,7 @@ fn sort_key(name: &str) -> String {
 
 async fn match_players(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     games: &[ImportGame],
 ) -> Result<PlayerMatches, sqlx::Error> {
     let mut seen = Vec::new();
@@ -187,7 +190,7 @@ async fn match_players(
         }
     }
     let mut result = PlayerMatches::default();
-    for resolution in resolve_player::preview(conn, &identities).await? {
+    for resolution in resolve_player::preview(conn, playgroup_id, &identities).await? {
         match resolution {
             Resolution::Create(name) => result.create.push(name),
             Resolution::Matched(player) => {
@@ -213,6 +216,7 @@ struct Existing {
 
 async fn existing_players(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     seats: &[&ImportSeat],
 ) -> Result<Existing, sqlx::Error> {
     let mut existing = Existing {
@@ -231,8 +235,10 @@ async fn existing_players(
     let discord_ids = serde_json::to_string(&discord_ids).unwrap_or_else(|_| "[]".into());
     let players = sqlx::query!(
         r#"SELECT id AS "id!", name, discord_id FROM players
-           WHERE lower(name) IN (SELECT value FROM json_each(?))
-              OR discord_id IN (SELECT value FROM json_each(?))"#,
+           WHERE playgroup_id = ?
+             AND (lower(name) IN (SELECT value FROM json_each(?))
+              OR discord_id IN (SELECT value FROM json_each(?)))"#,
+        playgroup_id,
         names,
         discord_ids
     )
@@ -253,10 +259,11 @@ async fn existing_players(
 
 async fn match_decks(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     games: &[ImportGame],
 ) -> Result<DeckMatches, sqlx::Error> {
     let seats: Vec<&ImportSeat> = all_seats(games).collect();
-    let existing = existing_players(conn, &seats).await?;
+    let existing = existing_players(conn, playgroup_id, &seats).await?;
     let mut seen = Vec::new();
     let mut result = DeckMatches::default();
     for seat in seats {

@@ -12,7 +12,7 @@
 use crate::support;
 
 use serde_json::{Value, json};
-use support::TestApp;
+use support::{PLAYGROUP, TestApp};
 use the_gathering::accounts::User;
 use the_gathering::games::{Deck, Player};
 
@@ -55,7 +55,7 @@ async fn setup() -> Ctx {
 }
 
 async fn deck(ctx: &Ctx, id: i64) -> Option<Deck> {
-    ctx.app.state.games.get_deck(id).await.unwrap()
+    ctx.app.state.games.get_deck(PLAYGROUP, id).await.unwrap()
 }
 
 #[tokio::test]
@@ -102,7 +102,7 @@ async fn the_owner_deletes_a_deck_and_can_move_its_games_to_another_of_their_dec
             .app
             .state
             .games
-            .get_game(game.id)
+            .get_game(PLAYGROUP, game.id)
             .await
             .unwrap()
             .unwrap();
@@ -257,10 +257,15 @@ async fn patch_cannot_transfer_an_owned_or_guest_deck_and_historical_stats_remai
         deck(&ctx, ctx.deck.id).await.unwrap().player_id,
         ctx.owner_player.id
     );
-    let stats = the_gathering::stats::deck(ctx.app.pool(), ctx.deck.id, &support::input(json!({})))
-        .await
-        .unwrap()
-        .unwrap();
+    let stats = the_gathering::stats::deck(
+        ctx.app.pool(),
+        PLAYGROUP,
+        ctx.deck.id,
+        &support::input(json!({})),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(stats["player"]["id"], ctx.owner_player.id);
     assert_eq!(stats["record"]["games"], 1);
 

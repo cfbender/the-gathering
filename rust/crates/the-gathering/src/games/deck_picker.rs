@@ -247,12 +247,13 @@ async fn playable_decks(
 /// deck `exclude_id` is left out when other candidates remain.
 pub async fn load_chooser(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     user_id: i64,
     exclude_id: Option<i64>,
     now: UtcDateTime,
     zone: &Zone,
 ) -> Result<Option<Chooser>, sqlx::Error> {
-    let Some(player) = get_player_for_user(conn, user_id).await? else {
+    let Some(player) = get_player_for_user(conn, playgroup_id, user_id).await? else {
         return Ok(None);
     };
     let mut candidates = playable_decks(conn, player.id).await?;
@@ -381,11 +382,12 @@ pub async fn set_script(
 /// Only the member's own, unretired decks.
 pub async fn record_outcome(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     user_id: i64,
     deck_id: i64,
     outcome: Outcome,
 ) -> Result<Deck, GamesError> {
-    let player = get_player_for_user(conn, user_id)
+    let player = get_player_for_user(conn, playgroup_id, user_id)
         .await?
         .ok_or(GamesError::NotFound)?;
     let deck = get_deck(conn, deck_id)

@@ -8,7 +8,7 @@ use sqlx::SqliteConnection;
 
 use crate::catalog::{self, ArtUrls, CardRef};
 use crate::games::player::list_players;
-use crate::games::{Game, GameResult, Seat, get_player};
+use crate::games::{Game, GameResult, Seat, get_player_in};
 
 use super::commanders::{self, SeatInGame};
 use super::records::{self, Object, Record, group_by, grouped_records, seat_entity};
@@ -25,13 +25,14 @@ fn results(seat: Option<&Seat>) -> Vec<GameResult> {
 /// A player's statistics for a date range; `None` for an unknown player.
 pub async fn get(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     player_id: i64,
     params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
-    let Some(player) = get_player(conn, player_id).await? else {
+    let Some(player) = get_player_in(conn, playgroup_id, player_id).await? else {
         return Ok(None);
     };
-    let games = query::games(conn, params, Some(player.id), None).await?;
+    let games = query::games(conn, playgroup_id, params, Some(player.id), None).await?;
     let seats: Vec<&Seat> = games
         .iter()
         .filter_map(|game| mine(game, player.id))
@@ -76,7 +77,7 @@ pub async fn get(
         "record": Record::of_seats(seats.iter().copied()).to_json(),
         "win_conditions": outcomes::win_conditions(with_result(GameResult::Win)),
         "loss_conditions": outcomes::win_conditions(with_result(GameResult::Loss)),
-        "elo": player_elo(conn, player.id, params).await?,
+        "elo": player_elo(conn, playgroup_id, player.id, params).await?,
         "average_duration_minutes": records::average(detailed.iter().map(|game| game.duration_minutes)),
         "average_turns": records::average(detailed.iter().map(|game| game.turns)),
         "game_lengths": summaries::game_lengths(&detailed, &tracked),
@@ -89,7 +90,7 @@ pub async fn get(
         ),
         "decks": decks,
         "color_win_rates": records::color_records(seats.iter().copied()),
-        "head_to_head": head_to_head(conn, &games, player.id).await?,
+        "head_to_head": head_to_head(conn, playgroup_id, &games, player.id).await?,
         "seat_win_rates": grouped_records(detailed_seats.iter().copied(), seat_entity, |seat| seat.seat),
         "favorite_seat": favorite_seat(&detailed_seats),
         "best_seat": best_seat(&detailed_seats),
@@ -101,10 +102,18 @@ pub async fn get(
 /// games before the window. Only players with at least [`MIN_GAMES`] hold a rank.
 async fn player_elo(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     player_id: i64,
     params: &DateRange,
 ) -> Result<Value, sqlx::Error> {
-    let all = query::games(conn, &query::without_date_from(params), None, None).await?;
+    let all = query::games(
+        conn,
+        playgroup_id,
+        &query::without_date_from(params),
+        None,
+        None,
+    )
+    .await?;
     let ratings = elo::ratings(&all, query::window_start(params));
     let ranked: Vec<&elo::Rating> = ratings
         .iter()
@@ -233,10 +242,11 @@ fn streaks(oldest_first: &[GameResult]) -> Value {
 
 async fn head_to_head(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     games: &[Game],
     player_id: i64,
 ) -> Result<Vec<Value>, sqlx::Error> {
-    let avatars: HashMap<i64, Option<String>> = list_players(conn, true)
+    let avatars: HashMap<i64, Option<String>> = list_players(conn, playgroup_id, true)
         .await?
         .into_iter()
         .map(|player| (player.id, player.avatar_url))

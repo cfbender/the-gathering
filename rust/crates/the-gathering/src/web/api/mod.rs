@@ -8,6 +8,7 @@ pub mod cards;
 pub mod discord;
 pub mod games;
 pub mod imports;
+pub mod playgroups;
 pub mod rulings;
 pub mod server_logs;
 pub mod stats;

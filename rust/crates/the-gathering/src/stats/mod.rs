@@ -24,39 +24,50 @@ use crate::db::Pool;
 /// `assets/react/src/lib/stats.ts`.
 pub const MIN_GAMES: usize = 3;
 
-/// The group overview for a date range.
-pub async fn overview(pool: &Pool, params: &DateRange) -> Result<Value, sqlx::Error> {
-    overview::get(&mut *pool.acquire().await?, params).await
+/// The playgroup's overview for a date range.
+pub async fn overview(
+    pool: &Pool,
+    playgroup_id: i64,
+    params: &DateRange,
+) -> Result<Value, sqlx::Error> {
+    overview::get(&mut *pool.acquire().await?, playgroup_id, params).await
 }
 
 /// A player's statistics for a date range; `None` for an unknown player.
 pub async fn player(
     pool: &Pool,
+    playgroup_id: i64,
     player_id: i64,
     params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
-    player::get(&mut *pool.acquire().await?, player_id, params).await
+    player::get(&mut *pool.acquire().await?, playgroup_id, player_id, params).await
 }
 
 /// A deck's statistics for a date range; `None` for an unknown deck.
 pub async fn deck(
     pool: &Pool,
+    playgroup_id: i64,
     deck_id: i64,
     params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
-    deck::get(&mut *pool.acquire().await?, deck_id, params).await
+    deck::get(&mut *pool.acquire().await?, playgroup_id, deck_id, params).await
 }
 
 /// Every commander played, most played first.
-pub async fn commanders(pool: &Pool, params: &DateRange) -> Result<Vec<Value>, sqlx::Error> {
-    commanders::list(&mut *pool.acquire().await?, params).await
+pub async fn commanders(
+    pool: &Pool,
+    playgroup_id: i64,
+    params: &DateRange,
+) -> Result<Vec<Value>, sqlx::Error> {
+    commanders::list(&mut *pool.acquire().await?, playgroup_id, params).await
 }
 
 /// One commander by Scryfall id or card name; `None` when never played.
 pub async fn commander(
     pool: &Pool,
+    playgroup_id: i64,
     id: &str,
     params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
-    commanders::get(&mut *pool.acquire().await?, id, params).await
+    commanders::get(&mut *pool.acquire().await?, playgroup_id, id, params).await
 }

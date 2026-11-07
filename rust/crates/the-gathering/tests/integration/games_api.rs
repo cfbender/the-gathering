@@ -12,7 +12,7 @@
 use crate::support;
 
 use serde_json::{Value, json};
-use support::TestApp;
+use support::{PLAYGROUP, TestApp};
 use the_gathering::accounts::User;
 use the_gathering::catalog::{CardRef, Catalog};
 use the_gathering::games::{Deck, Player, Seat};
@@ -169,7 +169,7 @@ async fn unrelated_members_cannot_update_or_delete_a_game() {
         ctx.app
             .state
             .games
-            .get_game(game.id)
+            .get_game(PLAYGROUP, game.id)
             .await
             .unwrap()
             .is_some()
@@ -252,7 +252,7 @@ async fn the_creator_can_update_and_delete_a_game_without_changing_its_provenanc
         ctx.app
             .state
             .games
-            .get_game(doomed.id)
+            .get_game(PLAYGROUP, doomed.id)
             .await
             .unwrap()
             .is_none()
@@ -330,7 +330,7 @@ async fn editing_keeps_seat_ids_while_swapping_seat_numbers_and_changing_format(
         .app
         .state
         .games
-        .get_game(game.id)
+        .get_game(PLAYGROUP, game.id)
         .await
         .unwrap()
         .unwrap()
@@ -395,7 +395,7 @@ async fn a_seated_linked_player_can_update_and_delete_a_game() {
         ctx.app
             .state
             .games
-            .get_game(doomed.id)
+            .get_game(PLAYGROUP, doomed.id)
             .await
             .unwrap()
             .is_none()
@@ -437,7 +437,7 @@ async fn an_administrator_can_update_and_delete_any_game() {
         ctx.app
             .state
             .games
-            .get_game(doomed.id)
+            .get_game(PLAYGROUP, doomed.id)
             .await
             .unwrap()
             .is_none()
@@ -460,7 +460,7 @@ async fn post_api_games_requires_a_signed_in_user() {
         .app
         .state
         .games
-        .list_games(&support::input(json!({})))
+        .list_games(PLAYGROUP, &support::input(json!({})))
         .await
         .unwrap();
     assert!(games.is_empty());
@@ -549,6 +549,7 @@ async fn summary_cards_find_spellbot_games_and_the_latest_game() {
     let games = &ctx.app.state.games;
     let spellbot = games
         .upsert_game_by_external_id(
+            PLAYGROUP,
             "discord",
             "spellbot:SB42",
             &support::input(game_attrs(&ctx.alice, &ctx.bob)),
@@ -559,13 +560,20 @@ async fn summary_cards_find_spellbot_games_and_the_latest_game() {
     later["played_at"] = json!("2026-09-21T12:00:00Z");
     let latest = ctx.app.game(later, None).await;
     assert_eq!(
-        games.find_summary_game("#sb42").await.unwrap().id,
+        games
+            .find_summary_game(PLAYGROUP, "#sb42")
+            .await
+            .unwrap()
+            .id,
         spellbot.id
     );
-    assert_eq!(games.find_summary_game(" ").await.unwrap().id, latest.id);
+    assert_eq!(
+        games.find_summary_game(PLAYGROUP, " ").await.unwrap().id,
+        latest.id
+    );
     assert_eq!(
         games
-            .find_summary_game(&spellbot.id.to_string())
+            .find_summary_game(PLAYGROUP, &spellbot.id.to_string())
             .await
             .unwrap()
             .id,

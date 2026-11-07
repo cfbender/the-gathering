@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE playgroups SET name = ?, discord_guild_id = ?, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "6bcdae1f9e4c0c52382126f8deb95b9da66c08981011194a89538d0cc01c6d17"
+}

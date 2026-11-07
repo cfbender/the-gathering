@@ -6,11 +6,13 @@ import {
   useChildMatches,
   useLocation,
 } from "@tanstack/react-router"
-import { Crown, Gamepad2, Layers, Menu, Palette, Upload, Users } from "lucide-react"
+import { Crown, Gamepad2, Layers, Menu, Palette, Upload, Users, UsersRound } from "lucide-react"
 import { useEffect, useState } from "react"
+import { EmptyPanel } from "@/components/app-shell"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { UserMenu } from "@/components/user-menu"
+import { PlaygroupSwitcher } from "@/features/playgroups/playgroup-switcher"
 import { requireUser, useCurrentUser } from "@/lib/auth"
 import { cn } from "@/lib/cn"
 import { crossesIsolation } from "@/lib/cross-origin-isolation"
@@ -23,6 +25,17 @@ export interface RouterContext {
 
 /** Sign-in, bootstrap, and invitations are reachable without a session. */
 const publicPaths = new Set(["/login", "/register", "/invite"])
+
+/** Pages that work without an active playgroup: everything else lists its players, decks,
+ * games, or stats. */
+function needsPlaygroup(pathname: string) {
+  return !(
+    publicPaths.has(pathname) ||
+    pathname === "/settings" ||
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/")
+  )
+}
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   beforeLoad: async ({ context, location, preload }) => {
@@ -101,25 +114,26 @@ function RootLayout() {
         <div className="navbar mx-auto min-h-16 w-full max-w-7xl px-0">
           <Link
             to="/"
-            className="flex min-h-11 min-w-11 items-center gap-3 text-2xl font-black tracking-normal"
+            className="flex min-h-11 min-w-11 shrink-0 items-center gap-3 text-2xl font-black tracking-normal"
           >
             <img src="/images/logo.svg" alt="" className="size-7 shrink-0" width={28} height={28} />
-            <span className="hidden truncate sm:inline">The Gathering</span>
+            <span className="hidden sm:inline">The Gathering</span>
           </Link>
 
           {/* Signed-out visitors only ever see the login/register pages, where navigation is noise. */}
           {user ? (
             <>
+              <PlaygroupSwitcher className="ml-2 sm:ml-3" />
               <nav
                 aria-label="Main navigation"
-                className="ml-auto hidden items-center gap-1 lg:flex"
+                className="ml-auto hidden items-center gap-1 xl:flex"
               >
                 {items.map((item) => (
                   <Link
                     key={item.to}
                     to={item.to}
                     className={cn(
-                      "focus-visible:ring-primary/35 rounded-full px-3.5 py-2 text-sm leading-5 font-bold transition-colors focus-visible:ring-2 focus-visible:outline-none",
+                      "focus-visible:ring-primary/35 rounded-full px-3 py-2 text-sm leading-5 font-bold transition-colors focus-visible:ring-2 focus-visible:outline-none",
                       navItemActive(pathname, item.to)
                         ? "text-primary-content bg-[color-mix(in_oklch,var(--color-primary),var(--color-base-100)_18%)]"
                         : "text-base-content hover:text-primary",
@@ -130,14 +144,14 @@ function RootLayout() {
                 ))}
               </nav>
 
-              <div className="ml-2 hidden lg:block">
+              <div className="ml-2 hidden xl:block">
                 <ThemeToggle />
               </div>
-              <div className="ml-auto lg:ml-2">
+              <div className="ml-auto xl:ml-2">
                 <UserMenu />
               </div>
 
-              <div className="ml-1 lg:hidden">
+              <div className="ml-1 xl:hidden">
                 <Popover open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                   <PopoverTrigger asChild>
                     <button
@@ -179,9 +193,37 @@ function RootLayout() {
       </header>
       <main className="app-shell-main flex-1">
         <div className="mx-auto w-full max-w-7xl py-8 sm:py-10">
-          <Outlet />
+          {user && user.playgroup_id === null && needsPlaygroup(pathname) ? (
+            <NoPlaygroup admin={user.role === "admin"} />
+          ) : (
+            <Outlet />
+          )}
         </div>
       </main>
+    </div>
+  )
+}
+
+/** An account that belongs to no playgroup has nothing to show until it joins one. */
+function NoPlaygroup({ admin }: { admin: boolean }) {
+  return (
+    <div className="mx-auto max-w-lg">
+      <EmptyPanel
+        title="You are not in a playgroup yet"
+        description={
+          admin
+            ? "Create a playgroup or add yourself to one from the Playgroups admin page."
+            : "Ask an administrator for an invite link to join one. Once you open it, this page fills in with that playgroup's players, decks, and games."
+        }
+        icon={<UsersRound className="size-10" aria-hidden="true" />}
+        action={
+          admin ? (
+            <Link to="/admin/playgroups" className="btn btn-primary">
+              Manage playgroups
+            </Link>
+          ) : undefined
+        }
+      />
     </div>
   )
 }

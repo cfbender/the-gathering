@@ -33,6 +33,8 @@ services required.
   statistics.
 - **Decks:** Moxfield, Archidekt, and ManaVault deck links and syncing, a local Scryfall card
   catalog, and a weighted deck chooser members can script in Lua.
+- **Playgroups:** one server can host several playgroups, each with its own players, decks,
+  games, and statistics; members switch between them from the header.
 
 ## Webcam table
 
@@ -241,17 +243,43 @@ Change it later with `bash the-gathering.sh auto-update <CTID> '<cron expression
 created before the time zone option existed run on UTC; `pct set <CTID> --timezone host` followed
 by a restart moves them to the host's zone.
 
-### Invite members while registration is closed
+### Playgroups
 
-Under **Administration → Server settings → Sign-up invitation**, create a reusable
-Discord sign-up link. Copy and save it before leaving the page: only its hash is
-stored, so the secret cannot be retrieved later. Anyone with the link can join as
-a member even with **Open registration** off. Links do not expire or limit uses.
+Every player, deck, and game belongs to one playgroup. Existing servers get a single
+playgroup named **Main** holding everything recorded so far, with every existing user as
+a member. Playgroups are private: a member only sees the playgroups they belong to, and can
+belong to several. The switcher next to the logo picks the playgroup being viewed, saved
+to the account; games logged, imported, or played at a table go into the viewed playgroup.
+A user who belongs to no playgroup sees an empty state until an administrator adds them
+or they accept an invite link.
+
+Administrators manage playgroups under **Administration → Playgroups** (sudo required):
+create (the creator becomes the first member), rename, add and remove members, and
+delete. Administrators see every playgroup on that page but still only view the ones
+they belong to. Deleting removes the playgroup's players and memberships, so it is only
+allowed once it has no games and no decks, and the last playgroup can't be deleted.
+
+A playgroup can claim a Discord server ID so the bot records that server's games there;
+servers no other playgroup claims record into the oldest playgroup. To serve several
+Discord servers from one bot, leave `DISCORD_GUILD_ID` unset (commands register globally)
+and set each server's ID on its playgroup. `DISCORD_NEWGAME_ROLE_ID` holds a single role
+ID, so `/newgame` alerts only work in one server.
+
+### Invite members with a playgroup link
+
+Each playgroup card under **Administration → Playgroups** has a **Shareable invite link**
+for Discord sign-in. Copy and save it before leaving the page: only its hash is stored, so
+the secret cannot be retrieved later. Anyone with the link joins that playgroup, as a new
+member even with **Open registration** off, or as an additional playgroup when they already
+have an account (a signed-in user is added and switched immediately). Links do not expire
+or limit uses. Discord-identified accounts get a player in the playgroup automatically;
+password accounts are linked to a player by an administrator.
 
 **Rotate link** generates a replacement and immediately revokes the old link's
 registration permission, including OAuth sign-ups that have not completed yet.
 Already registered users keep their access; disabled accounts remain blocked.
-Normal open registration and the initial password administrator setup are unchanged.
+Normal open registration (which joins the oldest playgroup) and the initial password
+administrator setup are unchanged.
 Creating or rotating links requires administrator sudo authentication. The secret
 uses a URL fragment (not a logged request path or query), then a signed session
 carries its digest through Discord OAuth. Treat the full link as a credential.
@@ -387,7 +415,7 @@ reported in the response's `errors`.
 | `DISCORD_CLIENT_ID` | unset | Discord application client ID; enables member OAuth sign-in when paired with the secret. |
 | `DISCORD_CLIENT_SECRET` | unset | Discord application client secret. |
 | `DISCORD_BOT_TOKEN` | unset | Enables the optional Discord bot: SpellBot tracking, `/log`, `/summary`, and `/newgame` webcam-table queues. |
-| `DISCORD_GUILD_ID` | unset | Optional server ID for immediate guild-scoped `/log`, `/summary`, `/newgame`, and `/close` registration; without it commands are global. Restricts invocation to that server when set. |
+| `DISCORD_GUILD_ID` | unset | Optional server ID for immediate guild-scoped `/log`, `/summary`, `/newgame`, and `/close` registration; without it commands are global (needed when playgroups span several Discord servers). Restricts invocation to that server when set. |
 | `DISCORD_DEFAULT_TIMEZONE` | `America/New_York` | IANA timezone for `/newgame start:8pm` and `tomorrow 7pm`. Discord displays parsed timestamps in each viewer's local time. |
 | `DISCORD_NEWGAME_ROLE_ID` | unset | Optional role ID mentioned in each `/newgame` thread, which adds the role's members to the thread so it shows in their sidebar. Members toggle it with `/alerts`. |
 | `DISCORD_SPELLBOT_USER_ID` | `725510263251402832` | Discord user ID accepted as SpellBot, useful when running a private SpellBot deployment. |

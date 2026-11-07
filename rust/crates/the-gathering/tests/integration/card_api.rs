@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use axum::http::{HeaderMap, HeaderValue, Method};
 use serde_json::{Value, json};
-use support::{TestApp, fixture_path};
+use support::{PLAYGROUP, TestApp, fixture_path};
 use the_gathering::catalog::image_cache::{CacheStatus, CardImages, ImageError};
 use the_gathering::catalog::sync::{self, Source};
 use the_gathering::catalog::{CardRef, Catalog, images};
@@ -983,9 +983,10 @@ async fn saves_independent_commander_and_partner_printings_and_resolves_them_on_
         "https://img.example/commander-default.jpg"
     );
 
-    let commanders = the_gathering::stats::commanders(app.pool(), &support::input(json!({})))
-        .await
-        .unwrap();
+    let commanders =
+        the_gathering::stats::commanders(app.pool(), PLAYGROUP, &support::input(json!({})))
+            .await
+            .unwrap();
     let commander: Vec<&Value> = commanders
         .iter()
         .filter(|row| row["id"] == "commander")
@@ -1088,7 +1089,7 @@ async fn rejects_unknown_and_mismatched_printings_atomically_including_on_create
         .app
         .state
         .games
-        .get_deck(ctx.deck.id)
+        .get_deck(PLAYGROUP, ctx.deck.id)
         .await
         .unwrap()
         .unwrap();

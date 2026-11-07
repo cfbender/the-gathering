@@ -11,10 +11,10 @@ use crate::support;
 use std::collections::HashMap;
 
 use serde_json::json;
-use support::TestApp;
 use support::discord::{
     Call, RecordingApi, command, component, interaction, modal, player, report, string,
 };
+use support::{PLAYGROUP, TestApp};
 use the_gathering::config::DiscordBotConfig;
 use the_gathering::db::UtcDateTime;
 use the_gathering::discord::api::{Component, InteractionResponse, ResponseKind};
@@ -124,7 +124,12 @@ async fn the_game(app: &TestApp) -> Game {
         .fetch_one(app.pool())
         .await
         .unwrap();
-    app.state.games.get_game(id).await.unwrap().unwrap()
+    app.state
+        .games
+        .get_game(PLAYGROUP, id)
+        .await
+        .unwrap()
+        .unwrap()
 }
 
 fn seats_by_discord(game: &Game) -> HashMap<String, Seat> {
@@ -627,7 +632,7 @@ async fn partial_commanders_and_punctuation_free_mvp_names_resolve_and_save_on_t
     let player = app
         .state
         .games
-        .resolve_player("Player 1", Some("111"), None)
+        .resolve_player(PLAYGROUP, "Player 1", Some("111"), None)
         .await
         .unwrap();
     let deck = app

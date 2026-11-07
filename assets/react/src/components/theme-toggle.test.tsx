@@ -38,6 +38,7 @@ const signedInUser: User = {
   disabled: false,
   palette: "nord",
   theme_style: "classic",
+  playgroup_id: 1,
   inserted_at: "2026-09-20T00:00:00Z",
 }
 

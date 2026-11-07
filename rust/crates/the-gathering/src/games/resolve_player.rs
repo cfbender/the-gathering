@@ -52,13 +52,16 @@ fn normalize_name(name: &str) -> String {
 
 async fn find_player(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     name: &str,
     discord_id: Option<&str>,
 ) -> Result<Option<PlayerIdentity>, sqlx::Error> {
     if let Some(discord_id) = discord_id {
         sqlx::query_as!(
             PlayerIdentity,
-            r#"SELECT id AS "id!", name, user_id, discord_id FROM players WHERE discord_id = ?"#,
+            r#"SELECT id AS "id!", name, user_id, discord_id FROM players
+               WHERE playgroup_id = ? AND discord_id = ?"#,
+            playgroup_id,
             discord_id
         )
         .fetch_optional(&mut *conn)
@@ -67,7 +70,9 @@ async fn find_player(
         let folded = fold_name(name);
         sqlx::query_as!(
             PlayerIdentity,
-            r#"SELECT id AS "id!", name, user_id, discord_id FROM players WHERE lower(name) = ?"#,
+            r#"SELECT id AS "id!", name, user_id, discord_id FROM players
+               WHERE playgroup_id = ? AND lower(name) = ?"#,
+            playgroup_id,
             folded
         )
         .fetch_optional(&mut *conn)
@@ -75,9 +80,14 @@ async fn find_player(
     }
 }
 
-async fn name_taken(conn: &mut SqliteConnection, folded: &str) -> Result<bool, sqlx::Error> {
+async fn name_taken(
+    conn: &mut SqliteConnection,
+    playgroup_id: i64,
+    folded: &str,
+) -> Result<bool, sqlx::Error> {
     sqlx::query_scalar!(
-        r#"SELECT EXISTS(SELECT 1 FROM players WHERE lower(name) = ?) AS "taken!: bool""#,
+        r#"SELECT EXISTS(SELECT 1 FROM players WHERE playgroup_id = ? AND lower(name) = ?) AS "taken!: bool""#,
+        playgroup_id,
         folded
     )
     .fetch_one(&mut *conn)
@@ -93,6 +103,7 @@ fn with_suffix(base: &str, suffix: &str) -> String {
 
 async fn available_name(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     name: &str,
     discord_id: Option<&str>,
     reserved: &HashSet<String>,
@@ -105,7 +116,7 @@ async fn available_name(
     let mut suffix = 2u32;
     loop {
         let folded = fold_name(&candidate);
-        if !reserved.contains(&folded) && !name_taken(conn, &folded).await? {
+        if !reserved.contains(&folded) && !name_taken(conn, playgroup_id, &folded).await? {
             return Ok(candidate);
         }
         candidate = with_suffix(&base, &format!(" ({suffix})"));
@@ -122,16 +133,17 @@ async fn user_exists(conn: &mut SqliteConnection, user_id: i64) -> Result<bool, 
     .await
 }
 
-/// Finds or creates the player for a name, Discord id, and account, inside the caller's
-/// transaction.
+/// Finds or creates the playgroup's player for a name, Discord id, and account, inside the
+/// caller's transaction.
 pub async fn run(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     name: &str,
     discord_id: Option<&str>,
     user_id: Option<i64>,
 ) -> Result<PlayerIdentity, ResolveError> {
     let discord_id = normalize_discord_id(discord_id);
-    if let Some(player) = find_player(conn, name, discord_id).await? {
+    if let Some(player) = find_player(conn, playgroup_id, name, discord_id).await? {
         return match (player.user_id, user_id) {
             (_, None) => Ok(player),
             (Some(current), Some(wanted)) if current == wanted => Ok(player),
@@ -160,8 +172,8 @@ pub async fn run(
             (Some(_), Some(_)) => Err(ResolveError::DiscordIdentityConflict),
         };
     }
-    let name = available_name(conn, name, discord_id, &HashSet::new()).await?;
-    insert_player(conn, &name, discord_id, user_id).await
+    let name = available_name(conn, playgroup_id, name, discord_id, &HashSet::new()).await?;
+    insert_player(conn, playgroup_id, &name, discord_id, user_id).await
 }
 
 fn unique_error(error: sqlx::Error, field: &str) -> ResolveError {
@@ -172,9 +184,10 @@ fn unique_error(error: sqlx::Error, field: &str) -> ResolveError {
     }
 }
 
-/// Inserts a player after validating the name and the linked account.
+/// Inserts a player into the playgroup after validating the name and the linked account.
 pub async fn insert_player(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     name: &str,
     discord_id: Option<&str>,
     user_id: Option<i64>,
@@ -191,8 +204,9 @@ pub async fn insert_player(
     cs.finish().map_err(ResolveError::Invalid)?;
     let now = UtcDateTime::now();
     let id = sqlx::query_scalar!(
-        r#"INSERT INTO players (name, user_id, discord_id, inserted_at, updated_at) VALUES (?, ?, ?, ?, ?)
-           RETURNING id AS "id!: i64""#,
+        r#"INSERT INTO players (playgroup_id, name, user_id, discord_id, inserted_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?) RETURNING id AS "id!: i64""#,
+        playgroup_id,
         name,
         user_id,
         discord_id,
@@ -205,7 +219,10 @@ pub async fn insert_player(
         if crate::db::is_unique_violation(&error, &["players.user_id"]) {
             ResolveError::Invalid(ValidationError::single("user_id", crate::validation::TAKEN))
         } else if crate::db::is_unique_violation(&error, &["players.discord_id"]) {
-            ResolveError::Invalid(ValidationError::single("discord_id", crate::validation::TAKEN))
+            ResolveError::Invalid(ValidationError::single(
+                "discord_id",
+                crate::validation::TAKEN,
+            ))
         } else {
             unique_error(error, "name")
         }
@@ -230,16 +247,17 @@ pub enum Resolution {
 /// Later identities see names earlier ones reserved.
 pub async fn preview(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     identities: &[(String, Option<String>)],
 ) -> Result<Vec<Resolution>, sqlx::Error> {
     let mut reserved = HashSet::new();
     let mut resolutions = Vec::with_capacity(identities.len());
     for (name, discord_id) in identities {
         let discord_id = normalize_discord_id(discord_id.as_deref());
-        if let Some(player) = find_player(conn, name, discord_id).await? {
+        if let Some(player) = find_player(conn, playgroup_id, name, discord_id).await? {
             resolutions.push(Resolution::Matched(player));
         } else {
-            let available = available_name(conn, name, discord_id, &reserved).await?;
+            let available = available_name(conn, playgroup_id, name, discord_id, &reserved).await?;
             reserved.insert(fold_name(&available));
             resolutions.push(Resolution::Create(available));
         }

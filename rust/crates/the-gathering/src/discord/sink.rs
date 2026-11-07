@@ -14,6 +14,8 @@ use crate::games::{
     self, DeckInput, GameInput, GamesError, ResolveError as PlayerError, SeatInput,
 };
 
+use crate::playgroups;
+
 use super::report::{GameReport, ReportDetails, ReportPlayer};
 
 /// Why a sink rejected a report.
@@ -143,7 +145,8 @@ impl Sink for GamesSink {
 }
 
 async fn persist(conn: &mut SqliteConnection, report: &GameReport) -> Result<i64, SinkError> {
-    let seats = build_seats(conn, report).await?;
+    let playgroup_id = playgroups::for_discord_guild(conn, &report.guild_id).await?;
+    let seats = build_seats(conn, playgroup_id, report).await?;
     let mut input = GameInput {
         played_at: Some(report.played_at).into(),
         seats: Some(seats).into(),
@@ -155,14 +158,20 @@ async fn persist(conn: &mut SqliteConnection, report: &GameReport) -> Result<i64
         input.duration_minutes = details.duration_minutes.into();
         input.notes = details.notes.clone().into();
     }
-    let game =
-        games::record_game::upsert_by_external_id(conn, "discord", &report.external_id, &input)
-            .await?;
+    let game = games::record_game::upsert_by_external_id(
+        conn,
+        playgroup_id,
+        "discord",
+        &report.external_id,
+        &input,
+    )
+    .await?;
     Ok(game.id)
 }
 
 async fn build_seats(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     report: &GameReport,
 ) -> Result<Vec<SeatInput>, SinkError> {
     let winners: HashSet<&str> = report
@@ -174,6 +183,7 @@ async fn build_seats(
     for (index, reported) in report.players.iter().enumerate() {
         let player = games::resolve_player::run(
             conn,
+            playgroup_id,
             &reported.display_name,
             Some(&reported.discord_id),
             None,

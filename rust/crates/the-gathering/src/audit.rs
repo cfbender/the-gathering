@@ -195,6 +195,7 @@ mod tests {
             manavault_api_key: None,
             palette: "claret".into(),
             theme_style: "glass".into(),
+            playgroup_id: Some(1),
             inserted_at: UtcDateTime::now(),
             updated_at: UtcDateTime::now(),
             authenticated_at: None,
@@ -223,7 +224,7 @@ mod tests {
                 .unwrap_or_else(|error| unreachable!("{error}"));
             exec(
                 &mut tx,
-                "INSERT INTO players (name, inserted_at, updated_at) VALUES ('Ada', 'x', 'x')",
+                "INSERT INTO players (name, playgroup_id, inserted_at, updated_at) VALUES ('Ada', 1, 'x', 'x')",
             )
             .await;
             tx.commit()
@@ -264,7 +265,7 @@ mod tests {
                 .unwrap_or_else(|error| unreachable!("{error}"));
             exec(
                 &mut tx,
-                "INSERT INTO players (name, inserted_at, updated_at) VALUES ('Ada', 'x', 'x')",
+                "INSERT INTO players (name, playgroup_id, inserted_at, updated_at) VALUES ('Ada', 1, 'x', 'x')",
             )
             .await;
             // A savepoint keeps the outer transaction's operation.
@@ -332,7 +333,7 @@ mod tests {
                 .unwrap_or_else(|error| unreachable!("{error}"));
             exec(
                 &mut tx,
-                "INSERT INTO players (name, inserted_at, updated_at) VALUES ('Ada', 'x', 'x')",
+                "INSERT INTO players (name, playgroup_id, inserted_at, updated_at) VALUES ('Ada', 1, 'x', 'x')",
             )
             .await;
             tx.rollback()
@@ -344,7 +345,7 @@ mod tests {
                 .unwrap_or_else(|error| unreachable!("{error}"));
             exec(
                 &mut tx,
-                "INSERT INTO players (name, inserted_at, updated_at) VALUES ('Bea', 'x', 'x')",
+                "INSERT INTO players (name, playgroup_id, inserted_at, updated_at) VALUES ('Bea', 1, 'x', 'x')",
             )
             .await;
             drop(tx);
@@ -369,12 +370,12 @@ mod tests {
             .unwrap_or_else(|error| unreachable!("{error}"));
         let player = exec(
             &mut conn,
-            "INSERT INTO players (name, inserted_at, updated_at) VALUES ('Ada', 'x', 'x')",
+            "INSERT INTO players (name, playgroup_id, inserted_at, updated_at) VALUES ('Ada', 1, 'x', 'x')",
         )
         .await;
         let game = exec(
             &mut conn,
-            "INSERT INTO games (played_at, inserted_at, updated_at) VALUES ('2026-10-01', 'x', 'x')",
+            "INSERT INTO games (played_at, playgroup_id, inserted_at, updated_at) VALUES ('2026-10-01', 1, 'x', 'x')",
         )
         .await;
         let seat = exec(
@@ -466,18 +467,16 @@ mod tests {
         )
         .await;
         exec(&mut conn, "UPDATE api_keys SET last_used_at = 'now'").await;
-        // The settings row exists from the migrations; only `registration_invite_set` shows.
+        // The default playgroup exists from the migrations; only `registration_invite_set` shows.
         exec(
             &mut conn,
-            "UPDATE server_settings SET registration_invite_hash = X'CAFE'",
+            "UPDATE playgroups SET registration_invite_hash = X'CAFE'",
         )
         .await;
         // Replacing the invite with another one changes nothing recorded.
         exec(
             &mut conn,
-            "INSERT INTO server_settings (id, registration_enabled, registration_invite_hash, inserted_at, updated_at)
-             VALUES (1, 1, X'CAFE', 'x', 'x')
-             ON CONFLICT (id) DO UPDATE SET registration_invite_hash = X'BEEF'",
+            "UPDATE playgroups SET registration_invite_hash = X'BEEF'",
         )
         .await;
         exec(
@@ -512,7 +511,7 @@ mod tests {
                 ("users", false, true),
                 ("users", true, true),
                 ("api_keys", false, true),
-                ("server_settings", true, true),
+                ("playgroups", true, true),
                 ("pending_discord_games", false, true),
                 ("discord_result_drafts", false, true),
                 ("api_keys", true, false),
@@ -603,7 +602,7 @@ mod tests {
                             .await
                             .unwrap_or_else(|error| unreachable!("{error}"));
                         sqlx::query(
-                            "INSERT INTO players (name, inserted_at, updated_at) VALUES (?, 'x', 'x')",
+                            "INSERT INTO players (name, playgroup_id, inserted_at, updated_at) VALUES (?, 1, 'x', 'x')",
                         )
                         .bind(format!("p-{op}-{round}"))
                         .execute(&mut *tx)

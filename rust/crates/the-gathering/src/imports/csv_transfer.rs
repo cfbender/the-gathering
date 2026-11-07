@@ -65,17 +65,28 @@ fn invalid(mut base: Preview, error: &ImportError) -> Preview {
 
 /// The parse preview plus, when valid, a dry run's review and
 /// the revision.
-pub async fn preview(state: &AppState, csv: &str) -> Result<Preview, sqlx::Error> {
+pub async fn preview(
+    state: &AppState,
+    playgroup_id: i64,
+    csv: &str,
+) -> Result<Preview, sqlx::Error> {
     let base = {
         let mut conn = state.pool.acquire().await?;
-        preview::run(&mut conn, Source::Csv, csv).await?
+        preview::run(&mut conn, playgroup_id, Source::Csv, csv).await?
     };
     if !base.valid {
         return Ok(base);
     }
     let mut tx = db::begin(&state.pool).await?;
     let revision = revision(&mut tx, csv).await?;
-    let result = execute(&mut tx, state.games.deck_links(), &base.games, None).await;
+    let result = execute(
+        &mut tx,
+        playgroup_id,
+        state.games.deck_links(),
+        &base.games,
+        None,
+    )
+    .await;
     tx.rollback().await?;
     match result {
         Ok(review) => Ok(Preview {
@@ -92,13 +103,14 @@ pub async fn preview(state: &AppState, csv: &str) -> Result<Preview, sqlx::Error
 /// a current preview.
 pub async fn run(
     state: &AppState,
+    playgroup_id: i64,
     csv: &str,
     user_id: Option<i64>,
     reviewed_revision: Option<&str>,
 ) -> Result<ImportResult, ImportError> {
     let base = {
         let mut conn = state.pool.acquire().await?;
-        preview::run(&mut conn, Source::Csv, csv).await?
+        preview::run(&mut conn, playgroup_id, Source::Csv, csv).await?
     };
     if !base.valid {
         return Err(ImportError::Validation(Box::new(base)));
@@ -115,7 +127,14 @@ pub async fn run(
                 "Preview is stale or missing. Preview again before updating games.".to_owned(),
             ));
         }
-        execute(&mut tx, state.games.deck_links(), &base.games, user_id).await
+        execute(
+            &mut tx,
+            playgroup_id,
+            state.games.deck_links(),
+            &base.games,
+            user_id,
+        )
+        .await
     }
     .await;
     let reviews = match result {
@@ -156,13 +175,14 @@ pub async fn run(
 
 async fn execute(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     links: &DeckLinks,
     games: &[ImportGame],
     user_id: Option<i64>,
 ) -> Result<Vec<Review>, ImportError> {
     let mut targets = Vec::with_capacity(games.len());
     for game in games {
-        targets.push(target(conn, game).await?);
+        targets.push(target(conn, playgroup_id, game).await?);
     }
     let mut ids: Vec<i64> = games
         .iter()
@@ -180,36 +200,39 @@ async fn execute(
     }
     let mut reviews = Vec::with_capacity(games.len());
     for (game, target) in games.iter().zip(targets) {
-        reviews.push(transfer(conn, links, game, target, user_id).await?);
+        reviews.push(transfer(conn, playgroup_id, links, game, target, user_id).await?);
     }
     Ok(reviews)
 }
 
 async fn target(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     game: &ImportGame,
 ) -> Result<Option<Game>, ImportError> {
     if game.action.as_deref() == Some("skip") {
         return Ok(None);
     }
-    let portable = match &game.target_portable_id {
-        Some(portable_id) => {
-            sqlx::query_scalar!(
-                r#"SELECT id AS "id!: i64" FROM games WHERE portable_id = ?"#,
+    let portable =
+        match &game.target_portable_id {
+            Some(portable_id) => sqlx::query_scalar!(
+                r#"SELECT id AS "id!: i64" FROM games WHERE playgroup_id = ? AND portable_id = ?"#,
+                playgroup_id,
                 portable_id
             )
             .fetch_optional(&mut *conn)
-            .await?
-        }
-        None => None,
-    };
+            .await?,
+            None => None,
+        };
     let source = game.target_source.as_deref().unwrap_or("csv");
     let external_id = game
         .target_external_id
         .as_deref()
         .unwrap_or(&game.external_id);
     let external = sqlx::query_scalar!(
-        r#"SELECT id AS "id!: i64" FROM games WHERE source = ? AND external_id = ?"#,
+        r#"SELECT id AS "id!: i64" FROM games
+           WHERE playgroup_id = ? AND source = ? AND external_id = ?"#,
+        playgroup_id,
         source,
         external_id
     )
@@ -245,6 +268,7 @@ async fn target(
 
 async fn transfer(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     links: &DeckLinks,
     game: &ImportGame,
     target: Option<Game>,
@@ -261,7 +285,7 @@ async fn transfer(
     }
     let mut seats = Vec::with_capacity(game.seats.len());
     for seat in &game.seats {
-        seats.push(seat_attrs(conn, links, seat).await?);
+        seats.push(seat_attrs(conn, playgroup_id, links, seat).await?);
     }
     // Blank file fields keep the game's values.
     let mut input = GameInput {
@@ -300,7 +324,7 @@ async fn transfer(
                     .clone()
                     .unwrap_or_else(|| game.external_id.clone()),
             );
-            let saved = record_game::create(conn, &input, user_id).await?;
+            let saved = record_game::create(conn, playgroup_id, &input, user_id).await?;
             Ok(review(game, Some(saved.id), "create", Vec::new()))
         }
     }
@@ -310,10 +334,11 @@ async fn transfer(
 /// commander.
 async fn seat_attrs(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     links: &DeckLinks,
     seat: &ImportSeat,
 ) -> Result<SeatAttrs, ImportError> {
-    if let Some(found) = player::find_player_by_name(conn, &seat.player).await?
+    if let Some(found) = player::find_player_by_name(conn, playgroup_id, &seat.player).await?
         && let Some(existing) = deck::find_deck(conn, found.id, &seat.deck, None, None).await?
         && pair(
             Some(&existing.commander_name),
@@ -325,7 +350,7 @@ async fn seat_attrs(
             seat.player, seat.deck
         )));
     }
-    commit::commit_seat(conn, links, seat).await
+    commit::commit_seat(conn, playgroup_id, links, seat).await
 }
 
 fn pair(commander: Option<&str>, partner: Option<&str>) -> Vec<String> {

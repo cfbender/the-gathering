@@ -16,6 +16,7 @@ use crate::accounts::{
 };
 use crate::db::UtcDateTime;
 use crate::error::{ApiError, ApiResult};
+use crate::playgroups::Playgroup;
 use crate::state::AppState;
 use crate::web::auth::{AuthUser, MaybeUser, log_in_user, log_out_user, put_fresh_csrf_token};
 use crate::web::extract::{JsonBody, PathParam, QueryParams};
@@ -84,22 +85,26 @@ pub async fn registration_create(
     }
 }
 
-async fn invite_response(state: &AppState, session: &Session) -> ApiResult<Response> {
-    let hash = session.data().registration_invite_hash;
-    let valid = state
-        .accounts
-        .valid_registration_invite_hash(hash.as_deref())
-        .await?;
-    let mut response = data(json!({ "valid": valid })).into_response();
+/// `{"valid", "playgroup", "joined"}`: whether an invitation is live, the playgroup it
+/// joins, and whether the signed-in member joined it just now.
+fn invite_response(playgroup: Option<&Playgroup>, joined: bool) -> Response {
+    let mut response = data(json!({
+        "valid": playgroup.is_some(),
+        "playgroup": playgroup.map(|playgroup| json!({ "id": playgroup.id, "name": playgroup.name })),
+        "joined": joined,
+    }))
+    .into_response();
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    Ok(response)
+    response
 }
 
-/// `GET /api/registration-invite`.
+/// `GET /api/registration-invite`: the invitation the session holds, if it is still live.
 pub async fn invite_show(State(state): State<AppState>, session: Session) -> ApiResult<Response> {
-    invite_response(&state, &session).await
+    let hash = session.data().registration_invite_hash;
+    let playgroup = state.playgroups.for_invite_hash(hash.as_deref()).await?;
+    Ok(invite_response(playgroup.as_ref(), false))
 }
 
 /// The invitation secret from an invite link.
@@ -108,23 +113,29 @@ pub struct InviteToken {
     token: String,
 }
 
-/// `POST /api/registration-invite`: remembers a valid invitation in the session.
+/// `POST /api/registration-invite`: remembers a valid invitation in the session so the
+/// Discord sign-in that follows joins its playgroup. A signed-in member joins it right away
+/// (`"joined": true`), is switched to it, and the session keeps nothing.
 pub async fn invite_create(
     State(state): State<AppState>,
     session: Session,
+    MaybeUser(current): MaybeUser,
     JsonBody(InviteToken { token }): JsonBody<InviteToken>,
 ) -> ApiResult<Response> {
     let hash = crate::accounts::registration_invite_hash(&token);
-    if state
-        .accounts
-        .valid_registration_invite_hash(hash.as_deref())
-        .await?
-    {
-        session.update(|data| data.registration_invite_hash = hash);
-    } else {
-        session.update(|data| data.registration_invite_hash = None);
-    }
-    invite_response(&state, &session).await
+    let playgroup = state.playgroups.for_invite_hash(hash.as_deref()).await?;
+    let joined = match (&playgroup, current) {
+        (Some(playgroup), Some(user)) => {
+            state.playgroups.add_member(playgroup, &user).await?;
+            state.accounts.set_playgroup(&user, playgroup.id).await?;
+            true
+        }
+        _ => false,
+    };
+    session.update(|data| {
+        data.registration_invite_hash = hash.filter(|_| playgroup.is_some() && !joined);
+    });
+    Ok(invite_response(playgroup.as_ref(), joined))
 }
 
 /// `GET /api/session`.
@@ -393,31 +404,6 @@ pub async fn admin_settings_update(
     Ok(settings_json(
         &state.accounts.update_settings(&update).await?,
     ))
-}
-
-fn no_store(body: Json<Value>) -> Response {
-    let mut response = body.into_response();
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response
-}
-
-/// `GET /api/admin/registration-invite`.
-pub async fn admin_invite_show(State(state): State<AppState>) -> ApiResult<Response> {
-    let enabled = state
-        .accounts
-        .get_settings()
-        .await?
-        .registration_invite_hash
-        .is_some();
-    Ok(no_store(data(json!({ "enabled": enabled }))))
-}
-
-/// `POST /api/admin/registration-invite`: rotates the reusable invitation.
-pub async fn admin_invite_create(State(state): State<AppState>) -> ApiResult<Response> {
-    let token = state.accounts.rotate_registration_invite().await?;
-    Ok(no_store(data(json!({ "token": token }))))
 }
 
 /// A redirect: a 302 with a `location` header.

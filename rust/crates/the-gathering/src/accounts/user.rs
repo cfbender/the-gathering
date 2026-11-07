@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::db::{IsoDate, UtcDateTime};
+use crate::error::ApiError;
 use crate::patch::Patch;
 use crate::regex::{Regex, compile};
 use crate::validation::{ValidationError, Validator};
@@ -88,6 +89,9 @@ pub struct User {
     pub palette: String,
     /// Surface style.
     pub theme_style: String,
+    /// The playgroup the member is viewing: the one they last switched to while they still
+    /// belong to it, else their oldest membership, else `None`.
+    pub playgroup_id: Option<i64>,
     /// Creation time.
     pub inserted_at: UtcDateTime,
     /// Last update.
@@ -124,6 +128,7 @@ impl std::fmt::Debug for User {
             )
             .field("palette", &self.palette)
             .field("theme_style", &self.theme_style)
+            .field("playgroup_id", &self.playgroup_id)
             .field("inserted_at", &self.inserted_at)
             .field("updated_at", &self.updated_at)
             .field("authenticated_at", &self.authenticated_at)
@@ -135,6 +140,11 @@ impl User {
     /// Whether the user is an administrator.
     pub fn is_admin(&self) -> bool {
         self.role == "admin"
+    }
+
+    /// The playgroup the member is viewing, or the 403 for an account without one.
+    pub fn playgroup(&self) -> Result<i64, ApiError> {
+        self.playgroup_id.ok_or_else(crate::playgroups::none_error)
     }
 
     /// The user as the API renders it.
@@ -152,6 +162,7 @@ impl User {
             has_password: self.hashed_password.is_some(),
             palette: &self.palette,
             theme_style: &self.theme_style,
+            playgroup_id: self.playgroup_id,
             role: &self.role,
             disabled: self.disabled_at.is_some(),
             inserted_at: self.inserted_at,
@@ -174,6 +185,7 @@ struct UserJson<'a> {
     has_password: bool,
     palette: &'a str,
     theme_style: &'a str,
+    playgroup_id: Option<i64>,
     role: &'a str,
     disabled: bool,
     inserted_at: UtcDateTime,

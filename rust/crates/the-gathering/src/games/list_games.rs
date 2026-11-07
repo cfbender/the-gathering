@@ -275,9 +275,10 @@ fn seat_conditions(opts: &GameFilters) -> Vec<Cond> {
     conds
 }
 
-/// Games matching `opts`, newest first, with pagination.
+/// The playgroup's games matching `opts`, newest first, with pagination.
 pub async fn list_games(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     opts: &GameFilters,
 ) -> Result<(Vec<Game>, Pagination), sqlx::Error> {
     let page = positive(opts.page).unwrap_or(1);
@@ -285,7 +286,8 @@ pub async fn list_games(
     let zone = Zone::parse(opts.tz.as_deref());
 
     let mut qb: QueryBuilder<Sqlite> =
-        QueryBuilder::new("SELECT g.id, g.played_at FROM games g WHERE 1 = 1");
+        QueryBuilder::new("SELECT g.id, g.played_at FROM games g WHERE g.playgroup_id = ");
+    qb.push_bind(playgroup_id);
     for cond in seat_conditions(opts) {
         qb.push(" AND g.id IN (SELECT s.game_id FROM game_players s LEFT JOIN decks d ON d.id = s.deck_id WHERE ");
         push(&mut qb, &cond);

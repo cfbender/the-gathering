@@ -25,7 +25,8 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 use self::api::{
-    accounts, admin, cardid, cards, discord, games, imports, rulings, server_logs, stats, webcam,
+    accounts, admin, cardid, cards, discord, games, imports, playgroups, rulings, server_logs,
+    stats, webcam,
 };
 use self::auth::{require_admin, require_authenticated_user, require_sudo_mode};
 
@@ -81,6 +82,8 @@ pub fn router(state: AppState) -> Router {
             "/api/session/appearance",
             patch(accounts::update_appearance),
         )
+        .route("/api/session/playgroup", patch(playgroups::switch))
+        .route("/api/playgroups", get(playgroups::index))
         .route("/api/session/remote-decks", get(games::remote_decks_index))
         .route(
             "/api/session/remote-decks/sync",
@@ -195,6 +198,26 @@ pub fn router(state: AppState) -> Router {
         .route_layer(from_fn(require_authenticated_user));
 
     let sudo_admins = Router::new()
+        .route(
+            "/api/admin/playgroups",
+            get(playgroups::admin_index).post(playgroups::create),
+        )
+        .route(
+            "/api/admin/playgroups/{id}",
+            patch(playgroups::update).delete(playgroups::delete),
+        )
+        .route(
+            "/api/admin/playgroups/{id}/members",
+            post(playgroups::members_create),
+        )
+        .route(
+            "/api/admin/playgroups/{id}/members/{user_id}",
+            delete(playgroups::members_delete),
+        )
+        .route(
+            "/api/admin/playgroups/{id}/registration-invite",
+            get(playgroups::invite_show).post(playgroups::invite_create),
+        )
         .route("/api/admin/audit", get(api::audit::index))
         .route("/api/admin/audit/{id}", get(api::audit::show))
         .route(
@@ -230,10 +253,6 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/admin/settings",
             get(accounts::admin_settings_show).patch(accounts::admin_settings_update),
-        )
-        .route(
-            "/api/admin/registration-invite",
-            get(accounts::admin_invite_show).post(accounts::admin_invite_create),
         )
         .route(
             "/api/admin/software-update",

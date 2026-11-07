@@ -19,6 +19,7 @@ pub mod legacy;
 pub mod local_time;
 pub mod logs;
 pub mod patch;
+pub mod playgroups;
 pub mod rate_limit;
 pub mod regex;
 pub mod rules;

@@ -7,18 +7,24 @@ use sqlx::SqliteConnection;
 use crate::regex::{Regex, compile};
 
 use super::GamesError;
-use super::model::{Game, load_game};
+use super::model::{Game, load_game_in};
 
 static SPELLBOT: LazyLock<Regex> = LazyLock::new(|| compile(r"(?i)\A#?SB[0-9]{1,20}\z"));
 static LOCAL_ID: LazyLock<Regex> = LazyLock::new(|| compile(r"\A[0-9]{1,18}\z"));
 
 /// A local game id, an `SB`-prefixed SpellBot id (optionally
-/// with `#`), or the latest game for a blank reference. Anything else is a bad request.
-pub async fn find(conn: &mut SqliteConnection, reference: &str) -> Result<Game, GamesError> {
+/// with `#`), or the playgroup's latest game for a blank reference. Anything else is a bad
+/// request; a game from another playgroup is not found.
+pub async fn find(
+    conn: &mut SqliteConnection,
+    playgroup_id: i64,
+    reference: &str,
+) -> Result<Game, GamesError> {
     let reference = reference.trim();
     let id = if reference.is_empty() {
         sqlx::query_scalar!(
-            r#"SELECT id AS "id!: i64" FROM games ORDER BY played_at DESC, id DESC LIMIT 1"#
+            r#"SELECT id AS "id!: i64" FROM games WHERE playgroup_id = ? ORDER BY played_at DESC, id DESC LIMIT 1"#,
+            playgroup_id
         )
         .fetch_optional(&mut *conn)
         .await?
@@ -28,7 +34,9 @@ pub async fn find(conn: &mut SqliteConnection, reference: &str) -> Result<Game, 
             reference.trim_start_matches('#').to_uppercase()
         );
         sqlx::query_scalar!(
-            r#"SELECT id AS "id!: i64" FROM games WHERE source = 'discord' AND external_id = ?"#,
+            r#"SELECT id AS "id!: i64" FROM games
+               WHERE playgroup_id = ? AND source = 'discord' AND external_id = ?"#,
+            playgroup_id,
             external_id
         )
         .fetch_optional(&mut *conn)
@@ -40,7 +48,9 @@ pub async fn find(conn: &mut SqliteConnection, reference: &str) -> Result<Game, 
         return Err(GamesError::BadRequest);
     };
     match id {
-        Some(id) => load_game(conn, id).await?.ok_or(GamesError::NotFound),
+        Some(id) => load_game_in(conn, playgroup_id, id)
+            .await?
+            .ok_or(GamesError::NotFound),
         None => Err(GamesError::NotFound),
     }
 }

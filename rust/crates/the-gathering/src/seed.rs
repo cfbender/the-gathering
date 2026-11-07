@@ -10,6 +10,7 @@ use time::macros::datetime;
 
 use crate::db::UtcDateTime;
 use crate::games::{Deck, DeckInput, GameInput, Games, PlayerInput, SeatInput};
+use crate::playgroups::Playgroups;
 
 const PLAYERS: [&str; 5] = ["Cody", "Mara", "Theo", "Jules", "Ren"];
 
@@ -50,12 +51,13 @@ const MVPS: [&str; 4] = [
 /// Number of demo games.
 pub const GAMES: usize = 40;
 
-/// Seeds the demo data and returns a one-line summary.
-pub async fn run(games: &Games) -> anyhow::Result<String> {
+/// Seeds the demo data into the default playgroup and returns a one-line summary.
+pub async fn run(games: &Games, playgroups: &Playgroups) -> anyhow::Result<String> {
+    let playgroup_id = playgroups.default_id().await?;
     let mut player_ids = HashMap::new();
     for name in PLAYERS {
         let player = games
-            .find_or_create_player_by_name(name, &PlayerInput::default())
+            .find_or_create_player_by_name(playgroup_id, name, &PlayerInput::default())
             .await
             .map_err(|error| anyhow::anyhow!("player {name}: {error:?}"))?;
         player_ids.insert(name, player.id);
@@ -87,7 +89,7 @@ pub async fn run(games: &Games) -> anyhow::Result<String> {
         let input = game(index, base, &player_ids, &decks_by_player)?;
         let external_id = format!("demo-stats-{}", index + 1);
         games
-            .find_or_create_game_by_external_id("csv", &external_id, &input)
+            .find_or_create_game_by_external_id(playgroup_id, "csv", &external_id, &input)
             .await
             .map_err(|error| anyhow::anyhow!("game {external_id}: {error:?}"))?;
     }

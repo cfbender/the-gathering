@@ -14,7 +14,7 @@ use futures_util::future::BoxFuture;
 use serde_json::json;
 use sqlx::SqliteConnection;
 use support::discord::{command, interaction, player, report, string};
-use support::{TestApp, utc};
+use support::{PLAYGROUP, TestApp, utc};
 use the_gathering::db::UtcDateTime;
 use the_gathering::discord::api::ResponseKind;
 use the_gathering::discord::card_choice::{self, Mode};
@@ -56,6 +56,7 @@ impl Sink for FailingSink {
             }
             the_gathering::games::player::create_player(
                 conn,
+                PLAYGROUP,
                 &support::input(json!({"name": "Rolled Back"})),
                 None,
             )
@@ -377,7 +378,12 @@ async fn discord_game(app: &TestApp) -> the_gathering::games::Game {
     .fetch_one(app.pool())
     .await
     .unwrap();
-    app.state.games.get_game(id).await.unwrap().unwrap()
+    app.state
+        .games
+        .get_game(PLAYGROUP, id)
+        .await
+        .unwrap()
+        .unwrap()
 }
 
 #[tokio::test]

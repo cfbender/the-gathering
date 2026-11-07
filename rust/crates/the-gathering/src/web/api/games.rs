@@ -175,11 +175,11 @@ fn player_card_refs(detail: &PlayerDetail) -> Vec<CardRef> {
         .collect()
 }
 
-/// The player page JSON for a player id.
-async fn render_player(state: &AppState, id: i64) -> ApiResult<Value> {
+/// The player page JSON for a player id in the playgroup.
+async fn render_player(state: &AppState, playgroup_id: i64, id: i64) -> ApiResult<Value> {
     let detail = state
         .games
-        .get_player_detail(id)
+        .get_player_detail(playgroup_id, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let art = art_urls(state, &player_card_refs(&detail)).await?;
@@ -218,9 +218,13 @@ async fn render_player(state: &AppState, id: i64) -> ApiResult<Value> {
     Ok(json!({ "data": body }))
 }
 
-/// The deck page JSON for a deck id.
-async fn render_deck(state: &AppState, id: i64) -> ApiResult<Value> {
-    let deck = state.games.get_deck(id).await?.ok_or(ApiError::NotFound)?;
+/// The deck page JSON for a deck id in the playgroup.
+async fn render_deck(state: &AppState, playgroup_id: i64, id: i64) -> ApiResult<Value> {
+    let deck = state
+        .games
+        .get_deck(playgroup_id, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let mut conn = state.pool.acquire().await?;
     let player = games::get_player(&mut conn, deck.player_id).await?;
     let seats = games::deck::deck_seat_games(&mut conn, deck.id).await?;
@@ -254,8 +258,12 @@ pub async fn render_game(state: &AppState, game: &Game) -> ApiResult<Value> {
     Ok(json!({ "data": game_json(game, &art) }))
 }
 
-async fn render_games(state: &AppState, filters: &GameFilters) -> ApiResult<Json<Value>> {
-    let (games, pagination) = state.games.list_games(filters).await?;
+async fn render_games(
+    state: &AppState,
+    playgroup_id: i64,
+    filters: &GameFilters,
+) -> ApiResult<Json<Value>> {
+    let (games, pagination) = state.games.list_games(playgroup_id, filters).await?;
     let art = art_urls(state, &game_card_refs(&games)).await?;
     Ok(Json(json!({
         "data": games.iter().map(|game| game_json(game, &art)).collect::<Vec<_>>(),
@@ -281,27 +289,32 @@ fn member_player(input: PlayerInput) -> PlayerInput {
     }
 }
 
-/// `GET /api/players`.
+/// `GET /api/players`: the member's playgroup.
 pub async fn players_index(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     QueryParams(query): QueryParams<ArchivedQuery>,
 ) -> ApiResult<Json<Value>> {
-    let players = state.games.list_players(query.include_archived).await?;
+    let players = state
+        .games
+        .list_players(user.playgroup()?, query.include_archived)
+        .await?;
     Ok(data(players.iter().map(player_summary).collect::<Vec<_>>()))
 }
 
-/// `POST /api/players`.
+/// `POST /api/players`: into the member's playgroup.
 pub async fn players_create(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     JsonBody(input): JsonBody<PlayerInput>,
 ) -> ApiResult<Response> {
     let player = state
         .games
-        .create_player(&member_player(input), None)
+        .create_player(user.playgroup()?, &member_player(input), None)
         .await?;
     Ok((
         StatusCode::CREATED,
-        Json(render_player(&state, player.id).await?),
+        Json(render_player(&state, user.playgroup()?, player.id).await?),
     )
         .into_response())
 }
@@ -309,15 +322,16 @@ pub async fn players_create(
 /// `GET /api/players/:id`.
 pub async fn players_show(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     PathParam(id): PathParam<i64>,
 ) -> ApiResult<Json<Value>> {
-    Ok(Json(render_player(&state, id).await?))
+    Ok(Json(render_player(&state, user.playgroup()?, id).await?))
 }
 
 async fn manageable_player(state: &AppState, user: &User, id: i64) -> ApiResult<Player> {
     let player = state
         .games
-        .get_player(id)
+        .get_player(user.playgroup()?, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     if can_manage_player(user, &player) {
@@ -339,7 +353,9 @@ pub async fn players_update(
         .games
         .update_player(&player, &member_player(input))
         .await?;
-    Ok(Json(render_player(&state, player.id).await?))
+    Ok(Json(
+        render_player(&state, user.playgroup()?, player.id).await?,
+    ))
 }
 
 /// The player to merge into.
@@ -351,21 +367,24 @@ pub struct MergeTarget {
 /// `POST /api/players/:id/merge`: folds the player into `target_id`.
 pub async fn players_merge(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     PathParam(id): PathParam<i64>,
     JsonBody(MergeTarget { target_id }): JsonBody<MergeTarget>,
 ) -> ApiResult<Json<Value>> {
     let source = state
         .games
-        .get_player(id)
+        .get_player(user.playgroup()?, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let target = state
         .games
-        .get_player(target_id)
+        .get_player(user.playgroup()?, target_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let merged = state.games.merge_players(&source, &target).await?;
-    Ok(Json(render_player(&state, merged.id).await?))
+    Ok(Json(
+        render_player(&state, user.playgroup()?, merged.id).await?,
+    ))
 }
 
 /// `DELETE /api/players/:id`.
@@ -393,11 +412,12 @@ pub struct DeckListQuery {
 /// `GET /api/decks` (`player_id` filters by owner).
 pub async fn decks_index(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     QueryParams(query): QueryParams<DeckListQuery>,
 ) -> ApiResult<Json<Value>> {
     let decks = state
         .games
-        .list_decks(query.include_archived, query.player_id)
+        .list_decks(user.playgroup()?, query.include_archived, query.player_id)
         .await?;
     let refs: Vec<CardRef> = decks
         .iter()
@@ -412,8 +432,8 @@ pub async fn decks_index(
     ))
 }
 
-/// Creating a deck for another member's player is refused; an unknown player id falls
-/// through to validation.
+/// Creating a deck for another member's player is refused; a player outside the member's
+/// playgroup, like an unknown player id, is reported by validation.
 async fn authorize_owner(state: &AppState, user: &User, input: &DeckInput) -> ApiResult<()> {
     let games::input::DeckInput {
         player_id: crate::patch::Patch::Set(Some(player_id)),
@@ -423,9 +443,10 @@ async fn authorize_owner(state: &AppState, user: &User, input: &DeckInput) -> Ap
         return Ok(());
     };
     let player_id = *player_id;
-    match state.games.get_player(player_id).await? {
+    match state.games.get_player(user.playgroup()?, player_id).await? {
         Some(player) if !can_manage_player(user, &player) => Err(ApiError::Forbidden),
-        _ => Ok(()),
+        Some(_) => Ok(()),
+        None => Err(crate::validation::ValidationError::single("player", "does not exist").into()),
     }
 }
 
@@ -439,7 +460,7 @@ pub async fn decks_create(
     let deck = state.games.create_deck(&input).await?;
     Ok((
         StatusCode::CREATED,
-        Json(render_deck(&state, deck.id).await?),
+        Json(render_deck(&state, user.playgroup()?, deck.id).await?),
     )
         .into_response())
 }
@@ -447,13 +468,18 @@ pub async fn decks_create(
 /// `GET /api/decks/:id`.
 pub async fn decks_show(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     PathParam(id): PathParam<i64>,
 ) -> ApiResult<Json<Value>> {
-    Ok(Json(render_deck(&state, id).await?))
+    Ok(Json(render_deck(&state, user.playgroup()?, id).await?))
 }
 
 async fn manageable_deck(state: &AppState, user: &User, id: i64) -> ApiResult<Deck> {
-    let deck = state.games.get_deck(id).await?.ok_or(ApiError::NotFound)?;
+    let deck = state
+        .games
+        .get_deck(user.playgroup()?, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     if state.games.can_manage_deck(user, &deck).await? {
         Ok(deck)
     } else {
@@ -470,7 +496,7 @@ pub async fn decks_update(
 ) -> ApiResult<Json<Value>> {
     let deck = manageable_deck(&state, &user, id).await?;
     let deck = state.games.update_deck(&deck, &input).await?;
-    Ok(Json(render_deck(&state, deck.id).await?))
+    Ok(Json(render_deck(&state, user.playgroup()?, deck.id).await?))
 }
 
 /// `DELETE /api/decks/:id` parameters.
@@ -494,7 +520,7 @@ pub async fn decks_delete(
         Some(id) => Some(
             state
                 .games
-                .get_deck(id)
+                .get_deck(user.playgroup()?, id)
                 .await?
                 .ok_or(ApiError::BadRequest)?,
         ),
@@ -508,9 +534,10 @@ pub async fn decks_delete(
 /// `GET /api/games`: filtered and paginated.
 pub async fn games_index(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     QueryParams(filters): QueryParams<GameFilters>,
 ) -> ApiResult<Json<Value>> {
-    render_games(&state, &filters).await
+    render_games(&state, user.playgroup()?, &filters).await
 }
 
 /// `POST /api/games`: the creator comes from the session; provenance cannot be set.
@@ -521,7 +548,11 @@ pub async fn games_create(
 ) -> ApiResult<Response> {
     let game = state
         .games
-        .create_game(&input.without_provenance(), Some(user.id))
+        .create_game(
+            user.playgroup()?,
+            &input.without_provenance(),
+            Some(user.id),
+        )
         .await?;
     Ok((StatusCode::CREATED, Json(render_game(&state, &game).await?)).into_response())
 }
@@ -529,18 +560,27 @@ pub async fn games_create(
 /// `GET /api/games/:id`.
 pub async fn games_show(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     PathParam(id): PathParam<i64>,
 ) -> ApiResult<Json<Value>> {
-    let game = state.games.get_game(id).await?.ok_or(ApiError::NotFound)?;
+    let game = state
+        .games
+        .get_game(user.playgroup()?, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     Ok(Json(render_game(&state, &game).await?))
 }
 
 /// `GET /api/games/:id/summary`: the summary card PNG (by id, `SB…` SpellBot id).
 pub async fn games_summary(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     PathParam(id): PathParam<String>,
 ) -> ApiResult<Response> {
-    let game = state.games.find_summary_game(&id).await?;
+    let game = state
+        .games
+        .find_summary_game(user.playgroup()?, &id)
+        .await?;
     let png = match games::render_summary(&state, &game).await {
         Ok(png) => png,
         Err(RenderError::Database(error)) => return Err(error.into()),
@@ -561,7 +601,11 @@ pub async fn games_summary(
 }
 
 async fn manageable_game(state: &AppState, user: &User, id: i64) -> ApiResult<Game> {
-    let game = state.games.get_game(id).await?.ok_or(ApiError::NotFound)?;
+    let game = state
+        .games
+        .get_game(user.playgroup()?, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     if state.games.can_manage_game(user, &game).await? {
         Ok(game)
     } else {
@@ -777,9 +821,13 @@ pub async fn deck_chooser_outcome(
 /// `GET /api/admin/players` (`page`, `per_page`, `search`).
 pub async fn admin_players_index(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     QueryParams(query): QueryParams<IdentityQuery>,
 ) -> ApiResult<Json<Value>> {
-    let (players, meta) = state.games.list_player_identities(&query).await?;
+    let (players, meta) = state
+        .games
+        .list_player_identities(user.playgroup()?, &query)
+        .await?;
     let rows: Vec<Value> = players
         .iter()
         .map(|row| {
@@ -798,11 +846,12 @@ pub async fn admin_players_index(
 /// `DELETE /api/admin/players/:id/identity`: detaches the account and Discord identity.
 pub async fn admin_players_unlink(
     State(state): State<AppState>,
+    AuthUser(admin): AuthUser,
     PathParam(id): PathParam<i64>,
 ) -> ApiResult<StatusCode> {
     let player = state
         .games
-        .get_player(id)
+        .get_player(admin.playgroup()?, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     state.games.unlink_player_identity(&player).await?;
@@ -815,9 +864,11 @@ pub struct LinkPlayer {
     player_id: i64,
 }
 
-/// `PUT /api/admin/users/:id/player`: makes `player_id` the account's player.
+/// `PUT /api/admin/users/:id/player`: makes `player_id` (in the administrator's playgroup)
+/// the account's player there.
 pub async fn admin_link_player(
     State(state): State<AppState>,
+    AuthUser(admin): AuthUser,
     PathParam(id): PathParam<i64>,
     JsonBody(LinkPlayer { player_id }): JsonBody<LinkPlayer>,
 ) -> ApiResult<Json<Value>> {
@@ -828,11 +879,13 @@ pub async fn admin_link_player(
         .ok_or(ApiError::NotFound)?;
     let player = state
         .games
-        .get_player(player_id)
+        .get_player(admin.playgroup()?, player_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let linked = state.games.link_player_to_user(&player, &user).await?;
-    Ok(Json(render_player(&state, linked.id).await?))
+    Ok(Json(
+        render_player(&state, admin.playgroup()?, linked.id).await?,
+    ))
 }
 
 // API-key game history
@@ -877,7 +930,7 @@ pub async fn v1_games_index(
         Some("me") => Some(
             state
                 .games
-                .get_player_for_user(user.id)
+                .get_player_for_user(user.playgroup()?, user.id)
                 .await?
                 .ok_or(ApiError::NotFound)?
                 .id,
@@ -899,7 +952,7 @@ pub async fn v1_games_index(
         tz: query.tz,
         ..GameFilters::default()
     };
-    render_games(&state, &filters).await
+    render_games(&state, user.playgroup()?, &filters).await
 }
 
 // Owned by other areas; kept at the bottom to ease merging.

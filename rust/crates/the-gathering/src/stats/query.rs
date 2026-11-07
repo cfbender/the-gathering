@@ -55,10 +55,11 @@ pub fn window_start(params: &DateRange) -> Option<(Date, UtcDateTime)> {
     Some((date, starts_at))
 }
 
-/// Games in the date range (optionally those a player or deck sat in), newest
-/// first, with seats, players, and decks.
+/// The playgroup's games in the date range (optionally those a player or deck sat in),
+/// newest first, with seats, players, and decks.
 pub async fn games(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     params: &DateRange,
     player_id: Option<i64>,
     deck_id: Option<i64>,
@@ -66,14 +67,16 @@ pub async fn games(
     let (from, to) = date_bounds(params);
     let ids = sqlx::query_scalar!(
         r#"SELECT id AS "id!: i64" FROM games
-           WHERE (?1 IS NULL OR played_at >= ?1) AND (?2 IS NULL OR played_at < ?2)
+           WHERE playgroup_id = ?5
+             AND (?1 IS NULL OR played_at >= ?1) AND (?2 IS NULL OR played_at < ?2)
              AND (?3 IS NULL OR id IN (SELECT game_id FROM game_players WHERE player_id = ?3))
              AND (?4 IS NULL OR id IN (SELECT game_id FROM game_players WHERE deck_id = ?4))
            ORDER BY played_at DESC, id DESC"#,
         from,
         to,
         player_id,
-        deck_id
+        deck_id,
+        playgroup_id
     )
     .fetch_all(&mut *conn)
     .await?;
@@ -101,9 +104,14 @@ pub async fn recent_games(
 /// A stored commander slot: `(card id, name)`.
 pub type Reference = (Option<String>, Option<String>);
 
-async fn all_rows(conn: &mut SqliteConnection) -> Result<Vec<[Reference; 2]>, sqlx::Error> {
+async fn all_rows(
+    conn: &mut SqliteConnection,
+    playgroup_id: i64,
+) -> Result<Vec<[Reference; 2]>, sqlx::Error> {
     Ok(sqlx::query!(
-        "SELECT commander_card_id, commander_name, partner_card_id, partner_name FROM decks"
+        "SELECT commander_card_id, commander_name, partner_card_id, partner_name FROM decks
+         WHERE player_id IN (SELECT id FROM players WHERE playgroup_id = ?)",
+        playgroup_id
     )
     .fetch_all(&mut *conn)
     .await?
@@ -125,13 +133,20 @@ fn unique(references: impl IntoIterator<Item = Reference>) -> Vec<Reference> {
         .collect()
 }
 
-/// Every stored commander reference except empty slots.
+/// Every commander reference stored in the playgroup's decks except empty slots.
 async fn all_commander_references(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
 ) -> Result<Vec<Reference>, sqlx::Error> {
-    Ok(unique(all_rows(conn).await?.into_iter().flatten().filter(
-        |(id, name)| id.is_some() || name.as_deref().is_some_and(|name| !name.is_empty()),
-    )))
+    Ok(unique(
+        all_rows(conn, playgroup_id)
+            .await?
+            .into_iter()
+            .flatten()
+            .filter(|(id, name)| {
+                id.is_some() || name.as_deref().is_some_and(|name| !name.is_empty())
+            }),
+    ))
 }
 
 fn reference_matches(reference: &Reference, id: &str, normalized: &str) -> bool {
@@ -145,15 +160,18 @@ fn reference_matches(reference: &Reference, id: &str, normalized: &str) -> bool 
 /// Stored references that match `id` as an id or normalized name.
 pub async fn commander_references(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     id: &str,
 ) -> Result<Vec<Reference>, sqlx::Error> {
     let normalized = lotus::normalize_name(id);
     let downcased = id.to_lowercase();
     let rows = sqlx::query!(
         "SELECT commander_card_id, commander_name, partner_card_id, partner_name FROM decks
-         WHERE commander_card_id = ?1 OR partner_card_id = ?1 OR lower(commander_name) = ?2 OR lower(partner_name) = ?2",
+         WHERE player_id IN (SELECT id FROM players WHERE playgroup_id = ?3)
+           AND (commander_card_id = ?1 OR partner_card_id = ?1 OR lower(commander_name) = ?2 OR lower(partner_name) = ?2)",
         id,
-        downcased
+        downcased,
+        playgroup_id
     )
     .fetch_all(&mut *conn)
     .await?;
@@ -170,7 +188,7 @@ pub async fn commander_references(
     if !direct.is_empty() {
         return Ok(direct);
     }
-    Ok(all_commander_references(conn)
+    Ok(all_commander_references(conn, playgroup_id)
         .await?
         .into_iter()
         .filter(|reference| reference_matches(reference, id, &normalized))
@@ -181,6 +199,7 @@ pub async fn commander_references(
 /// given ids or names.
 pub async fn commander_aliases(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     ids: &[String],
     names: &[String],
 ) -> Result<(Vec<String>, Vec<String>), sqlx::Error> {
@@ -188,7 +207,7 @@ pub async fn commander_aliases(
         .iter()
         .map(|name| lotus::normalize_name(name))
         .collect();
-    let references: Vec<Reference> = all_commander_references(conn)
+    let references: Vec<Reference> = all_commander_references(conn, playgroup_id)
         .await?
         .into_iter()
         .filter(|(id, name)| {

@@ -12,7 +12,7 @@
 use crate::support;
 
 use serde_json::{Value, json};
-use support::{TestApp, utc};
+use support::{PLAYGROUP, TestApp, utc};
 use the_gathering::games::deck_picker::{Candidate, selection_weights};
 use the_gathering::games::{
     ArtFetcher, Deck, Game, GameResult, GameSource, GamesError, Outcome, Player, Seat,
@@ -69,6 +69,7 @@ async fn formats_retain_their_winner_cardinality_and_imports_default_to_commande
     let errors = invalid(
         games
             .create_game(
+                PLAYGROUP,
                 &support::input(with(attrs.clone(), json!({"format": "two_headed_giant"}))),
                 None,
             )
@@ -81,6 +82,7 @@ async fn formats_retain_their_winner_cardinality_and_imports_default_to_commande
     );
     let game = games
         .create_game(
+            PLAYGROUP,
             &support::input(with(
                 two_winners.clone(),
                 json!({"format": "two_headed_giant"}),
@@ -102,6 +104,7 @@ async fn formats_retain_their_winner_cardinality_and_imports_default_to_commande
         let errors = invalid(
             games
                 .create_game(
+                    PLAYGROUP,
                     &support::input(with(two_winners.clone(), json!({"format": format}))),
                     None,
                 )
@@ -115,13 +118,14 @@ async fn formats_retain_their_winner_cardinality_and_imports_default_to_commande
     }
 
     let game = games
-        .create_game(&support::input(attrs.clone()), None)
+        .create_game(PLAYGROUP, &support::input(attrs.clone()), None)
         .await
         .unwrap();
     assert_eq!(game.format.as_str(), "commander");
     let errors = invalid(
         games
             .create_game(
+                PLAYGROUP,
                 &support::input(with(attrs.clone(), json!({"format": "invalid"}))),
                 None,
             )
@@ -134,6 +138,7 @@ async fn formats_retain_their_winner_cardinality_and_imports_default_to_commande
     }
     games
         .create_game(
+            PLAYGROUP,
             &support::input(with(draws, json!({"format": "two_headed_giant"}))),
             None,
         )
@@ -150,7 +155,7 @@ async fn enforces_the_two_to_ten_seat_bounds_at_both_edges() {
     let errors = invalid(
         app.state
             .games
-            .create_game(&support::input(game_attrs(&refs[..1])), None)
+            .create_game(PLAYGROUP, &support::input(game_attrs(&refs[..1])), None)
             .await,
     );
     assert!(
@@ -162,7 +167,7 @@ async fn enforces_the_two_to_ten_seat_bounds_at_both_edges() {
     let game = app
         .state
         .games
-        .create_game(&support::input(game_attrs(&refs[..10])), None)
+        .create_game(PLAYGROUP, &support::input(game_attrs(&refs[..10])), None)
         .await
         .unwrap();
     assert_eq!(game.seats.len(), 10);
@@ -170,7 +175,7 @@ async fn enforces_the_two_to_ten_seat_bounds_at_both_edges() {
     let errors = invalid(
         app.state
             .games
-            .create_game(&support::input(game_attrs(&refs)), None)
+            .create_game(PLAYGROUP, &support::input(game_attrs(&refs)), None)
             .await,
     );
     let rows = errors.rows("seats");
@@ -201,6 +206,7 @@ async fn keeps_unknown_kills_distinct_from_zero_and_validates_kill_counts() {
         .state
         .games
         .create_game(
+            PLAYGROUP,
             &support::input(with(
                 game_attrs(&[&alice, &bob]),
                 json!({"seats": [zero, second.clone()]}),
@@ -224,7 +230,7 @@ async fn keeps_unknown_kills_distinct_from_zero_and_validates_kill_counts() {
         let errors = invalid(
             app.state
                 .games
-                .create_game(&support::input(attrs.clone()), None)
+                .create_game(PLAYGROUP, &support::input(attrs.clone()), None)
                 .await,
         );
         assert_eq!(errors.rows("seats")[0].messages("kills").len(), 1);
@@ -242,7 +248,7 @@ async fn records_edits_and_validates_kill_attribution() {
     let game = app
         .state
         .games
-        .create_game(&support::input(attrs.clone()), None)
+        .create_game(PLAYGROUP, &support::input(attrs.clone()), None)
         .await
         .unwrap();
     assert_eq!(game.seats[0].kills, Some(2)); // One named victim, one unknown.
@@ -255,7 +261,7 @@ async fn records_edits_and_validates_kill_attribution() {
         let errors = invalid(
             app.state
                 .games
-                .create_game(&support::input(invalid_attrs), None)
+                .create_game(PLAYGROUP, &support::input(invalid_attrs), None)
                 .await,
         );
         assert!(
@@ -269,7 +275,7 @@ async fn records_edits_and_validates_kill_attribution() {
     let errors = invalid(
         app.state
             .games
-            .create_game(&support::input(invalid_attrs), None)
+            .create_game(PLAYGROUP, &support::input(invalid_attrs), None)
             .await,
     );
     assert!(
@@ -359,7 +365,7 @@ async fn backfills_only_unambiguous_sole_winner_sweeps() {
         games.push(
             app.state
                 .games
-                .create_game(&support::input(attrs), None)
+                .create_game(PLAYGROUP, &support::input(attrs), None)
                 .await
                 .unwrap(),
         );
@@ -373,7 +379,13 @@ async fn backfills_only_unambiguous_sole_winner_sweeps() {
         [20_261_012_050_542]
     );
     for (index, before) in games.iter().enumerate() {
-        let after = app.state.games.get_game(before.id).await.unwrap().unwrap();
+        let after = app
+            .state
+            .games
+            .get_game(PLAYGROUP, before.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
             after
                 .seats
@@ -422,7 +434,7 @@ async fn rejects_a_duplicate_player_even_when_seat_numbers_differ() {
     let errors = invalid(
         app.state
             .games
-            .create_game(&support::input(attrs.clone()), None)
+            .create_game(PLAYGROUP, &support::input(attrs.clone()), None)
             .await,
     );
     assert!(
@@ -443,7 +455,7 @@ async fn rejects_a_deck_belonging_to_another_player() {
     let errors = invalid(
         app.state
             .games
-            .create_game(&support::input(attrs.clone()), None)
+            .create_game(PLAYGROUP, &support::input(attrs.clone()), None)
             .await,
     );
     assert!(
@@ -467,7 +479,7 @@ async fn rejects_two_winners_and_accepts_an_all_draw_game() {
     let errors = invalid(
         app.state
             .games
-            .create_game(&support::input(attrs.clone()), None)
+            .create_game(PLAYGROUP, &support::input(attrs.clone()), None)
             .await,
     );
     assert!(
@@ -482,7 +494,7 @@ async fn rejects_two_winners_and_accepts_an_all_draw_game() {
     let game = app
         .state
         .games
-        .create_game(&support::input(attrs.clone()), None)
+        .create_game(PLAYGROUP, &support::input(attrs.clone()), None)
         .await
         .unwrap();
     assert!(
@@ -504,13 +516,14 @@ async fn external_ids_are_idempotent_within_a_source_but_independent_across_sour
     let first = app
         .state
         .games
-        .create_game(&support::input(attrs.clone()), None)
+        .create_game(PLAYGROUP, &support::input(attrs.clone()), None)
         .await
         .unwrap();
     let repeated = app
         .state
         .games
         .create_game(
+            PLAYGROUP,
             &support::input(with(attrs.clone(), json!({"notes": "ignored on replay"}))),
             None,
         )
@@ -522,6 +535,7 @@ async fn external_ids_are_idempotent_within_a_source_but_independent_across_sour
         .state
         .games
         .create_game(
+            PLAYGROUP,
             &support::input(with(attrs, json!({"source": "discord"}))),
             None,
         )
@@ -539,6 +553,7 @@ async fn upserting_by_external_id_updates_the_existing_game() {
     let games = &app.state.games;
     let created = games
         .upsert_game_by_external_id(
+            PLAYGROUP,
             "discord",
             "spellbot:SB1",
             &support::input(game_attrs(&[&alice, &bob])),
@@ -547,6 +562,7 @@ async fn upserting_by_external_id_updates_the_existing_game() {
         .unwrap();
     let updated = games
         .upsert_game_by_external_id(
+            PLAYGROUP,
             "discord",
             "spellbot:SB1",
             &support::input(with(
@@ -559,7 +575,12 @@ async fn upserting_by_external_id_updates_the_existing_game() {
     assert_eq!(created.id, updated.id);
     assert_eq!(updated.notes.as_deref(), Some("edited"));
     let found = games
-        .find_or_create_game_by_external_id("discord", "spellbot:SB1", &support::input(json!({})))
+        .find_or_create_game_by_external_id(
+            PLAYGROUP,
+            "discord",
+            "spellbot:SB1",
+            &support::input(json!({})),
+        )
         .await
         .unwrap();
     assert_eq!(found.id, created.id);
@@ -570,12 +591,16 @@ async fn player_names_are_unique_case_insensitively_and_finder_returns_the_exist
     let app = TestApp::new().await;
     let games = &app.state.games;
     let alice = games
-        .create_player(&support::input(json!({"name": "Alice"})), None)
+        .create_player(PLAYGROUP, &support::input(json!({"name": "Alice"})), None)
         .await
         .unwrap();
     let errors = invalid(
         games
-            .create_player(&support::input(json!({"name": "  ALICE  "})), None)
+            .create_player(
+                PLAYGROUP,
+                &support::input(json!({"name": "  ALICE  "})),
+                None,
+            )
             .await,
     );
     assert!(
@@ -584,7 +609,7 @@ async fn player_names_are_unique_case_insensitively_and_finder_returns_the_exist
             .contains(&"has already been taken".to_owned())
     );
     let found = games
-        .find_or_create_player_by_name("alice", &support::input(json!({})))
+        .find_or_create_player_by_name(PLAYGROUP, "alice", &support::input(json!({})))
         .await
         .unwrap();
     assert_eq!(found.id, alice.id);
@@ -602,7 +627,7 @@ async fn player_resolver_surfaces_failures_while_linking_an_existing_discord_ide
     match app
         .state
         .games
-        .resolve_player("Renamed Player", Some("discord-42"), Some(-1))
+        .resolve_player(PLAYGROUP, "Renamed Player", Some("discord-42"), Some(-1))
         .await
     {
         Err(the_gathering::games::ResolveError::Invalid(errors)) => {
@@ -613,7 +638,7 @@ async fn player_resolver_surfaces_failures_while_linking_an_existing_discord_ide
     assert_eq!(
         app.state
             .games
-            .get_player(player.id)
+            .get_player(PLAYGROUP, player.id)
             .await
             .unwrap()
             .unwrap()
@@ -627,11 +652,11 @@ async fn name_finders_fold_case_like_sqlite_so_non_ascii_names_are_found_instead
     let app = TestApp::new().await;
     let games = &app.state.games;
     let eowyn = games
-        .create_player(&support::input(json!({"name": "Éowyn"})), None)
+        .create_player(PLAYGROUP, &support::input(json!({"name": "Éowyn"})), None)
         .await
         .unwrap();
     let found = games
-        .find_or_create_player_by_name("Éowyn", &support::input(json!({})))
+        .find_or_create_player_by_name(PLAYGROUP, "Éowyn", &support::input(json!({})))
         .await
         .unwrap();
     assert_eq!(found.id, eowyn.id);
@@ -778,7 +803,7 @@ async fn players_carry_the_linked_users_avatar_and_nil_when_unlinked_or_the_user
     let avatars: std::collections::HashMap<i64, Option<String>> = app
         .state
         .games
-        .list_players(false)
+        .list_players(PLAYGROUP, false)
         .await
         .unwrap()
         .into_iter()
@@ -791,7 +816,7 @@ async fn players_carry_the_linked_users_avatar_and_nil_when_unlinked_or_the_user
     let detail = app
         .state
         .games
-        .get_player_detail(linked.id)
+        .get_player_detail(PLAYGROUP, linked.id)
         .await
         .unwrap()
         .unwrap();
@@ -809,14 +834,22 @@ async fn invalid_user_references_return_field_errors() {
     let errors = invalid(
         app.state
             .games
-            .create_player(&support::input(json!({"name": "Orphan"})), Some(999_999))
+            .create_player(
+                PLAYGROUP,
+                &support::input(json!({"name": "Orphan"})),
+                Some(999_999),
+            )
             .await,
     );
     assert_eq!(errors.messages("user_id"), ["does not exist"]);
     let errors = invalid(
         app.state
             .games
-            .create_game(&support::input(game_attrs(&[&alice, &bob])), Some(999_999))
+            .create_game(
+                PLAYGROUP,
+                &support::input(game_attrs(&[&alice, &bob])),
+                Some(999_999),
+            )
             .await,
     );
     assert_eq!(errors.messages("created_by_user_id"), ["does not exist"]);
@@ -976,7 +1009,7 @@ async fn deleting_a_deck_moves_its_seats_to_a_replacement_of_the_same_player_or_
 
     let deleted = games.delete_deck(&dupe, Some(&keeper)).await.unwrap();
     assert_eq!(deleted.id, dupe.id);
-    assert!(games.get_deck(dupe.id).await.unwrap().is_none());
+    assert!(games.get_deck(PLAYGROUP, dupe.id).await.unwrap().is_none());
     assert_eq!(seat_deck(&app, game.id, alice.id).await, Some(keeper.id));
 
     games.delete_deck(&keeper, None).await.unwrap();
@@ -1042,19 +1075,25 @@ async fn merging_players_moves_seats_and_decks_collapses_same_named_decks_and_ca
     let merged = games.merge_players(&wax, &drew).await.unwrap();
     assert_eq!(merged.id, drew.id);
     assert_eq!(merged.discord_id.as_deref(), Some("123456789"));
-    assert!(games.get_player(wax.id).await.unwrap().is_none());
+    assert!(games.get_player(PLAYGROUP, wax.id).await.unwrap().is_none());
 
-    let game_b = games.get_game(game_b.id).await.unwrap().unwrap();
+    let game_b = games.get_game(PLAYGROUP, game_b.id).await.unwrap().unwrap();
     let seat_one: Vec<&Seat> = game_b.seats.iter().filter(|seat| seat.seat == 1).collect();
     assert_eq!(seat_one.len(), 1);
     assert_eq!(
         (seat_one[0].player_id, seat_one[0].deck_id),
         (drew.id, Some(drew_krenko.id))
     );
-    assert!(games.get_deck(wax_krenko.id).await.unwrap().is_none());
+    assert!(
+        games
+            .get_deck(PLAYGROUP, wax_krenko.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         games
-            .get_deck(wax_tifa.id)
+            .get_deck(PLAYGROUP, wax_tifa.id)
             .await
             .unwrap()
             .unwrap()
@@ -1063,7 +1102,7 @@ async fn merging_players_moves_seats_and_decks_collapses_same_named_decks_and_ca
     );
     assert_eq!(
         games
-            .get_player_detail(drew.id)
+            .get_player_detail(PLAYGROUP, drew.id)
             .await
             .unwrap()
             .unwrap()
@@ -1072,7 +1111,7 @@ async fn merging_players_moves_seats_and_decks_collapses_same_named_decks_and_ca
         2
     );
     let mut ids: Vec<i64> = games
-        .get_game(game_a.id)
+        .get_game(PLAYGROUP, game_a.id)
         .await
         .unwrap()
         .unwrap()
@@ -1167,10 +1206,16 @@ async fn linking_a_player_to_an_account_merges_the_accounts_stub_player_into_it(
     assert_eq!(linked.id, imported.id);
     assert_eq!(linked.user_id, Some(user.id));
     assert_eq!(linked.discord_id.as_deref(), Some("42"));
-    assert!(games.get_player(stub.id).await.unwrap().is_none());
+    assert!(
+        games
+            .get_player(PLAYGROUP, stub.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         games
-            .get_player_detail(imported.id)
+            .get_player_detail(PLAYGROUP, imported.id)
             .await
             .unwrap()
             .unwrap()
@@ -1204,7 +1249,7 @@ async fn ids(app: &TestApp, opts: Value) -> Vec<i64> {
         axum::extract::Query::<the_gathering::games::GameFilters>::try_from_uri(&uri).unwrap();
     app.state
         .games
-        .list_games(&filters)
+        .list_games(PLAYGROUP, &filters)
         .await
         .unwrap()
         .0
@@ -1320,7 +1365,10 @@ async fn list_games_combines_filters_paginates_and_orders_newest_first() {
     let (page_one, pagination) = app
         .state
         .games
-        .list_games(&support::input(json!({"page": 1, "per_page": 2})))
+        .list_games(
+            PLAYGROUP,
+            &support::input(json!({"page": 1, "per_page": 2})),
+        )
         .await
         .unwrap();
     assert_eq!(

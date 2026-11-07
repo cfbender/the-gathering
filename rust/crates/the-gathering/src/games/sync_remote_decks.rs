@@ -60,9 +60,13 @@ pub fn configured(user: &User) -> bool {
 /// A bad request for members with no linked player or no deck
 /// host configured.
 pub async fn run(state: &AppState, user: &User) -> Result<SyncResult, GamesError> {
-    let player = player::get_player_for_user(&mut *state.pool.acquire().await?, user.id)
-        .await?
-        .ok_or(GamesError::BadRequest)?;
+    let player = player::get_player_for_user(
+        &mut *state.pool.acquire().await?,
+        user.playgroup_id.ok_or(GamesError::BadRequest)?,
+        user.id,
+    )
+    .await?
+    .ok_or(GamesError::BadRequest)?;
     if !configured(user) {
         return Err(GamesError::BadRequest);
     }

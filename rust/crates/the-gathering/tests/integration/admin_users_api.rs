@@ -12,7 +12,7 @@
 use crate::support;
 
 use serde_json::json;
-use support::TestApp;
+use support::{PLAYGROUP, TestApp};
 use the_gathering::accounts::User;
 use the_gathering::accounts::discord::DiscordClaims;
 
@@ -49,7 +49,7 @@ async fn delete_refuses_a_player_with_games_without_changing_their_account_or_hi
     let player = app
         .state
         .games
-        .get_player_for_user(user.id)
+        .get_player_for_user(PLAYGROUP, user.id)
         .await
         .unwrap()
         .unwrap();
@@ -93,18 +93,24 @@ async fn delete_refuses_a_player_with_games_without_changing_their_account_or_hi
     let stored = app
         .state
         .games
-        .get_player(player.id)
+        .get_player(PLAYGROUP, player.id)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(stored.user_id, Some(user.id));
     assert_eq!(stored.discord_id, user.discord_id);
-    let game = app.state.games.get_game(game.id).await.unwrap().unwrap();
+    let game = app
+        .state
+        .games
+        .get_game(PLAYGROUP, game.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(game.created_by_user_id, Some(user.id));
     assert_eq!(
         app.state
             .games
-            .get_deck(deck.id)
+            .get_deck(PLAYGROUP, deck.id)
             .await
             .unwrap()
             .unwrap()
@@ -129,7 +135,7 @@ async fn delete_removes_a_zero_game_player_their_decks_account_and_sessions() {
     let player = app
         .state
         .games
-        .get_player_for_user(user.id)
+        .get_player_for_user(PLAYGROUP, user.id)
         .await
         .unwrap()
         .unwrap();
@@ -159,12 +165,19 @@ async fn delete_removes_a_zero_game_player_their_decks_account_and_sessions() {
     assert!(
         app.state
             .games
-            .get_player(player.id)
+            .get_player(PLAYGROUP, player.id)
             .await
             .unwrap()
             .is_none()
     );
-    assert!(app.state.games.get_deck(deck.id).await.unwrap().is_none());
+    assert!(
+        app.state
+            .games
+            .get_deck(PLAYGROUP, deck.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert!(
         app.state
             .accounts
@@ -176,7 +189,7 @@ async fn delete_removes_a_zero_game_player_their_decks_account_and_sessions() {
     assert_eq!(
         app.state
             .games
-            .get_player(other.id)
+            .get_player(PLAYGROUP, other.id)
             .await
             .unwrap()
             .unwrap()
@@ -204,7 +217,13 @@ async fn delete_allows_an_account_without_a_player_and_preserves_games_they_reco
             .as_u16(),
         204
     );
-    let game = app.state.games.get_game(game.id).await.unwrap().unwrap();
+    let game = app
+        .state
+        .games
+        .get_game(PLAYGROUP, game.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(game.created_by_user_id, None);
     assert_eq!(game.seats.len(), 2);
 }

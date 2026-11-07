@@ -312,8 +312,9 @@ impl TestApp {
     pub async fn sql_player(&self, name: &str) -> i64 {
         let now = db::UtcDateTime::now();
         sqlx::query_scalar::<_, i64>(
-            "INSERT INTO players (name, inserted_at, updated_at) VALUES (?, ?, ?) RETURNING id",
+            "INSERT INTO players (playgroup_id, name, inserted_at, updated_at) VALUES (?, ?, ?, ?) RETURNING id",
         )
+        .bind(PLAYGROUP)
         .bind(name)
         .bind(now)
         .bind(now)
@@ -357,8 +358,9 @@ impl TestApp {
     pub async fn sql_game(&self, seats: &[SqlSeat<'_>]) -> i64 {
         let now = db::UtcDateTime::now();
         let game_id = sqlx::query_scalar::<_, i64>(
-            "INSERT INTO games (played_at, source, inserted_at, updated_at) VALUES (?, 'manual', ?, ?) RETURNING id",
+            "INSERT INTO games (playgroup_id, played_at, source, inserted_at, updated_at) VALUES (?, ?, 'manual', ?, ?) RETURNING id",
         )
+        .bind(PLAYGROUP)
         .bind(now)
         .bind(now)
         .bind(now)
@@ -399,6 +401,10 @@ pub fn unique() -> u64 {
     UNIQUE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
+/// The default playgroup ("Main", the one the migration creates), which every fixture
+/// belongs to and every account views until it switches.
+pub const PLAYGROUP: i64 = 1;
+
 /// Builds a `played_at`-style timestamp: `utc("2026-09-19T18:00:00Z")`.
 pub fn utc(value: &str) -> db::UtcDateTime {
     db::UtcDateTime::parse(value).expect("timestamp")
@@ -415,6 +421,34 @@ impl TestApp {
         self.admin(&format!("admin{}", unique())).await
     }
 
+    /// Creates a playgroup whose first member is `creator`, returning its id.
+    pub async fn playgroup(&self, name: &str, guild: Option<&str>, creator: &User) -> i64 {
+        let input: the_gathering::playgroups::PlaygroupInput =
+            input(json!({ "name": name, "discord_guild_id": guild }));
+        self.state
+            .playgroups
+            .create(&input, creator)
+            .await
+            .unwrap_or_else(|error| panic!("playgroup fixture: {error:?}"))
+            .id
+    }
+
+    /// Rotates a playgroup's invitation and returns the new secret.
+    pub async fn rotate_invite(&self, playgroup_id: i64) -> String {
+        let playgroup = self
+            .state
+            .playgroups
+            .get(playgroup_id)
+            .await
+            .unwrap_or_else(|error| panic!("playgroup fixture: {error:?}"))
+            .unwrap_or_else(|| panic!("playgroup {playgroup_id} exists"));
+        self.state
+            .playgroups
+            .rotate_invite(&playgroup)
+            .await
+            .unwrap_or_else(|error| panic!("invite fixture: {error:?}"))
+    }
+
     /// Creates a player named `name`.
     pub async fn player(&self, name: &str) -> the_gathering::games::Player {
         self.player_with(json!({ "name": name }), None).await
@@ -428,7 +462,7 @@ impl TestApp {
     ) -> the_gathering::games::Player {
         self.state
             .games
-            .create_player(&input(attrs.clone()), user_id)
+            .create_player(PLAYGROUP, &input(attrs.clone()), user_id)
             .await
             .unwrap_or_else(|error| panic!("player fixture: {error:?}"))
     }
@@ -457,7 +491,7 @@ impl TestApp {
     pub async fn game(&self, attrs: Value, created_by: Option<i64>) -> the_gathering::games::Game {
         self.state
             .games
-            .create_game(&input(attrs.clone()), created_by)
+            .create_game(PLAYGROUP, &input(attrs.clone()), created_by)
             .await
             .unwrap_or_else(|error| panic!("game fixture: {error:?}"))
     }

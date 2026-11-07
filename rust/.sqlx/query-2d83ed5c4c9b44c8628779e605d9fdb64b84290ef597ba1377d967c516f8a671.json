@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: i64\", registration_invite_hash AS \"hash!: Vec<u8>\"\n           FROM playgroups WHERE registration_invite_hash IS NOT NULL ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "playgroups",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "hash!: Vec<u8>",
+        "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "playgroups",
+            "name": "registration_invite_hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "2d83ed5c4c9b44c8628779e605d9fdb64b84290ef597ba1377d967c516f8a671"
+}

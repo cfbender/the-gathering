@@ -45,17 +45,18 @@ impl SeatAttrs {
     }
 }
 
-/// Previews, then commits every game in one transaction and links the games' cards to the
-/// catalog.
+/// Previews, then commits every game into the playgroup in one transaction and links the
+/// games' cards to the catalog.
 pub async fn run(
     state: &AppState,
+    playgroup_id: i64,
     source: Source,
     payload: &str,
     user_id: Option<i64>,
 ) -> Result<ImportResult, ImportError> {
     let preview = {
         let mut conn = state.pool.acquire().await?;
-        preview::run(&mut conn, source, payload).await?
+        preview::run(&mut conn, playgroup_id, source, payload).await?
     };
     if !preview.valid {
         return Err(ImportError::Validation(Box::new(preview)));
@@ -63,6 +64,7 @@ pub async fn run(
     let mut tx = db::begin(&state.pool).await?;
     let result = commit_games(
         &mut tx,
+        playgroup_id,
         state.games.deck_links(),
         &preview.games,
         source.as_str(),
@@ -78,6 +80,7 @@ pub async fn run(
 
 async fn commit_games(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     links: &DeckLinks,
     games: &[ImportGame],
     source: &str,
@@ -86,7 +89,9 @@ async fn commit_games(
     let mut result = ImportResult::default();
     for game in games {
         let existing = sqlx::query_scalar!(
-            r#"SELECT id AS "id!: i64" FROM games WHERE source = ? AND external_id = ?"#,
+            r#"SELECT id AS "id!: i64" FROM games
+               WHERE playgroup_id = ? AND source = ? AND external_id = ?"#,
+            playgroup_id,
             source,
             game.external_id
         )
@@ -99,7 +104,11 @@ async fn commit_games(
         }
         let mut seats = Vec::with_capacity(game.seats.len());
         for seat in &game.seats {
-            seats.push(commit_seat(conn, links, seat).await?.to_input());
+            seats.push(
+                commit_seat(conn, playgroup_id, links, seat)
+                    .await?
+                    .to_input(),
+            );
         }
         let input = GameInput {
             played_at: Some(game.played_at).into(),
@@ -112,7 +121,7 @@ async fn commit_games(
             external_id: Some(game.external_id.clone()),
             ..GameInput::default()
         };
-        let created = record_game::create(conn, &input, user_id).await?;
+        let created = record_game::create(conn, playgroup_id, &input, user_id).await?;
         result.created += 1;
         result.game_ids.push(created.id);
     }
@@ -123,10 +132,18 @@ async fn commit_games(
 /// commander pairing.
 pub async fn commit_seat(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     links: &DeckLinks,
     seat: &ImportSeat,
 ) -> Result<SeatAttrs, ImportError> {
-    let player = resolve_player::run(conn, &seat.player, seat.discord_id.as_deref(), None).await?;
+    let player = resolve_player::run(
+        conn,
+        playgroup_id,
+        &seat.player,
+        seat.discord_id.as_deref(),
+        None,
+    )
+    .await?;
     let given = |value: &Option<String>| match value.as_deref() {
         Some(value) if !value.is_empty() => Some(value.to_owned()).into(),
         _ => crate::patch::Patch::Unchanged,

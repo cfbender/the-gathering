@@ -44,7 +44,7 @@ pub use self::list_games::GameFilters;
 pub use self::merge_players::LinkPlan;
 pub use self::model::{
     Deck, DeckLinks, DecklistSource, Game, GameFormat, GameResult, GameSource, Player, Seat,
-    get_deck, get_player, load_game, load_games,
+    get_deck, get_deck_in, get_player, get_player_in, load_game, load_game_in, load_games,
 };
 pub use self::player::{IdentityQuery, PlayerDetail, PlayerIdentityRow, SeatGame};
 pub use self::resolve_player::{PlayerIdentity, Resolution, ResolveError};
@@ -203,32 +203,55 @@ impl Games {
 
     // Players
 
-    /// Every player (archived ones on request), avatars included.
-    pub async fn list_players(&self, include_archived: bool) -> Result<Vec<Player>, sqlx::Error> {
-        player::list_players(&mut *self.pool.acquire().await?, include_archived).await
+    /// A playgroup's players (archived ones on request), avatars included.
+    pub async fn list_players(
+        &self,
+        playgroup_id: i64,
+        include_archived: bool,
+    ) -> Result<Vec<Player>, sqlx::Error> {
+        player::list_players(
+            &mut *self.pool.acquire().await?,
+            playgroup_id,
+            include_archived,
+        )
+        .await
     }
 
-    /// A player by id (no avatar).
-    pub async fn get_player(&self, id: i64) -> Result<Option<Player>, sqlx::Error> {
-        model::get_player(&mut *self.pool.acquire().await?, id).await
+    /// A playgroup's player by id (no avatar); other playgroups' players are `None`.
+    pub async fn get_player(
+        &self,
+        playgroup_id: i64,
+        id: i64,
+    ) -> Result<Option<Player>, sqlx::Error> {
+        model::get_player_in(&mut *self.pool.acquire().await?, playgroup_id, id).await
     }
 
     /// The player page.
-    pub async fn get_player_detail(&self, id: i64) -> Result<Option<PlayerDetail>, sqlx::Error> {
-        player::get_player_detail(&mut *self.pool.acquire().await?, id).await
+    pub async fn get_player_detail(
+        &self,
+        playgroup_id: i64,
+        id: i64,
+    ) -> Result<Option<PlayerDetail>, sqlx::Error> {
+        player::get_player_detail(&mut *self.pool.acquire().await?, playgroup_id, id).await
     }
 
-    /// The player linked to an account, if any.
-    pub async fn get_player_for_user(&self, user_id: i64) -> Result<Option<Player>, sqlx::Error> {
-        player::get_player_for_user(&mut *self.pool.acquire().await?, user_id).await
+    /// The account's player in a playgroup, if any.
+    pub async fn get_player_for_user(
+        &self,
+        playgroup_id: i64,
+        user_id: i64,
+    ) -> Result<Option<Player>, sqlx::Error> {
+        player::get_player_for_user(&mut *self.pool.acquire().await?, playgroup_id, user_id).await
     }
 
-    /// One page of the administrator's player identity list (`page`, `per_page`, `search`).
+    /// One page of the administrator's player identity list for a playgroup (`page`,
+    /// `per_page`, `search`).
     pub async fn list_player_identities(
         &self,
+        playgroup_id: i64,
         query: &IdentityQuery,
     ) -> Result<(Vec<PlayerIdentityRow>, Pagination), sqlx::Error> {
-        player::list_player_identities(&mut *self.pool.acquire().await?, query).await
+        player::list_player_identities(&mut *self.pool.acquire().await?, playgroup_id, query).await
     }
 
     /// Clears a player's linked identity.
@@ -237,14 +260,20 @@ impl Games {
             .await)
     }
 
-    /// Creates a player, optionally linked to an account.
+    /// Creates a player in a playgroup, optionally linked to an account.
     pub async fn create_player(
         &self,
+        playgroup_id: i64,
         input: &PlayerInput,
         user_id: Option<i64>,
     ) -> Result<Player, GamesError> {
-        write_tx!(self, |conn| player::create_player(conn, input, user_id)
-            .await)
+        write_tx!(self, |conn| player::create_player(
+            conn,
+            playgroup_id,
+            input,
+            user_id
+        )
+        .await)
     }
 
     /// Updates a player.
@@ -262,48 +291,55 @@ impl Games {
         write_tx!(self, |conn| player::delete_player(conn, player).await)
     }
 
-    /// Finds or creates the player for a name, Discord id, and account, in one transaction.
+    /// Finds or creates the playgroup's player for a name, Discord id, and account, in one
+    /// transaction.
     pub async fn resolve_player(
         &self,
+        playgroup_id: i64,
         name: &str,
         discord_id: Option<&str>,
         user_id: Option<i64>,
     ) -> Result<PlayerIdentity, ResolveError> {
         let mut tx = db::begin(&self.pool).await?;
-        let result = resolve_player::run(&mut tx, name, discord_id, user_id).await;
+        let result = resolve_player::run(&mut tx, playgroup_id, name, discord_id, user_id).await;
         if result.is_ok() {
             tx.commit().await?;
         }
         result
     }
 
-    /// How each `(name, discord_id)` identity would resolve, without writing.
+    /// How each `(name, discord_id)` identity would resolve in a playgroup, without writing.
     pub async fn preview_player_resolutions(
         &self,
+        playgroup_id: i64,
         identities: &[(String, Option<String>)],
     ) -> Result<Vec<Resolution>, sqlx::Error> {
-        resolve_player::preview(&mut *self.pool.acquire().await?, identities).await
+        resolve_player::preview(&mut *self.pool.acquire().await?, playgroup_id, identities).await
     }
 
-    /// The player named `name`, created from `input` if missing.
+    /// The playgroup's player named `name`, created from `input` if missing.
     pub async fn find_or_create_player_by_name(
         &self,
+        playgroup_id: i64,
         name: &str,
         input: &PlayerInput,
     ) -> Result<Player, GamesError> {
         write_tx!(self, |conn| player::find_or_create_player_by_name(
-            conn, name, input
+            conn,
+            playgroup_id,
+            name,
+            input
         )
         .await)
     }
 
-    /// Refuses a source seated at an open webcam table.
+    /// Refuses a source seated at an open webcam table, or players of different playgroups.
     pub async fn merge_players(
         &self,
         source: &Player,
         target: &Player,
     ) -> Result<Player, GamesError> {
-        if source.id == target.id {
+        if source.id == target.id || source.playgroup_id != target.playgroup_id {
             return Err(GamesError::BadRequest);
         }
         if self.seated(source.id).await {
@@ -332,23 +368,26 @@ impl Games {
 
     // Decks
 
-    /// Decks (archived ones on request, optionally one player's) with each deck's player.
+    /// A playgroup's decks (archived ones on request, optionally one player's) with each
+    /// deck's player.
     pub async fn list_decks(
         &self,
+        playgroup_id: i64,
         include_archived: bool,
         player_id: Option<i64>,
     ) -> Result<Vec<(Deck, Player)>, sqlx::Error> {
         deck::list_decks(
             &mut *self.pool.acquire().await?,
+            playgroup_id,
             include_archived,
             player_id,
         )
         .await
     }
 
-    /// A deck by id.
-    pub async fn get_deck(&self, id: i64) -> Result<Option<Deck>, sqlx::Error> {
-        model::get_deck(&mut *self.pool.acquire().await?, id).await
+    /// A playgroup's deck by id; other playgroups' decks are `None`.
+    pub async fn get_deck(&self, playgroup_id: i64, id: i64) -> Result<Option<Deck>, sqlx::Error> {
+        model::get_deck_in(&mut *self.pool.acquire().await?, playgroup_id, id).await
     }
 
     /// Creates a deck.
@@ -437,11 +476,20 @@ impl Games {
         zone: &Zone,
         random: f64,
     ) -> Result<DeckPick, sqlx::Error> {
+        let Some(playgroup_id) = user.playgroup_id else {
+            return Ok(DeckPick::PlayerNotLinked);
+        };
         let (chooser, script) = {
             let mut conn = self.pool.acquire().await?;
-            let chooser =
-                deck_picker::load_chooser(&mut conn, user.id, exclude_id, UtcDateTime::now(), zone)
-                    .await?;
+            let chooser = deck_picker::load_chooser(
+                &mut conn,
+                playgroup_id,
+                user.id,
+                exclude_id,
+                UtcDateTime::now(),
+                zone,
+            )
+            .await?;
             (chooser, deck_picker::get_script(&mut conn, user.id).await?)
         };
         let Some(chooser) = chooser else {
@@ -460,8 +508,12 @@ impl Games {
         exclude_id: Option<i64>,
         zone: &Zone,
     ) -> Result<Option<(Chooser, Scored)>, sqlx::Error> {
+        let Some(playgroup_id) = user.playgroup_id else {
+            return Ok(None);
+        };
         let chooser = deck_picker::load_chooser(
             &mut *self.pool.acquire().await?,
+            playgroup_id,
             user.id,
             exclude_id,
             UtcDateTime::now(),
@@ -518,30 +570,41 @@ impl Games {
         deck_id: i64,
         outcome: Outcome,
     ) -> Result<Deck, GamesError> {
+        let playgroup_id = user.playgroup_id.ok_or(GamesError::NotFound)?;
         write_tx!(self, |conn| deck_picker::record_outcome(
-            conn, user.id, deck_id, outcome
+            conn,
+            playgroup_id,
+            user.id,
+            deck_id,
+            outcome
         )
         .await)
     }
 
     // Games
 
-    /// One page of games matching the filters.
+    /// One page of a playgroup's games matching the filters.
     pub async fn list_games(
         &self,
+        playgroup_id: i64,
         opts: &GameFilters,
     ) -> Result<(Vec<Game>, Pagination), sqlx::Error> {
-        list_games::list_games(&mut *self.pool.acquire().await?, opts).await
+        list_games::list_games(&mut *self.pool.acquire().await?, playgroup_id, opts).await
     }
 
-    /// A game by id, with seats, players, and decks loaded.
-    pub async fn get_game(&self, id: i64) -> Result<Option<Game>, sqlx::Error> {
-        model::load_game(&mut *self.pool.acquire().await?, id).await
+    /// A playgroup's game by id, with seats, players, and decks loaded; other playgroups'
+    /// games are `None`.
+    pub async fn get_game(&self, playgroup_id: i64, id: i64) -> Result<Option<Game>, sqlx::Error> {
+        model::load_game_in(&mut *self.pool.acquire().await?, playgroup_id, id).await
     }
 
-    /// The game a summary request refers to.
-    pub async fn find_summary_game(&self, reference: &str) -> Result<Game, GamesError> {
-        summary::find(&mut *self.pool.acquire().await?, reference).await
+    /// The playgroup's game a summary request refers to.
+    pub async fn find_summary_game(
+        &self,
+        playgroup_id: i64,
+        reference: &str,
+    ) -> Result<Game, GamesError> {
+        summary::find(&mut *self.pool.acquire().await?, playgroup_id, reference).await
     }
 
     /// Administrators, the creator, or a member whose linked
@@ -560,29 +623,34 @@ impl Games {
         .await
     }
 
-    /// Records a new game with its seats.
+    /// Records a new game with its seats in a playgroup.
     pub async fn create_game(
         &self,
+        playgroup_id: i64,
         input: &GameInput,
         created_by_user_id: Option<i64>,
     ) -> Result<Game, GamesError> {
         write_tx!(self, |conn| record_game::create(
             conn,
+            playgroup_id,
             input,
             created_by_user_id
         )
         .await)
     }
 
-    /// The game with this `(source, external_id)`, recorded from `input` if missing.
+    /// The playgroup's game with this `(source, external_id)`, recorded from `input` if
+    /// missing.
     pub async fn find_or_create_game_by_external_id(
         &self,
+        playgroup_id: i64,
         source: &str,
         external_id: &str,
         input: &GameInput,
     ) -> Result<Game, GamesError> {
         write_tx!(self, |conn| record_game::find_or_create_by_external_id(
             conn,
+            playgroup_id,
             source,
             external_id,
             input
@@ -590,15 +658,17 @@ impl Games {
         .await)
     }
 
-    /// Records or replaces the game with this `(source, external_id)`.
+    /// Records or replaces the playgroup's game with this `(source, external_id)`.
     pub async fn upsert_game_by_external_id(
         &self,
+        playgroup_id: i64,
         source: &str,
         external_id: &str,
         input: &GameInput,
     ) -> Result<Game, GamesError> {
         write_tx!(self, |conn| record_game::upsert_by_external_id(
             conn,
+            playgroup_id,
             source,
             external_id,
             input

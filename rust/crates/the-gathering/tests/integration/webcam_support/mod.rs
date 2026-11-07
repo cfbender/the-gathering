@@ -18,7 +18,7 @@ use the_gathering::web::channels;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::support::TestApp;
+use crate::support::{PLAYGROUP, TestApp};
 
 /// Alice's peer id in every table test.
 pub const PEER_A: &str = "00000000-0000-4000-8000-00000000000a";
@@ -435,8 +435,9 @@ impl Server {
     /// Inserts a player.
     pub async fn player(&self, name: &str, user_id: Option<i64>) -> i64 {
         sqlx::query(
-            "INSERT INTO players (name, user_id, inserted_at, updated_at) VALUES (?, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            "INSERT INTO players (playgroup_id, name, user_id, inserted_at, updated_at) VALUES (?, ?, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
         )
+        .bind(PLAYGROUP)
         .bind(name)
         .bind(user_id)
         .execute(self.app.pool())

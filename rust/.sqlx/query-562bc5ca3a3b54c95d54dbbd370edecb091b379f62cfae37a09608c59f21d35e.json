@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM playgroup_members WHERE playgroup_id = ? AND user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "562bc5ca3a3b54c95d54dbbd370edecb091b379f62cfae37a09608c59f21d35e"
+}

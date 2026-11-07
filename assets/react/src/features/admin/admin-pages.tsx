@@ -26,7 +26,6 @@ import { getPlayers, invalidateGameRelated, linkUserPlayer } from "@/features/ga
 import type { PlayerSummary } from "@/features/games/games"
 import { AiRulingsSettings } from "./ai-rulings-settings"
 import { ComprehensiveRules } from "./comprehensive-rules"
-import { RegistrationInvite } from "./registration-invite"
 import { SoftwareUpdate } from "./software-update"
 
 interface Data<T> {
@@ -153,7 +152,6 @@ export function AdminSettingsPage() {
         error={toggleRegistration.error}
         onSuccess={() => toggleRegistration.mutate(toggleRegistration.variables ?? false)}
       />
-      <RegistrationInvite />
       <StatsCutoff settings={settings.data} />
       <AiRulingsSettings />
       <SoftwareUpdate />

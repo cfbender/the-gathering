@@ -11,7 +11,7 @@ use crate::support;
 use std::collections::HashMap;
 
 use serde_json::json;
-use support::{PASSWORD, TestApp, capture_logs};
+use support::{PASSWORD, PLAYGROUP, TestApp, capture_logs};
 use the_gathering::accounts::User;
 use the_gathering::accounts::discord::DiscordClaims;
 use the_gathering::accounts::registration_invite_hash;
@@ -119,12 +119,17 @@ async fn callback_to(
 }
 
 async fn accept_invite(app: &TestApp, token: &str) {
-    assert_eq!(
-        app.post("/api/registration-invite", json!({"token": token}))
-            .await
-            .assert_json(200),
-        json!({"data": {"valid": true}})
-    );
+    accept_invite_to(app, token, PLAYGROUP).await;
+}
+
+async fn accept_invite_to(app: &TestApp, token: &str, playgroup: i64) {
+    let body = app
+        .post("/api/registration-invite", json!({"token": token}))
+        .await
+        .assert_json(200);
+    assert_eq!(body["data"]["valid"], true);
+    assert_eq!(body["data"]["playgroup"]["id"], playgroup);
+    assert_eq!(body["data"]["joined"], false);
 }
 
 async fn create_admin(app: &TestApp) -> User {
@@ -244,12 +249,7 @@ async fn callback_only_returns_to_paths_on_this_site() {
 async fn one_invitation_admits_multiple_passwordless_members_without_opening_registration() {
     let (app, _discord) = app().await;
     create_admin(&app).await;
-    let token = app
-        .state
-        .accounts
-        .rotate_registration_invite()
-        .await
-        .unwrap();
+    let token = app.rotate_invite(PLAYGROUP).await;
 
     for id in ["200000000000000001", "200000000000000002"] {
         app.clear_cookies();
@@ -268,15 +268,132 @@ async fn one_invitation_admits_multiple_passwordless_members_without_opening_reg
 }
 
 #[tokio::test]
+async fn an_invitation_joins_its_own_playgroup_for_new_and_existing_members() {
+    let (app, _discord) = app().await;
+    let admin = create_admin(&app).await;
+    let crew = app.playgroup("Thursday crew", None, &admin).await;
+    let token = app.rotate_invite(crew).await;
+
+    // A newcomer joins only the invited playgroup and starts there.
+    app.clear_cookies();
+    assert_eq!(
+        app.post("/api/registration-invite", json!({"token": token}))
+            .await
+            .assert_json(200)["data"],
+        json!({"valid": true, "playgroup": {"id": crew, "name": "Thursday crew"}, "joined": false})
+    );
+    assert_eq!(
+        callback(&app, "200000000000000020").await.redirected_to(),
+        "/"
+    );
+    let newcomer = signed_in_user(&app).await.unwrap();
+    assert_eq!(newcomer.playgroup_id, Some(crew));
+    let memberships: Vec<i64> = app
+        .state
+        .playgroups
+        .list_for_user(newcomer.id)
+        .await
+        .unwrap()
+        .iter()
+        .map(|playgroup| playgroup.id)
+        .collect();
+    assert_eq!(memberships, [crew]);
+    let players: Vec<(i64, Option<i64>)> =
+        sqlx::query_as("SELECT playgroup_id, user_id FROM players WHERE discord_id = ?")
+            .bind("200000000000000020")
+            .fetch_all(app.pool())
+            .await
+            .unwrap();
+    assert_eq!(players, [(crew, Some(newcomer.id))]);
+
+    // An existing member of the default playgroup is added to the invited one and switched
+    // to it; the Discord sign-in itself does not need an invitation.
+    open_registration(&app).await;
+    app.clear_cookies();
+    let existing = create_discord_user(&app, "200000000000000021").await;
+    close_registration(&app).await;
+    assert_eq!(existing.playgroup_id, Some(PLAYGROUP));
+    app.clear_cookies();
+    accept_invite_to(&app, &token, crew).await;
+    assert_eq!(
+        callback(&app, "200000000000000021").await.redirected_to(),
+        "/"
+    );
+    let existing = app.reload(&existing).await.unwrap();
+    assert_eq!(existing.playgroup_id, Some(crew));
+    let memberships: Vec<i64> = app
+        .state
+        .playgroups
+        .list_for_user(existing.id)
+        .await
+        .unwrap()
+        .iter()
+        .map(|playgroup| playgroup.id)
+        .collect();
+    assert_eq!(memberships, [PLAYGROUP, crew]);
+    let players: Vec<(i64, Option<i64>)> = sqlx::query_as(
+        "SELECT playgroup_id, user_id FROM players WHERE discord_id = ? ORDER BY playgroup_id",
+    )
+    .bind("200000000000000021")
+    .fetch_all(app.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        players,
+        [(PLAYGROUP, Some(existing.id)), (crew, Some(existing.id))]
+    );
+    assert!(app.session().registration_invite_hash.is_none());
+}
+
+#[tokio::test]
+async fn a_signed_in_member_joins_an_invited_playgroup_without_signing_in_again() {
+    let (app, _discord) = app().await;
+    let admin = create_admin(&app).await;
+    let crew = app.playgroup("Thursday crew", None, &admin).await;
+    let token = app.rotate_invite(crew).await;
+    let member = app.unique_member().await;
+    app.log_in(&member).await;
+
+    let body = app
+        .post("/api/registration-invite", json!({"token": token}))
+        .await
+        .assert_json(200);
+    assert_eq!(
+        body["data"],
+        json!({"valid": true, "playgroup": {"id": crew, "name": "Thursday crew"}, "joined": true})
+    );
+    assert!(app.session().registration_invite_hash.is_none());
+    let member = app.reload(&member).await.unwrap();
+    assert_eq!(member.playgroup_id, Some(crew));
+    let rows = app.get("/api/playgroups").await.assert_json(200);
+    let ids: Vec<i64> = rows["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids, [PLAYGROUP, crew]);
+
+    // Accepting the same invitation again is harmless.
+    assert_eq!(
+        app.post("/api/registration-invite", json!({"token": token}))
+            .await
+            .assert_json(200)["data"]["joined"],
+        true
+    );
+    assert_eq!(
+        app.post("/api/registration-invite", json!({"token": "x".repeat(43)}))
+            .await
+            .assert_json(200)["data"],
+        json!({"valid": false, "playgroup": null, "joined": false})
+    );
+}
+
+#[tokio::test]
 async fn an_invitation_survives_restarting_oauth_before_completing_registration() {
     let (app, _discord) = app().await;
     create_admin(&app).await;
-    let token = app
-        .state
-        .accounts
-        .rotate_registration_invite()
-        .await
-        .unwrap();
+    let token = app.rotate_invite(PLAYGROUP).await;
     accept_invite(&app, &token).await;
     start(&app, &[]).await;
 
@@ -293,12 +410,7 @@ async fn an_invitation_survives_restarting_oauth_before_completing_registration(
 async fn an_invitation_survives_a_canceled_oauth_attempt_and_can_be_retried() {
     let (app, _discord) = app().await;
     create_admin(&app).await;
-    let token = app
-        .state
-        .accounts
-        .rotate_registration_invite()
-        .await
-        .unwrap();
+    let token = app.rotate_invite(PLAYGROUP).await;
     accept_invite(&app, &token).await;
     let state = start(&app, &[]).await;
 
@@ -324,16 +436,12 @@ async fn an_invitation_survives_a_canceled_oauth_attempt_and_can_be_retried() {
 async fn invalid_invitations_cannot_register_a_new_discord_member() {
     let (app, _discord) = app().await;
     create_admin(&app).await;
-    app.state
-        .accounts
-        .rotate_registration_invite()
-        .await
-        .unwrap();
+    app.rotate_invite(PLAYGROUP).await;
     assert_eq!(
         app.post("/api/registration-invite", json!({"token": "x".repeat(43)}))
             .await
             .assert_json(200),
-        json!({"data": {"valid": false}})
+        json!({"data": {"valid": false, "playgroup": null, "joined": false}})
     );
     assert_eq!(
         callback(&app, "200000000000000009").await.redirected_to(),
@@ -347,8 +455,7 @@ async fn invalid_invitations_cannot_register_a_new_discord_member() {
 async fn rotation_revokes_an_invitation_after_oauth_starts_not_just_at_landing() {
     let (app, _discord) = app().await;
     create_admin(&app).await;
-    let accounts = &app.state.accounts;
-    let token = accounts.rotate_registration_invite().await.unwrap();
+    let token = app.rotate_invite(PLAYGROUP).await;
     accept_invite(&app, &token).await;
     let location = app.get("/auth/discord").await.redirected_to();
     assert!(!location.contains(&token));
@@ -367,7 +474,7 @@ async fn rotation_revokes_an_invitation_after_oauth_starts_not_just_at_landing()
         registration_invite_hash(&token)
     );
 
-    let new_token = accounts.rotate_registration_invite().await.unwrap();
+    let new_token = app.rotate_invite(PLAYGROUP).await;
     let response = finish(&app, "200000000000000003", &state).await;
     assert_eq!(response.redirected_to(), "/login?error=registration_closed");
     assert!(discord_user(&app, "200000000000000003").await.is_none());
@@ -393,18 +500,9 @@ async fn rotation_revokes_an_invitation_after_oauth_starts_not_just_at_landing()
 async fn rotation_before_oauth_starts_revokes_the_accepted_invitation() {
     let (app, _discord) = app().await;
     create_admin(&app).await;
-    let token = app
-        .state
-        .accounts
-        .rotate_registration_invite()
-        .await
-        .unwrap();
+    let token = app.rotate_invite(PLAYGROUP).await;
     accept_invite(&app, &token).await;
-    app.state
-        .accounts
-        .rotate_registration_invite()
-        .await
-        .unwrap();
+    app.rotate_invite(PLAYGROUP).await;
     assert_eq!(
         callback(&app, "200000000000000004").await.redirected_to(),
         "/login?error=registration_closed"
@@ -416,12 +514,7 @@ async fn rotation_before_oauth_starts_revokes_the_accepted_invitation() {
 async fn an_invitation_cannot_bypass_oauth_state_verification_or_be_supplied_at_callback() {
     let (app, _discord) = app().await;
     create_admin(&app).await;
-    let token = app
-        .state
-        .accounts
-        .rotate_registration_invite()
-        .await
-        .unwrap();
+    let token = app.rotate_invite(PLAYGROUP).await;
     accept_invite(&app, &token).await;
     start(&app, &[]).await;
     let (guard, _logs) = capture_logs();
@@ -447,7 +540,7 @@ async fn an_invitation_cannot_bypass_oauth_state_verification_or_be_supplied_at_
 async fn valid_invitations_cannot_bypass_disabled_accounts_or_password_bootstrap() {
     let (app, _discord) = app().await;
     let accounts = &app.state.accounts;
-    let token = accounts.rotate_registration_invite().await.unwrap();
+    let token = app.rotate_invite(PLAYGROUP).await;
     accept_invite(&app, &token).await;
     assert_eq!(
         callback(&app, "200000000000000006").await.redirected_to(),
@@ -480,22 +573,13 @@ async fn revoked_invitations_do_not_block_existing_members_or_normal_open_regist
     open_registration(&app).await;
     let user = create_discord_user(&app, "200000000000000007").await;
     close_registration(&app).await;
-    let token = app
-        .state
-        .accounts
-        .rotate_registration_invite()
-        .await
-        .unwrap();
+    let token = app.rotate_invite(PLAYGROUP).await;
     accept_invite(&app, &token).await;
     let existing = app.cookie.lock().unwrap().clone();
     app.clear_cookies();
     accept_invite(&app, &token).await;
     let newcomer = app.cookie.lock().unwrap().clone();
-    app.state
-        .accounts
-        .rotate_registration_invite()
-        .await
-        .unwrap();
+    app.rotate_invite(PLAYGROUP).await;
 
     *app.cookie.lock().unwrap() = existing;
     assert_eq!(

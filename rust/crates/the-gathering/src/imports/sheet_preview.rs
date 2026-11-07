@@ -122,13 +122,15 @@ pub struct SheetPreview {
     pub revision: String,
 }
 
-/// Previews a Google Sheet import; parse failures are `ImportError::Message`.
+/// Previews a Google Sheet import into the playgroup; parse failures are
+/// `ImportError::Message`.
 pub async fn run(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     params: &SheetRequest,
 ) -> Result<SheetPreview, ImportError> {
     let rows = google_sheet::parse(&params.text).map_err(ImportError::Message)?;
-    let players: Vec<PlayerRef> = player::list_players(conn, true)
+    let players: Vec<PlayerRef> = player::list_players(conn, playgroup_id, true)
         .await?
         .into_iter()
         .map(|player| PlayerRef {
@@ -136,7 +138,7 @@ pub async fn run(
             name: player.name,
         })
         .collect();
-    let decks: Vec<DeckRef> = deck::list_decks(conn, true, None)
+    let decks: Vec<DeckRef> = deck::list_decks(conn, playgroup_id, true, None)
         .await?
         .into_iter()
         .map(|(deck, _)| DeckRef {
@@ -149,15 +151,18 @@ pub async fn run(
     let keys: Vec<&str> = rows.iter().map(|row| row.key.as_str()).collect();
     let keys = serde_json::to_string(&keys).unwrap_or_else(|_| "[]".into());
     let imported: HashMap<String, i64> = sqlx::query!(
-        r#"SELECT key AS "key!", game_id FROM sheet_import_receipts WHERE key IN (SELECT value FROM json_each(?))"#,
-        keys
+        r#"SELECT key AS "key!", game_id FROM sheet_import_receipts
+           WHERE key IN (SELECT value FROM json_each(?))
+             AND game_id IN (SELECT id FROM games WHERE playgroup_id = ?)"#,
+        keys,
+        playgroup_id
     )
     .fetch_all(&mut *conn)
     .await?
     .into_iter()
     .map(|receipt| (receipt.key, receipt.game_id))
     .collect();
-    let candidates = candidates(conn, &rows).await?;
+    let candidates = candidates(conn, playgroup_id, &rows).await?;
     let context = Context {
         params,
         players: &players,
@@ -196,6 +201,7 @@ pub async fn run(
 
 async fn candidates(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     rows: &[SheetRow],
 ) -> Result<Vec<Candidate>, sqlx::Error> {
     let dates: Vec<time::Date> = rows.iter().filter_map(|row| row.date).collect();
@@ -213,7 +219,9 @@ async fn candidates(
             .assume_utc(),
     );
     let ids: Vec<i64> = sqlx::query_scalar!(
-        r#"SELECT id AS "id!: i64" FROM games WHERE played_at >= ? AND played_at < ? ORDER BY played_at, id"#,
+        r#"SELECT id AS "id!: i64" FROM games
+           WHERE playgroup_id = ? AND played_at >= ? AND played_at < ? ORDER BY played_at, id"#,
+        playgroup_id,
         start,
         end
     )

@@ -2,6 +2,7 @@
 
 use crate::db::{self, UtcDateTime};
 use crate::games::resolve_player::{self, ResolveError};
+use crate::playgroups;
 use crate::regex::compile;
 use crate::validation::ValidationError;
 use crate::validation::{TAKEN, Validator};
@@ -114,17 +115,21 @@ async fn available_username(
 }
 
 impl Accounts {
-    /// Finds or creates the Discord account and its player, all in one transaction.
+    /// Finds or creates the Discord account and its player in each of its playgroups, all
+    /// in one transaction.
     ///
-    /// New accounts need an existing administrator plus open registration or a valid
-    /// invitation digest, checked inside the write transaction so rotating the invitation
-    /// also revokes invitations on their way back from Discord.
+    /// A valid invitation digest joins the playgroup it belongs to: a new account starts
+    /// there, and an existing one is added and switched to it. New accounts need an existing
+    /// administrator plus open registration (which joins the default playgroup) or an
+    /// invitation, checked inside the write transaction so rotating the invitation also
+    /// revokes invitations on their way back from Discord.
     pub async fn sign_in_with_discord(
         &self,
         claims: &DiscordClaims,
         invite_hash: Option<&[u8]>,
     ) -> Result<User, SignInError> {
         let mut tx = db::begin(&self.pool).await?;
+        let invited = playgroups::for_invite_hash(&mut tx, invite_hash).await?;
         let existing = select_users!("WHERE discord_id = ?", claims.sub)
             .fetch_optional(&mut *tx)
             .await?
@@ -143,23 +148,34 @@ impl Accounts {
                     .execute(&mut *tx)
                     .await?;
                 }
-                User {
-                    avatar_url: claims.picture.clone(),
-                    ..user
+                if let Some(playgroup_id) = invited {
+                    playgroups::add_member(&mut tx, playgroup_id, user.id).await?;
+                    sqlx::query!(
+                        "UPDATE users SET playgroup_id = ?, updated_at = ? WHERE id = ?",
+                        playgroup_id,
+                        now,
+                        user.id
+                    )
+                    .execute(&mut *tx)
+                    .await?;
                 }
+                let row: UserRow = select_users!("WHERE id = ?", user.id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                row.into_user(&self.secret_key)
             }
-            None => {
-                self.create_discord_user(&mut tx, claims, invite_hash)
-                    .await?
-            }
+            None => self.create_discord_user(&mut tx, claims, invited).await?,
         };
-        resolve_player::run(
-            &mut tx,
-            &user.display_name,
-            user.discord_id.as_deref(),
-            Some(user.id),
-        )
-        .await?;
+        for playgroup_id in playgroups::ids_for_user(&mut tx, user.id).await? {
+            resolve_player::run(
+                &mut tx,
+                playgroup_id,
+                &user.display_name,
+                user.discord_id.as_deref(),
+                Some(user.id),
+            )
+            .await?;
+        }
         tx.commit().await?;
         Ok(user)
     }
@@ -168,24 +184,17 @@ impl Accounts {
         &self,
         tx: &mut db::Tx,
         claims: &DiscordClaims,
-        invite_hash: Option<&[u8]>,
+        invited: Option<i64>,
     ) -> Result<User, SignInError> {
         let count = sqlx::query_scalar!(r#"SELECT count(*) AS "count!: i64" FROM users"#)
             .fetch_one(&mut **tx)
             .await?;
-        let settings = sqlx::query!(
-            r#"SELECT registration_enabled AS "enabled: bool", registration_invite_hash FROM server_settings WHERE id = 1"#
+        let enabled = sqlx::query_scalar!(
+            r#"SELECT registration_enabled AS "enabled: bool" FROM server_settings WHERE id = 1"#
         )
         .fetch_one(&mut **tx)
         .await?;
-        let invited = match (
-            invite_hash.filter(|hash| hash.len() == 32),
-            &settings.registration_invite_hash,
-        ) {
-            (Some(hash), Some(current)) => crate::crypto::secure_compare(current, hash),
-            _ => false,
-        };
-        if count == 0 || !(settings.enabled || invited) {
+        if count == 0 || !(enabled || invited.is_some()) {
             return Err(SignInError::RegistrationClosed);
         }
 
@@ -229,6 +238,11 @@ impl Accounts {
         )
         .fetch_one(&mut **tx)
         .await?;
+        let playgroup_id = match invited {
+            Some(playgroup_id) => playgroup_id,
+            None => playgroups::default_id(tx).await?,
+        };
+        playgroups::add_member(tx, playgroup_id, id).await?;
         let row: UserRow = select_users!("WHERE id = ?", id)
             .fetch_one(&mut **tx)
             .await?;

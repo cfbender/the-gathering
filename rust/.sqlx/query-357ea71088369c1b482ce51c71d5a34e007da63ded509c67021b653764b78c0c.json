@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE playgroups SET registration_invite_hash = ?, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "357ea71088369c1b482ce51c71d5a34e007da63ded509c67021b653764b78c0c"
+}

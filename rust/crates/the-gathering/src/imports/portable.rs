@@ -145,19 +145,29 @@ fn card_json(card: &catalog::Card) -> Value {
     })
 }
 
-/// One consistent read of everything.
-pub async fn export(state: &AppState) -> Result<Value, sqlx::Error> {
+/// One consistent read of everything in the playgroup.
+pub async fn export(state: &AppState, playgroup_id: i64) -> Result<Value, sqlx::Error> {
     let mut tx = state.pool.begin().await?;
     let conn: &mut SqliteConnection = &mut tx;
     let players = sqlx::query!(
-        r#"SELECT id AS "id!", name, archived_at AS "archived_at: UtcDateTime" FROM players ORDER BY id"#
+        r#"SELECT id AS "id!", name, archived_at AS "archived_at: UtcDateTime" FROM players
+           WHERE playgroup_id = ? ORDER BY id"#,
+        playgroup_id
     )
     .fetch_all(&mut *conn)
     .await?;
-    let decks = select_decks!("ORDER BY id").fetch_all(&mut *conn).await?;
-    let ids: Vec<i64> = sqlx::query_scalar!(r#"SELECT id AS "id!: i64" FROM games ORDER BY id"#)
-        .fetch_all(&mut *conn)
-        .await?;
+    let decks = select_decks!(
+        "WHERE player_id IN (SELECT id FROM players WHERE playgroup_id = ?) ORDER BY id",
+        playgroup_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let ids: Vec<i64> = sqlx::query_scalar!(
+        r#"SELECT id AS "id!: i64" FROM games WHERE playgroup_id = ? ORDER BY id"#,
+        playgroup_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
     let games = load_games(conn, &ids).await?;
     let portable_ids: HashMap<i64, Option<String>> = games
         .iter()
@@ -206,9 +216,13 @@ pub async fn export(state: &AppState) -> Result<Value, sqlx::Error> {
             printings.push(printing);
         }
     }
-    let receipts = sqlx::query!(r#"SELECT key AS "key!", game_id FROM sheet_import_receipts"#)
-        .fetch_all(&mut *conn)
-        .await?;
+    let receipts = sqlx::query!(
+        r#"SELECT key AS "key!", game_id FROM sheet_import_receipts
+           WHERE game_id IN (SELECT id FROM games WHERE playgroup_id = ?)"#,
+        playgroup_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
     let data = json!({
         "format": "the-gathering",
         "version": 1,
@@ -590,6 +604,7 @@ fn bump(counts: &mut Counts, created: bool) {
 
 async fn restore_player(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     row: &Value,
 ) -> Result<(Player, bool), ImportError> {
     let input: PlayerInput = typed("Player", attrs(row, &PLAYER_FIELDS))?;
@@ -599,10 +614,10 @@ async fn restore_player(
     cs.length("name", name.as_deref(), Some(1), Some(100));
     cs.finish().map_err(|errors| invalid("Player", &errors))?;
     let name = name.unwrap_or_default();
-    if let Some(existing) = player::find_player_by_name(conn, &name).await? {
+    if let Some(existing) = player::find_player_by_name(conn, playgroup_id, &name).await? {
         return Ok((existing, false));
     }
-    let created = player::create_player(conn, &input, None)
+    let created = player::create_player(conn, playgroup_id, &input, None)
         .await
         .map_err(|error| labeled(&format!("Player {name}"), error))?;
     Ok((created, true))
@@ -710,6 +725,7 @@ async fn restore_deck(
 
 async fn restore_game(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     row: &Value,
     players: &HashMap<i64, Player>,
     decks: &HashMap<i64, Deck>,
@@ -756,11 +772,12 @@ async fn restore_game(
     let external_id = row.get("external_id").and_then(Value::as_str);
     let identity = (portable_id, source, external_id);
     let label = format!("Game {portable_id}");
-    record_game::validate_portable(conn, &input, user_id, identity)
+    record_game::validate_portable(conn, playgroup_id, &input, user_id, identity)
         .await
         .map_err(|error| labeled(&label, error))?;
     let portable = sqlx::query_scalar!(
-        r#"SELECT id AS "id!: i64" FROM games WHERE portable_id = ?"#,
+        r#"SELECT id AS "id!: i64" FROM games WHERE playgroup_id = ? AND portable_id = ?"#,
+        playgroup_id,
         portable_id
     )
     .fetch_optional(&mut *conn)
@@ -768,7 +785,9 @@ async fn restore_game(
     let external = match external_id {
         Some(external_id) => {
             sqlx::query_scalar!(
-                r#"SELECT id AS "id!: i64" FROM games WHERE source = ? AND external_id = ?"#,
+                r#"SELECT id AS "id!: i64" FROM games
+                   WHERE playgroup_id = ? AND source = ? AND external_id = ?"#,
+                playgroup_id,
                 source,
                 external_id
             )
@@ -787,7 +806,7 @@ async fn restore_game(
     if let Some(existing) = portable.or(external) {
         return Ok((existing, false));
     }
-    let game = record_game::insert_portable(conn, &input, user_id, identity)
+    let game = record_game::insert_portable(conn, playgroup_id, &input, user_id, identity)
         .await
         .map_err(|error| labeled("Game", error))?;
     Ok((game.id, true))
@@ -844,6 +863,7 @@ fn rows<'a>(data: &'a Map<String, Value>, key: &str) -> &'a [Value] {
 
 async fn restore(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     links: &DeckLinks,
     data: &Map<String, Value>,
     user_id: Option<i64>,
@@ -857,7 +877,7 @@ async fn restore(
     let mut summary = Summary::default();
     let mut players = HashMap::new();
     for row in rows(data, "players") {
-        let (player, created) = restore_player(conn, row).await?;
+        let (player, created) = restore_player(conn, playgroup_id, row).await?;
         bump(&mut summary.players, created);
         if let Some(id) = row.get("id").and_then(local_id) {
             players.insert(id, player);
@@ -873,7 +893,8 @@ async fn restore(
     }
     let mut games = HashMap::new();
     for row in rows(data, "games") {
-        let (game_id, created) = restore_game(conn, row, &players, &decks, user_id).await?;
+        let (game_id, created) =
+            restore_game(conn, playgroup_id, row, &players, &decks, user_id).await?;
         bump(&mut summary.games, created);
         if let Some(portable_id) = row.get("portable_id").and_then(Value::as_str) {
             games.insert(portable_id.to_owned(), game_id);
@@ -886,10 +907,14 @@ async fn restore(
 }
 
 /// The import's counts, with every write rolled back.
-pub async fn preview(state: &AppState, json: &str) -> Result<Summary, ImportError> {
+pub async fn preview(
+    state: &AppState,
+    playgroup_id: i64,
+    json: &str,
+) -> Result<Summary, ImportError> {
     let data = decode(json).map_err(ImportError::Message)?;
     let mut tx = db::begin(&state.pool).await?;
-    let result = restore(&mut tx, state.games.deck_links(), &data, None).await;
+    let result = restore(&mut tx, playgroup_id, state.games.deck_links(), &data, None).await;
     tx.rollback().await?;
     result
 }
@@ -897,12 +922,20 @@ pub async fn preview(state: &AppState, json: &str) -> Result<Summary, ImportErro
 /// Restores a portable export in one transaction.
 pub async fn run(
     state: &AppState,
+    playgroup_id: i64,
     json: &str,
     user_id: Option<i64>,
 ) -> Result<Summary, ImportError> {
     let data = decode(json).map_err(ImportError::Message)?;
     let mut tx = db::begin(&state.pool).await?;
-    let summary = restore(&mut tx, state.games.deck_links(), &data, user_id).await?;
+    let summary = restore(
+        &mut tx,
+        playgroup_id,
+        state.games.deck_links(),
+        &data,
+        user_id,
+    )
+    .await?;
     tx.commit().await?;
     Ok(summary)
 }

@@ -19,6 +19,9 @@ function AdminLayout() {
         <Link to="/admin/players" className="tab" activeProps={{ className: "tab-active" }}>
           Player identities
         </Link>
+        <Link to="/admin/playgroups" className="tab" activeProps={{ className: "tab-active" }}>
+          Playgroups
+        </Link>
         <Link to="/admin/settings" className="tab" activeProps={{ className: "tab-active" }}>
           Settings
         </Link>

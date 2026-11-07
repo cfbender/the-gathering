@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT registration_enabled AS \"registration_enabled: bool\",\n                      detailed_stats_from AS \"detailed_stats_from: IsoDate\"\n               FROM server_settings WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "registration_enabled: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "server_settings",
+            "name": "registration_enabled"
+          }
+        }
+      },
+      {
+        "name": "detailed_stats_from: IsoDate",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "server_settings",
+            "name": "detailed_stats_from"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "7d5e7d0ad68f89a6bd0451d5eb31540e8c7c932630e3dbf5f4c10f45c1a059ff"
+}

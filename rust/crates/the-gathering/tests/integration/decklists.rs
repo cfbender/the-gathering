@@ -19,7 +19,7 @@ use std::time::Duration;
 use lotus::Zone;
 use lotus::decklist::{Allowlist, Resolver, Source, SystemResolver};
 use serde_json::{Value, json};
-use support::{TestApp, json_fixture};
+use support::{PLAYGROUP, TestApp, json_fixture};
 use the_gathering::accounts::User;
 use the_gathering::config::Config;
 use the_gathering::decklists::destination::{self, Blocked};
@@ -1403,7 +1403,7 @@ mod sync {
         ctx.app
             .state
             .games
-            .list_decks(false, Some(ctx.player.id))
+            .list_decks(PLAYGROUP, false, Some(ctx.player.id))
             .await
             .unwrap()
             .into_iter()
@@ -1412,7 +1412,13 @@ mod sync {
     }
 
     async fn deck(ctx: &Ctx, id: i64) -> the_gathering::games::Deck {
-        ctx.app.state.games.get_deck(id).await.unwrap().unwrap()
+        ctx.app
+            .state
+            .games
+            .get_deck(PLAYGROUP, id)
+            .await
+            .unwrap()
+            .unwrap()
     }
 
     #[tokio::test]
@@ -1532,7 +1538,7 @@ mod sync {
         let saved = app
             .state
             .games
-            .list_decks(false, Some(player.id))
+            .list_decks(PLAYGROUP, false, Some(player.id))
             .await
             .unwrap();
         let mut names: Vec<_> = saved.iter().map(|(deck, _)| deck.name.as_str()).collect();
@@ -1555,7 +1561,7 @@ mod sync {
         let untouched = app
             .state
             .games
-            .get_deck(existing.id)
+            .get_deck(PLAYGROUP, existing.id)
             .await
             .unwrap()
             .unwrap();
@@ -1855,7 +1861,7 @@ mod sync {
         let updated = app
             .state
             .games
-            .get_deck(existing.id)
+            .get_deck(PLAYGROUP, existing.id)
             .await
             .unwrap()
             .unwrap();
@@ -1866,7 +1872,7 @@ mod sync {
         let created: Vec<_> = app
             .state
             .games
-            .list_decks(false, Some(player.id))
+            .list_decks(PLAYGROUP, false, Some(player.id))
             .await
             .unwrap()
             .into_iter()

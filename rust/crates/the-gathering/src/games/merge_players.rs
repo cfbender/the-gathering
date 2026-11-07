@@ -162,9 +162,13 @@ pub async fn plan_link(
     let player = get_player(conn, player.id)
         .await?
         .ok_or(GamesError::NotFound)?;
-    let current = select_players!("WHERE user_id = ?", user.id)
-        .fetch_optional(&mut *conn)
-        .await?;
+    let current = select_players!(
+        "WHERE playgroup_id = ? AND user_id = ?",
+        player.playgroup_id,
+        user.id
+    )
+    .fetch_optional(&mut *conn)
+    .await?;
     if current
         .as_ref()
         .is_some_and(|current| current.id == player.id)

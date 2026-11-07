@@ -82,6 +82,7 @@ pub(crate) struct ValidSeat {
 /// A game ready to store.
 #[derive(Clone, Debug)]
 pub(crate) struct ValidGame {
+    pub playgroup_id: i64,
     pub played_at: UtcDateTime,
     pub duration_minutes: Option<i64>,
     pub turns: Option<i64>,
@@ -102,6 +103,8 @@ pub(crate) struct ValidGame {
 /// What the caller adds beyond the cast params.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Extra<'a> {
+    /// The playgroup a new game is recorded in (inserts only; updates keep the game's).
+    pub playgroup_id: Option<i64>,
     /// The account that recorded the game (inserts only).
     pub created_by_user_id: Option<i64>,
     /// The game's `(source, external_id)` (inserts only).
@@ -229,30 +232,34 @@ fn validate_seats(errors: &mut ValidationError, seats: &[SeatFields], format: Op
     }
 }
 
-async fn exists(conn: &mut SqliteConnection, table: &str, id: i64) -> Result<bool, sqlx::Error> {
-    match table {
-        "users" => {
-            sqlx::query_scalar!(
-                r#"SELECT EXISTS(SELECT 1 FROM users WHERE id = ?) AS "e!: bool""#,
-                id
-            )
-            .fetch_one(&mut *conn)
-            .await
-        }
-        _ => {
-            sqlx::query_scalar!(
-                r#"SELECT EXISTS(SELECT 1 FROM players WHERE id = ?) AS "e!: bool""#,
-                id
-            )
-            .fetch_one(&mut *conn)
-            .await
-        }
-    }
+async fn user_exists(conn: &mut SqliteConnection, id: i64) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM users WHERE id = ?) AS "e!: bool""#,
+        id
+    )
+    .fetch_one(&mut *conn)
+    .await
+}
+
+/// Whether the player exists in the game's playgroup.
+async fn player_exists(
+    conn: &mut SqliteConnection,
+    playgroup_id: i64,
+    id: i64,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM players WHERE id = ? AND playgroup_id = ?) AS "e!: bool""#,
+        id,
+        playgroup_id
+    )
+    .fetch_one(&mut *conn)
+    .await
 }
 
 /// Applies `input` to `current` (or a new game) and validates it, including the checks
 /// that need the database: the creator exists, every deck belongs to its seat's player, and
-/// seated players exist (reported per seat as `player: does not exist`).
+/// seated players exist in the game's playgroup (reported per seat as
+/// `player: does not exist`).
 ///
 /// Seats whose `id` matches none of the game's seats insert new rows; the foreign `id` is
 /// ignored so it cannot collide with another game's seat.
@@ -263,6 +270,10 @@ pub(crate) async fn validate_game(
     extra: Extra<'_>,
 ) -> Result<ValidGame, GamesError> {
     let mut cs = Validator::new();
+    let playgroup_id = current
+        .map(|game| game.playgroup_id)
+        .or(extra.playgroup_id)
+        .ok_or_else(|| ValidationError::single("playgroup_id", "can't be blank"))?;
     let played_at = input
         .played_at
         .clone()
@@ -367,7 +378,7 @@ pub(crate) async fn validate_game(
     };
     if current.is_none()
         && let Some(user_id) = created_by_user_id
-        && !exists(conn, "users", user_id).await?
+        && !user_exists(conn, user_id).await?
     {
         cs.add_error("created_by_user_id", "does not exist");
     }
@@ -400,12 +411,12 @@ pub(crate) async fn validate_game(
         for seat in &seats {
             let mut errors = ValidationError::new();
             if let Some(player_id) = seat.player_id
-                && !exists(conn, "players", player_id).await?
+                && !player_exists(conn, playgroup_id, player_id).await?
             {
                 errors.add("player", "does not exist");
             }
             if let Some(player_id) = seat.eliminated_by_player_id
-                && !exists(conn, "players", player_id).await?
+                && !player_exists(conn, playgroup_id, player_id).await?
             {
                 errors.add("eliminated_by_player", "does not exist");
             }
@@ -435,6 +446,7 @@ pub(crate) async fn validate_game(
         .collect();
     let invalid = || ValidationError::single("base", "is invalid");
     Ok(ValidGame {
+        playgroup_id,
         played_at: played_at.ok_or_else(invalid)?,
         duration_minutes,
         turns,

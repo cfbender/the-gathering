@@ -284,9 +284,10 @@ pub fn deck_seats(games: &[Game]) -> Vec<SeatInGame<'_>> {
 /// Every commander played in the date range.
 pub async fn list(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     params: &DateRange,
 ) -> Result<Vec<Value>, sqlx::Error> {
-    let games = query::games(conn, params, None, None).await?;
+    let games = query::games(conn, playgroup_id, params, None, None).await?;
     let seats = deck_seats(&games);
     Ok(summarize(conn, &seats)
         .await?
@@ -301,6 +302,7 @@ fn normalized(value: Option<&str>) -> Option<String> {
 
 async fn resolve(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     id: &str,
 ) -> Result<Option<(Key, CommanderCard)>, sqlx::Error> {
     let direct =
@@ -312,7 +314,7 @@ async fn resolve(
             Some(&summary.name),
         )));
     }
-    let references = query::commander_references(conn, id).await?;
+    let references = query::commander_references(conn, playgroup_id, id).await?;
     let summaries = catalog::card_summaries_in(conn, &references).await?;
     let wanted = normalized(Some(id));
     Ok(references.iter().find_map(|(stored_id, name)| {
@@ -330,10 +332,11 @@ async fn resolve(
 /// never played in the range.
 pub async fn get(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     id: &str,
     params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
-    let Some((key, card)) = resolve(conn, id).await? else {
+    let Some((key, card)) = resolve(conn, playgroup_id, id).await? else {
         return Ok(None);
     };
     let mut ids: Vec<String> = Vec::new();
@@ -346,7 +349,8 @@ pub async fn get(
         }
     }
     let mut names: Vec<String> = card.name.clone().into_iter().collect();
-    let (stored_ids, stored_names) = query::commander_aliases(conn, &ids, &names).await?;
+    let (stored_ids, stored_names) =
+        query::commander_aliases(conn, playgroup_id, &ids, &names).await?;
     for stored in stored_ids {
         if !ids.contains(&stored) {
             ids.push(stored);
@@ -358,7 +362,7 @@ pub async fn get(
         }
     }
     let lowered: HashSet<String> = names.iter().map(|name| name.to_lowercase()).collect();
-    let games = query::games(conn, params, None, None).await?;
+    let games = query::games(conn, playgroup_id, params, None, None).await?;
     let candidates: Vec<SeatInGame<'_>> = deck_seats(&games)
         .into_iter()
         .filter(|at| {

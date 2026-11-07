@@ -12,7 +12,7 @@
 use crate::support;
 
 use serde_json::json;
-use support::TestApp;
+use support::{PLAYGROUP, TestApp};
 use the_gathering::accounts::User;
 use the_gathering::games::Player;
 
@@ -57,7 +57,7 @@ async fn members_cannot_claim_an_account_or_discord_identity_through_patch() {
         ctx.app
             .state
             .games
-            .get_player(ctx.drew.id)
+            .get_player(PLAYGROUP, ctx.drew.id)
             .await
             .unwrap()
             .unwrap()
@@ -82,7 +82,7 @@ async fn members_cannot_claim_an_account_or_discord_identity_through_post() {
         .app
         .state
         .games
-        .get_player(body["data"]["id"].as_i64().unwrap())
+        .get_player(PLAYGROUP, body["data"]["id"].as_i64().unwrap())
         .await
         .unwrap()
         .unwrap();
@@ -115,7 +115,7 @@ async fn members_cannot_rename_another_members_linked_player() {
         ctx.app
             .state
             .games
-            .get_player(ctx.drew.id)
+            .get_player(PLAYGROUP, ctx.drew.id)
             .await
             .unwrap()
             .unwrap()
@@ -149,7 +149,7 @@ async fn admins_inside_the_sudo_window_merge_players_stale_admins_and_members_re
         ctx.app
             .state
             .games
-            .get_player(ctx.wax.id)
+            .get_player(PLAYGROUP, ctx.wax.id)
             .await
             .unwrap()
             .is_none()

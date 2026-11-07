@@ -71,7 +71,10 @@ async fn main() -> anyhow::Result<()> {
         ["migrate"] => Ok(()),
         ["seed"] => {
             if state.config.env == the_gathering::config::Env::Dev {
-                println!("{}", the_gathering::seed::run(&state.games).await?);
+                println!(
+                    "{}",
+                    the_gathering::seed::run(&state.games, &state.playgroups).await?
+                );
             } else {
                 println!("Skipping development demo data outside THE_GATHERING_ENV=dev.");
             }

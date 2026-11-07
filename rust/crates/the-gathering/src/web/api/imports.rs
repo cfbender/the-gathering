@@ -181,9 +181,10 @@ pub async fn csv_sample() -> Response {
 /// `POST /api/imports/csv/preview`.
 pub async fn csv_preview(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     JsonBody(upload): JsonBody<CsvUpload>,
 ) -> ApiResult<Json<Value>> {
-    let preview = csv_transfer::preview(&state, &upload.csv).await?;
+    let preview = csv_transfer::preview(&state, user.playgroup()?, &upload.csv).await?;
     Ok(Json(preview_json(&preview, Source::Csv)))
 }
 
@@ -196,6 +197,7 @@ pub async fn csv_create(
     Ok(
         match csv_transfer::run(
             &state,
+            user.playgroup()?,
             &upload.csv,
             Some(user.id),
             upload.revision.as_deref(),
@@ -213,10 +215,12 @@ pub async fn csv_create(
 /// `POST /api/imports/mythic_track/preview`.
 pub async fn mythic_track_preview(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     JsonBody(upload): JsonBody<JsonUpload>,
 ) -> ApiResult<Json<Value>> {
     let preview = preview::run(
         &mut *state.pool.acquire().await?,
+        user.playgroup()?,
         Source::MythicTrack,
         &upload.json,
     )
@@ -231,7 +235,15 @@ pub async fn mythic_track_create(
     JsonBody(upload): JsonBody<JsonUpload>,
 ) -> ApiResult<Response> {
     Ok(
-        match commit::run(&state, Source::MythicTrack, &upload.json, Some(user.id)).await {
+        match commit::run(
+            &state,
+            user.playgroup()?,
+            Source::MythicTrack,
+            &upload.json,
+            Some(user.id),
+        )
+        .await
+        {
             Ok(result) => data(json!(result)).into_response(),
             Err(error) => commit_error(error, Source::MythicTrack),
         },
@@ -243,9 +255,10 @@ pub async fn mythic_track_create(
 /// `POST /api/imports/sheet/preview`.
 pub async fn sheet_preview(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     JsonBody(sheet): JsonBody<SheetRequest>,
 ) -> ApiResult<Json<Value>> {
-    let preview = sheet_preview::run(&mut *state.pool.acquire().await?, &sheet)
+    let preview = sheet_preview::run(&mut *state.pool.acquire().await?, user.playgroup()?, &sheet)
         .await
         .map_err(ImportError::into_api)?;
     Ok(data(json!(preview)))
@@ -259,6 +272,7 @@ pub async fn sheet_create(
 ) -> ApiResult<Json<Value>> {
     let result = sheet_commit::run(
         &state,
+        user.playgroup()?,
         &commit.sheet,
         commit.revision.as_deref(),
         Some(user.id),
@@ -271,8 +285,11 @@ pub async fn sheet_create(
 // Portable
 
 /// `GET /api/exports/portable`: the whole history as a versioned JSON download.
-pub async fn portable_export(State(state): State<AppState>) -> ApiResult<Response> {
-    let export = portable::export(&state).await?;
+pub async fn portable_export(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> ApiResult<Response> {
+    let export = portable::export(&state, user.playgroup()?).await?;
     let body =
         serde_json::to_vec_pretty(&export).map_err(|error| ApiError::Internal(error.into()))?;
     let today = crate::db::UtcDateTime::now().date();
@@ -290,9 +307,10 @@ pub async fn portable_export(State(state): State<AppState>) -> ApiResult<Respons
 /// `POST /api/imports/portable/preview`.
 pub async fn portable_preview(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     JsonBody(upload): JsonBody<JsonUpload>,
 ) -> ApiResult<Json<Value>> {
-    let summary = portable::preview(&state, &upload.json)
+    let summary = portable::preview(&state, user.playgroup()?, &upload.json)
         .await
         .map_err(ImportError::into_api)?;
     Ok(data(json!(summary)))
@@ -304,7 +322,7 @@ pub async fn portable_create(
     AuthUser(user): AuthUser,
     JsonBody(upload): JsonBody<JsonUpload>,
 ) -> ApiResult<Json<Value>> {
-    let summary = portable::run(&state, &upload.json, Some(user.id))
+    let summary = portable::run(&state, user.playgroup()?, &upload.json, Some(user.id))
         .await
         .map_err(ImportError::into_api)?;
     Ok(data(json!(summary)))

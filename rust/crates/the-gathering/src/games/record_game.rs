@@ -14,11 +14,13 @@ use super::model::{Game, load_game};
 
 async fn game_by_external_id(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     source: &str,
     external_id: &str,
 ) -> Result<Option<i64>, sqlx::Error> {
     sqlx::query_scalar!(
-        r#"SELECT id AS "id!: i64" FROM games WHERE source = ? AND external_id = ?"#,
+        r#"SELECT id AS "id!: i64" FROM games WHERE playgroup_id = ? AND source = ? AND external_id = ?"#,
+        playgroup_id,
         source,
         external_id
     )
@@ -30,20 +32,33 @@ async fn reload(conn: &mut SqliteConnection, id: i64) -> Result<Game, GamesError
     load_game(conn, id).await?.ok_or(GamesError::NotFound)
 }
 
-/// Records a game. With a non-empty `external_id`, an existing game from the same
-/// `source` (default `manual`) is returned unchanged instead of recording a duplicate.
+/// Records a game in a playgroup. With a non-empty `external_id`, an existing game from the
+/// same `source` (default `manual`) in that playgroup is returned unchanged instead of
+/// recording a duplicate.
 pub async fn create(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     input: &GameInput,
     created_by_user_id: Option<i64>,
 ) -> Result<Game, GamesError> {
     let source = input.source.as_deref().unwrap_or("manual");
     match input.external_id.as_deref().filter(|id| !id.is_empty()) {
-        Some(external_id) => match game_by_external_id(conn, source, external_id).await? {
-            Some(id) => reload(conn, id).await,
-            None => insert(conn, input, created_by_user_id, Some((source, external_id))).await,
-        },
-        None => insert(conn, input, created_by_user_id, None).await,
+        Some(external_id) => {
+            match game_by_external_id(conn, playgroup_id, source, external_id).await? {
+                Some(id) => reload(conn, id).await,
+                None => {
+                    insert(
+                        conn,
+                        playgroup_id,
+                        input,
+                        created_by_user_id,
+                        Some((source, external_id)),
+                    )
+                    .await
+                }
+            }
+        }
+        None => insert(conn, playgroup_id, input, created_by_user_id, None).await,
     }
 }
 
@@ -58,27 +73,44 @@ fn with_identity(input: &GameInput, source: &str, external_id: &str) -> GameInpu
 /// Records a game unless one with this source identity exists, which is returned.
 pub async fn find_or_create_by_external_id(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     source: &str,
     external_id: &str,
     input: &GameInput,
 ) -> Result<Game, GamesError> {
-    create(conn, &with_identity(input, source, external_id), None).await
+    create(
+        conn,
+        playgroup_id,
+        &with_identity(input, source, external_id),
+        None,
+    )
+    .await
 }
 
 /// Updates the game with this source identity, or records it.
 pub async fn upsert_by_external_id(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     source: &str,
     external_id: &str,
     input: &GameInput,
 ) -> Result<Game, GamesError> {
     let input = with_identity(input, source, external_id);
-    match game_by_external_id(conn, source, external_id).await? {
+    match game_by_external_id(conn, playgroup_id, source, external_id).await? {
         Some(id) => {
             let game = reload(conn, id).await?;
             update(conn, &game, &input).await
         }
-        None => insert(conn, &input, None, Some((source, external_id))).await,
+        None => {
+            insert(
+                conn,
+                playgroup_id,
+                &input,
+                None,
+                Some((source, external_id)),
+            )
+            .await
+        }
     }
 }
 
@@ -88,6 +120,7 @@ pub async fn upsert_by_external_id(
 /// violation is caught and the existing game is returned instead.
 async fn insert(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     input: &GameInput,
     created_by_user_id: Option<i64>,
     identity: Option<(&str, &str)>,
@@ -97,6 +130,7 @@ async fn insert(
         None,
         input,
         Extra {
+            playgroup_id: Some(playgroup_id),
             created_by_user_id,
             identity,
             portable: None,
@@ -112,7 +146,7 @@ async fn insert(
         Err(error) if db::is_unique_violation(&error, &["games.source", "games.external_id"]) => {
             tx.rollback().await?;
             let (source, external_id) = identity.ok_or(GamesError::Database(error))?;
-            let id = game_by_external_id(conn, source, external_id)
+            let id = game_by_external_id(conn, playgroup_id, source, external_id)
                 .await?
                 .ok_or(GamesError::NotFound)?;
             reload(conn, id).await
@@ -125,6 +159,7 @@ async fn insert(
 /// `portable_id`, `source`, and `external_id`, plus the creating account), without writing.
 pub async fn validate_portable(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     input: &GameInput,
     created_by_user_id: Option<i64>,
     identity: (&str, &str, Option<&str>),
@@ -134,6 +169,7 @@ pub async fn validate_portable(
         None,
         input,
         Extra {
+            playgroup_id: Some(playgroup_id),
             created_by_user_id,
             identity: None,
             portable: Some(identity),
@@ -148,6 +184,7 @@ pub async fn validate_portable(
 /// "taken" validation errors on `portable_id` or `source`.
 pub async fn insert_portable(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     input: &GameInput,
     created_by_user_id: Option<i64>,
     identity: (&str, &str, Option<&str>),
@@ -157,6 +194,7 @@ pub async fn insert_portable(
         None,
         input,
         Extra {
+            playgroup_id: Some(playgroup_id),
             created_by_user_id,
             identity: None,
             portable: Some(identity),
@@ -196,9 +234,10 @@ async fn insert_rows(conn: &mut SqliteConnection, game: &ValidGame) -> Result<i6
         .clone()
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let id = sqlx::query_scalar!(
-        r#"INSERT INTO games (played_at, duration_minutes, turns, win_condition, notes, source, format, external_id,
-                              portable_id, created_by_user_id, inserted_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id AS "id!: i64""#,
+        r#"INSERT INTO games (playgroup_id, played_at, duration_minutes, turns, win_condition, notes, source, format,
+                              external_id, portable_id, created_by_user_id, inserted_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id AS "id!: i64""#,
+        game.playgroup_id,
         game.played_at,
         game.duration_minutes,
         game.turns,

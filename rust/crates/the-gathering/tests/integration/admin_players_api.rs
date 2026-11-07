@@ -12,7 +12,7 @@
 use crate::support;
 
 use serde_json::{Value, json};
-use support::TestApp;
+use support::{PLAYGROUP, TestApp};
 use the_gathering::accounts::discord::DiscordClaims;
 
 async fn admin_app() -> (TestApp, the_gathering::accounts::User) {
@@ -111,7 +111,7 @@ async fn unlinking_an_orphaned_discord_identity_permits_merging_while_retaining_
     let games = &app.state.games;
     assert_eq!(
         games
-            .get_player(source.id)
+            .get_player(PLAYGROUP, source.id)
             .await
             .unwrap()
             .unwrap()
@@ -119,12 +119,17 @@ async fn unlinking_an_orphaned_discord_identity_permits_merging_while_retaining_
         None
     );
     assert_eq!(
-        games.get_deck(deck.id).await.unwrap().unwrap().player_id,
+        games
+            .get_deck(PLAYGROUP, deck.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .player_id,
         source.id
     );
     assert!(
         games
-            .get_game(game.id)
+            .get_game(PLAYGROUP, game.id)
             .await
             .unwrap()
             .unwrap()
@@ -138,7 +143,7 @@ async fn unlinking_an_orphaned_discord_identity_permits_merging_while_retaining_
         .assert_json(200);
     assert_eq!(
         games
-            .get_player(target.id)
+            .get_player(PLAYGROUP, target.id)
             .await
             .unwrap()
             .unwrap()
@@ -147,12 +152,17 @@ async fn unlinking_an_orphaned_discord_identity_permits_merging_while_retaining_
         Some("correct-discord")
     );
     assert_eq!(
-        games.get_deck(deck.id).await.unwrap().unwrap().player_id,
+        games
+            .get_deck(PLAYGROUP, deck.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .player_id,
         target.id
     );
     assert!(
         games
-            .get_game(game.id)
+            .get_game(PLAYGROUP, game.id)
             .await
             .unwrap()
             .unwrap()
@@ -180,7 +190,7 @@ async fn unlinking_detaches_the_account_without_breaking_subsequent_discord_sign
     let player = app
         .state
         .games
-        .get_player_for_user(user.id)
+        .get_player_for_user(PLAYGROUP, user.id)
         .await
         .unwrap()
         .unwrap();
@@ -193,7 +203,11 @@ async fn unlinking_detaches_the_account_without_breaking_subsequent_discord_sign
         204
     );
     let games = &app.state.games;
-    let unlinked = games.get_player(player.id).await.unwrap().unwrap();
+    let unlinked = games
+        .get_player(PLAYGROUP, player.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!((unlinked.user_id, unlinked.discord_id), (None, None));
     assert_eq!(
         app.state
@@ -215,7 +229,7 @@ async fn unlinking_detaches_the_account_without_breaking_subsequent_discord_sign
     assert_eq!(signed_in.id, user.id);
     assert_ne!(
         games
-            .get_player_for_user(user.id)
+            .get_player_for_user(PLAYGROUP, user.id)
             .await
             .unwrap()
             .unwrap()
@@ -223,7 +237,12 @@ async fn unlinking_detaches_the_account_without_breaking_subsequent_discord_sign
         player.id
     );
     assert_eq!(
-        games.get_player(player.id).await.unwrap().unwrap().user_id,
+        games
+            .get_player(PLAYGROUP, player.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .user_id,
         None
     );
     assert_eq!(
@@ -266,7 +285,7 @@ async fn requires_admin_and_recent_sudo_authentication_missing_players_return_40
     assert_eq!(
         app.state
             .games
-            .get_player(player.id)
+            .get_player(PLAYGROUP, player.id)
             .await
             .unwrap()
             .unwrap()

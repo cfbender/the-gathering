@@ -39,6 +39,7 @@ mod games_api;
 mod imports;
 mod imports_api;
 mod players_api;
+mod playgroups_api;
 mod rate_limit;
 mod registration_invite_api;
 mod seed;

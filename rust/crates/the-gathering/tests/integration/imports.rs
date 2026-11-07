@@ -14,7 +14,7 @@ use crate::support;
 use std::collections::HashMap;
 
 use serde_json::{Map, Value, json};
-use support::{TestApp, utc};
+use support::{PLAYGROUP, TestApp, utc};
 use the_gathering::games::{Game, GameResult, Player};
 use the_gathering::imports::google_sheet;
 use the_gathering::imports::preview::{self, Source};
@@ -27,7 +27,9 @@ use the_gathering::imports::{
 // Helpers
 
 async fn preview_csv(app: &TestApp, csv: &str) -> Preview {
-    csv_transfer::preview(&app.state, csv).await.unwrap()
+    csv_transfer::preview(&app.state, PLAYGROUP, csv)
+        .await
+        .unwrap()
 }
 
 async fn import_csv(
@@ -36,7 +38,7 @@ async fn import_csv(
     user_id: Option<i64>,
     revision: Option<&str>,
 ) -> Result<ImportResult, ImportError> {
-    csv_transfer::run(&app.state, csv, user_id, revision).await
+    csv_transfer::run(&app.state, PLAYGROUP, csv, user_id, revision).await
 }
 
 fn validation(result: Result<ImportResult, ImportError>) -> Preview {
@@ -47,7 +49,12 @@ fn validation(result: Result<ImportResult, ImportError>) -> Preview {
 }
 
 async fn game(app: &TestApp, id: i64) -> Game {
-    app.state.games.get_game(id).await.unwrap().unwrap()
+    app.state
+        .games
+        .get_game(PLAYGROUP, id)
+        .await
+        .unwrap()
+        .unwrap()
 }
 
 async fn count(app: &TestApp, table: &str) -> i64 {
@@ -60,7 +67,7 @@ async fn count(app: &TestApp, table: &str) -> i64 {
 async fn player_named(app: &TestApp, name: &str) -> Option<Player> {
     app.state
         .games
-        .list_players(true)
+        .list_players(PLAYGROUP, true)
         .await
         .unwrap()
         .into_iter()
@@ -204,7 +211,7 @@ async fn reuses_a_players_deck_with_the_same_commander_even_when_the_deck_name_d
     assert_eq!(
         app.state
             .games
-            .list_decks(false, Some(alice.id))
+            .list_decks(PLAYGROUP, false, Some(alice.id))
             .await
             .unwrap()
             .len(),
@@ -249,7 +256,7 @@ async fn commit_links_only_imported_rows_instead_of_running_global_repair() {
     let unrelated_deck = app
         .state
         .games
-        .get_deck(unrelated_deck.id)
+        .get_deck(PLAYGROUP, unrelated_deck.id)
         .await
         .unwrap()
         .unwrap();
@@ -550,7 +557,7 @@ async fn commit_preserves_identity_and_retained_seat_metadata_while_replacing_sw
     let original = app
         .state
         .games
-        .get_deck(ctx.alice_deck)
+        .get_deck(PLAYGROUP, ctx.alice_deck)
         .await
         .unwrap()
         .unwrap();
@@ -1004,14 +1011,19 @@ async fn mythic_track_skips_games_with_unknown_statuses_by_their_json_value() {
 
 async fn mythic_preview(app: &TestApp, games: &Value) -> Preview {
     let mut conn = app.pool().acquire().await.unwrap();
-    preview::run(&mut conn, Source::MythicTrack, &games.to_string())
-        .await
-        .unwrap()
+    preview::run(
+        &mut conn,
+        PLAYGROUP,
+        Source::MythicTrack,
+        &games.to_string(),
+    )
+    .await
+    .unwrap()
 }
 
 async fn mythic_preview_raw(app: &TestApp, payload: &str) -> Preview {
     let mut conn = app.pool().acquire().await.unwrap();
-    preview::run(&mut conn, Source::MythicTrack, payload)
+    preview::run(&mut conn, PLAYGROUP, Source::MythicTrack, payload)
         .await
         .unwrap()
 }
@@ -1019,6 +1031,7 @@ async fn mythic_preview_raw(app: &TestApp, payload: &str) -> Preview {
 async fn mythic_import(app: &TestApp, games: &Value, user_id: i64) -> ImportResult {
     commit::run(
         &app.state,
+        PLAYGROUP,
         Source::MythicTrack,
         &games.to_string(),
         Some(user_id),
@@ -1256,7 +1269,7 @@ async fn imports_with_scryfall_ids_merges_discord_identities_and_skips_the_same_
     let drew = app
         .state
         .games
-        .resolve_player("waxpoetik", Some(DREW_DISCORD), None)
+        .resolve_player(PLAYGROUP, "waxpoetik", Some(DREW_DISCORD), None)
         .await
         .unwrap();
     let other_daniel = app.player("daniel").await;
@@ -1563,11 +1576,11 @@ async fn clear_history(app: &TestApp) {
 }
 
 async fn export(app: &TestApp) -> Value {
-    portable::export(&app.state).await.unwrap()
+    portable::export(&app.state, PLAYGROUP).await.unwrap()
 }
 
 async fn import_portable(app: &TestApp, json: &str) -> Result<portable::Summary, ImportError> {
-    portable::run(&app.state, json, None).await
+    portable::run(&app.state, PLAYGROUP, json, None).await
 }
 
 async fn game_by_portable_id(app: &TestApp, portable_id: &str) -> Game {
@@ -1593,7 +1606,9 @@ async fn round_trip_preserves_gameplay_unused_records_art_and_receipts_with_diff
     clear_history(&app).await;
     app.player("Unrelated").await;
 
-    let summary = portable::preview(&app.state, &json).await.unwrap();
+    let summary = portable::preview(&app.state, PLAYGROUP, &json)
+        .await
+        .unwrap();
     assert_eq!(
         (
             summary.players.created,
@@ -1735,7 +1750,11 @@ async fn malformed_and_unsupported_files_reject_without_writes() {
         with("games", json!([{"seats": null}])),
         with("players", Value::Array(doubled)),
     ] {
-        assert!(portable::preview(&app.state, &invalid).await.is_err());
+        assert!(
+            portable::preview(&app.state, PLAYGROUP, &invalid)
+                .await
+                .is_err()
+        );
         assert!(import_portable(&app, &invalid).await.is_err());
     }
     assert_eq!(count(&app, "players").await, 0);
@@ -1814,7 +1833,13 @@ async fn same_name_commander_conflict_blocks_instead_of_replacing_destination_me
     let app = TestApp::new().await;
     let ctx = portable_setup(&app).await;
     let data = export(&app).await;
-    let deck = app.state.games.get_deck(ctx.deck).await.unwrap().unwrap();
+    let deck = app
+        .state
+        .games
+        .get_deck(PLAYGROUP, ctx.deck)
+        .await
+        .unwrap()
+        .unwrap();
     app.state
         .games
         .update_deck(
@@ -1832,7 +1857,7 @@ async fn same_name_commander_conflict_blocks_instead_of_replacing_destination_me
     assert_eq!(
         app.state
             .games
-            .get_deck(ctx.deck)
+            .get_deck(PLAYGROUP, ctx.deck)
             .await
             .unwrap()
             .unwrap()
@@ -1898,7 +1923,7 @@ fn with_text(mut params: Value, text: String) -> Value {
 
 async fn preview_sheet(app: &TestApp, params: &Value) -> SheetPreview {
     let mut conn = app.pool().acquire().await.unwrap();
-    sheet_preview::run(&mut conn, &support::input(params.clone()))
+    sheet_preview::run(&mut conn, PLAYGROUP, &support::input(params.clone()))
         .await
         .unwrap()
 }
@@ -1910,6 +1935,7 @@ async fn import_sheet(
 ) -> Result<sheet_commit::SheetResult, ImportError> {
     sheet_commit::run(
         &app.state,
+        PLAYGROUP,
         &support::input(params.clone()),
         Some(revision),
         None,

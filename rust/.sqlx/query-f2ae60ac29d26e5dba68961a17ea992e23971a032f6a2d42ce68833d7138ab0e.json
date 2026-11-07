@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT registration_enabled AS \"enabled: bool\" FROM server_settings WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "enabled: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "server_settings",
+            "name": "registration_enabled"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f2ae60ac29d26e5dba68961a17ea992e23971a032f6a2d42ce68833d7138ab0e"
+}

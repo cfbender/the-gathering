@@ -145,6 +145,19 @@ async fn login_settings_and_key_changes_are_attributed_without_secrets() {
     app.patch("/api/session/appearance", json!({"palette":"nord"}))
         .await
         .assert_json(200);
+    let invite = app
+        .post(
+            &format!(
+                "/api/admin/playgroups/{}/registration-invite",
+                support::PLAYGROUP
+            ),
+            json!({}),
+        )
+        .await
+        .assert_json(200)["data"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let key_response = app
         .post("/api/session/api-keys", json!({"name":"My automation"}))
         .await
@@ -174,8 +187,10 @@ async fn login_settings_and_key_changes_are_attributed_without_secrets() {
     assert!(!text.contains("token_hash"));
     assert!(!text.contains("hashed_password"));
     assert!(!text.contains("registration_invite_hash"));
+    assert!(!text.contains(&invite));
+    assert!(text.contains("\"registration_invite_set\":true"));
     assert_eq!(
-        history["pagination"]["total"], 4,
+        history["pagination"]["total"], 5,
         "reads and sign-ins do not create audit history"
     );
 }

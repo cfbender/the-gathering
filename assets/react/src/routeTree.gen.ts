@@ -21,6 +21,7 @@ import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
 import { Route as AdminCatalogRouteImport } from "./routes/admin/catalog"
 import { Route as AdminDiscordRouteImport } from "./routes/admin/discord"
 import { Route as AdminPlayersRouteImport } from "./routes/admin/players"
+import { Route as AdminPlaygroupsRouteImport } from "./routes/admin/playgroups"
 import { Route as AdminServerLogsRouteImport } from "./routes/admin/server-logs"
 import { Route as AdminSettingsRouteImport } from "./routes/admin/settings"
 import { Route as AdminUsersRouteImport } from "./routes/admin/users"
@@ -99,6 +100,11 @@ const AdminDiscordRoute = AdminDiscordRouteImport.update({
 const AdminPlayersRoute = AdminPlayersRouteImport.update({
   id: "/players",
   path: "/players",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPlaygroupsRoute = AdminPlaygroupsRouteImport.update({
+  id: "/playgroups",
+  path: "/playgroups",
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminServerLogsRoute = AdminServerLogsRouteImport.update({
@@ -210,6 +216,7 @@ export interface FileRoutesByFullPath {
   "/admin/catalog": typeof AdminCatalogRoute
   "/admin/discord": typeof AdminDiscordRoute
   "/admin/players": typeof AdminPlayersRoute
+  "/admin/playgroups": typeof AdminPlaygroupsRoute
   "/admin/server-logs": typeof AdminServerLogsRoute
   "/admin/settings": typeof AdminSettingsRoute
   "/admin/users": typeof AdminUsersRoute
@@ -243,6 +250,7 @@ export interface FileRoutesByTo {
   "/admin/catalog": typeof AdminCatalogRoute
   "/admin/discord": typeof AdminDiscordRoute
   "/admin/players": typeof AdminPlayersRoute
+  "/admin/playgroups": typeof AdminPlaygroupsRoute
   "/admin/server-logs": typeof AdminServerLogsRoute
   "/admin/settings": typeof AdminSettingsRoute
   "/admin/users": typeof AdminUsersRoute
@@ -277,6 +285,7 @@ export interface FileRoutesById {
   "/admin/catalog": typeof AdminCatalogRoute
   "/admin/discord": typeof AdminDiscordRoute
   "/admin/players": typeof AdminPlayersRoute
+  "/admin/playgroups": typeof AdminPlaygroupsRoute
   "/admin/server-logs": typeof AdminServerLogsRoute
   "/admin/settings": typeof AdminSettingsRoute
   "/admin/users": typeof AdminUsersRoute
@@ -312,6 +321,7 @@ export interface FileRouteTypes {
     | "/admin/catalog"
     | "/admin/discord"
     | "/admin/players"
+    | "/admin/playgroups"
     | "/admin/server-logs"
     | "/admin/settings"
     | "/admin/users"
@@ -345,6 +355,7 @@ export interface FileRouteTypes {
     | "/admin/catalog"
     | "/admin/discord"
     | "/admin/players"
+    | "/admin/playgroups"
     | "/admin/server-logs"
     | "/admin/settings"
     | "/admin/users"
@@ -378,6 +389,7 @@ export interface FileRouteTypes {
     | "/admin/catalog"
     | "/admin/discord"
     | "/admin/players"
+    | "/admin/playgroups"
     | "/admin/server-logs"
     | "/admin/settings"
     | "/admin/users"
@@ -510,6 +522,13 @@ declare module "@tanstack/react-router" {
       path: "/players"
       fullPath: "/admin/players"
       preLoaderRoute: typeof AdminPlayersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    "/admin/playgroups": {
+      id: "/admin/playgroups"
+      path: "/playgroups"
+      fullPath: "/admin/playgroups"
+      preLoaderRoute: typeof AdminPlaygroupsRouteImport
       parentRoute: typeof AdminRoute
     }
     "/admin/server-logs": {
@@ -653,6 +672,7 @@ interface AdminRouteChildren {
   AdminCatalogRoute: typeof AdminCatalogRoute
   AdminDiscordRoute: typeof AdminDiscordRoute
   AdminPlayersRoute: typeof AdminPlayersRoute
+  AdminPlaygroupsRoute: typeof AdminPlaygroupsRoute
   AdminServerLogsRoute: typeof AdminServerLogsRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminUsersRoute: typeof AdminUsersRoute
@@ -663,6 +683,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminCatalogRoute: AdminCatalogRoute,
   AdminDiscordRoute: AdminDiscordRoute,
   AdminPlayersRoute: AdminPlayersRoute,
+  AdminPlaygroupsRoute: AdminPlaygroupsRoute,
   AdminServerLogsRoute: AdminServerLogsRoute,
   AdminSettingsRoute: AdminSettingsRoute,
   AdminUsersRoute: AdminUsersRoute,

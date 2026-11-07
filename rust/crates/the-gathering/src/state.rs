@@ -16,6 +16,7 @@ use crate::db::Pool;
 use crate::decklists::Decklists;
 use crate::games::Games;
 use crate::logs::LogHub;
+use crate::playgroups::Playgroups;
 use crate::rate_limit::RateLimiter;
 use crate::rules::sync::RulesSync;
 use crate::self_update::SelfUpdate;
@@ -38,6 +39,8 @@ pub struct Inner {
     pub session_key: axum_extra::extract::cookie::Key,
     /// Players, decks, and games.
     pub games: Games,
+    /// Playgroups.
+    pub playgroups: Playgroups,
     /// Fixed-window rate limiter.
     pub rate_limiter: RateLimiter,
     /// Outbound HTTP client for trusted APIs (Discord, GitHub, Cloudflare).
@@ -92,6 +95,7 @@ impl AppState {
             pool.clone(),
             crate::games::DeckLinks::new(config.manavault_url.as_deref()),
         );
+        let playgroups = Playgroups { pool: pool.clone() };
         let accounts = Accounts {
             pool: pool.clone(),
             secret_key: config.secret_key.clone(),
@@ -130,6 +134,7 @@ impl AppState {
             accounts,
             session_key,
             games,
+            playgroups,
             rate_limiter: RateLimiter::new(),
             http,
             sfu,

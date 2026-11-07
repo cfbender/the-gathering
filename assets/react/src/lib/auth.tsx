@@ -19,6 +19,9 @@ export interface User {
   disabled: boolean
   palette: Palette
   theme_style: ThemeStyle
+  /** The playgroup whose players, decks, and games the app shows; `null` when the account
+   * belongs to none yet. */
+  playgroup_id: number | null
   inserted_at: string
 }
 

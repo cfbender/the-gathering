@@ -14,6 +14,7 @@ use crate::games::{
     self, DeckInput, Game, GameInput, GamesError, Resolution, ResolveError, SeatInput,
 };
 use crate::patch::Patch;
+use crate::playgroups;
 use crate::state::AppState;
 
 use super::draft::{self, ResultDraft, WebDraftData};
@@ -160,13 +161,17 @@ pub async fn preview(
     let Some((draft, pending)) = load(&mut *state.pool.acquire().await?, id, user).await? else {
         return Ok(None);
     };
+    let playgroup_id = state.playgroups.for_discord_guild(&draft.guild_id).await?;
     let data: WebDraftData = serde_json::from_str(&draft.data).unwrap_or_default();
     let players = pending.players();
     let identities: Vec<(String, Option<String>)> = players
         .iter()
         .map(|player| (player.display_name.clone(), Some(player.discord_id.clone())))
         .collect();
-    let resolutions = state.games.preview_player_resolutions(&identities).await?;
+    let resolutions = state
+        .games
+        .preview_player_resolutions(playgroup_id, &identities)
+        .await?;
     let seats = players
         .iter()
         .zip(resolutions)
@@ -296,8 +301,9 @@ async fn save_in(
     user: &User,
     result: &DraftResult,
 ) -> Result<Game, GamesError> {
-    let (_draft, pending) = load(conn, id, user).await?.ok_or(GamesError::NotFound)?;
-    let seats = seats(conn, links, &pending.players(), &result.seats).await?;
+    let (draft, pending) = load(conn, id, user).await?.ok_or(GamesError::NotFound)?;
+    let playgroup_id = playgroups::for_discord_guild(conn, &draft.guild_id).await?;
+    let seats = seats(conn, playgroup_id, links, &pending.players(), &result.seats).await?;
     let input = GameInput {
         played_at: result.played_at.clone(),
         turns: result.turns.clone(),
@@ -309,13 +315,14 @@ async fn save_in(
         external_id: Some(pending.external_id.clone()),
         ..GameInput::default()
     };
-    let game = games::record_game::create(conn, &input, Some(user.id)).await?;
+    let game = games::record_game::create(conn, playgroup_id, &input, Some(user.id)).await?;
     pending::delete(conn, pending.id).await?;
     Ok(game)
 }
 
 async fn seats(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     links: &games::DeckLinks,
     roster: &[ReportPlayer],
     seats: &[DraftSeat],
@@ -339,6 +346,7 @@ async fn seats(
             .ok_or(GamesError::BadRequest)?;
         let player = games::resolve_player::run(
             conn,
+            playgroup_id,
             &identity.display_name,
             Some(&identity.discord_id),
             None,

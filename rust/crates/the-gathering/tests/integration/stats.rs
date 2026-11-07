@@ -14,7 +14,7 @@ use crate::support;
 use std::collections::HashMap;
 
 use serde_json::{Value, json};
-use support::{TestApp, utc};
+use support::{PLAYGROUP, TestApp, utc};
 use the_gathering::games::{Deck, Game, GameResult, Player, Seat};
 use the_gathering::stats::{self, elo, records};
 
@@ -80,7 +80,7 @@ impl Fixture {
     }
 
     async fn overview(&self, params: Value) -> Value {
-        stats::overview(self.app.pool(), &support::input(params.clone()))
+        stats::overview(self.app.pool(), PLAYGROUP, &support::input(params.clone()))
             .await
             .unwrap()
     }
@@ -88,6 +88,7 @@ impl Fixture {
     async fn player(&self, name: &str, params: Value) -> Value {
         stats::player(
             self.app.pool(),
+            PLAYGROUP,
             self.id(name),
             &support::input(params.clone()),
         )
@@ -97,13 +98,18 @@ impl Fixture {
     }
 
     async fn commander(&self, id: &str, params: Value) -> Option<Value> {
-        stats::commander(self.app.pool(), id, &support::input(params.clone()))
-            .await
-            .unwrap()
+        stats::commander(
+            self.app.pool(),
+            PLAYGROUP,
+            id,
+            &support::input(params.clone()),
+        )
+        .await
+        .unwrap()
     }
 
     async fn commanders(&self, params: Value) -> Vec<Value> {
-        stats::commanders(self.app.pool(), &support::input(params.clone()))
+        stats::commanders(self.app.pool(), PLAYGROUP, &support::input(params.clone()))
             .await
             .unwrap()
     }
@@ -578,10 +584,15 @@ async fn player_rivalries_count_named_kills_in_each_direction_and_date_range() {
             vec![(1, 0, 1), (2, 1, 0)],
         ),
     ] {
-        let stats = stats::player(app.pool(), players[player].id, &support::input(params))
-            .await
-            .unwrap()
-            .unwrap();
+        let stats = stats::player(
+            app.pool(),
+            PLAYGROUP,
+            players[player].id,
+            &support::input(params),
+        )
+        .await
+        .unwrap()
+        .unwrap();
         for (opponent, kills, killed_by) in expected {
             let row = find(&stats["head_to_head"], "id", json!(players[opponent].id));
             assert_eq!(row["kills"], kills);
@@ -912,7 +923,7 @@ async fn players_below_the_game_floor_are_rated_but_unranked() {
     }
     assert_eq!(stats::MIN_GAMES, 3);
     assert_eq!(f.overview(json!({})).await["elo"][0]["name"], "Dana");
-    let dana_elo = stats::player(f.app.pool(), dana.id, &support::input(json!({})))
+    let dana_elo = stats::player(f.app.pool(), PLAYGROUP, dana.id, &support::input(json!({})))
         .await
         .unwrap()
         .unwrap()["elo"]
@@ -934,6 +945,7 @@ async fn deck_stats_include_record_opponents_averages_and_recent_results() {
     let f = setup().await;
     let stats = stats::deck(
         f.app.pool(),
+        PLAYGROUP,
         f.decks["Alice"].id,
         &support::input(json!({})),
     )
@@ -1007,6 +1019,7 @@ async fn the_detailed_stats_cutoff_keeps_records_but_drops_earlier_seat_timing_a
         .await;
     let deck = stats::deck(
         f.app.pool(),
+        PLAYGROUP,
         f.decks["Alice"].id,
         &support::input(json!({})),
     )
@@ -1025,6 +1038,7 @@ async fn the_detailed_stats_cutoff_keeps_records_but_drops_earlier_seat_timing_a
     );
     let deck = stats::deck(
         f.app.pool(),
+        PLAYGROUP,
         f.decks["Alice"].id,
         &support::input(json!({})),
     )

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT playgroup_id AS \"id!: i64\" FROM playgroup_members WHERE user_id = ? ORDER BY playgroup_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "playgroup_members",
+            "name": "playgroup_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a86a06782fdc0a376524ab46969a91aec7420a792b968e09bc9d9f43d559c1fc"
+}

@@ -9,7 +9,7 @@
 use crate::support;
 
 use serde_json::{Value, json};
-use support::TestApp;
+use support::{PLAYGROUP, TestApp};
 
 async fn admin_app() -> (TestApp, the_gathering::accounts::User) {
     let app = TestApp::new().await;
@@ -46,7 +46,13 @@ async fn admin_can_preview_and_commit_a_csv_import() {
     assert_eq!(result["data"]["created"], 1);
     assert_eq!(result["data"]["skipped"], 0);
     let game_id = result["data"]["game_ids"][0].as_i64().unwrap();
-    let game = app.state.games.get_game(game_id).await.unwrap().unwrap();
+    let game = app
+        .state
+        .games
+        .get_game(PLAYGROUP, game_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(game.created_by_user_id, Some(admin.id));
 }
 
@@ -186,7 +192,13 @@ async fn admin_can_preview_and_commit_a_mythic_track_export() {
     assert_eq!(result["data"]["created"], 1);
     assert_eq!(result["data"]["skipped"], 0);
     let game_id = result["data"]["game_ids"][0].as_i64().unwrap();
-    let game = app.state.games.get_game(game_id).await.unwrap().unwrap();
+    let game = app
+        .state
+        .games
+        .get_game(PLAYGROUP, game_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(game.source.as_str(), "mythic_track");
     assert_eq!(game.created_by_user_id, Some(admin.id));
 }

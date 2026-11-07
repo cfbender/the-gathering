@@ -5,7 +5,7 @@ use sqlx::SqliteConnection;
 
 use crate::db;
 use crate::games::{DeckInput, DeckLinks, GameInput, PlayerInput, SeatInput};
-use crate::games::{deck, load_game, player, record_game};
+use crate::games::{deck, load_game_in, player, record_game};
 use crate::patch::Patch;
 use crate::state::AppState;
 use crate::validation::ValidationError;
@@ -34,12 +34,13 @@ pub struct SheetResult {
 /// it still has the reviewed revision and is valid.
 pub async fn run(
     state: &AppState,
+    playgroup_id: i64,
     params: &SheetRequest,
     revision: Option<&str>,
     user_id: Option<i64>,
 ) -> Result<SheetResult, ImportError> {
     let mut tx = db::begin(&state.pool).await?;
-    let preview = match sheet_preview::run(&mut tx, params).await {
+    let preview = match sheet_preview::run(&mut tx, playgroup_id, params).await {
         Ok(preview) => preview,
         Err(ImportError::Database(error)) => return Err(error.into()),
         Err(_) => return Err(ImportError::Message(STALE.to_owned())),
@@ -49,7 +50,15 @@ pub async fn run(
     }
     let mut result = SheetResult::default();
     for row in &preview.rows {
-        commit_row(&mut tx, state.games.deck_links(), row, &mut result, user_id).await?;
+        commit_row(
+            &mut tx,
+            playgroup_id,
+            state.games.deck_links(),
+            row,
+            &mut result,
+            user_id,
+        )
+        .await?;
     }
     tx.commit().await?;
     Ok(result)
@@ -57,6 +66,7 @@ pub async fn run(
 
 async fn commit_row(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     links: &DeckLinks,
     row: &ResolvedRow,
     result: &mut SheetResult,
@@ -70,7 +80,7 @@ async fn commit_row(
         Choice::Text(_) => {
             let mut seats = Vec::with_capacity(row.seats.len());
             for (seat, index) in row.seats.iter().zip(1_i64..) {
-                seats.push(create_seat(conn, links, seat, index).await?);
+                seats.push(create_seat(conn, playgroup_id, links, seat, index).await?);
             }
             let input = GameInput {
                 played_at: row.date.map(|date| noon(date.0)).into(),
@@ -80,12 +90,12 @@ async fn commit_row(
                 seats: Some(seats).into(),
                 ..GameInput::default()
             };
-            let game = record_game::create(conn, &input, user_id).await?;
+            let game = record_game::create(conn, playgroup_id, &input, user_id).await?;
             result.created += 1;
             game.id
         }
         Choice::Id(id) => {
-            let game = load_game(conn, *id)
+            let game = load_game_in(conn, playgroup_id, *id)
                 .await?
                 .ok_or(ImportError::Message(STALE.to_owned()))?;
             let mut seats = Vec::with_capacity(game.seats.len());
@@ -133,6 +143,7 @@ async fn commit_row(
 
 async fn create_seat(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     links: &DeckLinks,
     seat: &ResolvedSeat,
     index: i64,
@@ -140,9 +151,14 @@ async fn create_seat(
     let player_id = match &seat.player_id {
         Some(SeatPlayer::Id(id)) => *id,
         _ => {
-            player::find_or_create_player_by_name(conn, &seat.player, &PlayerInput::default())
-                .await?
-                .id
+            player::find_or_create_player_by_name(
+                conn,
+                playgroup_id,
+                &seat.player,
+                &PlayerInput::default(),
+            )
+            .await?
+            .id
         }
     };
     Ok(SeatInput {

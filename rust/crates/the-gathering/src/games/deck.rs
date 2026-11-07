@@ -360,21 +360,24 @@ pub async fn update_deck(
         .ok_or(GamesError::NotFound)
 }
 
-/// By case-folded name, with each deck's player.
+/// A playgroup's decks by case-folded name, with each deck's player.
 pub async fn list_decks(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     include_archived: bool,
     player_id: Option<i64>,
 ) -> Result<Vec<(Deck, Player)>, sqlx::Error> {
     let decks = select_decks!(
-        "WHERE (? OR archived_at IS NULL) AND (? IS NULL OR player_id = ?) ORDER BY lower(name)",
+        "WHERE player_id IN (SELECT id FROM players WHERE playgroup_id = ?)
+           AND (? OR archived_at IS NULL) AND (? IS NULL OR player_id = ?) ORDER BY lower(name)",
+        playgroup_id,
         include_archived,
         player_id,
         player_id
     )
     .fetch_all(&mut *conn)
     .await?;
-    let players = super::player::list_players(conn, true).await?;
+    let players = super::player::list_players(conn, playgroup_id, true).await?;
     Ok(decks
         .into_iter()
         .filter_map(|deck| {

@@ -167,7 +167,9 @@ impl DeckLinks {
 pub struct Player {
     /// Primary key.
     pub id: i64,
-    /// Display name, unique case-insensitively.
+    /// The playgroup the player belongs to.
+    pub playgroup_id: i64,
+    /// Display name, unique case-insensitively within the playgroup.
     pub name: String,
     /// Linked account.
     pub user_id: Option<i64>,
@@ -312,6 +314,8 @@ impl Default for Seat {
 pub struct Game {
     /// Primary key.
     pub id: i64,
+    /// The playgroup the game was played in.
+    pub playgroup_id: i64,
     /// When it was played.
     pub played_at: UtcDateTime,
     /// Length in minutes.
@@ -344,6 +348,7 @@ impl Default for Game {
     fn default() -> Self {
         Self {
             id: 0,
+            playgroup_id: 0,
             played_at: UtcDateTime::default(),
             duration_minutes: None,
             turns: None,
@@ -392,7 +397,7 @@ macro_rules! select_players {
     ($tail:literal $(, $arg:expr)* $(,)?) => {
         sqlx::query_as!(
             crate::games::model::Player,
-            r#"SELECT id AS "id!", name, user_id, discord_id, archived_at AS "archived_at: crate::db::UtcDateTime",
+            r#"SELECT id AS "id!", playgroup_id, name, user_id, discord_id, archived_at AS "archived_at: crate::db::UtcDateTime",
                 NULL AS "avatar_url?: String",
                 inserted_at AS "inserted_at: crate::db::UtcDateTime", updated_at AS "updated_at: crate::db::UtcDateTime"
                FROM players "# + $tail
@@ -412,11 +417,37 @@ pub async fn get_player(
         .await
 }
 
+/// A player by id within a playgroup (no avatar); other playgroups' players are `None`.
+pub async fn get_player_in(
+    conn: &mut SqliteConnection,
+    playgroup_id: i64,
+    id: i64,
+) -> Result<Option<Player>, sqlx::Error> {
+    select_players!("WHERE id = ? AND playgroup_id = ?", id, playgroup_id)
+        .fetch_optional(&mut *conn)
+        .await
+}
+
 /// A deck by id.
 pub async fn get_deck(conn: &mut SqliteConnection, id: i64) -> Result<Option<Deck>, sqlx::Error> {
     select_decks!("WHERE id = ?", id)
         .fetch_optional(&mut *conn)
         .await
+}
+
+/// A deck by id whose player is in the playgroup; other playgroups' decks are `None`.
+pub async fn get_deck_in(
+    conn: &mut SqliteConnection,
+    playgroup_id: i64,
+    id: i64,
+) -> Result<Option<Deck>, sqlx::Error> {
+    select_decks!(
+        "WHERE id = ? AND player_id IN (SELECT id FROM players WHERE playgroup_id = ?)",
+        id,
+        playgroup_id
+    )
+    .fetch_optional(&mut *conn)
+    .await
 }
 
 /// Games by id with seats, players, and decks, in the order of `ids`.
@@ -429,7 +460,7 @@ pub async fn load_games(
     }
     let ids_json = serde_json::to_string(ids).unwrap_or_else(|_| "[]".into());
     let rows = sqlx::query!(
-        r#"SELECT id AS "id!", played_at AS "played_at: UtcDateTime", duration_minutes, turns,
+        r#"SELECT id AS "id!", playgroup_id, played_at AS "played_at: UtcDateTime", duration_minutes, turns,
                   win_condition AS "win_condition: super::win_condition::WinCondition", notes,
                   source AS "source: GameSource", format AS "format: GameFormat", external_id, portable_id,
                   created_by_user_id, inserted_at AS "inserted_at: UtcDateTime", updated_at AS "updated_at: UtcDateTime"
@@ -444,6 +475,7 @@ pub async fn load_games(
         .map(|row| {
             let game = Game {
                 id: row.id,
+                playgroup_id: row.playgroup_id,
                 played_at: row.played_at,
                 duration_minutes: row.duration_minutes,
                 turns: row.turns,
@@ -469,6 +501,17 @@ pub async fn load_game(conn: &mut SqliteConnection, id: i64) -> Result<Option<Ga
     Ok(load_games(conn, &[id]).await?.into_iter().next())
 }
 
+/// One game within a playgroup; other playgroups' games are `None`.
+pub async fn load_game_in(
+    conn: &mut SqliteConnection,
+    playgroup_id: i64,
+    id: i64,
+) -> Result<Option<Game>, sqlx::Error> {
+    Ok(load_game(conn, id)
+        .await?
+        .filter(|game| game.playgroup_id == playgroup_id))
+}
+
 async fn load_seats(
     conn: &mut SqliteConnection,
     game_ids_json: &str,
@@ -477,7 +520,8 @@ async fn load_seats(
         r#"SELECT s.id AS "id!", s.game_id, s.player_id, s.deck_id, s.seat, s.result AS "result: GameResult",
                   s.kills, s.eliminated_turn, s.eliminated_by_player_id, s.mvp_card_id, s.mvp_card_name, s.notes,
                   s.inserted_at AS "inserted_at: UtcDateTime", s.updated_at AS "updated_at: UtcDateTime",
-                  p.name AS player_name, p.user_id AS player_user_id, p.discord_id AS player_discord_id,
+                  p.playgroup_id AS player_playgroup_id, p.name AS player_name, p.user_id AS player_user_id,
+                  p.discord_id AS player_discord_id,
                   p.archived_at AS "player_archived_at: UtcDateTime",
                   p.inserted_at AS "player_inserted_at: UtcDateTime", p.updated_at AS "player_updated_at: UtcDateTime",
                   d.id AS "d_id?: i64", d.player_id AS "d_player_id?: i64", d.name AS "d_name?: String",
@@ -540,6 +584,7 @@ async fn load_seats(
             updated_at: row.updated_at,
             player: Player {
                 id: row.player_id,
+                playgroup_id: row.player_playgroup_id,
                 name: row.player_name,
                 user_id: row.player_user_id,
                 discord_id: row.player_discord_id,

@@ -12,9 +12,13 @@ use super::{commanders, elo, outcomes, query, summaries};
 /// Table size that seat win rates are computed over.
 const SEAT_RATE_PLAYERS: usize = 4;
 
-/// The group overview for a date range.
-pub async fn get(conn: &mut SqliteConnection, params: &DateRange) -> Result<Value, sqlx::Error> {
-    let games = query::games(conn, params, None, None).await?;
+/// The playgroup's overview for a date range.
+pub async fn get(
+    conn: &mut SqliteConnection,
+    playgroup_id: i64,
+    params: &DateRange,
+) -> Result<Value, sqlx::Error> {
+    let games = query::games(conn, playgroup_id, params, None, None).await?;
     let seats: Vec<&Seat> = games.iter().flat_map(|game| &game.seats).collect();
     let cutoff = query::detailed_stats_from(conn).await?;
     let detailed = query::detailed(&games, cutoff);
@@ -29,7 +33,14 @@ pub async fn get(conn: &mut SqliteConnection, params: &DateRange) -> Result<Valu
     let ratings = match query::window_start(params) {
         None => elo::ratings(&games, None),
         Some(window) => {
-            let all = query::games(conn, &query::without_date_from(params), None, None).await?;
+            let all = query::games(
+                conn,
+                playgroup_id,
+                &query::without_date_from(params),
+                None,
+                None,
+            )
+            .await?;
             elo::ratings(&all, Some(window))
         }
     };
@@ -40,7 +51,7 @@ pub async fn get(conn: &mut SqliteConnection, params: &DateRange) -> Result<Valu
     .into_iter()
     .map(|(month, rows)| json!({"month": month, "games": rows.len()}))
     .collect();
-    let mut top_commanders = commanders::list(conn, params).await?;
+    let mut top_commanders = commanders::list(conn, playgroup_id, params).await?;
     top_commanders.truncate(8);
     let recent: Vec<&Game> = games.iter().take(6).collect();
     let all_games: Vec<&Game> = games.iter().collect();

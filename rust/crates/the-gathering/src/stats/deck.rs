@@ -4,7 +4,7 @@ use super::query::DateRange;
 use serde_json::{Value, json};
 use sqlx::SqliteConnection;
 
-use crate::games::{Game, GameResult, Seat, get_deck, get_player};
+use crate::games::{Game, GameResult, Seat, get_deck_in, get_player};
 
 use super::records::{self, Record, grouped_records, player_entity};
 use super::{query, summaries};
@@ -20,14 +20,15 @@ fn results(seat: Option<&Seat>) -> Vec<GameResult> {
 /// A deck's statistics for a date range; `None` for an unknown deck.
 pub async fn get(
     conn: &mut SqliteConnection,
+    playgroup_id: i64,
     deck_id: i64,
     params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
-    let Some(deck) = get_deck(conn, deck_id).await? else {
+    let Some(deck) = get_deck_in(conn, playgroup_id, deck_id).await? else {
         return Ok(None);
     };
     let player = get_player(conn, deck.player_id).await?;
-    let games = query::games(conn, params, None, Some(deck.id)).await?;
+    let games = query::games(conn, playgroup_id, params, None, Some(deck.id)).await?;
     let seats: Vec<&Seat> = games
         .iter()
         .filter_map(|game| deck_seat(game, deck.id))

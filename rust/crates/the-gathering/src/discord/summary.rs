@@ -90,9 +90,14 @@ pub async fn prepare(state: &AppState, interaction: &Interaction) -> Result<Game
         .option("game")
         .and_then(OptionValue::text)
         .unwrap_or_default();
+    let playgroup_id = state
+        .playgroups
+        .for_discord_guild(guild)
+        .await
+        .map_err(|error| Rejection::Failed(error.to_string()))?;
     state
         .games
-        .find_summary_game(&reference)
+        .find_summary_game(playgroup_id, &reference)
         .await
         .map_err(|error| match error {
             GamesError::NotFound => Rejection::NotFound,

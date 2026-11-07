@@ -10,7 +10,8 @@ use crate::crypto;
 use crate::db::{self, IsoDate, Pool, UtcDateTime};
 use crate::error::ApiError;
 use crate::patch::Patch;
-use crate::validation::{TAKEN, ValidationError, Validator};
+use crate::playgroups;
+use crate::validation::{DOES_NOT_EXIST, TAKEN, ValidationError, Validator};
 
 pub use self::user::{
     AccountUpdate, AppearanceUpdate, NewAccount, NewApiKey, PasswordUpdate, ProfileUpdate,
@@ -40,6 +41,7 @@ pub struct UserRow {
     manavault_api_key: Option<String>,
     palette: String,
     theme_style: String,
+    playgroup_id: Option<i64>,
     inserted_at: UtcDateTime,
     updated_at: UtcDateTime,
 }
@@ -82,6 +84,7 @@ impl UserRow {
                 .and_then(|stored| decrypt_secret(secret_key, &stored)),
             palette: self.palette,
             theme_style: self.theme_style,
+            playgroup_id: self.playgroup_id,
             inserted_at: self.inserted_at,
             updated_at: self.updated_at,
             authenticated_at: None,
@@ -97,7 +100,13 @@ macro_rules! select_users {
             r#"SELECT id AS "id!", username, display_name, role,
                 disabled_at AS "disabled_at: UtcDateTime", hashed_password, discord_id, avatar_url,
                 moxfield_username, archidekt_username, manavault_url, manavault_api_key,
-                palette, theme_style, inserted_at AS "inserted_at: UtcDateTime",
+                palette, theme_style,
+                COALESCE(
+                  (SELECT m.playgroup_id FROM playgroup_members m
+                   WHERE m.user_id = users.id AND m.playgroup_id = users.playgroup_id),
+                  (SELECT min(m.playgroup_id) FROM playgroup_members m WHERE m.user_id = users.id)
+                ) AS "playgroup_id: i64",
+                inserted_at AS "inserted_at: UtcDateTime",
                 updated_at AS "updated_at: UtcDateTime"
                FROM users "# + $tail
             $(, $arg)*
@@ -143,28 +152,13 @@ impl From<sqlx::Error> for RegisterError {
     }
 }
 
-/// Server settings (`server_settings` row 1). `Debug` redacts the invitation digest.
-#[derive(Clone, PartialEq, Eq)]
+/// Server settings (`server_settings` row 1).
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServerSettings {
-    /// Anyone may sign in with Discord and become a member.
+    /// Anyone may sign in with Discord and become a member of the default playgroup.
     pub registration_enabled: bool,
     /// Games before this date count toward records only.
     pub detailed_stats_from: Option<IsoDate>,
-    /// SHA-256 of the reusable invitation secret.
-    pub registration_invite_hash: Option<Vec<u8>>,
-}
-
-impl std::fmt::Debug for ServerSettings {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ServerSettings")
-            .field("registration_enabled", &self.registration_enabled)
-            .field("detailed_stats_from", &self.detailed_stats_from)
-            .field(
-                "registration_invite_hash",
-                &user::redacted(self.registration_invite_hash.as_ref()),
-            )
-            .finish()
-    }
 }
 
 /// A personal API key (without its secret).
@@ -290,7 +284,7 @@ impl Accounts {
         Ok(user)
     }
 
-    /// Creates an account with a password and the given role.
+    /// Creates an account with a password and the given role, in the default playgroup.
     pub async fn create_user(&self, account: &NewAccount) -> Result<User, RegisterError> {
         let mut tx = db::begin(&self.pool).await?;
         let user = self.insert_account(&mut tx, account, None).await?;
@@ -370,6 +364,8 @@ impl Accounts {
         )
         .fetch_one(&mut **tx)
         .await?;
+        let playgroup_id = playgroups::default_id(tx).await?;
+        playgroups::add_member(tx, playgroup_id, id).await?;
         let row = select_users!("WHERE id = ?", id)
             .fetch_one(&mut **tx)
             .await?;
@@ -386,14 +382,18 @@ impl Accounts {
             return Ok(row.into_user(&self.secret_key));
         }
         let now = UtcDateTime::now();
+        let mut tx = db::begin(&self.pool).await?;
         let id = sqlx::query_scalar!(
             r#"INSERT INTO users (username, display_name, role, inserted_at, updated_at)
                VALUES ('dev', 'Developer', 'admin', ?, ?) RETURNING id AS "id!: i64""#,
             now,
             now
         )
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        let playgroup_id = playgroups::default_id(&mut tx).await?;
+        playgroups::add_member(&mut tx, playgroup_id, id).await?;
+        tx.commit().await?;
         self.get_user(id).await?.ok_or(sqlx::Error::RowNotFound)
     }
 
@@ -471,7 +471,7 @@ impl Accounts {
         .execute(&mut *tx)
         .await?;
         if display_name != user.display_name {
-            rename_linked_player(&mut tx, user.id, &display_name).await?;
+            rename_linked_players(&mut tx, user.id, &display_name).await?;
         }
         tx.commit().await?;
         self.get_user(user.id).await?.ok_or(ApiError::NotFound)
@@ -542,6 +542,25 @@ impl Accounts {
             "UPDATE users SET palette = ?, theme_style = ?, updated_at = ? WHERE id = ?",
             palette,
             theme_style,
+            now,
+            user.id
+        )
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        self.get_user(user.id).await?.ok_or(ApiError::NotFound)
+    }
+
+    /// Switches the member's active playgroup; one they do not belong to "does not exist".
+    pub async fn set_playgroup(&self, user: &User, playgroup_id: i64) -> Result<User, ApiError> {
+        let mut tx = db::begin(&self.pool).await?;
+        if !playgroups::is_member(&mut tx, playgroup_id, user.id).await? {
+            return Err(ValidationError::single("playgroup_id", DOES_NOT_EXIST).into());
+        }
+        let now = UtcDateTime::now();
+        sqlx::query!(
+            "UPDATE users SET playgroup_id = ?, updated_at = ? WHERE id = ?",
+            playgroup_id,
             now,
             user.id
         )
@@ -834,7 +853,7 @@ impl Accounts {
         .await?;
         let display_name = display_name.unwrap_or_default();
         if display_name != user.display_name {
-            rename_linked_player(&mut tx, user.id, &display_name).await?;
+            rename_linked_players(&mut tx, user.id, &display_name).await?;
         }
         if user.disabled_at.is_none() && disabled_at.is_some() {
             sqlx::query!(
@@ -917,6 +936,9 @@ impl Accounts {
         sqlx::query!("DELETE FROM api_keys WHERE user_id = ?", user.id)
             .execute(&mut *tx)
             .await?;
+        sqlx::query!("DELETE FROM playgroup_members WHERE user_id = ?", user.id)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query!("DELETE FROM users WHERE id = ?", user.id)
             .execute(&mut *tx)
             .await?;
@@ -929,8 +951,7 @@ impl Accounts {
         sqlx::query_as!(
             ServerSettings,
             r#"SELECT registration_enabled AS "registration_enabled: bool",
-                      detailed_stats_from AS "detailed_stats_from: IsoDate",
-                      registration_invite_hash
+                      detailed_stats_from AS "detailed_stats_from: IsoDate"
                FROM server_settings WHERE id = 1"#
         )
         .fetch_one(&self.pool)
@@ -967,73 +988,42 @@ impl Accounts {
         tx.commit().await?;
         Ok(self.get_settings().await?)
     }
-
-    /// Generates a new reusable invitation, storing only its digest. Returns the secret.
-    pub async fn rotate_registration_invite(&self) -> Result<String, sqlx::Error> {
-        let token = crypto::url_encode64_unpadded(&crypto::random_bytes::<32>());
-        let hash = crypto::sha256(token.as_bytes());
-        let now = UtcDateTime::now();
-        let mut tx = db::begin(&self.pool).await?;
-        sqlx::query!(
-            "UPDATE server_settings SET registration_invite_hash = ?, updated_at = ? WHERE id = 1",
-            hash,
-            now
-        )
-        .execute(&mut *tx)
-        .await?;
-        tx.commit().await?;
-        Ok(token)
-    }
-
-    /// Whether `hash` is the current invitation's digest.
-    pub async fn valid_registration_invite_hash(
-        &self,
-        hash: Option<&[u8]>,
-    ) -> Result<bool, sqlx::Error> {
-        let Some(hash) = hash.filter(|hash| hash.len() == 32) else {
-            return Ok(false);
-        };
-        Ok(self
-            .get_settings()
-            .await?
-            .registration_invite_hash
-            .is_some_and(|current| crypto::secure_compare(&current, hash)))
-    }
 }
 
 /// Games, stats, and Discord show a player's name, so a new display name reaches the
-/// linked player. A clash with another player's name is a display-name error.
-async fn rename_linked_player(
+/// account's linked player in each of its playgroups. A clash with another player's name
+/// is a display-name error.
+async fn rename_linked_players(
     tx: &mut db::Tx,
     user_id: i64,
     display_name: &str,
 ) -> Result<(), ApiError> {
     let name = display_name.trim();
-    let player = sqlx::query_scalar!(
-        r#"SELECT id AS "id!: i64" FROM players WHERE user_id = ?"#,
+    let players = sqlx::query_scalar!(
+        r#"SELECT id AS "id!: i64" FROM players WHERE user_id = ? ORDER BY id"#,
         user_id
     )
-    .fetch_optional(&mut **tx)
+    .fetch_all(&mut **tx)
     .await?;
-    let Some(player_id) = player else {
-        return Ok(());
-    };
     let now = UtcDateTime::now();
-    match sqlx::query!(
-        "UPDATE players SET name = ?, updated_at = ? WHERE id = ?",
-        name,
-        now,
-        player_id
-    )
-    .execute(&mut **tx)
-    .await
-    {
-        Ok(_) => Ok(()),
-        Err(error) if db::is_unique_violation(&error, &[]) => {
-            Err(ValidationError::single("display_name", "is already used by another player").into())
-        }
-        Err(error) => Err(error.into()),
+    for player_id in players {
+        sqlx::query!(
+            "UPDATE players SET name = ?, updated_at = ? WHERE id = ?",
+            name,
+            now,
+            player_id
+        )
+        .execute(&mut **tx)
+        .await
+        .map_err(|error| {
+            if db::is_unique_violation(&error, &[]) {
+                ValidationError::single("display_name", "is already used by another player").into()
+            } else {
+                ApiError::from(error)
+            }
+        })?;
     }
+    Ok(())
 }
 
 /// Whether the session authenticated within the last `minutes`.
