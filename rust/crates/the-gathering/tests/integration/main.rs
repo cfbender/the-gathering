@@ -36,6 +36,7 @@ mod discord_tracker;
 mod discord_won;
 mod games;
 mod games_api;
+mod games_move_api;
 mod imports;
 mod imports_api;
 mod players_api;

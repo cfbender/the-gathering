@@ -232,6 +232,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/imports/sheet", post(imports::sheet_create))
         .route("/api/imports/portable", post(imports::portable_create))
         .route("/api/players/{id}/merge", post(games::players_merge))
+        .route("/api/admin/games/{id}/move", post(games::games_move))
         .route("/api/admin/users", get(accounts::admin_users_index))
         .route(
             "/api/admin/users/{id}",

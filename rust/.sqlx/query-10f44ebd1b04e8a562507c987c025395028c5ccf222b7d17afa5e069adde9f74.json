@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE game_players SET eliminated_by_player_id = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "10f44ebd1b04e8a562507c987c025395028c5ccf222b7d17afa5e069adde9f74"
+}

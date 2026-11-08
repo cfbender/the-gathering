@@ -259,6 +259,13 @@ delete. Administrators see every playgroup on that page but still only view the 
 they belong to. Deleting removes the playgroup's players and memberships, so it is only
 allowed once it has no games and no decks, and the last playgroup can't be deleted.
 
+A game recorded in the wrong playgroup can be moved from its page (administrators, sudo
+required) into another playgroup the administrator belongs to. Each seat is re-pointed to
+that playgroup's player with the same account, Discord identity, or name (created when
+missing) and to their deck of the same name (copied when missing); the original players
+and decks stay where they are. The move is refused when a seat's name matches a player
+there who is linked to a different account or Discord identity.
+
 A playgroup can claim a Discord server ID so the bot records that server's games there;
 servers no other playgroup claims record into the oldest playgroup. To serve several
 Discord servers from one bot, leave `DISCORD_GUILD_ID` unset (commands register globally)

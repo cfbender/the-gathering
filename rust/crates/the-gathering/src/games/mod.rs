@@ -16,6 +16,7 @@ pub mod link_catalog_cards;
 pub mod list_games;
 pub mod merge_players;
 pub mod model;
+pub mod move_game;
 pub mod player;
 pub mod record_game;
 pub mod resolve_player;
@@ -684,6 +685,13 @@ impl Games {
     /// Deletes a game (seats cascade).
     pub async fn delete_game(&self, game: &Game) -> Result<(), sqlx::Error> {
         write_tx!(self, |conn| record_game::delete(conn, game.id).await)
+    }
+
+    /// Moves a game into another playgroup, finding or creating its seats' players and
+    /// decks there.
+    pub async fn move_game(&self, game: &Game, playgroup_id: i64) -> Result<Game, GamesError> {
+        write_tx!(self, |conn| move_game::move_game(conn, game, playgroup_id)
+            .await)
     }
 
     /// Links a game's unlinked decks and its seats' MVP cards to catalog cards.

@@ -17,7 +17,8 @@ fn merge_error(message: impl Into<String>) -> GamesError {
     GamesError::Invalid(ValidationError::single("merge", message))
 }
 
-fn conflicting<T: PartialEq>(a: Option<&T>, b: Option<&T>) -> bool {
+/// Whether two identities are both set and differ.
+pub(super) fn conflicting<T: PartialEq>(a: Option<&T>, b: Option<&T>) -> bool {
     matches!((a, b), (Some(a), Some(b)) if a != b)
 }
 

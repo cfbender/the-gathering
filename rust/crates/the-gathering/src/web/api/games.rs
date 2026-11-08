@@ -628,6 +628,29 @@ pub async fn games_update(
     Ok(Json(render_game(&state, &game).await?))
 }
 
+/// The playgroup a game moves to.
+#[derive(Debug, Deserialize)]
+pub struct MoveTarget {
+    playgroup_id: i64,
+}
+
+/// `POST /api/admin/games/:id/move`: moves the viewed playgroup's game into `playgroup_id`,
+/// finding or creating its seats' players and decks there.
+pub async fn games_move(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    PathParam(id): PathParam<i64>,
+    JsonBody(MoveTarget { playgroup_id }): JsonBody<MoveTarget>,
+) -> ApiResult<Json<Value>> {
+    let game = state
+        .games
+        .get_game(user.playgroup()?, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let moved = state.games.move_game(&game, playgroup_id).await?;
+    Ok(Json(render_game(&state, &moved).await?))
+}
+
 /// `DELETE /api/games/:id`.
 pub async fn games_delete(
     State(state): State<AppState>,

@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(SELECT 1 FROM playgroups WHERE id = ?) AS \"exists!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "exists!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "80bea9d08ef6d4cdf82348b30ab6e1a4c6a628a6cb79ea80cdedce143dc7258b"
+}

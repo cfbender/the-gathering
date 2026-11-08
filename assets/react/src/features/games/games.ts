@@ -129,6 +129,13 @@ export const linkUserPlayer = (userId: number, playerId: number) =>
 export const getGame = (id: string) =>
   api<{ data: Game }>(`/api/games/${id}`).then((body) => body.data)
 export const deleteGame = (id: number) => api<void>(`/api/games/${id}`, { method: "DELETE" })
+/** Admin only: moves the game into another playgroup, matching or creating its players and
+ * decks there. */
+export const moveGame = (id: number, playgroupId: number) =>
+  api<{ data: Game }>(`/api/admin/games/${id}/move`, {
+    method: "POST",
+    body: JSON.stringify({ playgroup_id: playgroupId }),
+  }).then((body) => body.data)
 
 /** Invalidates every cache derived from game, player, or deck records. */
 export const invalidateGameRelated = (queryClient: QueryClient) =>

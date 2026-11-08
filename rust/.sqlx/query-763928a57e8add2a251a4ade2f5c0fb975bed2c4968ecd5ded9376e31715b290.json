@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE games SET playgroup_id = ?, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "763928a57e8add2a251a4ade2f5c0fb975bed2c4968ecd5ded9376e31715b290"
+}

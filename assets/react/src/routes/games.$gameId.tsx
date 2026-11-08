@@ -5,6 +5,7 @@ import { ColorIdentity } from "@/components/mana-symbols"
 import { Clock, Pencil, Trophy } from "lucide-react"
 import { canManageGame, formatDate, getGame, winConditionLabel } from "@/features/games/games"
 import { DeleteGame } from "@/features/games/delete-game"
+import { MoveGame } from "@/features/games/move-game"
 import { CardArtBackground } from "@/components/card-art-background"
 import { CardHover } from "@/components/card-hover"
 import { GameChangerBadge } from "@/components/game-changer-badge"
@@ -169,6 +170,7 @@ function GameDetailPage() {
           </div>
         </section>
       )}
+      <MoveGame game={game} />
     </div>
   )
 }
