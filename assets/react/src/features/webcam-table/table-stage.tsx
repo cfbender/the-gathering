@@ -16,7 +16,7 @@ import { SeatActions, SeatLife, SeatTile, SeatTrackers, TeamHeader } from "./tab
 import { SeatBoard } from "./virtual-board-view"
 import {
   boardFor,
-  isCurrentTurn,
+  currentTurnClock,
   videoFlip,
   isLocal,
   isPinned,
@@ -65,7 +65,7 @@ function StageBoard({
           {...revealLabels(view, participant)}
           local={isLocal(view, participant)}
           flip={videoFlip(view, participant)}
-          currentTurn={isCurrentTurn(view, participant)}
+          currentTurn={currentTurnClock(view, participant)}
           connectionState={room.connectionStates[participant.peer_id]}
           stream={streamFor(view, participant)}
           board={board && <SeatBoard board={board} onPreview={flow.previewCard} />}

@@ -1,5 +1,6 @@
 import type { TableParticipant } from "./use-webcam-room"
 import type { TableMode } from "@/features/games/game-format"
+import type { TimerSample } from "./game-timer"
 import { teams, turnId } from "./game-modes"
 
 export interface TurnState {
@@ -10,6 +11,12 @@ export interface TurnState {
   revision: number
   /** Recent passes, newest first; the server uses them to undo a pass. */
   history: { player_id: number; started_elapsed_ms: number; next_player_id: number | null }[]
+}
+
+/** What a current-turn badge needs to count up the time spent in just this turn. */
+export interface TurnClock {
+  timer: TimerSample | null
+  turns: TurnState
 }
 
 export const EMPTY_TURNS: TurnState = {
@@ -62,11 +69,16 @@ export function turnDisplay(
 ) {
   playerId = turnId(seats, playerId, mode) ?? playerId
   const running =
-    turns.active_player_id === playerId ? Math.max(0, gameElapsed - turns.started_elapsed_ms) : 0
+    turns.active_player_id === playerId ? currentTurnMilliseconds(turns, gameElapsed) : 0
   return {
     count: turns.counts[playerId] ?? 0,
     milliseconds: (turns.elapsed_ms[playerId] ?? 0) + running,
   }
+}
+
+/** Time spent in the turn now being played, excluding the player's earlier turns. */
+export function currentTurnMilliseconds(turns: TurnState, gameElapsed: number): number {
+  return Math.max(0, gameElapsed - turns.started_elapsed_ms)
 }
 
 export function formatTurnTime(milliseconds: number): string {

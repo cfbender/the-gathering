@@ -88,6 +88,41 @@ it("keeps life interactions separate from selecting the camera board", () => {
   expect(onActivate).toHaveBeenCalledOnce()
 })
 
+it("times only the current turn on the active seat's camera and keeps counting", () => {
+  vi.useFakeTimers()
+  const now = performance.now()
+  render(
+    <CameraTile
+      participant={seat}
+      local
+      active={false}
+      onActivate={() => {}}
+      lifeControl={null}
+      currentTurn={{
+        // 70s into the game; Alice banked 40s in earlier turns and this turn began at 62s.
+        timer: {
+          state: { started_at: 1_000, paused_at: null, paused_ms: 0, server_now: 71_000 },
+          receivedAt: now,
+        },
+        turns: {
+          active_player_id: 1,
+          counts: { 1: 3 },
+          elapsed_ms: { 1: 40_000 },
+          started_elapsed_ms: 62_000,
+          revision: 5,
+          history: [],
+        },
+      }}
+    />,
+  )
+  expect(screen.getByRole("timer").textContent).toBe("● Turn · 0:08")
+  act(() => {
+    vi.advanceTimersByTime(60_000)
+  })
+  expect(screen.getByRole("timer", { name: "Current turn, 1:08 this turn" })).toBeTruthy()
+  vi.useRealTimers()
+})
+
 it("keeps your life buttons and counters out on touch screens", () => {
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse)" }))
   render(

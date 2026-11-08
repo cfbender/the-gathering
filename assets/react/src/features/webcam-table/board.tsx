@@ -3,6 +3,8 @@ import { useCallback, type MouseEvent, type ReactNode } from "react"
 import { cn } from "@/lib/cn"
 import type { OutlineDraft } from "./outline-drawing"
 import { useWatchTile } from "./stream-tiles"
+import { currentTurnMilliseconds, formatTurnTime, type TurnClock } from "./turns"
+import { useTimerElapsed } from "./use-timer-elapsed"
 import { describeConnection, type TableParticipant } from "./use-webcam-room"
 
 export function StreamVideo({ stream, className }: { stream: MediaStream; className?: string }) {
@@ -66,16 +68,25 @@ function EliminatedOverlay({ compact = false }: { compact?: boolean }) {
   )
 }
 
-function CurrentTurnBadge({ compact = false }: { compact?: boolean }) {
+/** Marks the seat whose turn it is with how long just this turn has run. It ticks on its own so
+ * the video tile around it does not re-render every second. */
+function CurrentTurnBadge({ clock, compact = false }: { clock: TurnClock; compact?: boolean }) {
+  const elapsed = useTimerElapsed(clock.timer)
+  const time =
+    clock.timer?.state.started_at != null
+      ? formatTurnTime(currentTurnMilliseconds(clock.turns, elapsed))
+      : null
   return (
     <span
+      role="timer"
       className={cn(
-        "pointer-events-none absolute rounded border border-amber-300/50 bg-zinc-950/90 px-2 py-0.5 text-[0.65rem] font-bold text-amber-200",
+        "pointer-events-none absolute rounded border border-amber-300/50 bg-zinc-950/90 px-2 py-0.5 text-[0.65rem] font-bold text-amber-200 tabular-nums",
         compact ? "right-1 bottom-1" : "bottom-2 left-2",
       )}
-      aria-label="Current turn"
+      aria-label={time ? `Current turn, ${time} this turn` : "Current turn"}
     >
       {compact ? "● Turn" : "● Current turn"}
+      {time && ` · ${time}`}
     </span>
   )
 }
@@ -161,7 +172,7 @@ export function ActiveBoard({
   stream,
   local,
   flip = NO_FLIP,
-  currentTurn = false,
+  currentTurn,
   connectionState,
   hiddenLabel,
   revealBadge,
@@ -178,7 +189,8 @@ export function ActiveBoard({
   stream?: MediaStream
   local: boolean
   flip?: VideoFlip
-  currentTurn?: boolean
+  /** Set only on the seat whose turn it is. */
+  currentTurn?: TurnClock
   connectionState?: RTCPeerConnectionState
   hiddenLabel?: string
   revealBadge?: string
@@ -239,7 +251,7 @@ export function ActiveBoard({
           Can't attack yet
         </span>
       )}
-      {currentTurn && !participant.eliminated && <CurrentTurnBadge />}
+      {currentTurn && !participant.eliminated && <CurrentTurnBadge clock={currentTurn} />}
       {lifeControl}
       {monarch && (
         <span
@@ -279,7 +291,7 @@ export function CameraTile({
   hiddenLabel,
   revealBadge,
   active,
-  currentTurn = false,
+  currentTurn,
   fill = false,
   onActivate,
   lifeControl,
@@ -298,7 +310,8 @@ export function CameraTile({
   /** A virtual board the seat plays on instead of its camera; replaces the video. */
   board?: ReactNode
   active: boolean
-  currentTurn?: boolean
+  /** Set only on the seat whose turn it is. */
+  currentTurn?: TurnClock
   /** Grid cells fill their container and letterbox the video so the whole board stays visible. */
   fill?: boolean
   onActivate: () => void
@@ -356,7 +369,7 @@ export function CameraTile({
           Can't attack yet
         </span>
       )}
-      {currentTurn && !participant.eliminated && <CurrentTurnBadge compact />}
+      {currentTurn && !participant.eliminated && <CurrentTurnBadge clock={currentTurn} compact />}
       {lifeControl}
       <div className="pointer-events-none absolute top-1.5 right-1.5 flex max-w-[calc(100%-4.5rem)] flex-col items-end gap-1">
         {monarch && (

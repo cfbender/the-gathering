@@ -8,7 +8,7 @@ import { SeatBoard } from "./virtual-board-view"
 import {
   boardFor,
   decksFor,
-  isCurrentTurn,
+  currentTurnClock,
   videoFlip,
   isLocal,
   revealLabels,
@@ -157,7 +157,7 @@ export function SeatTile({
           local={isLocal(view, participant)}
           flip={videoFlip(view, participant)}
           active={!view.showGrid && participant.peer_id === view.activeParticipant.peer_id}
-          currentTurn={isCurrentTurn(view, participant)}
+          currentTurn={currentTurnClock(view, participant)}
           connectionState={room.connectionStates[participant.peer_id]}
           stream={streamFor(view, participant)}
           board={board && <SeatBoard board={board} />}

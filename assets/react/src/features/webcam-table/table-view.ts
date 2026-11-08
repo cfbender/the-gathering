@@ -4,6 +4,7 @@ import { teams, turnId, unattackableSeats } from "./game-modes"
 import { canViewBoard } from "./media-policy"
 import type { TableParticipant } from "./room-types"
 import type { useTablePreferences } from "./table-preferences"
+import type { TurnClock } from "./turns"
 import { useActiveBoard } from "./use-active-board"
 import { useVirtualBoard, type VirtualBoard } from "./use-virtual-board"
 import type { useWebcamRoom } from "./use-webcam-room"
@@ -142,6 +143,16 @@ export function isCurrentTurn(view: TableView, participant: TableParticipant) {
   return (
     turnId(view.seated, participant.player_id, view.room.mode) === view.room.turns.active_player_id
   )
+}
+
+/** The clock for a seat's current-turn badge, or undefined when it is not that seat's turn. */
+export function currentTurnClock(
+  view: TableView,
+  participant: TableParticipant,
+): TurnClock | undefined {
+  return isCurrentTurn(view, participant)
+    ? { timer: view.room.timer, turns: view.room.turns }
+    : undefined
 }
 
 /** A seat's life as the table counts it: Two-Headed Giant teams share one total. */
