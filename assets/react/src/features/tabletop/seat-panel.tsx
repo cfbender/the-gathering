@@ -1,5 +1,5 @@
 import { Droplet, Flag, Minus, Plus, Skull, Swords, X } from "lucide-react"
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
+import { useEffect, useRef, useState, type PointerEvent } from "react"
 import { CommanderArt } from "@/components/commander-art"
 import { cn } from "@/lib/cn"
 import { seatTint } from "./board-grid"
@@ -89,7 +89,6 @@ function useRecentDelta(value: number) {
 export interface SeatActions {
   onLife: (delta: number) => void
   onPoison: (delta: number) => void
-  onCommanderDamage: (key: string, delta: number) => void
   onConcede: (conceded: boolean) => void
   onPassTurn: () => void
 }
@@ -101,20 +100,21 @@ export function SeatPanel({
   index,
   highlighted,
   actions,
-  onSheetChange,
+  countersOpen,
+  onCountersOpen,
 }: {
   game: TabletopGame
   index: number
   /** Lit while the first player is being drawn. */
   highlighted: boolean
   actions: SeatActions
-  /** Whether this seat's counters cover the panel, so the board can clear the middle. */
-  onSheetChange: (open: boolean) => void
+  /** Whether this seat's counters cover the panel; the board turns opponents into commander
+   * damage targets meanwhile. */
+  countersOpen: boolean
+  onCountersOpen: (open: boolean) => void
 }) {
   const seat = game.seats[index]!
   const name = seatName(seat, index)
-  const [trackersOpen, setTrackersOpen] = useState(false)
-  useEffect(() => onSheetChange(trackersOpen), [trackersOpen, onSheetChange])
   const delta = useRecentDelta(seat.life)
   const out = eliminationReason(seat, game.format)
   const active = game.activeSeat === index
@@ -204,7 +204,7 @@ export function SeatPanel({
           <button
             type="button"
             className="btn btn-sm pointer-events-auto shrink-0 gap-1.5 rounded-full border-white/15 bg-black/45 px-3 text-white hover:bg-black/65"
-            onClick={() => setTrackersOpen(true)}
+            onClick={() => onCountersOpen(true)}
             aria-label={`Counters: ${name}`}
           >
             {seat.poison > 0 && (
@@ -233,12 +233,12 @@ export function SeatPanel({
         </div>
       )}
 
-      {trackersOpen && (
+      {countersOpen && (
         <TrackersSheet
           game={game}
           index={index}
           actions={actions}
-          onClose={() => setTrackersOpen(false)}
+          onClose={() => onCountersOpen(false)}
         />
       )}
     </div>
@@ -250,22 +250,17 @@ function Stepper({
   value,
   danger,
   onChange,
-  children,
 }: {
   label: string
   value: number
   danger: boolean
   onChange: (delta: number) => void
-  children?: ReactNode
 }) {
   const minus = useHoldStep(onChange, -1)
   const plus = useHoldStep(onChange, 1)
   return (
     <li className="bg-base-200 rounded-field flex items-center gap-2 py-1 pr-1 pl-3">
-      <span className="min-w-0 flex-1 text-sm">
-        <span className="block truncate font-bold">{label}</span>
-        {children}
-      </span>
+      <span className="min-w-0 flex-1 truncate text-sm font-bold">{label}</span>
       <button
         type="button"
         className="btn btn-sm btn-square btn-ghost"
@@ -291,8 +286,8 @@ function Stepper({
   )
 }
 
-/** Poison, commander damage from each opposing commander, and conceding, inside the seat so it
- * faces its player. */
+/** Poison and conceding, inside the seat so it faces its player. While it is open, commander
+ * damage this seat takes is counted on the opponents' panels instead. */
 function TrackersSheet({
   game,
   index,
@@ -305,23 +300,13 @@ function TrackersSheet({
   onClose: () => void
 }) {
   const seat = game.seats[index]!
-  const lethal = lethalCommanderDamage(game.format)
-  const sources = hasCommanders(game.format)
-    ? game.seats.flatMap((source, at) => {
-        if (at === index) return []
-        const name = seatName(source, at)
-        const commander = { key: commanderKey(at), label: name, card: source.deck?.commanderName }
-        return source.deck?.partnerName
-          ? [commander, { key: commanderKey(at, true), label: name, card: source.deck.partnerName }]
-          : [commander]
-      })
-    : []
+  const commanders = hasCommanders(game.format)
 
   return (
     <div className="bg-base-100/95 text-base-content absolute inset-0 z-10 flex flex-col backdrop-blur">
       <div className="border-base-300 flex items-center gap-2 border-b px-3 py-1.5">
         <h3 className="min-w-0 flex-1 truncate text-sm font-black">
-          {seatName(seat, index)} · Counters
+          {seatName(seat, index)} · {seat.life} life
         </h3>
         <button
           type="button"
@@ -333,6 +318,12 @@ function TrackersSheet({
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+        {commanders && (
+          <p className="bg-warning/15 rounded-field mb-1.5 flex items-center gap-2 px-3 py-1.5 text-xs">
+            <Swords className="text-warning size-4 shrink-0" />
+            Tap an opponent's commander to add the damage it dealt you.
+          </p>
+        )}
         <ul className="grid gap-1.5">
           <Stepper
             label="Poison"
@@ -340,39 +331,124 @@ function TrackersSheet({
             danger={seat.poison >= 10}
             onChange={actions.onPoison}
           />
-          {sources.length > 0 && (
-            <li className="text-base-content/60 px-1 pt-2 text-xs font-bold">
-              Commander damage taken · also changes life · {lethal} is lethal
-            </li>
-          )}
-          {sources.map((source) => (
-            <Stepper
-              key={source.key}
-              label={source.label}
-              value={seat.commanderDamage[source.key] ?? 0}
-              danger={(seat.commanderDamage[source.key] ?? 0) >= lethal}
-              onChange={(delta) => actions.onCommanderDamage(source.key, delta)}
-            >
-              {source.card && (
-                <span className="text-base-content/60 block truncate text-xs">{source.card}</span>
-              )}
-            </Stepper>
-          ))}
         </ul>
-        <button
-          type="button"
-          className={cn(
-            "btn btn-sm mt-3 w-full",
-            seat.conceded ? "btn-outline" : "btn-ghost text-error",
-          )}
-          onClick={() => {
-            actions.onConcede(!seat.conceded)
-            onClose()
-          }}
-        >
-          <Flag className="size-4" /> {seat.conceded ? "Back in the game" : "Concede"}
-        </button>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            className={cn("btn btn-sm", seat.conceded ? "btn-outline" : "btn-ghost text-error")}
+            onClick={() => {
+              actions.onConcede(!seat.conceded)
+              onClose()
+            }}
+          >
+            <Flag className="size-4" /> {seat.conceded ? "Back in" : "Concede"}
+          </button>
+          <button type="button" className="btn btn-sm btn-primary" onClick={onClose}>
+            Done
+          </button>
+        </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * An opponent's panel while another seat's counters are open: one tap target per commander at
+ * this seat, each counting the damage it has dealt to that seat. A tap adds one; the corner
+ * button takes one back.
+ */
+export function CommanderDamagePanel({
+  game,
+  index,
+  target,
+  onChange,
+}: {
+  game: TabletopGame
+  index: number
+  /** The seat taking the damage. */
+  target: number
+  onChange: (key: string, delta: number) => void
+}) {
+  const seat = game.seats[index]!
+  const targetSeat = game.seats[target]!
+  const targetName = seatName(targetSeat, target)
+  const lethal = lethalCommanderDamage(game.format)
+  const commanders = [
+    { key: commanderKey(index), card: seat.deck?.commanderName, art: seat.deck?.artUrl },
+    ...(seat.deck?.partnerName
+      ? [
+          {
+            key: commanderKey(index, true),
+            card: seat.deck.partnerName,
+            art: seat.deck.partnerArtUrl,
+          },
+        ]
+      : []),
+  ]
+
+  return (
+    <div
+      className="rounded-box ring-warning relative grid size-full overflow-hidden text-white ring-4 ring-inset"
+      style={{
+        background: `color-mix(in oklch, ${seatTint(index)} 30%, black)`,
+        gridTemplateColumns: `repeat(${commanders.length}, minmax(0, 1fr))`,
+      }}
+    >
+      {commanders.map((commander, at) => {
+        const damage = targetSeat.commanderDamage[commander.key] ?? 0
+        const label = commander.card ?? seatName(seat, index)
+        return (
+          <div
+            key={commander.key}
+            className={cn("relative min-w-0", at > 0 && "border-l-2 border-black/60")}
+          >
+            <CommanderArt imageUrl={commander.art} imageClassName="opacity-35" />
+            <button
+              type="button"
+              className="absolute inset-0 flex flex-col items-center justify-center gap-[2cqh] px-2 outline-none focus-visible:bg-white/10 active:bg-white/15"
+              aria-label={`Commander damage from ${label} to ${targetName}: ${damage}. Add one`}
+              onClick={() => onChange(commander.key, 1)}
+            >
+              <Swords
+                className={cn(
+                  "size-[max(1rem,10cqh)]",
+                  damage >= lethal ? "text-error" : "text-warning",
+                )}
+              />
+              <span
+                className={cn(
+                  "leading-none font-black tabular-nums drop-shadow-[0_2px_8px_rgb(0_0_0/0.6)]",
+                  damage >= lethal && "text-error",
+                )}
+                style={{ fontSize: `min(36cqh, ${commanders.length > 1 ? 18 : 26}cqw)` }}
+              >
+                {damage}
+              </span>
+              <span
+                className="max-w-full truncate font-bold drop-shadow-[0_1px_4px_rgb(0_0_0/0.8)]"
+                style={{ fontSize: "max(0.75rem, min(6cqh, 4.5cqw))" }}
+              >
+                {label}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="btn btn-circle btn-sm absolute bottom-[3cqh] left-[3cqh] border-white/15 bg-black/55 text-white hover:bg-black/75"
+              aria-label={`Less commander damage from ${label} to ${targetName}`}
+              disabled={damage === 0}
+              onClick={() => onChange(commander.key, -1)}
+            >
+              <Minus className="size-4" />
+            </button>
+          </div>
+        )
+      })}
+      <p
+        className="bg-warning text-warning-content pointer-events-none absolute top-[3cqh] left-1/2 max-w-[90%] -translate-x-1/2 truncate rounded-full px-3 py-0.5 font-bold shadow-lg"
+        style={{ fontSize: "max(0.75rem, min(5cqh, 4cqw))" }}
+      >
+        Damage to {targetName}
+      </p>
     </div>
   )
 }

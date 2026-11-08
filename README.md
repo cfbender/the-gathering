@@ -113,9 +113,12 @@ for time syntax, permissions, and restart/delivery behavior.
 everyone plays in person. Pick a format, two to six players, how they sit around the device,
 and starting life; then each player taps their seat to sit down as a playgroup member (with one
 of their decks) or as a guest. Tap the left half of a seat to lose life and the right half to
-gain it; hold to change it by ten. Each seat's counters button tracks poison and commander
-damage from every opposing commander (which also comes off life). The hub in the middle rolls
-for the first player, tracks turns and the game clock, and ends the game.
+gain it; hold to change it by ten. Each seat's counters button tracks poison and conceding, and
+while it is open every opponent's seat turns into a commander damage counter: tap an opposing
+commander to add the damage it dealt (which also comes off life). Two players can also share
+one edge of the device (**Same side**), so a sideways phone reads like an ordinary landscape
+life counter. The hub in the middle rolls for the first player, tracks turns and the game clock,
+and ends the game.
 
 A game is recorded in game history only when every seat is a member and the format is one
 history records; a game with any guest (or empty seat), or in Standard, Pauper, or Canadian

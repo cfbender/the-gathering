@@ -18,7 +18,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { cn } from "@/lib/cn"
 import { SeatCell, gridStyle } from "./board-grid"
 import { FinishTabletop } from "./finish-tabletop"
-import { SeatPanel, type SeatActions } from "./seat-panel"
+import { CommanderDamagePanel, SeatPanel, type SeatActions } from "./seat-panel"
 import { SeatPicker } from "./seat-picker"
 import {
   changeCommanderDamage,
@@ -26,6 +26,7 @@ import {
   changePoison,
   chooseFirstSeat,
   findLayout,
+  hasCommanders,
   landscape,
   lastStanding,
   passTurn,
@@ -116,7 +117,9 @@ export function TabletopBoard({ game }: { game: TabletopGame }) {
   const [rolling, setRolling] = useState<number | null>(null)
   // The last-standing prompt can be waved off; it comes back if someone else wins instead.
   const [dismissedWinner, setDismissedWinner] = useState<number | null>(null)
-  // Seats whose chooser or counters are open; the hub steps aside so it never covers them.
+  // The seat whose counters are open; the other seats count the commander damage it takes.
+  const [countersSeat, setCountersSeat] = useState<number | null>(null)
+  // Seats whose chooser is open; the hub steps aside so it never covers them or the counters.
   const [openSheets, setOpenSheets] = useState<number[]>([])
   const sheetChange = useCallback(
     (index: number, open: boolean) =>
@@ -144,6 +147,7 @@ export function TabletopBoard({ game }: { game: TabletopGame }) {
     setDismissedWinner(null)
     setFinishing(false)
     setMenuOpen(false)
+    setCountersSeat(null)
   }
 
   const roll = () => {
@@ -168,8 +172,6 @@ export function TabletopBoard({ game }: { game: TabletopGame }) {
   const actionsFor = (index: number): SeatActions => ({
     onLife: (delta) => setGame((current) => changeLife(current, index, delta)),
     onPoison: (delta) => setGame((current) => changePoison(current, index, delta)),
-    onCommanderDamage: (key, delta) =>
-      setGame((current) => changeCommanderDamage(current, index, key, delta)),
     onConcede: (conceded) => setGame((current) => setConceded(current, index, conceded)),
     onPassTurn: () => setGame((current) => passTurn(current)),
   })
@@ -212,13 +214,23 @@ export function TabletopBoard({ game }: { game: TabletopGame }) {
                 }
                 onSheetChange={sheetHandlers[index]!}
               />
+            ) : countersSeat !== null && countersSeat !== index && hasCommanders(game.format) ? (
+              <CommanderDamagePanel
+                game={game}
+                index={index}
+                target={countersSeat}
+                onChange={(key, delta) =>
+                  setGame((current) => changeCommanderDamage(current, countersSeat, key, delta))
+                }
+              />
             ) : (
               <SeatPanel
                 game={game}
                 index={index}
                 highlighted={rolling === index}
                 actions={actionsFor(index)}
-                onSheetChange={sheetHandlers[index]!}
+                countersOpen={countersSeat === index}
+                onCountersOpen={(open) => setCountersSeat(open ? index : null)}
               />
             )}
           </SeatCell>
@@ -228,7 +240,7 @@ export function TabletopBoard({ game }: { game: TabletopGame }) {
       <div
         className={cn(
           "pointer-events-none absolute inset-0 z-20 grid place-items-center transition-opacity",
-          openSheets.length > 0 && "invisible opacity-0",
+          (openSheets.length > 0 || countersSeat !== null) && "invisible opacity-0",
         )}
       >
         <div className="pointer-events-auto flex flex-col items-center gap-2">

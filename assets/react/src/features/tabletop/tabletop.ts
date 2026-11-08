@@ -62,6 +62,8 @@ export interface Layout {
   cols: number
   /** Seats clockwise around the table, as seen from above with the device upright. */
   seats: SeatArea[]
+  /** Seats for a landscape screen, when turning the portrait seats a quarter would not do. */
+  landscape?: Pick<Layout, "rows" | "cols" | "seats">
 }
 
 const bottom = (row: number, colSpan = 2): SeatArea => ({ row, col: 1, colSpan, rotation: 0 })
@@ -73,6 +75,23 @@ export const LAYOUTS: Record<number, Layout[]> = {
   2: [
     { id: "face-off", label: "Face to face", rows: 2, cols: 1, seats: [bottom(2, 1), top(1)] },
     { id: "side-by-side", label: "Side by side", rows: 1, cols: 2, seats: [left(1), right(1)] },
+    {
+      // Both players read the device from its left edge; a landscape screen is already upright
+      // for them, so its seats stand side by side without turning.
+      id: "same-side",
+      label: "Same side",
+      rows: 2,
+      cols: 1,
+      seats: [left(1), left(2)],
+      landscape: {
+        rows: 1,
+        cols: 2,
+        seats: [
+          { row: 1, col: 1, rotation: 0 },
+          { row: 1, col: 2, rotation: 0 },
+        ],
+      },
+    },
   ],
   3: [
     { id: "head", label: "One at the head", rows: 2, cols: 2, seats: [left(2), top(), right(2)] },
@@ -146,6 +165,7 @@ export function findLayout(count: number, id: string): Layout {
 /** The layout for a landscape screen: the portrait layout turned a quarter clockwise, so the
  * same seats keep facing the same table edges once the device lies sideways. */
 export function landscape(layout: Layout): Layout {
+  if (layout.landscape) return { ...layout, ...layout.landscape }
   return {
     ...layout,
     rows: layout.cols,

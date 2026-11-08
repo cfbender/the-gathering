@@ -75,6 +75,17 @@ describe("landscape", () => {
     expect(turned.seats[1]).toEqual({ row: 1, col: 2, rowSpan: 1, colSpan: 1, rotation: 180 })
   })
 
+  it("keeps two players on the same side upright, first on the left, in landscape", () => {
+    const portrait = findLayout(2, "same-side")
+    expect(portrait.seats.map((seat) => seat.rotation)).toEqual([90, 90])
+    const turned = landscape(portrait)
+    expect([turned.rows, turned.cols]).toEqual([1, 2])
+    expect(turned.seats).toEqual([
+      { row: 1, col: 1, rotation: 0 },
+      { row: 1, col: 2, rotation: 0 },
+    ])
+  })
+
   it("covers every grid cell exactly once in every layout and orientation", () => {
     for (const layouts of Object.values(LAYOUTS)) {
       for (const layout of layouts.flatMap((portrait) => [portrait, landscape(portrait)])) {
