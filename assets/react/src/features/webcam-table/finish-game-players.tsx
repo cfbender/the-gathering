@@ -22,7 +22,8 @@ export function FinishGamePlayers({
     <fieldset className="min-w-0 space-y-3 md:col-span-2" disabled={disabled}>
       <legend className="mb-2 text-sm font-bold">Kills & MVP cards</legend>
       <p className="text-base-content/60 text-sm">
-        Optional for each player. Select named victims or enter only a total if you forgot who.
+        Optional for each player. Blank counts record as 0; select named victims or enter only a
+        total if you forgot who.
       </p>
       {players.map((seat) => (
         <fieldset key={seat.playerId} className="border-base-300 min-w-0 rounded-xl border p-3">
@@ -31,6 +32,7 @@ export function FinishGamePlayers({
             <KillPicker
               seat={seat}
               seats={players}
+              defaultZero
               onVictimChange={(victimId, checked) =>
                 setPlayers((current) => assignKill(current, seat.draftId, victimId, checked))
               }

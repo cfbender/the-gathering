@@ -292,7 +292,49 @@ describe("GameForm submissions", () => {
     })
   })
 
-  it("preserves explicit zero kills and submits a blank count as unknown", async () => {
+  it("records blank kills as zero on a new game while leaving the input blank", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Infinity },
+        mutations: { retry: false },
+      },
+    })
+    queryClient.setQueryData(["players"], [alice, bob])
+    queryClient.setQueryData(["decks", {}], [])
+    const fetch = vi.fn(async (input: string, init?: RequestInit) => {
+      if (input === "/api/games" && init?.method === "POST") return response(gameFixture())
+      throw new Error(`Unexpected request: ${input}`)
+    })
+    vi.stubGlobal("fetch", fetch)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <GameForm />
+      </QueryClientProvider>,
+    )
+
+    const killInputs = screen.getAllByRole<HTMLInputElement>("spinbutton", { name: "Total kills" })
+    expect(killInputs.map((input) => input.value)).toEqual(["", ""])
+    expect(killInputs.map((input) => input.placeholder)).toEqual(["0", "0"])
+    expect(
+      screen.getAllByRole("button", { name: /Kills for / }).map((button) => button.textContent),
+    ).toEqual(["No kills", "No kills"])
+
+    const playerInputs = screen.getAllByRole("combobox", { name: "Player" })
+    fireEvent.change(playerInputs[0]!, { target: { value: "Alice" } })
+    fireEvent.change(playerInputs[1]!, { target: { value: "Bob" } })
+    fireEvent.click(screen.getByRole("button", { name: "Log game" }))
+    await waitFor(() => expect(navigate).toHaveBeenCalled())
+
+    const call = fetch.mock.calls.find(
+      ([url, init]) => url === "/api/games" && init?.method === "POST",
+    )
+    const body = call?.[1]?.body
+    expect(typeof body).toBe("string")
+    const payload = JSON.parse(body as string) as { seats: Array<{ kills: number | null }> }
+    expect(payload.seats.map((seat) => seat.kills)).toEqual([0, 0])
+  })
+
+  it("preserves explicit zero kills and submits a blank count as unknown when editing", async () => {
     const { fetch } = renderGame()
     const killInputs = screen.getAllByRole("spinbutton", { name: "Total kills" })
 
@@ -417,7 +459,7 @@ describe("GameForm submissions", () => {
     expect(payload.seats[0]).toMatchObject({
       player_id: 1,
       eliminated_by_player_id: 8,
-      kills: null,
+      kills: 0,
     })
     expect(payload.seats[1]).toMatchObject({
       player_id: 8,
@@ -505,7 +547,9 @@ describe("GameForm Discord handoff", () => {
       deck: null,
     })
     expect(payload.seats[0].eliminated_by_discord_id).toBe("discord-cara")
+    expect(payload.seats[0].kills).toBe(0)
     expect(payload.seats[1].kills).toBe(1)
+    expect(payload.seats[2].kills).toBe(0)
     expect(
       fetch.mock.calls.some(
         ([url, request]) =>

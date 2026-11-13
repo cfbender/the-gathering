@@ -53,7 +53,7 @@ afterEach(() => {
 
 describe("FinishGame", () => {
   it.each(["Record result", "Record and rematch"])(
-    "saves named kills, unknown totals and MVP cards with %s",
+    "saves named kills, blank kills as zero, and MVP cards with %s",
     async (action) => {
       const posted: unknown[] = []
       vi.stubGlobal(
@@ -95,10 +95,12 @@ describe("FinishGame", () => {
       )
       const alice = within(screen.getByRole("group", { name: "Alice" }))
       const bob = within(screen.getByRole("group", { name: "Bob" }))
+      const cara = within(screen.getByRole("group", { name: "Cara" }))
       // Number-only kills are not guessed from the winner; naming Bob consumes one of Alice's two.
-      expect(alice.getByRole<HTMLInputElement>("spinbutton", { name: "Total kills" }).value).toBe(
-        "",
-      )
+      const aliceInput = alice.getByRole<HTMLInputElement>("spinbutton", { name: "Total kills" })
+      expect(aliceInput.value).toBe("")
+      expect(aliceInput.placeholder).toBe("0")
+      expect(cara.getByRole("button", { name: "Kills for Cara" }).textContent).toBe("No kills")
       fireEvent.change(alice.getByRole("spinbutton", { name: "Total kills" }), {
         target: { value: "2" },
       })
@@ -141,7 +143,7 @@ describe("FinishGame", () => {
           {
             player_id: 81,
             result: "loss",
-            kills: null,
+            kills: 0,
             eliminated_by_player_id: null,
             mvp_card_id: null,
             mvp_card_name: null,

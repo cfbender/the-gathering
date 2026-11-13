@@ -65,7 +65,7 @@ export function buildGamePayload(
               : ("loss" as const),
         ...(recorded
           ? {
-              kills: recorded.kills === "" ? null : Number(recorded.kills),
+              kills: recorded.kills === "" ? 0 : Number(recorded.kills),
               eliminated_by_player_id: participants.some(
                 (seat) => seat.player_id === killer?.playerId,
               )

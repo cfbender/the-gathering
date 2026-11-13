@@ -33,13 +33,22 @@ export function assignKill<T extends KillSeat>(
 interface KillPickerProps {
   seat: KillSeat
   seats: KillSeat[]
+  defaultZero?: boolean
   onVictimChange: (victimId: string, checked: boolean) => void
   onTotalChange: (value: string) => void
 }
 
-export function KillPicker({ seat, seats, onVictimChange, onTotalChange }: KillPickerProps) {
+export function KillPicker({
+  seat,
+  seats,
+  defaultZero = false,
+  onVictimChange,
+  onTotalChange,
+}: KillPickerProps) {
   const victims = seats.filter((victim) => victim.eliminatedByDraftId === seat.draftId)
-  const unknown = seat.kills === "" ? null : Math.max(0, Number(seat.kills) - victims.length)
+  const effectiveKills = seat.kills === "" && defaultZero ? "0" : seat.kills
+  const unknown =
+    effectiveKills === "" ? null : Math.max(0, Number(effectiveKills) - victims.length)
   const summary = [
     ...victims.map((victim) => victim.playerName || "Unnamed player"),
     ...(unknown ? [`${unknown} unknown`] : []),
@@ -56,7 +65,7 @@ export function KillPicker({ seat, seats, onVictimChange, onTotalChange }: KillP
             aria-label={`Kills for ${seat.playerName || "unnamed player"}`}
           >
             <span className="truncate">
-              {summary || (seat.kills === "0" ? "No kills" : "Select players…")}
+              {summary || (effectiveKills === "0" ? "No kills" : "Select players…")}
             </span>
             <ChevronDown className="size-4 shrink-0" />
           </button>
@@ -114,7 +123,7 @@ export function KillPicker({ seat, seats, onVictimChange, onTotalChange }: KillP
           max="9"
           step="1"
           aria-label="Total kills"
-          placeholder="?"
+          placeholder={defaultZero ? "0" : "?"}
           className="input input-bordered input-sm w-20"
           value={seat.kills}
           onChange={(event) => onTotalChange(event.target.value)}

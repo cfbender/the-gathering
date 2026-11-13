@@ -201,8 +201,8 @@ The web form prefills the roster, date, estimated duration, and optional winner.
 Without a winner mention, choose a winner or draw before saving. Edit or clear
 the duration when reporting an older game. Use the normal web controls for
 **decks/commanders per player, win condition, turns, kills, MVP cards, and notes**.
-The SpellBot roster is fixed, but seats can be reordered. Enter `0` kills for
-none or leave blank for unknown.
+The SpellBot roster is fixed, but seats can be reordered. Blank kills record as
+`0`.
 
 Card search tolerates case, accents, omitted apostrophes and commas: `Jeskas
 will`, `sephiroth fabled soldier`, and `Terra magical adept` find the catalog

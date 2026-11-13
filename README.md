@@ -131,7 +131,9 @@ the installed app picks it up again, and the screen stays awake while the board 
 
 When logging or editing a game, use each player's **Kills** dropdown to select who they
 killed. **Total kills** includes those selections; enter a larger total (or only a total)
-when some names are unknown. Leave it blank when the total is unknown; zero means no kills.
+when some names are unknown. When logging a game, leaving **Total kills** blank records
+`0`; when editing an existing game, leaving it blank preserves or clears the count to
+unknown.
 Game details show named victims and any unknown remainder. A victim can have only one killer.
 Totals, including CSV corrections, cannot be lower than the number of named victims.
 The live table's **Record game result** modal also offers optional kills and MVP cards for

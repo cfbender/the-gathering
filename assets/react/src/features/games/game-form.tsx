@@ -145,7 +145,7 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
                   }
                 : null,
             result: results[index],
-            kills: draft.kills === "" ? null : Number(draft.kills),
+            kills: draft.kills === "" ? 0 : Number(draft.kills),
             eliminated_by_discord_id:
               seats.find((seat) => seat.draftId === draft.eliminatedByDraftId)?.discordId ?? null,
             mvp_card_id: draft.mvpCard?.catalog_id ?? null,
@@ -161,7 +161,7 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
           deck_id: deckId,
           seat: index + 1,
           result: results[index],
-          kills: draft.kills === "" ? null : Number(draft.kills),
+          kills: draft.kills === "" ? (game ? null : 0) : Number(draft.kills),
           eliminated_by_player_id: playerIds.get(draft.eliminatedByDraftId ?? "") ?? null,
           mvp_card_id: draft.mvpCard?.catalog_id ?? null,
           mvp_card_name: draft.mvpCard?.name ?? null,
@@ -368,6 +368,7 @@ function GameFormDraft({ game, discordDraft }: GameFormProps) {
                     <KillPicker
                       seat={seat}
                       seats={seats}
+                      defaultZero={!game}
                       onVictimChange={(victimId, checked) =>
                         selectVictim(seat.draftId, victimId, checked)
                       }
