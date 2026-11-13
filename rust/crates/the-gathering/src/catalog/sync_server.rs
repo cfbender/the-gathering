@@ -7,6 +7,7 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 
 use super::sync::{self, Source};
+use crate::db::{Pool, UtcDateTime};
 use crate::state::AppState;
 
 /// What `trigger` did.
@@ -98,10 +99,37 @@ impl SyncServer {
     }
 }
 
-/// Starts the scheduled sync when `catalog_sync_enabled`: the first run after one second
-/// when the catalog [needs a sync](super::Catalog::needs_sync), else after
-/// `catalog_sync_interval`, and then `catalog_sync_interval` after each sync (scheduled or
-/// triggered) finishes. A scheduled run that comes due while another is running is skipped.
+const SOON: Duration = Duration::from_secs(1);
+
+/// How long to wait before the first scheduled sync at boot: `SOON` when the catalog
+/// [needs a sync](super::Catalog::needs_sync), has no recorded successful sync, or the last
+/// successful sync's `last_finished_at + interval` is due; otherwise the remaining time
+/// until `last_finished_at + interval` (clamped to `[SOON, interval]`). Failed runs do not
+/// advance the last successful finish time, so a restart after a failure retries when the
+/// last good sync's interval is due.
+async fn initial_delay(pool: &Pool, interval: Duration, now: UtcDateTime) -> Duration {
+    let needed = super::Catalog { pool: pool.clone() }
+        .needs_sync()
+        .await
+        .unwrap_or(true);
+    if needed {
+        return SOON;
+    }
+    let Some(last_finished) = sync::last_succeeded_at(pool).await.ok().flatten() else {
+        return SOON;
+    };
+    let elapsed_secs = now.unix().saturating_sub(last_finished.unix());
+    let elapsed = u64::try_from(elapsed_secs).map_or(Duration::ZERO, Duration::from_secs);
+    let remaining = interval.saturating_sub(elapsed);
+    remaining.clamp(SOON, interval)
+}
+
+/// Starts the scheduled sync when `catalog_sync_enabled`: the first run when the last
+/// successful sync's `last_finished_at + catalog_sync_interval` comes due (or after one
+/// second when already past, never synced, or the catalog
+/// [needs a sync](super::Catalog::needs_sync)), and then `catalog_sync_interval` after each
+/// sync (scheduled or triggered) finishes. A scheduled run that comes due while another is
+/// running is skipped.
 pub fn start(state: &AppState) {
     if !state.config.catalog_sync_enabled {
         return;
@@ -109,19 +137,9 @@ pub fn start(state: &AppState) {
     let state = state.clone();
     tokio::spawn(async move {
         let interval = state.config.catalog_sync_interval;
-        let needed = super::Catalog {
-            pool: state.pool.clone(),
-        }
-        .needs_sync()
-        .await
-        .unwrap_or(true);
         let idle = Duration::from_hours(365 * 24);
-        let mut deadline = Instant::now()
-            + if needed {
-                Duration::from_secs(1)
-            } else {
-                interval
-            };
+        let mut deadline =
+            Instant::now() + initial_delay(&state.pool, interval, UtcDateTime::now()).await;
         let mut finished = state.catalog_sync.subscribe();
         loop {
             tokio::select! {

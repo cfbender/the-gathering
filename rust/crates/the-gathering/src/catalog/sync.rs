@@ -75,6 +75,19 @@ pub async fn status(pool: &Pool) -> Result<SyncState, sqlx::Error> {
     Ok(row.unwrap_or_default())
 }
 
+/// When the latest successful catalog sync finished.
+pub async fn last_succeeded_at(pool: &Pool) -> Result<Option<UtcDateTime>, sqlx::Error> {
+    let finished = sqlx::query_scalar!(
+        r#"SELECT last_finished_at AS "last_finished_at: UtcDateTime"
+           FROM catalog_syncs
+           WHERE status = 'succeeded' AND last_finished_at IS NOT NULL
+           ORDER BY id DESC LIMIT 1"#
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(finished.flatten())
+}
+
 /// One record of the cards file: its printing, and its catalog row when it describes a card.
 struct CardRecord {
     printing: BulkPrinting,

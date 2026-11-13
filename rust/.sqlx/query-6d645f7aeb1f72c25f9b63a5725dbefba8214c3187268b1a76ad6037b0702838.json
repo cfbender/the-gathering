@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT last_finished_at AS \"last_finished_at: UtcDateTime\"\n           FROM catalog_syncs\n           WHERE status = 'succeeded' AND last_finished_at IS NOT NULL\n           ORDER BY id DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "last_finished_at: UtcDateTime",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "catalog_syncs",
+            "name": "last_finished_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "6d645f7aeb1f72c25f9b63a5725dbefba8214c3187268b1a76ad6037b0702838"
+}

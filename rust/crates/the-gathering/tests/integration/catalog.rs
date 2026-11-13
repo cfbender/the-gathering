@@ -495,6 +495,119 @@ async fn syncs_at_boot_when_no_printing_has_been_imported() {
 }
 
 #[tokio::test]
+async fn schedules_first_sync_from_last_successful_finish_time_and_ignores_failed_runs() {
+    use std::time::Duration;
+    use the_gathering::catalog::sync_server;
+    use the_gathering::db::UtcDateTime;
+
+    let server = wiremock::MockServer::start().await;
+    support::mount_scryfall_bulk(&server, &fixture_records(), &[]).await;
+
+    // 1. Overdue successful sync despite a more recent failed run -> runs soon (~1 s) at boot,
+    //    then reschedules for `catalog_sync_interval` after finishing.
+    let overdue_app = TestApp::with_config(|config| {
+        config.scryfall_api_base = server.uri();
+        config.catalog_sync_enabled = true;
+        config.catalog_sync_interval = Duration::from_secs(3600);
+    })
+    .await;
+    sync_fixture(&overdue_app).await;
+    let two_hours_ago = UtcDateTime::now().plus(-time::Duration::hours(2));
+    sqlx::query("UPDATE catalog_syncs SET last_started_at = ?, last_finished_at = ?")
+        .bind(two_hours_ago)
+        .bind(two_hours_ago)
+        .execute(overdue_app.pool())
+        .await
+        .unwrap();
+    // A newer failed sync finished 1 minute ago; it must not push the deadline out.
+    assert!(
+        run(&overdue_app, Source::File("/does/not/exist.jsonl".into()))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        catalog(&overdue_app).sync_status().await.unwrap().status,
+        "failed"
+    );
+
+    let mut overdue_finished = overdue_app.state.catalog_sync.subscribe();
+    sync_server::start(&overdue_app.state);
+    tokio::time::timeout(Duration::from_secs(5), overdue_finished.changed())
+        .await
+        .expect("overdue catalog sync runs soon after boot despite recent failure")
+        .unwrap();
+    assert_eq!(
+        catalog(&overdue_app).sync_status().await.unwrap().status,
+        "succeeded"
+    );
+    assert!(
+        tokio::time::timeout(Duration::from_millis(1500), overdue_finished.changed())
+            .await
+            .is_err(),
+        "after finishing, next sync waits for the full interval"
+    );
+
+    // 2. Partial elapsed time: last succeeded 57 s ago with a 60 s interval -> waits the
+    //    remaining ~3 s (neither firing immediately at 1 s nor resetting to 60 s).
+    let partial_app = TestApp::with_config(|config| {
+        config.scryfall_api_base = server.uri();
+        config.catalog_sync_enabled = true;
+        config.catalog_sync_interval = Duration::from_secs(60);
+    })
+    .await;
+    sync_fixture(&partial_app).await;
+    let fifty_seven_s_ago = UtcDateTime::now().plus(-time::Duration::seconds(57));
+    sqlx::query("UPDATE catalog_syncs SET last_started_at = ?, last_finished_at = ?")
+        .bind(fifty_seven_s_ago)
+        .bind(fifty_seven_s_ago)
+        .execute(partial_app.pool())
+        .await
+        .unwrap();
+
+    let mut partial_finished = partial_app.state.catalog_sync.subscribe();
+    sync_server::start(&partial_app.state);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(1500), partial_finished.changed())
+            .await
+            .is_err(),
+        "must not fire after 1 s when ~3 s remain on the stored deadline"
+    );
+    tokio::time::timeout(Duration::from_secs(5), partial_finished.changed())
+        .await
+        .expect("fires once the remaining ~3 s from last_finished_at elapse")
+        .unwrap();
+    assert_eq!(
+        catalog(&partial_app).sync_status().await.unwrap().status,
+        "succeeded"
+    );
+
+    // 3. Populated catalog with no recorded successful sync -> runs soon at boot.
+    let unrecorded_app = TestApp::with_config(|config| {
+        config.scryfall_api_base = server.uri();
+        config.catalog_sync_enabled = true;
+        config.catalog_sync_interval = Duration::from_secs(3600);
+    })
+    .await;
+    sync_fixture(&unrecorded_app).await;
+    sqlx::query("DELETE FROM catalog_syncs")
+        .execute(unrecorded_app.pool())
+        .await
+        .unwrap();
+    assert!(!catalog(&unrecorded_app).needs_sync().await.unwrap());
+
+    let mut unrecorded_finished = unrecorded_app.state.catalog_sync.subscribe();
+    sync_server::start(&unrecorded_app.state);
+    tokio::time::timeout(Duration::from_secs(5), unrecorded_finished.changed())
+        .await
+        .expect("populated catalog without sync history runs soon at boot")
+        .unwrap();
+    assert_eq!(
+        catalog(&unrecorded_app).sync_status().await.unwrap().status,
+        "succeeded"
+    );
+}
+
+#[tokio::test]
 async fn records_successful_and_failed_state_transitions_without_replacing_a_good_catalog() {
     let app = TestApp::new().await;
     assert_eq!(catalog(&app).sync_status().await.unwrap().status, "never");
