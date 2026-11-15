@@ -355,7 +355,15 @@ restarts. Media is not stored. Immediate writes avoid a debounce data-loss windo
 this remains a single-server design, not a distributed room coordinator.
 
 Ending the game closes the room. After the owner records the result, or chooses End without
-recording (confirmed inline), the browser sends `end_game`. `WebcamTables::close` deletes the
+recording (confirmed inline), the browser sends `end_game`. The host and admins hold End game, the
+timer toggle, rematch and the start buttons, but once no connection holding the table controls
+is present, any seated player gets them, so a table whose host left can still record its game,
+rematch and start the new one. Each seat's presence meta carries `host: true` when that
+connection holds the table controls (the host's or a seated admin's), and the channel accepts a
+non-host's `timer`, `end_game`, `rematch` and `start_game` only while no present meta has it; the
+browser shows the controls by the same rule. A host whose socket dropped stays present through
+the reconnect grace. Game mode, seat arrangement and turn corrections stay with the host and
+admins. `WebcamTables::close` deletes the
 snapshot and stops the room. Every joined channel sees that exit on the room's exit watch, pushes
 `table_closed`, and stops normally, so browsers leave instead of rejoining a fresh room under the
 same id. A tab whose socket was away at that moment (a background tab, a dropped network) never
@@ -400,7 +408,8 @@ Disconnecting does not advance the turn. The first timer start (through `start_g
 Spectators receive boards/cameras without requesting camera permission and cannot mutate the game.
 They stay in Presence (with `spectator: true`) but take no seat; the Table tab lists them under
 turn order, and the Setup header shows their count.
-The first seated player owns table setup, timer and turn-count corrections; players retain their
+The first seated player owns table setup, timer and turn-count corrections (starting, the timer,
+End game and rematch pass to every seated player while neither the host nor an admin is present); players retain their
 own life/counter/commander controls. Any seated player can pass the turn.
 
 Join replies carry the authoritative seat, and `table_state` includes `seats`, `owner_id`,
@@ -645,7 +654,8 @@ while a card picker/dialog is open. It shares the guarded registry and enable pr
 `table-hotkeys.tsx` with the other table shortcuts.
 
 Each room process serializes its shared timer, turns and order.
-The first valid `seat_order` starts it. Only the room owner can send `timer` with `pause` or `resume`;
+The first valid `seat_order` starts it. Only the room owner (or, while neither the host nor an admin is present, any seated player)
+can send `timer` with `pause` or `resume`;
 only the server writes `started_at`, `paused_at`, and accumulated `paused_ms`. The timer bar
 above the active board's name bar derives elapsed time excluding pauses. Browsers interpolate
 from a server sample using `performance.now()`, not their wall clock, and resync every 15 seconds

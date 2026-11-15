@@ -50,6 +50,9 @@ export interface TableTabProps {
   onSeatSpectator?: (peerId: string) => void
   spectating?: boolean
   isOwner?: boolean
+  /** Starting the match, the timer toggle and End game; defaults to `isOwner`. Seated players
+   * get them while neither the host nor an admin is at the table. */
+  hasGameControls?: boolean
   participants: TableParticipant[]
   /** Everyone watching without a seat, from presence. */
   spectators: TableParticipant[]
@@ -146,6 +149,10 @@ function CommanderButton(props: TableTabProps) {
   )
 }
 
+function gameControls(props: TableTabProps) {
+  return props.hasGameControls ?? props.isOwner !== false
+}
+
 /** Mode choice and start buttons before the match; pass turn once it is running. */
 function MatchControls(props: TableTabProps) {
   const { participants, isOwner, mode } = props
@@ -197,32 +204,34 @@ function MatchControls(props: TableTabProps) {
               Exactly 5 players. Neighbours can't be attacked until only three players remain.
             </p>
           )}
-          <div className="grid grid-cols-2 gap-1.5">
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => props.onStartGame(false)}
-              disabled={!enoughSeats}
-              title="Start with the turn order shown above"
-            >
-              <Play className="size-3.5" /> Start match
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => props.onStartGame(true)}
-              disabled={!enoughSeats}
-              title={
-                mode === "two_headed_giant"
-                  ? "Shuffle the teams, then start"
-                  : "Shuffle the turn order, then start"
-              }
-            >
-              <Shuffle className="size-3.5" /> Randomize
-            </Button>
-          </div>
         </>
+      )}
+      {!started && gameControls(props) && (
+        <div className="grid grid-cols-2 gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => props.onStartGame(false)}
+            disabled={!enoughSeats}
+            title="Start with the turn order shown above"
+          >
+            <Play className="size-3.5" /> Start match
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => props.onStartGame(true)}
+            disabled={!enoughSeats}
+            title={
+              mode === "two_headed_giant"
+                ? "Shuffle the teams, then start"
+                : "Shuffle the turn order, then start"
+            }
+          >
+            <Shuffle className="size-3.5" /> Randomize
+          </Button>
+        </div>
       )}
       {started && <TurnButtons {...props} />}
     </>
@@ -268,6 +277,7 @@ function TurnButtons(props: TableTabProps) {
 
 function SetupSection(props: TableTabProps) {
   const { participants, localParticipant: local } = props
+  const hasGameControls = gameControls(props)
   return (
     <PanelSection
       title="Setup"
@@ -334,9 +344,7 @@ function SetupSection(props: TableTabProps) {
 
       <div className="mt-3 grid gap-1.5">
         <MatchControls {...props} />
-        {props.isOwner !== false && (
-          <TimerToggle sample={props.timer} onChange={props.onChangeTimer} />
-        )}
+        {hasGameControls && <TimerToggle sample={props.timer} onChange={props.onChangeTimer} />}
         <RevealControl
           participants={participants}
           peerId={local.peer_id}
@@ -344,7 +352,7 @@ function SetupSection(props: TableTabProps) {
           busy={props.reveal.busy}
           onChange={props.reveal.onChange}
         />
-        {props.isOwner !== false && (
+        {hasGameControls && (
           <Button
             type="button"
             variant="destructive"

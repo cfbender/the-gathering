@@ -11,6 +11,8 @@ const mode = vi.hoisted(() => ({
   spectator: false,
   spectators: [] as TableParticipant[],
   canModerate: false,
+  owner: true,
+  hasGameControls: true,
   seated: [] as string[],
 }))
 vi.mock("@tanstack/react-router", () => ({
@@ -31,7 +33,8 @@ vi.mock("./use-webcam-room", async (importOriginal) => {
         spectators: mode.spectators.map((watcher) =>
           watcher.peer_id === "self" ? { ...watcher, peer_id: room.peerId } : watcher,
         ),
-        isOwner: !mode.spectator,
+        isOwner: !mode.spectator && mode.owner,
+        hasGameControls: !mode.spectator && mode.hasGameControls,
         participants: [
           {
             peer_id: mode.spectator ? "other" : room.peerId,
@@ -65,6 +68,8 @@ afterEach(() => {
   cleanup()
   mode.spectators = []
   mode.canModerate = false
+  mode.owner = true
+  mode.hasGameControls = true
   mode.seated = []
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
@@ -94,6 +99,30 @@ it("shows open seats before start and none after the shared timer starts", () =>
   cleanup()
   renderTable(true)
   expect(screen.queryByText("Open seat")).toBeNull()
+})
+
+it("shows End game and the timer toggle only to a seat that holds the game controls", () => {
+  renderTable(true)
+  expect(screen.getByRole("button", { name: /End game/ })).toBeTruthy()
+  expect(screen.getByRole("button", { name: /Pause timer/ })).toBeTruthy()
+  cleanup()
+  mode.hasGameControls = false
+  renderTable(true)
+  expect(screen.queryByRole("button", { name: /End game|Pause timer/ })).toBeNull()
+  expect(screen.getAllByRole("button", { name: /Pass turn/ })).not.toHaveLength(0)
+})
+
+it("lets a player start a lobby the host left, without the host's mode picker", () => {
+  mode.owner = false
+  mode.hasGameControls = false
+  renderTable(false)
+  expect(screen.queryByRole("button", { name: /Start match|Randomize/ })).toBeNull()
+  cleanup()
+  mode.hasGameControls = true
+  renderTable(false)
+  expect(screen.getByRole("button", { name: /Start match/ })).toBeTruthy()
+  expect(screen.getByRole("button", { name: /Randomize/ })).toBeTruthy()
+  expect(screen.queryByRole("combobox", { name: "Game mode" })).toBeNull()
 })
 
 it("offers Eliminate player in the seat menu only after the match starts", async () => {

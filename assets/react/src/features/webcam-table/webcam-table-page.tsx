@@ -64,7 +64,7 @@ function TableEndedRedirect({ removed = false }: { removed?: boolean }) {
     flashToast({
       message: removed
         ? "You were removed from the table by the host or an admin."
-        : "The room owner ended the game.",
+        : "The game has ended.",
       tone: "info",
     })
     window.location.assign("/games")
@@ -214,6 +214,7 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
           onMoveSeat={room.moveSeat}
           spectating={room.spectating}
           isOwner={room.isOwner}
+          hasGameControls={room.hasGameControls}
           left={preferences.panelLeft}
           onHelp={openHelp}
           settings={

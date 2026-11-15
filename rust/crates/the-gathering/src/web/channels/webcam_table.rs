@@ -68,6 +68,10 @@ const OWNER_EVENTS: [&str; 9] = [
     "end_game",
     "rematch",
 ];
+/// Table controls every seated player gets while nobody holding the table controls is present,
+/// so a table whose host left can still pause the clock, end or rematch, and start that
+/// rematch. Mode, seat order and turn corrections stay with the host.
+const HOSTLESS_EVENTS: [&str; 4] = ["timer", "end_game", "rematch", "start_game"];
 
 static UUID: LazyLock<Regex> =
     LazyLock::new(|| compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"));
@@ -400,7 +404,7 @@ pub async fn run(
             },
             Some(event) = sfu_rx.recv() => channel.handle_sfu(event),
             changed = inboxes.exit.changed() => Err(match changed.ok().and(*inboxes.exit.borrow()) {
-                // The owner ended the table. The client leaves instead of rejoining (which
+                // The table was ended. The client leaves instead of rejoining (which
                 // would open a fresh room under the id).
                 Some(RoomExit::Closed) => {
                     channel.push("table_closed", &json!({}));
@@ -580,7 +584,7 @@ impl Channel {
             &self.topic,
             self.conn_id,
             &self.participant.peer_id,
-            to_value(&self.participant),
+            self.meta(),
         );
         if !self.participant.spectator {
             rooms::track_seat(&state, self.conn_id, &self.room_id, &self.participant);
@@ -651,17 +655,39 @@ impl Channel {
         }
     }
 
+    /// The seat as presence publishes it, with `host` marking a connection that holds the table
+    /// controls (the host or a seated admin).
+    fn meta(&self) -> Value {
+        let mut meta = to_value(&self.participant);
+        if let Some(map) = meta.as_object_mut() {
+            map.insert("host".into(), Value::Bool(self.owner));
+        }
+        meta
+    }
+
     fn update_presence(&self) {
         self.socket.state.presence.update(
             &self.topic,
             self.conn_id,
             &self.participant.peer_id,
-            to_value(&self.participant),
+            self.meta(),
         );
     }
 
     fn present(&self, peer_id: &str) -> bool {
         self.socket.state.presence.has_key(&self.topic, peer_id)
+    }
+
+    /// Whether a connection holding the table controls is at the table. A dropped socket stays
+    /// present through its reconnect grace, so a host's brief network blip does not hand the
+    /// controls to everyone.
+    fn host_present(&self) -> bool {
+        self.socket
+            .state
+            .presence
+            .metas(&self.topic)
+            .iter()
+            .any(|meta| meta.get("host") == Some(&Value::Bool(true)))
     }
 
     async fn remember_seat(&self, eliminated: Option<bool>) -> Result<bool, RoomGone> {
@@ -777,7 +803,12 @@ impl Channel {
             return error("spectators cannot change the game");
         }
         if !self.owner && OWNER_EVENTS.contains(&event) {
-            return error("only the room owner can change table controls");
+            if !HOSTLESS_EVENTS.contains(&event) {
+                return error("only the room owner can change table controls");
+            }
+            if self.host_present() {
+                return error("only the host or an admin can do that while they are at the table");
+            }
         }
         if signal || event == "timer_sync" {
             return self.dispatch(event, payload).await;

@@ -55,7 +55,8 @@ export interface RoomChannelHandlers {
   /** The server told this seat its connection is struggling (it reconnected, or its media
    * stopped getting through). */
   onUnhealthy: (reason: string) => void
-  /** The room owner ended the table; the channel and socket are already closed. */
+  /** The table was ended (by its host, an admin, or a player once neither was present); the
+   * channel and socket are already closed. */
   onClosed: () => void
   onRemoved: () => void
   onDispose: () => void
@@ -203,7 +204,7 @@ export function useRoomChannel(
         room.on("connection_unhealthy", ({ reason }: { reason: string }) =>
           on().onUnhealthy(reason),
         )
-        // The owner ended the table; the server ends this seat's channel right after.
+        // The table ended; the server ends this seat's channel right after.
         const closed = () => {
           disposed = true
           clearTimeout(retryTimer)

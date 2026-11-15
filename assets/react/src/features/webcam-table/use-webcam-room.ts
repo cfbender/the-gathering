@@ -198,6 +198,9 @@ export function useWebcamRoom(
     removeParticipant,
     seatSpectator,
     isOwner: game.isOwner,
+    /** Starting the match, the timer toggle, End game and rematch: the host and admins, or any
+     * seated player while neither is present. The server enforces the same rule. */
+    hasGameControls: game.isOwner || (!spectating && !game.hostPresent),
     peerId: link.peerId,
     participants: game.participants,
     spectators: game.spectators,
@@ -218,7 +221,7 @@ export function useWebcamRoom(
     endGame,
     /** Owner resets this room to a fresh lobby with the same seats; nobody leaves. */
     rematch: game.rematch,
-    /** Another seat (the room owner) ended the table while this one was connected. */
+    /** Another seat ended the table while this one was connected. */
     closedByOwner,
     rollDice: game.rollDice,
     /** The open or latest vote and its commands; see `useTableVote`. */

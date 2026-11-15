@@ -247,7 +247,7 @@ async fn the_owner_ends_the_table_for_everyone_and_its_seats_leave_instead_of_re
     bob.refused(
         "end_game",
         json!({}),
-        "only the room owner can change table controls",
+        "only the host or an admin can do that while they are at the table",
     )
     .await;
     t.alice
@@ -268,6 +268,101 @@ async fn the_owner_ends_the_table_for_everyone_and_its_seats_leave_instead_of_re
             .unwrap()
             .is_none()
     );
+}
+
+/// Once neither the host nor an admin is present, any seated player can pause the clock, end
+/// the table (so its game can still be recorded), or rematch and start the new game. A host
+/// whose socket dropped still counts through the reconnect grace, and mode, seat order and turn
+/// corrections stay with the host.
+#[tokio::test]
+async fn a_seated_player_can_end_or_rematch_the_table_once_no_host_is_present() {
+    let mut t = Table::with_config(|config| {
+        config.webcam_table.reconnect_grace = std::time::Duration::from_millis(500);
+    })
+    .await;
+    let host_only = "only the host or an admin can do that while they are at the table";
+    let owner_only = "only the room owner can change table controls";
+    let mut bob = t.join_player(PEER_B, "Bob").await;
+    let mut dave = t.join_player(PEER_D, "Dave").await;
+    t.alice
+        .ok("start_game", json!({ "randomize": false }))
+        .await;
+    let mut cara = t.join_player(PEER_C, "Cara").await;
+    assert_eq!(cara.participant["spectator"], true);
+    assert_eq!(t.meta(PEER_A)["host"], true);
+    assert_eq!(t.meta(PEER_B)["host"], false);
+
+    t.alice.close();
+    bob.refused("timer", json!({ "action": "pause" }), host_only)
+        .await;
+    bob.refused("end_game", json!({}), host_only).await;
+    bob.refused("rematch", json!({}), host_only).await;
+    bob.expect_where("presence", |roster| listed(roster, PEER_A).is_none())
+        .await;
+
+    let timer = bob.ok("timer", json!({ "action": "pause" })).await;
+    assert!(timer["paused_at"].is_i64(), "{timer}");
+    cara.refused("end_game", json!({}), "spectators cannot change the game")
+        .await;
+    cara.refused("rematch", json!({}), "spectators cannot change the game")
+        .await;
+    bob.refused("set_mode", json!({ "mode": "commander" }), owner_only)
+        .await;
+    bob.refused(
+        "adjust_turn",
+        json!({ "player_id": dave.player_id(), "delta": 1 }),
+        owner_only,
+    )
+    .await;
+
+    bob.ok("rematch", json!({})).await;
+    let lobby = dave
+        .expect_where("table_state", |state| {
+            state["timer"]["started_at"].is_null()
+        })
+        .await;
+    let seated: Vec<&Value> = lobby["seats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|seat| &seat["peer_id"])
+        .collect();
+    assert!(
+        seated.contains(&&json!(PEER_B)) && seated.contains(&&json!(PEER_D)),
+        "{lobby}"
+    );
+    dave.ok("start_game", json!({ "randomize": false })).await;
+    assert!(t.snapshot().await.timer.started_at.is_some());
+
+    bob.ok("end_game", json!({})).await;
+    for client in [&mut bob, &mut cara, &mut dave] {
+        client.expect("table_closed").await;
+    }
+    assert_eq!(t.server.state().webcam_tables.instance(&t.room), None);
+}
+
+/// An admin at the table holds the controls like the host, so other players still cannot end it.
+#[tokio::test]
+async fn a_present_admin_keeps_the_end_game_controls_after_the_host_leaves() {
+    let mut t = Table::new().await;
+    let admin = t.server.admin().await;
+    let admin_player = t.server.player("Ada", Some(admin.id)).await;
+    let mut ada = t
+        .server
+        .join_as(&admin, admin_player, &t.room, PEER_C)
+        .await;
+    let mut bob = t.join_player(PEER_B, "Bob").await;
+    t.server.disconnect(&mut t.alice, &t.room).await;
+    assert_eq!(t.meta(PEER_C)["host"], true);
+
+    bob.refused(
+        "end_game",
+        json!({}),
+        "only the host or an admin can do that while they are at the table",
+    )
+    .await;
+    ada.ok("end_game", json!({})).await;
+    bob.expect("table_closed").await;
 }
 
 /// A tab whose socket was away when the table ended never got `table_closed`; its rejoin must
@@ -373,7 +468,7 @@ async fn a_rematch_resets_the_same_room_to_a_lobby_keeping_present_seats_connect
     bob.refused(
         "rematch",
         json!({}),
-        "only the room owner can change table controls",
+        "only the host or an admin can do that while they are at the table",
     )
     .await;
     dave.refused("rematch", json!({}), "spectators cannot change the game")

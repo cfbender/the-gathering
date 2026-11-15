@@ -222,6 +222,26 @@ it("takes table controls from the join reply, not the room's creator id", async 
   expect(result.current.isOwner).toBe(true)
 })
 
+it("gives a seated player the game controls only while nobody holding the table controls is present", async () => {
+  const { result } = await joinedRoom()
+  const self = { ...saved, peer_id: result.current.peerId }
+  const host = { ...saved, player_id: 3, player_name: "Lan", peer_id: "host", host: true }
+  // Before the first roster nobody knows who is here, so the controls stay hidden.
+  expect(result.current.hasGameControls).toBe(false)
+  act(() => wire.presence([self, host]))
+  expect(result.current.hasGameControls).toBe(false)
+
+  act(() => wire.presence([self]))
+  expect(result.current.hasGameControls).toBe(true)
+  expect(result.current.isOwner).toBe(false)
+
+  // A seated admin holds the controls like the host; a spectator watching does not.
+  act(() => wire.presence([self, { ...host, player_name: "Ada" }]))
+  expect(result.current.hasGameControls).toBe(false)
+  act(() => wire.presence([self, { ...host, host: false, spectator: true }]))
+  expect(result.current.hasGameControls).toBe(true)
+})
+
 it("a rematch keeps the seat connected and resets its local life, counters and table state", async () => {
   const { result } = await joinedRoom()
   const self = { ...saved, peer_id: result.current.peerId }

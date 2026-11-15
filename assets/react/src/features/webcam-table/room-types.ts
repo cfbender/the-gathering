@@ -19,6 +19,8 @@ export interface TableParticipant extends SeatCounters, Partial<SharedTrackers> 
   reveal_to?: string | null
   eliminated: boolean
   spectator?: boolean
+  /** Presence only: this connection holds the table controls (the host or a seated admin). */
+  host?: boolean
   /** Retained result seat after an eliminated player disconnects. */
   departed?: boolean
   deck_id?: number

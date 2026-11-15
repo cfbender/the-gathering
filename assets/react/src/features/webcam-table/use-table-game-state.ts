@@ -70,6 +70,8 @@ export function useTableGameState(
   const [mode, setModeState] = useState<TableMode>("commander")
   const [teamLife, setTeamLife] = useState<Record<number, number>>({})
   const [isOwner, setIsOwner] = useState(false)
+  // Assumed until the first roster, so End game does not flash for every seat while joining.
+  const [hostPresent, setHostPresent] = useState(true)
   const [roll, setRoll] = useState<TableRoll | null>(null)
   const [monarch, setMonarch] = useState<Monarch | null>(null)
   const [boards, setBoards] = useState<TableBoards>({})
@@ -198,6 +200,7 @@ export function useTableGameState(
       const seats = everyone.filter((participant) => !participant.spectator)
       link.participants = seats
       setParticipants(seats)
+      setHostPresent(everyone.some((participant) => participant.host))
       setSpectators(
         everyone
           .filter((participant) => participant.spectator)
@@ -435,6 +438,8 @@ export function useTableGameState(
 
   return {
     isOwner,
+    /** Whether anyone holding the table controls (the host or a seated admin) is present. */
+    hostPresent,
     participants: seatedParticipants,
     spectators,
     events,
