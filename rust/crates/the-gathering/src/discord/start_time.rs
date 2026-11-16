@@ -93,7 +93,8 @@ fn clock(input: &str, now: UtcDateTime, zone: &str) -> Result<UtcDateTime, Strin
 }
 
 fn time(input: &str) -> Option<Time> {
-    let captures = compile(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$").captures(input)?;
+    // The colon is optional, so "930pm" is 9:30pm and "2130" is 21:30.
+    let captures = compile(r"^(\d{1,2})(?::?(\d{2}))?\s*(am|pm)?$").captures(input)?;
     let hour: i8 = captures.get(1)?.as_str().parse().ok()?;
     let minute: i8 = match captures.get(2) {
         Some(minute) => minute.as_str().parse().ok()?,

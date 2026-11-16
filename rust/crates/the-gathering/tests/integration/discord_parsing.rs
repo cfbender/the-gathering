@@ -155,6 +155,19 @@ fn omitted_starts_when_filled_bare_times_use_today_or_the_next_local_day() {
 }
 
 #[test]
+fn compact_times_without_a_colon_split_off_the_last_two_digits_as_minutes() {
+    assert_eq!(at("930 pm", NOW), utc("2026-09-24T01:30:00Z"));
+    assert_eq!(at("930pm", NOW), utc("2026-09-24T01:30:00Z"));
+    assert_eq!(at("1145pm", NOW), utc("2026-09-24T03:45:00Z"));
+    assert_eq!(at("1230am", NOW), utc("2026-09-24T04:30:00Z"));
+    assert_eq!(at("930am", NOW), utc("2026-09-24T13:30:00Z"));
+    assert_eq!(at("2130", NOW), utc("2026-09-24T01:30:00Z"));
+    for input in ["1330pm", "960pm", "2460", "93000"] {
+        assert!(start(Some(input), NOW, ZONE).is_err(), "{input}");
+    }
+}
+
+#[test]
 fn noon_and_midnight_are_distinct_and_timezones_are_configurable() {
     assert_eq!(at("12am", NOW), utc("2026-09-24T04:00:00Z"));
     assert_eq!(at("12pm", NOW), utc("2026-09-24T16:00:00Z"));
