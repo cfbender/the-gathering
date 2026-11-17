@@ -73,3 +73,14 @@ pub async fn commander(
         .ok_or(ApiError::NotFound)?;
     Ok(data(payload))
 }
+
+/// `GET /api/stats/salt`.
+pub async fn salt(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    QueryParams(range): QueryParams<DateRange>,
+) -> ApiResult<Json<Value>> {
+    Ok(data(
+        stats::salt(&state.pool, user.playgroup()?, &range).await?,
+    ))
+}

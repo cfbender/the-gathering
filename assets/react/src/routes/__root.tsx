@@ -6,7 +6,17 @@ import {
   useChildMatches,
   useLocation,
 } from "@tanstack/react-router"
-import { Crown, Gamepad2, Layers, Menu, Palette, Upload, Users, UsersRound } from "lucide-react"
+import {
+  Crown,
+  Frown,
+  Gamepad2,
+  Layers,
+  Menu,
+  Palette,
+  Upload,
+  Users,
+  UsersRound,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 import { EmptyPanel } from "@/components/app-shell"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -58,6 +68,7 @@ const navItems = [
   { to: "/decks" as const, label: "Decks", icon: Layers, adminOnly: false },
   { to: "/commanders" as const, label: "Commanders", icon: Crown, adminOnly: false },
   { to: "/colors" as const, label: "Colors", icon: Palette, adminOnly: false },
+  { to: "/salt" as const, label: "Salt", icon: Frown, adminOnly: false },
   { to: "/import" as const, label: "Import", icon: Upload, adminOnly: true },
 ]
 

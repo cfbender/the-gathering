@@ -14,6 +14,7 @@ pub mod player;
 pub mod query;
 pub use self::query::DateRange;
 pub mod records;
+pub mod salt;
 pub mod summaries;
 
 use serde_json::Value;
@@ -70,4 +71,13 @@ pub async fn commander(
     params: &DateRange,
 ) -> Result<Option<Value>, sqlx::Error> {
     commanders::get(&mut *pool.acquire().await?, playgroup_id, id, params).await
+}
+
+/// The playgroup's satisfaction ("salt") overview for a date range.
+pub async fn salt(
+    pool: &Pool,
+    playgroup_id: i64,
+    params: &DateRange,
+) -> Result<Value, sqlx::Error> {
+    salt::get(&mut *pool.acquire().await?, playgroup_id, params).await
 }

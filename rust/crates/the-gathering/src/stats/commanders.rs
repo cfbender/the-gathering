@@ -20,6 +20,7 @@ use crate::games::{Game, GameResult, Seat};
 
 use super::query::{self, Reference};
 use super::records::{Object, Record, group_by, grouped_records, player_entity, sort_records};
+use super::salt::{Ratings, opponent_ratings, sort_saltiest};
 use super::summaries;
 
 const TREND_GAME_LIMIT: usize = 500;
@@ -263,6 +264,44 @@ pub async fn summarize(
         .collect();
     let entries = put_deck_art(conn, entries).await?;
     Ok(commander_records(&entries, true))
+}
+
+/// Every commander among `seats` with a rating: how its pilots rated their games
+/// (`ratings`, `average`) and how the rest of the table rated games against it
+/// (`opponent_ratings`, `opponent_average`). The saltiest tables come first.
+pub async fn satisfaction(
+    conn: &mut SqliteConnection,
+    seats: &[SeatInGame<'_>],
+) -> Result<Vec<Value>, sqlx::Error> {
+    let summaries = catalog::card_summaries_in(conn, &card_refs(seats.iter().copied())).await?;
+    let entries: Vec<Entry<'_>> = seats
+        .iter()
+        .flat_map(|at| commander_entries(*at, &summaries))
+        .collect();
+    let entries = put_deck_art(conn, entries).await?;
+    let mut rows: Vec<Object> = group_by(entries.iter(), |entry| entry.key.clone())
+        .into_iter()
+        .filter_map(|(key, rows)| {
+            let first = rows.first()?;
+            let own = Ratings::of(rows.iter().map(|entry| entry.at.seat.satisfaction));
+            let opponents = Ratings::of(
+                rows.iter()
+                    .flat_map(|entry| opponent_ratings(entry.at.game, entry.at.seat)),
+            );
+            if own.ratings == 0 && opponents.ratings == 0 {
+                return None;
+            }
+            let mut object = commander_json(&key, &first.card);
+            object.insert("games".into(), json!(rows.len()));
+            object.insert("ratings".into(), json!(own.ratings));
+            object.insert("average".into(), json!(own.average));
+            object.insert("opponent_ratings".into(), json!(opponents.ratings));
+            object.insert("opponent_average".into(), json!(opponents.average));
+            Some(object)
+        })
+        .collect();
+    sort_saltiest(&mut rows, "opponent_average", "opponent_ratings");
+    Ok(rows.into_iter().map(Value::Object).collect())
 }
 
 /// Seats with decks, newest game first, then by seat number.

@@ -73,8 +73,8 @@ delete a game; others get `403 Forbidden`. Request bodies cannot set `source` or
 
 One row per seat: the 1-based `seat` (turn order), `player_id`, optional `deck_id`, `result`
 (`win`, `loss`, or `draw`), optional `kills` (0–9), `eliminated_turn` and
-`eliminated_by_player_id`, an optional MVP card (`mvp_card_id` and `mvp_card_name`), and
-`notes`. Player and seat are each unique per game.
+`eliminated_by_player_id`, an optional MVP card (`mvp_card_id` and `mvp_card_name`), `notes`, and
+an optional `satisfaction` from 1 (awful) to 5 (rad): how much that seat's player enjoyed the game. Player and seat are each unique per game.
 
 A game has 2–10 seats numbered 1 through n, and no player twice. It has exactly one winner
 (two in Two-Headed Giant) with everyone else losing, or every seat draws. Each deck must
@@ -123,7 +123,7 @@ delete. Indexes cover the active playgroup. `GET /api/players` and `GET /api/dec
   identity as WUBRG letters, `C` for colorless), `color` and `winner_color` (identity includes
   that color).
 - Games: `win_condition`, `player_count`, `min_turns`, `max_turns`, `min_duration`,
-  `max_duration`.
+  `max_duration`, and `mood` (1–5: the face the game's average rating, to one decimal, rounds to).
 - Time: `date_from` and `date_to` (inclusive days), `weekday` (0 = Sunday), and `hour`
   (0–23), all read in the `tz` IANA zone (default UTC).
 
@@ -169,6 +169,12 @@ Game payloads list seats in order, each with nested player and deck summaries:
   }
 }
 ```
+
+Game payloads also carry `average_satisfaction`, the mean of the seats' ratings to one decimal
+(`null` when nobody rated), and each seat's `satisfaction`. A signed-in member rates their own seat
+with `PUT /api/games/:id/satisfaction` and `{"satisfaction": 4}`; members without a seat in the
+game get `403 Forbidden`. `GET /api/stats/salt` summarizes the ratings, and player and deck
+statistics include a `satisfaction` summary.
 
 `GET /api/games` adds
 `"pagination": {"page": 2, "per_page": 20, "total": 37, "total_pages": 2}`.

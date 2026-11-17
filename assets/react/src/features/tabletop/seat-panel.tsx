@@ -1,6 +1,7 @@
 import { Droplet, Flag, Minus, Plus, Skull, Swords, X } from "lucide-react"
 import { useEffect, useRef, useState, type PointerEvent } from "react"
 import { CommanderArt } from "@/components/commander-art"
+import { SatisfactionBadge, SatisfactionPicker } from "@/features/satisfaction/satisfaction"
 import { cn } from "@/lib/cn"
 import { seatTint } from "./board-grid"
 import {
@@ -8,6 +9,7 @@ import {
   eliminationReason,
   hasCommanders,
   lethalCommanderDamage,
+  recordBlocker,
   seatName,
   type TabletopGame,
 } from "./tabletop"
@@ -87,6 +89,8 @@ function useRecentDelta(value: number) {
 }
 
 export interface SeatActions {
+  /** Rates the game for this seat, or dismisses the prompt with `null`. */
+  onRate: (satisfaction: number | null) => void
   onLife: (delta: number) => void
   onPoison: (delta: number) => void
   onConcede: (conceded: boolean) => void
@@ -229,7 +233,27 @@ export function SeatPanel({
           <span className="badge badge-lg gap-1.5 border-white/20 bg-black/70 font-bold text-white">
             {out === "conceded" ? <Flag className="size-4" /> : <Skull className="size-4" />}
             {OUT_LABELS[out]}
+            {seat.satisfaction && <SatisfactionBadge value={seat.satisfaction} />}
           </span>
+          {seat.occupant?.kind === "player" &&
+            !seat.satisfaction &&
+            !seat.ratingDismissed &&
+            !recordBlocker(game) && (
+              <div className="bg-base-100 text-base-content pointer-events-auto mt-auto mb-[8cqh] rounded-2xl px-3 pt-1.5 pb-2 shadow-2xl">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-bold">{name}, how was the game?</p>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs btn-circle -mr-1"
+                    aria-label={`Not now: ${name}`}
+                    onClick={() => actions.onRate(null)}
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+                <SatisfactionPicker onRate={actions.onRate} />
+              </div>
+            )}
         </div>
       )}
 

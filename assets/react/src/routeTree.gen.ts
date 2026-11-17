@@ -16,6 +16,7 @@ import { Route as ImportRouteImport } from "./routes/import"
 import { Route as InviteRouteImport } from "./routes/invite"
 import { Route as LoginRouteImport } from "./routes/login"
 import { Route as RegisterRouteImport } from "./routes/register"
+import { Route as SaltRouteImport } from "./routes/salt"
 import { Route as SettingsRouteImport } from "./routes/settings"
 import { Route as AdminAuditRouteImport } from "./routes/admin/audit"
 import { Route as AdminCatalogRouteImport } from "./routes/admin/catalog"
@@ -75,6 +76,11 @@ const LoginRoute = LoginRouteImport.update({
 const RegisterRoute = RegisterRouteImport.update({
   id: "/register",
   path: "/register",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SaltRoute = SaltRouteImport.update({
+  id: "/salt",
+  path: "/salt",
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -211,6 +217,7 @@ export interface FileRoutesByFullPath {
   "/invite": typeof InviteRoute
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
+  "/salt": typeof SaltRoute
   "/settings": typeof SettingsRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/catalog": typeof AdminCatalogRoute
@@ -245,6 +252,7 @@ export interface FileRoutesByTo {
   "/invite": typeof InviteRoute
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
+  "/salt": typeof SaltRoute
   "/settings": typeof SettingsRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/catalog": typeof AdminCatalogRoute
@@ -280,6 +288,7 @@ export interface FileRoutesById {
   "/invite": typeof InviteRoute
   "/login": typeof LoginRoute
   "/register": typeof RegisterRoute
+  "/salt": typeof SaltRoute
   "/settings": typeof SettingsRoute
   "/admin/audit": typeof AdminAuditRoute
   "/admin/catalog": typeof AdminCatalogRoute
@@ -316,6 +325,7 @@ export interface FileRouteTypes {
     | "/invite"
     | "/login"
     | "/register"
+    | "/salt"
     | "/settings"
     | "/admin/audit"
     | "/admin/catalog"
@@ -350,6 +360,7 @@ export interface FileRouteTypes {
     | "/invite"
     | "/login"
     | "/register"
+    | "/salt"
     | "/settings"
     | "/admin/audit"
     | "/admin/catalog"
@@ -384,6 +395,7 @@ export interface FileRouteTypes {
     | "/invite"
     | "/login"
     | "/register"
+    | "/salt"
     | "/settings"
     | "/admin/audit"
     | "/admin/catalog"
@@ -419,6 +431,7 @@ export interface RootRouteChildren {
   InviteRoute: typeof InviteRoute
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
+  SaltRoute: typeof SaltRoute
   SettingsRoute: typeof SettingsRoute
   CommandersCommanderIdRoute: typeof CommandersCommanderIdRoute
   DecksDeckIdRoute: typeof DecksDeckIdRoute
@@ -487,6 +500,13 @@ declare module "@tanstack/react-router" {
       path: "/register"
       fullPath: "/register"
       preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/salt": {
+      id: "/salt"
+      path: "/salt"
+      fullPath: "/salt"
+      preLoaderRoute: typeof SaltRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/settings": {
@@ -699,6 +719,7 @@ const rootRouteChildren: RootRouteChildren = {
   InviteRoute: InviteRoute,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
+  SaltRoute: SaltRoute,
   SettingsRoute: SettingsRoute,
   CommandersCommanderIdRoute: CommandersCommanderIdRoute,
   DecksDeckIdRoute: DecksDeckIdRoute,

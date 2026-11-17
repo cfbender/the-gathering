@@ -70,6 +70,7 @@ const game = (created_by_user_id: number | null, playerUserIds: (number | null)[
   source: "manual",
   external_id: null,
   created_by_user_id,
+  average_satisfaction: null,
   seats: playerUserIds.map((user_id, index) => ({
     id: index + 1,
     player_id: index + 1,
@@ -82,6 +83,7 @@ const game = (created_by_user_id: number | null, playerUserIds: (number | null)[
     mvp_card_name: null,
     mvp_art_crop_url: null,
     notes: null,
+    satisfaction: null,
     player: { ...player(user_id), id: index + 1 },
     deck: null,
   })),

@@ -6,7 +6,7 @@ CREATE TABLE "server_settings" ("id" INTEGER PRIMARY KEY, "registration_enabled"
 CREATE TABLE "decks" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "player_id" INTEGER NOT NULL CONSTRAINT "decks_player_id_fkey" REFERENCES "players"("id") ON DELETE RESTRICT, "name" TEXT NOT NULL, "commander_card_id" TEXT, "commander_name" TEXT NOT NULL, "partner_card_id" TEXT, "partner_name" TEXT, "color_identity" TEXT DEFAULT '' NOT NULL, "decklist_url" TEXT, "decklist_source" TEXT, "archived_at" TEXT, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL, "skip_count" INTEGER DEFAULT 0 NOT NULL, "included_for_play" INTEGER DEFAULT true NOT NULL, "commander_printing_id" TEXT CONSTRAINT "decks_commander_printing_id_fkey" REFERENCES "card_printings"("id"), "partner_printing_id" TEXT CONSTRAINT "decks_partner_printing_id_fkey" REFERENCES "card_printings"("id"));
 CREATE INDEX "decks_player_id_index" ON "decks" ("player_id");
 CREATE UNIQUE INDEX decks_player_name_nocase_index ON decks (player_id, name COLLATE NOCASE);
-CREATE TABLE "game_players" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "game_id" INTEGER NOT NULL CONSTRAINT "game_players_game_id_fkey" REFERENCES "games"("id") ON DELETE CASCADE, "player_id" INTEGER NOT NULL CONSTRAINT "game_players_player_id_fkey" REFERENCES "players"("id") ON DELETE RESTRICT, "deck_id" INTEGER CONSTRAINT "game_players_deck_id_fkey" REFERENCES "decks"("id") ON DELETE RESTRICT, "seat" INTEGER NOT NULL, "result" TEXT NOT NULL, "eliminated_turn" INTEGER, "eliminated_by_player_id" INTEGER CONSTRAINT "game_players_eliminated_by_player_id_fkey" REFERENCES "players"("id") ON DELETE RESTRICT, "mvp_card_id" TEXT, "mvp_card_name" TEXT, "notes" TEXT, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL, "kills" INTEGER);
+CREATE TABLE "game_players" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "game_id" INTEGER NOT NULL CONSTRAINT "game_players_game_id_fkey" REFERENCES "games"("id") ON DELETE CASCADE, "player_id" INTEGER NOT NULL CONSTRAINT "game_players_player_id_fkey" REFERENCES "players"("id") ON DELETE RESTRICT, "deck_id" INTEGER CONSTRAINT "game_players_deck_id_fkey" REFERENCES "decks"("id") ON DELETE RESTRICT, "seat" INTEGER NOT NULL, "result" TEXT NOT NULL, "eliminated_turn" INTEGER, "eliminated_by_player_id" INTEGER CONSTRAINT "game_players_eliminated_by_player_id_fkey" REFERENCES "players"("id") ON DELETE RESTRICT, "mvp_card_id" TEXT, "mvp_card_name" TEXT, "notes" TEXT, "inserted_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL, "kills" INTEGER, satisfaction INTEGER CHECK (satisfaction BETWEEN 1 AND 5));
 CREATE UNIQUE INDEX "game_players_game_id_player_id_index" ON "game_players" ("game_id", "player_id");
 CREATE UNIQUE INDEX "game_players_game_id_seat_index" ON "game_players" ("game_id", "seat");
 CREATE INDEX "game_players_player_id_index" ON "game_players" ("player_id");
@@ -303,115 +303,6 @@ BEGIN
       'skip_count', OLD.skip_count,
       'included_for_play', OLD.included_for_play,
       'archived_at', OLD.archived_at,
-      'inserted_at', OLD.inserted_at,
-      'updated_at', OLD.updated_at
-    ),
-    NULL,
-    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-  );
-END;
-CREATE TRIGGER audit_game_players_insert AFTER INSERT ON game_players
-BEGIN
-  INSERT INTO audit_changes (operation_id, entity, entity_id, before_json, after_json, inserted_at)
-  VALUES (
-    (SELECT operation_id FROM audit_context WHERE id = 1),
-    'game_players',
-    CAST(NEW.id AS TEXT),
-    NULL,
-    json_object(
-      'id', NEW.id,
-      'game_id', NEW.game_id,
-      'player_id', NEW.player_id,
-      'deck_id', NEW.deck_id,
-      'seat', NEW.seat,
-      'result', NEW.result,
-      'kills', NEW.kills,
-      'eliminated_turn', NEW.eliminated_turn,
-      'eliminated_by_player_id', NEW.eliminated_by_player_id,
-      'mvp_card_id', NEW.mvp_card_id,
-      'mvp_card_name', NEW.mvp_card_name,
-      'notes', NEW.notes,
-      'inserted_at', NEW.inserted_at,
-      'updated_at', NEW.updated_at
-    ),
-    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-  );
-END;
-CREATE TRIGGER audit_game_players_update AFTER UPDATE ON game_players
-WHEN OLD.id IS NOT NEW.id
-  OR OLD.game_id IS NOT NEW.game_id
-  OR OLD.player_id IS NOT NEW.player_id
-  OR OLD.deck_id IS NOT NEW.deck_id
-  OR OLD.seat IS NOT NEW.seat
-  OR OLD.result IS NOT NEW.result
-  OR OLD.kills IS NOT NEW.kills
-  OR OLD.eliminated_turn IS NOT NEW.eliminated_turn
-  OR OLD.eliminated_by_player_id IS NOT NEW.eliminated_by_player_id
-  OR OLD.mvp_card_id IS NOT NEW.mvp_card_id
-  OR OLD.mvp_card_name IS NOT NEW.mvp_card_name
-  OR OLD.notes IS NOT NEW.notes
-  OR OLD.inserted_at IS NOT NEW.inserted_at
-BEGIN
-  INSERT INTO audit_changes (operation_id, entity, entity_id, before_json, after_json, inserted_at)
-  VALUES (
-    (SELECT operation_id FROM audit_context WHERE id = 1),
-    'game_players',
-    CAST(NEW.id AS TEXT),
-    json_object(
-      'id', OLD.id,
-      'game_id', OLD.game_id,
-      'player_id', OLD.player_id,
-      'deck_id', OLD.deck_id,
-      'seat', OLD.seat,
-      'result', OLD.result,
-      'kills', OLD.kills,
-      'eliminated_turn', OLD.eliminated_turn,
-      'eliminated_by_player_id', OLD.eliminated_by_player_id,
-      'mvp_card_id', OLD.mvp_card_id,
-      'mvp_card_name', OLD.mvp_card_name,
-      'notes', OLD.notes,
-      'inserted_at', OLD.inserted_at,
-      'updated_at', OLD.updated_at
-    ),
-    json_object(
-      'id', NEW.id,
-      'game_id', NEW.game_id,
-      'player_id', NEW.player_id,
-      'deck_id', NEW.deck_id,
-      'seat', NEW.seat,
-      'result', NEW.result,
-      'kills', NEW.kills,
-      'eliminated_turn', NEW.eliminated_turn,
-      'eliminated_by_player_id', NEW.eliminated_by_player_id,
-      'mvp_card_id', NEW.mvp_card_id,
-      'mvp_card_name', NEW.mvp_card_name,
-      'notes', NEW.notes,
-      'inserted_at', NEW.inserted_at,
-      'updated_at', NEW.updated_at
-    ),
-    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-  );
-END;
-CREATE TRIGGER audit_game_players_delete AFTER DELETE ON game_players
-BEGIN
-  INSERT INTO audit_changes (operation_id, entity, entity_id, before_json, after_json, inserted_at)
-  VALUES (
-    (SELECT operation_id FROM audit_context WHERE id = 1),
-    'game_players',
-    CAST(OLD.id AS TEXT),
-    json_object(
-      'id', OLD.id,
-      'game_id', OLD.game_id,
-      'player_id', OLD.player_id,
-      'deck_id', OLD.deck_id,
-      'seat', OLD.seat,
-      'result', OLD.result,
-      'kills', OLD.kills,
-      'eliminated_turn', OLD.eliminated_turn,
-      'eliminated_by_player_id', OLD.eliminated_by_player_id,
-      'mvp_card_id', OLD.mvp_card_id,
-      'mvp_card_name', OLD.mvp_card_name,
-      'notes', OLD.notes,
       'inserted_at', OLD.inserted_at,
       'updated_at', OLD.updated_at
     ),
@@ -1216,6 +1107,120 @@ BEGIN
     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
   );
 END;
+CREATE TRIGGER audit_game_players_insert AFTER INSERT ON game_players
+BEGIN
+  INSERT INTO audit_changes (operation_id, entity, entity_id, before_json, after_json, inserted_at)
+  VALUES (
+    (SELECT operation_id FROM audit_context WHERE id = 1),
+    'game_players',
+    CAST(NEW.id AS TEXT),
+    NULL,
+    json_object(
+      'id', NEW.id,
+      'game_id', NEW.game_id,
+      'player_id', NEW.player_id,
+      'deck_id', NEW.deck_id,
+      'seat', NEW.seat,
+      'result', NEW.result,
+      'kills', NEW.kills,
+      'satisfaction', NEW.satisfaction,
+      'eliminated_turn', NEW.eliminated_turn,
+      'eliminated_by_player_id', NEW.eliminated_by_player_id,
+      'mvp_card_id', NEW.mvp_card_id,
+      'mvp_card_name', NEW.mvp_card_name,
+      'notes', NEW.notes,
+      'inserted_at', NEW.inserted_at,
+      'updated_at', NEW.updated_at
+    ),
+    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+  );
+END;
+CREATE TRIGGER audit_game_players_update AFTER UPDATE ON game_players
+WHEN OLD.id IS NOT NEW.id
+  OR OLD.game_id IS NOT NEW.game_id
+  OR OLD.player_id IS NOT NEW.player_id
+  OR OLD.deck_id IS NOT NEW.deck_id
+  OR OLD.seat IS NOT NEW.seat
+  OR OLD.result IS NOT NEW.result
+  OR OLD.kills IS NOT NEW.kills
+  OR OLD.satisfaction IS NOT NEW.satisfaction
+  OR OLD.eliminated_turn IS NOT NEW.eliminated_turn
+  OR OLD.eliminated_by_player_id IS NOT NEW.eliminated_by_player_id
+  OR OLD.mvp_card_id IS NOT NEW.mvp_card_id
+  OR OLD.mvp_card_name IS NOT NEW.mvp_card_name
+  OR OLD.notes IS NOT NEW.notes
+  OR OLD.inserted_at IS NOT NEW.inserted_at
+BEGIN
+  INSERT INTO audit_changes (operation_id, entity, entity_id, before_json, after_json, inserted_at)
+  VALUES (
+    (SELECT operation_id FROM audit_context WHERE id = 1),
+    'game_players',
+    CAST(NEW.id AS TEXT),
+    json_object(
+      'id', OLD.id,
+      'game_id', OLD.game_id,
+      'player_id', OLD.player_id,
+      'deck_id', OLD.deck_id,
+      'seat', OLD.seat,
+      'result', OLD.result,
+      'kills', OLD.kills,
+      'satisfaction', OLD.satisfaction,
+      'eliminated_turn', OLD.eliminated_turn,
+      'eliminated_by_player_id', OLD.eliminated_by_player_id,
+      'mvp_card_id', OLD.mvp_card_id,
+      'mvp_card_name', OLD.mvp_card_name,
+      'notes', OLD.notes,
+      'inserted_at', OLD.inserted_at,
+      'updated_at', OLD.updated_at
+    ),
+    json_object(
+      'id', NEW.id,
+      'game_id', NEW.game_id,
+      'player_id', NEW.player_id,
+      'deck_id', NEW.deck_id,
+      'seat', NEW.seat,
+      'result', NEW.result,
+      'kills', NEW.kills,
+      'satisfaction', NEW.satisfaction,
+      'eliminated_turn', NEW.eliminated_turn,
+      'eliminated_by_player_id', NEW.eliminated_by_player_id,
+      'mvp_card_id', NEW.mvp_card_id,
+      'mvp_card_name', NEW.mvp_card_name,
+      'notes', NEW.notes,
+      'inserted_at', NEW.inserted_at,
+      'updated_at', NEW.updated_at
+    ),
+    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+  );
+END;
+CREATE TRIGGER audit_game_players_delete AFTER DELETE ON game_players
+BEGIN
+  INSERT INTO audit_changes (operation_id, entity, entity_id, before_json, after_json, inserted_at)
+  VALUES (
+    (SELECT operation_id FROM audit_context WHERE id = 1),
+    'game_players',
+    CAST(OLD.id AS TEXT),
+    json_object(
+      'id', OLD.id,
+      'game_id', OLD.game_id,
+      'player_id', OLD.player_id,
+      'deck_id', OLD.deck_id,
+      'seat', OLD.seat,
+      'result', OLD.result,
+      'kills', OLD.kills,
+      'satisfaction', OLD.satisfaction,
+      'eliminated_turn', OLD.eliminated_turn,
+      'eliminated_by_player_id', OLD.eliminated_by_player_id,
+      'mvp_card_id', OLD.mvp_card_id,
+      'mvp_card_name', OLD.mvp_card_name,
+      'notes', OLD.notes,
+      'inserted_at', OLD.inserted_at,
+      'updated_at', OLD.updated_at
+    ),
+    NULL,
+    strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+  );
+END;
 INSERT INTO schema_migrations VALUES(20260919195831,NULL);
 INSERT INTO schema_migrations VALUES(20260919195952,NULL);
 INSERT INTO schema_migrations VALUES(20260919200035,NULL);
@@ -1256,3 +1261,4 @@ INSERT INTO schema_migrations VALUES(20261018054335,NULL);
 INSERT INTO schema_migrations VALUES(20261021040425,NULL);
 INSERT INTO schema_migrations VALUES(20261021045452,NULL);
 INSERT INTO schema_migrations VALUES(20261107202025,NULL);
+INSERT INTO schema_migrations VALUES(20261117205804,NULL);

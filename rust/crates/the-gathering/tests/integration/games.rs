@@ -1460,6 +1460,34 @@ async fn list_games_filters_by_winner_commander_seat_count_turns_and_duration() 
 }
 
 #[tokio::test]
+async fn list_games_filters_by_the_face_the_average_rating_rounds_to() {
+    let app = TestApp::new().await;
+    let mut players = Vec::new();
+    for name in ["Alice", "Bob", "Cara", "Dana", "Eve"] {
+        players.push(app.player(name).await.id);
+    }
+    let game = |ratings: &[Option<i64>]| {
+        json!({"played_at": "2026-09-19T18:00:00Z", "seats": ratings.iter().zip(&players).zip(1..).map(|((rating, player), seat)| json!({
+            "player_id": player, "seat": seat, "result": if seat == 1 { "win" } else { "loss" }, "satisfaction": rating,
+        })).collect::<Vec<_>>()})
+    };
+    // 2.5 shows the meh face; 2.4 shows bad.
+    let meh = app.game(game(&[Some(2), Some(3)]), None).await;
+    let bad = app
+        .game(game(&[Some(2), Some(2), Some(3), Some(3), Some(2)]), None)
+        .await;
+    let unrated = app.game(game(&[None, None]), None).await;
+
+    assert_eq!(ids(&app, json!({"mood": 3})).await, [meh.id]);
+    assert_eq!(ids(&app, json!({"mood": 2})).await, [bad.id]);
+    assert!(ids(&app, json!({"mood": 1})).await.is_empty());
+    assert_eq!(
+        ids(&app, json!({"mood": 6})).await,
+        [unrated.id, bad.id, meh.id]
+    );
+}
+
+#[tokio::test]
 async fn list_games_filters_by_colors_win_condition_seat_opponent_and_player_result() {
     let app = TestApp::new().await;
     let alice = app.player("Alice").await;

@@ -12,6 +12,7 @@ import {
 import { useToast } from "@/components/ui/toast"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { invalidateGameRelated, WIN_CONDITIONS, type Game } from "@/features/games/games"
+import { SatisfactionPicker } from "@/features/satisfaction/satisfaction"
 import { api, ApiError } from "@/lib/api"
 import { cn } from "@/lib/cn"
 import {
@@ -52,6 +53,7 @@ export function FinishTabletop({
   const [duration, setDuration] = useState(() => String(elapsedMinutes(game) ?? ""))
   const [turns, setTurns] = useState(() => (game.turn > 0 ? String(game.turn) : ""))
   const [winCondition, setWinCondition] = useState("")
+  const [ratings, setRatings] = useState<Record<number, number>>({})
 
   const record = useMutation({
     mutationFn: (_after: After) =>
@@ -63,6 +65,7 @@ export function FinishTabletop({
             durationMinutes: duration,
             turns,
             winCondition,
+            ratings,
           }),
         ),
       }).then((body) => body.data),
@@ -190,6 +193,29 @@ export function FinishTabletop({
                 </select>
               </label>
             </>
+          )}
+
+          {!blocker && (
+            <fieldset className="sm:col-span-2">
+              <legend className="mb-1 text-sm font-bold">How was the game?</legend>
+              <p className="text-base-content/60 mb-2 text-xs">
+                Each player taps their own face. Optional.
+              </p>
+              <ul className="grid gap-2">
+                {game.seats.map((seat, index) => (
+                  <li key={index} className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-sm font-semibold">
+                      {seatName(seat, index)}
+                    </span>
+                    <SatisfactionPicker
+                      size="sm"
+                      value={ratings[index] ?? seat.satisfaction}
+                      onRate={(value) => setRatings((current) => ({ ...current, [index]: value }))}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
           )}
 
           {error && <div className="alert alert-error sm:col-span-2">{error}</div>}

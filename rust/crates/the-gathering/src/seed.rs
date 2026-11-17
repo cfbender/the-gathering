@@ -137,12 +137,21 @@ fn game(
         } else {
             None
         };
+        // Most players rate their games; winners tend to enjoy them more.
+        let satisfaction = if (index + seat) % 6 == 5 {
+            None
+        } else if won {
+            Some(4 + index % 2)
+        } else {
+            Some(1 + (index * 3 + seat) % 5)
+        };
         seats.push(SeatInput {
             player_id: Some(*player_ids.get(name).context("player id")?).into(),
             deck_id: Some(deck.id).into(),
             seat: Some(i64::try_from(seat)?).into(),
             result: Some(result.to_owned()).into(),
             mvp_card_name: mvp.map(str::to_owned).into(),
+            satisfaction: satisfaction.map(i64::try_from).transpose()?.into(),
             ..SeatInput::default()
         });
     }

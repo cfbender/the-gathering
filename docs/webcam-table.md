@@ -146,7 +146,8 @@ snapshot. This is a single-server design: there is no cross-node room coordinati
 ### Game state
 
 - **Seats.** Players publish their own changes with `update_status` (life −999…999, camera,
-  poison, rad, commander casts and damage, custom counters, combat effects). The channel
+  poison, rad, commander casts and damage, custom counters, combat effects, and `satisfaction`
+  1…5, the seat's rating of the game, which a rematch clears). The channel
   validates each field (counters 0…999, maps of at most 100 entries, names of 1…300 bytes) and
   merges it into presence. Life at zero or below eliminates the seat; gaining life back does
   not restore it.
@@ -183,6 +184,13 @@ The End game form pauses the timer and builds a normal game payload
 to whole minutes, and every seat in the shared order, including eliminated ones. It posts to
 `POST /api/games`, whose handler drops provenance fields and records through
 `games/record_game.rs`. The game schema accepts 2–10 players, matching the table's ten seats.
+Seats that rated the game (the prompt appears when a seat is knocked out) carry their
+`satisfaction` into the payload.
+
+The recorder then sends `end_game` or `rematch` with `{"game_id": id}`, and the server broadcasts
+`game_recorded {game_id}` to the table first. A seat that has not rated the game is asked to:
+after a rematch the table shows the prompt, and a closing table sends the seat to the game's page,
+which asks there. Either way the rating goes to `PUT /api/games/:id/satisfaction`.
 
 ## Media: an SFU with simulcast
 

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT s.id AS \"id!\", s.game_id, s.player_id, s.deck_id, s.seat, s.result AS \"result: GameResult\",\n                  s.kills, s.eliminated_turn, s.eliminated_by_player_id, s.mvp_card_id, s.mvp_card_name, s.notes,\n                  s.inserted_at AS \"inserted_at: UtcDateTime\", s.updated_at AS \"updated_at: UtcDateTime\",\n                  p.playgroup_id AS player_playgroup_id, p.name AS player_name, p.user_id AS player_user_id,\n                  p.discord_id AS player_discord_id,\n                  p.archived_at AS \"player_archived_at: UtcDateTime\",\n                  p.inserted_at AS \"player_inserted_at: UtcDateTime\", p.updated_at AS \"player_updated_at: UtcDateTime\",\n                  d.id AS \"d_id?: i64\", d.player_id AS \"d_player_id?: i64\", d.name AS \"d_name?: String\",\n                  d.commander_card_id AS \"d_commander_card_id?: String\", d.commander_name AS \"d_commander_name?: String\",\n                  d.commander_printing_id AS \"d_commander_printing_id?: String\",\n                  d.partner_card_id AS \"d_partner_card_id?: String\", d.partner_name AS \"d_partner_name?: String\",\n                  d.partner_printing_id AS \"d_partner_printing_id?: String\",\n                  d.color_identity AS \"d_color_identity?: String\", d.decklist_url AS \"d_decklist_url?: String\",\n                  d.decklist_source AS \"d_decklist_source?: DecklistSource\",\n                  d.archived_at AS \"d_archived_at?: UtcDateTime\", d.skip_count AS \"d_skip_count?: i64\",\n                  d.included_for_play AS \"d_included_for_play?: bool\",\n                  d.inserted_at AS \"d_inserted_at?: UtcDateTime\", d.updated_at AS \"d_updated_at?: UtcDateTime\"\n           FROM game_players s\n           JOIN players p ON p.id = s.player_id\n           LEFT JOIN decks d ON d.id = s.deck_id\n           WHERE s.game_id IN (SELECT value FROM json_each(?))\n           ORDER BY s.id",
+  "query": "SELECT s.id AS \"id!\", s.game_id, s.player_id, s.deck_id, s.seat, s.result AS \"result: GameResult\",\n                  s.kills, s.eliminated_turn, s.eliminated_by_player_id, s.mvp_card_id, s.mvp_card_name, s.notes, s.satisfaction,\n                  s.inserted_at AS \"inserted_at: UtcDateTime\", s.updated_at AS \"updated_at: UtcDateTime\",\n                  p.playgroup_id AS player_playgroup_id, p.name AS player_name, p.user_id AS player_user_id,\n                  p.discord_id AS player_discord_id,\n                  p.archived_at AS \"player_archived_at: UtcDateTime\",\n                  p.inserted_at AS \"player_inserted_at: UtcDateTime\", p.updated_at AS \"player_updated_at: UtcDateTime\",\n                  d.id AS \"d_id?: i64\", d.player_id AS \"d_player_id?: i64\", d.name AS \"d_name?: String\",\n                  d.commander_card_id AS \"d_commander_card_id?: String\", d.commander_name AS \"d_commander_name?: String\",\n                  d.commander_printing_id AS \"d_commander_printing_id?: String\",\n                  d.partner_card_id AS \"d_partner_card_id?: String\", d.partner_name AS \"d_partner_name?: String\",\n                  d.partner_printing_id AS \"d_partner_printing_id?: String\",\n                  d.color_identity AS \"d_color_identity?: String\", d.decklist_url AS \"d_decklist_url?: String\",\n                  d.decklist_source AS \"d_decklist_source?: DecklistSource\",\n                  d.archived_at AS \"d_archived_at?: UtcDateTime\", d.skip_count AS \"d_skip_count?: i64\",\n                  d.included_for_play AS \"d_included_for_play?: bool\",\n                  d.inserted_at AS \"d_inserted_at?: UtcDateTime\", d.updated_at AS \"d_updated_at?: UtcDateTime\"\n           FROM game_players s\n           JOIN players p ON p.id = s.player_id\n           LEFT JOIN decks d ON d.id = s.deck_id\n           WHERE s.game_id IN (SELECT value FROM json_each(?))\n           ORDER BY s.id",
   "describe": {
     "columns": [
       {
@@ -136,8 +136,19 @@
         }
       },
       {
-        "name": "inserted_at: UtcDateTime",
+        "name": "satisfaction",
         "ordinal": 12,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "satisfaction"
+          }
+        }
+      },
+      {
+        "name": "inserted_at: UtcDateTime",
+        "ordinal": 13,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -148,7 +159,7 @@
       },
       {
         "name": "updated_at: UtcDateTime",
-        "ordinal": 13,
+        "ordinal": 14,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -159,7 +170,7 @@
       },
       {
         "name": "player_playgroup_id",
-        "ordinal": 14,
+        "ordinal": 15,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -170,7 +181,7 @@
       },
       {
         "name": "player_name",
-        "ordinal": 15,
+        "ordinal": 16,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -181,7 +192,7 @@
       },
       {
         "name": "player_user_id",
-        "ordinal": 16,
+        "ordinal": 17,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -192,7 +203,7 @@
       },
       {
         "name": "player_discord_id",
-        "ordinal": 17,
+        "ordinal": 18,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -203,7 +214,7 @@
       },
       {
         "name": "player_archived_at: UtcDateTime",
-        "ordinal": 18,
+        "ordinal": 19,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -214,7 +225,7 @@
       },
       {
         "name": "player_inserted_at: UtcDateTime",
-        "ordinal": 19,
+        "ordinal": 20,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -225,7 +236,7 @@
       },
       {
         "name": "player_updated_at: UtcDateTime",
-        "ordinal": 20,
+        "ordinal": 21,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -236,7 +247,7 @@
       },
       {
         "name": "d_id?: i64",
-        "ordinal": 21,
+        "ordinal": 22,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -247,7 +258,7 @@
       },
       {
         "name": "d_player_id?: i64",
-        "ordinal": 22,
+        "ordinal": 23,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -258,7 +269,7 @@
       },
       {
         "name": "d_name?: String",
-        "ordinal": 23,
+        "ordinal": 24,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -269,7 +280,7 @@
       },
       {
         "name": "d_commander_card_id?: String",
-        "ordinal": 24,
+        "ordinal": 25,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -280,7 +291,7 @@
       },
       {
         "name": "d_commander_name?: String",
-        "ordinal": 25,
+        "ordinal": 26,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -291,7 +302,7 @@
       },
       {
         "name": "d_commander_printing_id?: String",
-        "ordinal": 26,
+        "ordinal": 27,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -302,7 +313,7 @@
       },
       {
         "name": "d_partner_card_id?: String",
-        "ordinal": 27,
+        "ordinal": 28,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -313,7 +324,7 @@
       },
       {
         "name": "d_partner_name?: String",
-        "ordinal": 28,
+        "ordinal": 29,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -324,7 +335,7 @@
       },
       {
         "name": "d_partner_printing_id?: String",
-        "ordinal": 29,
+        "ordinal": 30,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -335,7 +346,7 @@
       },
       {
         "name": "d_color_identity?: String",
-        "ordinal": 30,
+        "ordinal": 31,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -346,7 +357,7 @@
       },
       {
         "name": "d_decklist_url?: String",
-        "ordinal": 31,
+        "ordinal": 32,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -357,7 +368,7 @@
       },
       {
         "name": "d_decklist_source?: DecklistSource",
-        "ordinal": 32,
+        "ordinal": 33,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -368,7 +379,7 @@
       },
       {
         "name": "d_archived_at?: UtcDateTime",
-        "ordinal": 33,
+        "ordinal": 34,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -379,7 +390,7 @@
       },
       {
         "name": "d_skip_count?: i64",
-        "ordinal": 34,
+        "ordinal": 35,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -390,7 +401,7 @@
       },
       {
         "name": "d_included_for_play?: bool",
-        "ordinal": 35,
+        "ordinal": 36,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -401,7 +412,7 @@
       },
       {
         "name": "d_inserted_at?: UtcDateTime",
-        "ordinal": 36,
+        "ordinal": 37,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -412,7 +423,7 @@
       },
       {
         "name": "d_updated_at?: UtcDateTime",
-        "ordinal": 37,
+        "ordinal": 38,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -432,6 +443,7 @@
       true,
       false,
       false,
+      true,
       true,
       true,
       true,
@@ -466,5 +478,5 @@
       true
     ]
   },
-  "hash": "e8061a8ee982e4b83dffdb8c743ae60b5a76c92370a6396fb54fdc4a5faa6706"
+  "hash": "bedd4c65da0e1e5c2a37291fd37269ac22087326286781212e69a9c19a62828a"
 }

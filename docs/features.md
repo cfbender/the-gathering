@@ -87,10 +87,27 @@ clock, and ends the game.
 
 A finished game goes into game history only when every seat is a member and the format is one
 history records. Games with a guest or an empty seat, and Standard, Pauper, or Canadian Highlander
-games, just end. The game in progress is saved in the browser, so a reload or reopening the
+games, just end. In a recorded game, a player who goes out is asked on their own seat how the game
+was ([Salt](#salt)), and the **Game over** dialog lists every player's faces again. The game in progress is saved in the browser, so a reload or reopening the
 installed app picks it up again. The screen stays awake while the board is open.
 
 ## Game history
+
+### Salt
+
+Every player can rate how much they enjoyed a game, from awful to rad, with one click. At the
+webcam table a small prompt appears when your seat is knocked out, and again once the game is
+recorded if you have not rated it yet (on the game's page, or at the table after a rematch); the
+cross dismisses it. Ratings given at the table are saved with the game. On a game's page each
+player's face shows on their seat, your own seat has the five faces to rate or change your rating,
+and the header shows the table's average mood, which the games list shows per game too. The games
+list's **Table mood** filter (under More filters) shows only games whose average rounds to one face.
+
+**Salt** in the menu shows the playgroup's average mood, the saltiest game (the lowest average
+among games at least two players rated), how ratings spread, mood by month, the saltiest and least
+salty commanders (ranked by how the rest of the table rated games against them,
+once they have three such ratings), and players ranked by how they rated their own games. Player
+profiles and deck pages show their own average and their opponents' average.
 
 ### Kills
 

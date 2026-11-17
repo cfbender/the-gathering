@@ -5,6 +5,7 @@ import { ToastProvider } from "@/components/ui/toast"
 import { EndUnrecordedGame, FinishGame } from "./finish-game"
 import { EMPTY_COUNTERS } from "./seat-counters"
 import { EMPTY_TURNS, type TurnState } from "./turns"
+import type { TableParticipant } from "./room-types"
 
 const navigate = vi.fn()
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }))
@@ -16,10 +17,10 @@ const participants = [
 ]
 
 function mount(
-  onEndTable: () => Promise<boolean>,
+  onEndTable: (gameId?: number) => Promise<boolean>,
   turns: TurnState = EMPTY_TURNS,
-  onRematch: () => Promise<boolean> = () => Promise.resolve(true),
-  seats = participants,
+  onRematch: (gameId?: number) => Promise<boolean> = () => Promise.resolve(true),
+  seats: TableParticipant[] = participants,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -216,20 +217,27 @@ describe("FinishGame", () => {
     expect(navigate).not.toHaveBeenCalled()
   })
 
-  it("records the result, then ends the table and opens the saved game", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(Response.json({ data: { id: 42 } }, { status: 201 }))),
+  it("records the result with the seats' ratings, then ends the table and opens the saved game", async () => {
+    const fetch = vi.fn((_url: string, _init: RequestInit) =>
+      Promise.resolve(Response.json({ data: { id: 42 } }, { status: 201 })),
     )
-    const onEndTable = vi.fn(() => Promise.resolve(true))
-    mount(onEndTable)
+    vi.stubGlobal("fetch", fetch)
+    const onEndTable = vi.fn((_gameId?: number) => Promise.resolve(true))
+    mount(onEndTable, EMPTY_TURNS, undefined, [
+      participants[0]!,
+      { ...participants[1]!, satisfaction: 2 },
+    ])
 
     fireEvent.click(screen.getByRole("button", { name: "Record result" }))
 
     await waitFor(() =>
       expect(navigate).toHaveBeenCalledWith({ to: "/games/$gameId", params: { gameId: "42" } }),
     )
-    expect(onEndTable).toHaveBeenCalledOnce()
+    // The table learns which game to ask its unrated seats about.
+    expect(onEndTable).toHaveBeenCalledExactlyOnceWith(42)
+    const seats = JSON.parse(fetch.mock.calls[0]![1].body as string).seats
+    expect(seats[0]).not.toHaveProperty("satisfaction")
+    expect(seats[1].satisfaction).toBe(2)
   })
 
   it("records the highest turn any player reached as the game's turns", async () => {
@@ -250,7 +258,7 @@ describe("FinishGame", () => {
     const fetch = vi.fn(savedGame)
     vi.stubGlobal("fetch", fetch)
     const onEndTable = vi.fn(() => Promise.resolve(true))
-    const onRematch = vi.fn(() => Promise.resolve(true))
+    const onRematch = vi.fn((_gameId?: number) => Promise.resolve(true))
     const { onOpenChange } = mount(onEndTable, EMPTY_TURNS, onRematch)
 
     fireEvent.click(screen.getByRole("radio", { name: /End and rematch/ }))
@@ -259,7 +267,7 @@ describe("FinishGame", () => {
 
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
     expect(fetch).toHaveBeenCalledOnce()
-    expect(onRematch).toHaveBeenCalledOnce()
+    expect(onRematch).toHaveBeenCalledExactlyOnceWith(42)
     expect(onEndTable).not.toHaveBeenCalled()
     expect(navigate).not.toHaveBeenCalled()
     // The open dialog hides the toast stack from the accessibility tree, so find it by text.
@@ -282,7 +290,7 @@ describe("FinishGame", () => {
     const fetch = vi.fn()
     vi.stubGlobal("fetch", fetch)
     const onEndTable = vi.fn(() => Promise.resolve(true))
-    const onRematch = vi.fn(() => Promise.resolve(true))
+    const onRematch = vi.fn((_gameId?: number) => Promise.resolve(true))
     const { onOpenChange } = mount(onEndTable, EMPTY_TURNS, onRematch)
 
     fireEvent.click(screen.getByRole("radio", { name: /End and rematch/ }))

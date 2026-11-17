@@ -24,6 +24,7 @@ function seat(id: number, name: string, result: Seat["result"]): Seat {
     mvp_card_name: null,
     mvp_art_crop_url: null,
     notes: null,
+    satisfaction: null,
     player: { id, name, user_id: null, avatar_url: null, archived_at: null },
     deck: {
       id,
@@ -57,6 +58,7 @@ const game: Game = {
   source: "manual",
   external_id: null,
   created_by_user_id: null,
+  average_satisfaction: null,
   seats: [seat(1, "Alice", "loss"), seat(2, "Bob", "win"), seat(3, "Cara", "loss")],
 }
 
@@ -95,6 +97,7 @@ describe("GameTable", () => {
       "Result",
       "Turns",
       "Duration",
+      "Mood",
     ])
     const players = within(screen.getByRole("list", { name: "3 players" }))
     expect(

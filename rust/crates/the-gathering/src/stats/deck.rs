@@ -7,7 +7,7 @@ use sqlx::SqliteConnection;
 use crate::games::{Game, GameResult, Seat, get_deck_in, get_player};
 
 use super::records::{self, Record, grouped_records, player_entity};
-use super::{query, summaries};
+use super::{query, salt, summaries};
 
 fn deck_seat(game: &Game, deck_id: i64) -> Option<&Seat> {
     game.seats.iter().find(|seat| seat.deck_id == Some(deck_id))
@@ -58,6 +58,9 @@ pub async fn get(
             .collect::<Vec<_>>(),
         "win_rate_over_time": records::cumulative_win_rate(
             games.iter().map(|game| (game.played_at, results(deck_seat(game, deck.id)))),
+        ),
+        "satisfaction": salt::seat_summary(
+            games.iter().filter_map(|game| Some((game, deck_seat(game, deck.id)?))),
         ),
     })))
 }

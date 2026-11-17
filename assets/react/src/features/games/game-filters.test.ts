@@ -97,6 +97,18 @@ describe("clock filters", () => {
   })
 })
 
+describe("mood filter", () => {
+  it("keeps the five faces and names the chosen one", () => {
+    expect(parseGamesSearch({ mood: "1" })).toEqual({ mood: 1 })
+    expect(parseGamesSearch({ mood: 5 })).toEqual({ mood: 5 })
+    expect(parseGamesSearch({ mood: 6 })).toEqual({})
+    expect(parseGamesSearch({ mood: 0 })).toEqual({})
+    expect(gameFilterChips({ mood: 2 }, { player: () => undefined, winCondition: String })).toEqual(
+      [{ key: "mood", label: "Mood: bad" }],
+    )
+  })
+})
+
 describe("gamesLink", () => {
   it("targets the games list with the scope's range start and drops unset filters", () => {
     expect(gamesLink({ date_from: "2026-03-25" }, { player_id: undefined, colors: "BG" })).toEqual({

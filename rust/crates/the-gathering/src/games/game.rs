@@ -27,6 +27,7 @@ pub(crate) struct SeatFields {
     pub mvp_card_id: Option<String>,
     pub mvp_card_name: Option<String>,
     pub notes: Option<String>,
+    pub satisfaction: Option<i64>,
 }
 
 impl SeatFields {
@@ -43,6 +44,7 @@ impl SeatFields {
             mvp_card_id: None,
             mvp_card_name: None,
             notes: None,
+            satisfaction: None,
         }
     }
 
@@ -59,6 +61,7 @@ impl SeatFields {
             mvp_card_id: seat.mvp_card_id.clone(),
             mvp_card_name: seat.mvp_card_name.clone(),
             notes: seat.notes.clone(),
+            satisfaction: seat.satisfaction,
         }
     }
 }
@@ -77,6 +80,7 @@ pub(crate) struct ValidSeat {
     pub mvp_card_id: Option<String>,
     pub mvp_card_name: Option<String>,
     pub notes: Option<String>,
+    pub satisfaction: Option<i64>,
 }
 
 /// A game ready to store.
@@ -139,6 +143,7 @@ fn cast_seat(base: &SeatFields, input: &SeatInput) -> (SeatFields, ValidationErr
         .nonblank()
         .or(base.mvp_card_name.clone());
     seat.notes = input.notes.clone().nonblank().or(base.notes.clone());
+    seat.satisfaction = input.satisfaction.clone().or(base.satisfaction);
     cs.required_value("player_id", seat.player_id.as_ref());
     cs.required_value("seat", seat.seat.as_ref());
     cs.required("result", seat.result.as_ref());
@@ -154,6 +159,11 @@ fn cast_seat(base: &SeatFields, input: &SeatInput) -> (SeatFields, ValidationErr
         cs.at_most("kills", seat.kills, 9);
     }
     cs.greater_than("eliminated_turn", seat.eliminated_turn, 0);
+    if seat.satisfaction.is_some_and(|rating| rating < 1) {
+        cs.at_least("satisfaction", seat.satisfaction, 1);
+    } else {
+        cs.at_most("satisfaction", seat.satisfaction, 5);
+    }
     cs.inclusion("result", seat.result.as_deref(), &["win", "loss", "draw"]);
     (seat, cs.finish().err().unwrap_or_default())
 }
@@ -441,6 +451,7 @@ pub(crate) async fn validate_game(
                 mvp_card_id: seat.mvp_card_id,
                 mvp_card_name: seat.mvp_card_name,
                 notes: seat.notes,
+                satisfaction: seat.satisfaction,
             })
         })
         .collect();

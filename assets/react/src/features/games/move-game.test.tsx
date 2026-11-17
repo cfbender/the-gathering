@@ -18,6 +18,7 @@ const game = {
   source: "manual",
   external_id: null,
   created_by_user_id: 1,
+  average_satisfaction: null,
   seats: [],
 } satisfies Game
 

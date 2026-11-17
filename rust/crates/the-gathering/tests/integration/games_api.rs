@@ -403,6 +403,69 @@ async fn a_seated_linked_player_can_update_and_delete_a_game() {
 }
 
 #[tokio::test]
+async fn seated_players_rate_only_their_own_seat_and_edits_keep_ratings() {
+    let ctx = setup().await;
+    let mut attrs = game_attrs(&ctx.alice, &ctx.bob);
+    attrs["seats"][1]["satisfaction"] = json!(6);
+    let invalid = ctx
+        .app
+        .post("/api/games", attrs.clone())
+        .await
+        .assert_json(422);
+    assert_eq!(
+        invalid["errors"]["seats"][1]["satisfaction"],
+        json!(["must be less than or equal to 5"])
+    );
+    attrs["seats"][1]["satisfaction"] = json!(1);
+    let created = ctx.app.post("/api/games", attrs).await.assert_json(201);
+    let path = format!("/api/games/{}", created["data"]["id"]);
+    assert_eq!(created["data"]["seats"][0]["satisfaction"], Value::Null);
+    assert_eq!(created["data"]["seats"][1]["satisfaction"], 1);
+    assert_eq!(created["data"]["average_satisfaction"], 1.0);
+
+    // The signed-in user has no seat until Alice is linked to them.
+    ctx.app
+        .put(&format!("{path}/satisfaction"), json!({"satisfaction": 4}))
+        .await
+        .assert_json(403);
+    ctx.app
+        .state
+        .games
+        .link_player_to_user(&ctx.alice, &ctx.user)
+        .await
+        .unwrap();
+    let rated = ctx
+        .app
+        .put(&format!("{path}/satisfaction"), json!({"satisfaction": 4}))
+        .await
+        .assert_json(200);
+    assert_eq!(rated["data"]["seats"][0]["satisfaction"], 4);
+    assert_eq!(rated["data"]["seats"][1]["satisfaction"], 1);
+    assert_eq!(rated["data"]["average_satisfaction"], 2.5);
+    for body in [json!({"satisfaction": 0}), json!({})] {
+        ctx.app
+            .put(&format!("{path}/satisfaction"), body)
+            .await
+            .assert_json(422);
+    }
+
+    // Editing seats without the field keeps each seat's rating.
+    let seats: Vec<Value> = rated["data"]["seats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|seat| json!({"id": seat["id"], "player_id": seat["player_id"], "seat": seat["seat"], "result": seat["result"], "kills": 1}))
+        .collect();
+    let edited = ctx
+        .app
+        .patch(&path, json!({"seats": seats}))
+        .await
+        .assert_json(200);
+    assert_eq!(edited["data"]["seats"][0]["satisfaction"], 4);
+    assert_eq!(edited["data"]["seats"][1]["satisfaction"], 1);
+}
+
+#[tokio::test]
 async fn an_administrator_can_update_and_delete_any_game() {
     let ctx = setup().await;
     let creator = ctx.app.unique_member().await;

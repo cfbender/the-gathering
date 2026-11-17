@@ -682,6 +682,22 @@ impl Games {
         write_tx!(self, |conn| record_game::update(conn, game, input).await)
     }
 
+    /// Sets how much a seat's player enjoyed the game (1 to 5).
+    pub async fn rate_game(
+        &self,
+        game: &Game,
+        seat_id: i64,
+        satisfaction: Option<i64>,
+    ) -> Result<Game, GamesError> {
+        write_tx!(self, |conn| record_game::rate(
+            conn,
+            game,
+            seat_id,
+            satisfaction
+        )
+        .await)
+    }
+
     /// Deletes a game (seats cascade).
     pub async fn delete_game(&self, game: &Game) -> Result<(), sqlx::Error> {
         write_tx!(self, |conn| record_game::delete(conn, game.id).await)

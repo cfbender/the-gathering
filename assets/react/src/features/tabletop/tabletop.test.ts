@@ -10,6 +10,7 @@ import {
   lastStanding,
   newGame,
   passTurn,
+  rateSeat,
   recordBlocker,
   setConceded,
   sit,
@@ -153,6 +154,30 @@ describe("recording", () => {
       { player_id: 101, deck_id: null, seat: 1, result: "loss" },
       { player_id: 102, deck_id: 7, seat: 2, result: "win" },
       { player_id: 100, deck_id: null, seat: 3, result: "loss" },
+    ])
+  })
+
+  it("records ratings by seat index, the finish dialog's over those given when knocked out", () => {
+    let game = chooseFirstSeat(playing(3), 1)
+    game = rateSeat(game, 0, 1)
+    game = rateSeat(game, 1, 2)
+    game = rateSeat(game, 2, null)
+    expect(game.seats[2]).toMatchObject({ ratingDismissed: true })
+    expect(game.seats[2]!.satisfaction).toBeUndefined()
+    const payload = gamePayload(game, {
+      winner: 2,
+      durationMinutes: "",
+      turns: "",
+      winCondition: "",
+      ratings: { 1: 5 },
+    })
+    // Turn order starts at seat index 1, so its rating leads.
+    expect(payload.seats.map((seat) => seat.satisfaction)).toEqual([5, undefined, 1])
+    // A new game asks again.
+    expect(startGame(game).seats.map((seat) => seat.satisfaction ?? seat.ratingDismissed)).toEqual([
+      undefined,
+      undefined,
+      undefined,
     ])
   })
 })

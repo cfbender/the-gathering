@@ -29,10 +29,11 @@ interface Props {
   timer: GameTimerState
   /** The table's turn counts; the highest one prefills the recorded turns. */
   turns: TurnState
-  /** Closes the table for every seat; resolves whether the server accepted. */
-  onEndTable: () => Promise<boolean>
+  /** Closes the table for every seat, after asking them to rate the recorded `gameId`;
+   * resolves whether the server accepted. */
+  onEndTable: (gameId?: number) => Promise<boolean>
   /** Resets the room to a fresh lobby with the same seats; resolves whether the server accepted. */
-  onRematch: () => Promise<boolean>
+  onRematch: (gameId?: number) => Promise<boolean>
   onOpenChange: (open: boolean) => void
 }
 
@@ -111,7 +112,10 @@ export function FinishGame({
     onSuccess: async (game, next) => {
       if (next === "rematch") {
         // The game is saved either way, so the form closes rather than offer to record it twice.
-        const [, started] = await Promise.all([invalidateGameRelated(queryClient), onRematch()])
+        const [, started] = await Promise.all([
+          invalidateGameRelated(queryClient),
+          onRematch(game.id),
+        ])
         toast(
           started
             ? { message: "Game recorded. The rematch is ready in the same room.", tone: "success" }
@@ -124,7 +128,7 @@ export function FinishGame({
         return
       }
       // The game is saved; a table that fails to close is still pruned once everyone leaves.
-      await Promise.all([invalidateGameRelated(queryClient), onEndTable()])
+      await Promise.all([invalidateGameRelated(queryClient), onEndTable(game.id)])
       void navigate({ to: "/games/$gameId", params: { gameId: String(game.id) } })
     },
   })

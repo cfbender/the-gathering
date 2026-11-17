@@ -11,6 +11,7 @@ import { ColorWheel } from "./color-wheel"
 import { GameLengths } from "./game-lengths"
 import { EloStatCard, EloTrendCard } from "./player-elo"
 import { Rivalries } from "./rivalries"
+import { SatisfactionStats } from "./satisfaction-stats"
 import { StatCard } from "./stat-card"
 import { StatsRangeToggle } from "./stats-range-toggle"
 import { PlayerWinConditions } from "./win-conditions"
@@ -81,6 +82,7 @@ export function PlayerStats({
         losses={stats.loss_conditions}
         games={games}
       />
+      <SatisfactionStats satisfaction={stats.satisfaction} own="Their mood" />
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="border-base-300 bg-base-200/60 min-w-0 rounded-xl border p-5">
           <h3 className="mb-4 font-bold">Win rate over time</h3>

@@ -12,7 +12,7 @@ use crate::games::{Game, GameResult, Seat, get_player_in};
 
 use super::commanders::{self, SeatInGame};
 use super::records::{self, Object, Record, group_by, grouped_records, seat_entity};
-use super::{MIN_GAMES, elo, outcomes, query, summaries};
+use super::{MIN_GAMES, elo, outcomes, query, salt, summaries};
 
 fn mine(game: &Game, player_id: i64) -> Option<&Seat> {
     game.seats.iter().find(|seat| seat.player_id == player_id)
@@ -95,6 +95,9 @@ pub async fn get(
         "favorite_seat": favorite_seat(&detailed_seats),
         "best_seat": best_seat(&detailed_seats),
         "mvp_cards": mvp_cards(&detailed_seats, &card_art),
+        "satisfaction": salt::seat_summary(
+            games.iter().filter_map(|game| Some((game, mine(game, player.id)?))),
+        ),
     })))
 }
 

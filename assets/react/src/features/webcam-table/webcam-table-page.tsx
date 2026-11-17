@@ -14,6 +14,7 @@ import { WatchTileContext } from "./stream-tiles"
 import { TableCameraRail } from "./table-camera-rail"
 import { TableDialogs, type TableDialog } from "./table-dialogs"
 import { RailResizeHandle, useTablePreferences } from "./table-preferences"
+import { TableSatisfactionPrompt } from "./table-satisfaction"
 import { TableSettings } from "./table-settings"
 import { MobileActionBar, MobileSeatStrip } from "./table-mobile"
 import { TableStage } from "./table-stage"
@@ -59,16 +60,25 @@ function useInviteLink() {
 
 /** Sends a seat back to the games list after the room owner ends the table. A full page load,
  * so the games list does not inherit the table's cross-origin isolation; the toast rides along. */
-function TableEndedRedirect({ removed = false }: { removed?: boolean }) {
+function TableEndedRedirect({
+  removed = false,
+  gameId,
+}: {
+  removed?: boolean
+  /** The game recorded as the table closed, whose page the seat lands on. */
+  gameId: number | null
+}) {
   useEffect(() => {
     flashToast({
       message: removed
         ? "You were removed from the table by the host or an admin."
-        : "The game has ended.",
+        : gameId
+          ? "The game has ended and was recorded."
+          : "The game has ended.",
       tone: "info",
     })
-    window.location.assign("/games")
-  }, [removed])
+    window.location.assign(!removed && gameId ? `/games/${gameId}` : "/games")
+  }, [gameId, removed])
   return null
 }
 
@@ -281,7 +291,20 @@ function LiveRoom({ roomId, playerId, playerName, decks }: LiveRoomProps) {
 
         {boardShown && <VirtualBoardScreen view={view} onClose={() => setBoardOpen(false)} />}
         <TableDialogs view={view} dialog={dialog} onDialogChange={setDialog} />
-        {(room.closedByOwner || room.removed) && <TableEndedRedirect removed={room.removed} />}
+        {!room.closedByOwner && !room.removed && (
+          <TableSatisfactionPrompt
+            key={room.seatResets}
+            participant={view.localParticipant}
+            spectating={room.spectating}
+            mode={room.mode}
+            unratedGame={room.unratedGame}
+            onRate={room.rateGame}
+            onClearUnratedGame={room.clearUnratedGame}
+          />
+        )}
+        {(room.closedByOwner || room.removed) && (
+          <TableEndedRedirect removed={room.removed} gameId={room.recordedGame} />
+        )}
       </div>
     </WatchTileContext>
   )

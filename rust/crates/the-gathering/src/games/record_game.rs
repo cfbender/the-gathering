@@ -267,8 +267,9 @@ async fn insert_seat(
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "INSERT INTO game_players (game_id, player_id, deck_id, seat, result, kills, eliminated_turn,
-                                   eliminated_by_player_id, mvp_card_id, mvp_card_name, notes, inserted_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                   eliminated_by_player_id, mvp_card_id, mvp_card_name, notes, satisfaction, inserted_at,
+                                   updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         game_id,
         seat.player_id,
         seat.deck_id,
@@ -280,6 +281,7 @@ async fn insert_seat(
         seat.mvp_card_id,
         seat.mvp_card_name,
         seat.notes,
+        seat.satisfaction,
         now,
         now
     )
@@ -300,6 +302,7 @@ fn unchanged(held: &super::model::Seat, seat: &ValidSeat) -> bool {
         && held.mvp_card_id == seat.mvp_card_id
         && held.mvp_card_name == seat.mvp_card_name
         && held.notes == seat.notes
+        && held.satisfaction == seat.satisfaction
 }
 
 /// Whether a requested seat number is held by another existing row; rows are updated one at
@@ -381,7 +384,7 @@ pub async fn update(
                     sqlx::query!(
                         "UPDATE game_players SET player_id = ?, deck_id = ?, seat = ?, result = ?, kills = ?,
                                 eliminated_turn = ?, eliminated_by_player_id = ?, mvp_card_id = ?, mvp_card_name = ?,
-                                notes = ?, updated_at = ?
+                                notes = ?, satisfaction = ?, updated_at = ?
                          WHERE id = ?",
                         seat.player_id,
                         seat.deck_id,
@@ -393,6 +396,7 @@ pub async fn update(
                         seat.mvp_card_id,
                         seat.mvp_card_name,
                         seat.notes,
+                        seat.satisfaction,
                         now,
                         id
                     )
@@ -413,4 +417,31 @@ pub async fn delete(conn: &mut SqliteConnection, game_id: i64) -> Result<(), sql
         .execute(&mut *conn)
         .await?;
     Ok(())
+}
+
+/// Sets how much a seat's player enjoyed the game: 1 (awful) to 5 (rad).
+pub async fn rate(
+    conn: &mut SqliteConnection,
+    game: &Game,
+    seat_id: i64,
+    satisfaction: Option<i64>,
+) -> Result<Game, GamesError> {
+    let mut cs = crate::validation::Validator::new();
+    cs.required_value("satisfaction", satisfaction.as_ref());
+    cs.at_least("satisfaction", satisfaction, 1);
+    cs.at_most("satisfaction", satisfaction, 5);
+    cs.finish()?;
+    let now = UtcDateTime::now();
+    sqlx::query!(
+        "UPDATE game_players SET satisfaction = ?, updated_at = ?
+         WHERE id = ? AND game_id = ? AND satisfaction IS NOT ?",
+        satisfaction,
+        now,
+        seat_id,
+        game.id,
+        satisfaction
+    )
+    .execute(&mut *conn)
+    .await?;
+    reload(conn, game.id).await
 }

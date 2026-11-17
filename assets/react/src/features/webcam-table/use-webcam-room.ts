@@ -142,9 +142,9 @@ export function useWebcamRoom(
   )
 
   /** Owner ends the table for everyone (after recording it or instead of recording it). */
-  async function endGame() {
+  async function endGame(gameId?: number) {
     endingRef.current = true
-    const ended = await game.endGame()
+    const ended = await game.endGame(gameId)
     if (!ended) endingRef.current = false
     return ended
   }
@@ -271,6 +271,13 @@ export function useWebcamRoom(
     /** Virtual boards by player id; see `useVirtualBoard`. */
     boards: game.boards,
     seatResets: game.seatResets,
+    /** The game last recorded at this table. */
+    recordedGame: game.recordedGame,
+    /** A game recorded at this table that this seat has not rated yet. */
+    unratedGame: game.unratedGame,
+    clearUnratedGame: game.clearUnratedGame,
+    /** Rates the game in progress from this seat. */
+    rateGame: game.rateGame,
     publishBoard: game.publishBoard,
     toggleCamera,
     setSharesCorrections,

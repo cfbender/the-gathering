@@ -56,6 +56,7 @@ function gameFixture(): Game {
     source: "manual",
     external_id: null,
     created_by_user_id: 1,
+    average_satisfaction: null,
     seats: [alice, bob, cara].map((seatPlayer, index) => ({
       id: 101 + index,
       player_id: seatPlayer.id,
@@ -68,6 +69,7 @@ function gameFixture(): Game {
       mvp_card_name: index === 0 ? "Rhystic Study" : null,
       mvp_art_crop_url: null,
       notes: null,
+      satisfaction: null,
       player: seatPlayer,
       deck: index === 1 ? archivedDeck : null,
     })),

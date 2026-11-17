@@ -122,6 +122,9 @@ pub struct SeatInput {
     /// Notes about the seat.
     #[serde(default)]
     pub notes: Patch<String>,
+    /// How much the player enjoyed the game, 1 (awful) to 5 (rad).
+    #[serde(default)]
+    pub satisfaction: Patch<i64>,
 }
 
 /// A new game or changes to one.

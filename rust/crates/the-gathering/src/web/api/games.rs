@@ -131,6 +131,7 @@ pub fn seat_json(seat: &Seat, art: &ArtUrls) -> Value {
         "mvp_image_url": art.card_image_url(mvp.0, mvp.1, None),
         "mvp_art_crop_url": art.art_crop_url(mvp.0, mvp.1, None),
         "notes": seat.notes,
+        "satisfaction": seat.satisfaction,
         "player": player_summary(&seat.player),
         "deck": seat.deck.as_ref().map_or(Value::Null, |deck| deck_summary(deck, None, art)),
     })
@@ -151,6 +152,7 @@ pub fn game_json(game: &Game, art: &ArtUrls) -> Value {
         "format": game.format,
         "external_id": game.external_id,
         "created_by_user_id": game.created_by_user_id,
+        "average_satisfaction": crate::stats::records::average(game.seats.iter().map(|seat| seat.satisfaction)),
         "seats": seats.into_iter().map(|seat| seat_json(seat, art)).collect::<Vec<_>>(),
     })
 }
@@ -624,6 +626,38 @@ pub async fn games_update(
     let game = state
         .games
         .update_game(&game, &input.without_provenance())
+        .await?;
+    Ok(Json(render_game(&state, &game).await?))
+}
+
+/// A seated player's rating of a game.
+#[derive(Debug, Deserialize)]
+pub struct SatisfactionInput {
+    #[serde(default)]
+    satisfaction: Option<i64>,
+}
+
+/// `PUT /api/games/:id/satisfaction`: the signed-in member rates a game their linked player
+/// sat in, 1 (awful) to 5 (rad).
+pub async fn games_satisfaction(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    PathParam(id): PathParam<i64>,
+    JsonBody(input): JsonBody<SatisfactionInput>,
+) -> ApiResult<Json<Value>> {
+    let game = state
+        .games
+        .get_game(user.playgroup()?, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let seat = game
+        .seats
+        .iter()
+        .find(|seat| seat.player.user_id == Some(user.id))
+        .ok_or(ApiError::Forbidden)?;
+    let game = state
+        .games
+        .rate_game(&game, seat.id, input.satisfaction)
         .await?;
     Ok(Json(render_game(&state, &game).await?))
 }

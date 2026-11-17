@@ -207,6 +207,10 @@ export interface TabletopSeat {
   /** Commander damage taken, keyed by `commanderKey`. */
   commanderDamage: Record<string, number>
   conceded: boolean
+  /** How much the player enjoyed the game, 1 (awful) to 5 (rad); absent until rated. */
+  satisfaction?: number | null
+  /** The player waved off the rating prompt shown when they went out. */
+  ratingDismissed?: boolean
 }
 
 export interface TabletopGame {
@@ -357,6 +361,13 @@ export function changeCommanderDamage(
   )
 }
 
+/** Records a seat's rating of the game, or waves its prompt off with `null`. */
+export function rateSeat(game: TabletopGame, index: number, satisfaction: number | null) {
+  return updateSeat(game, index, (seat) =>
+    satisfaction === null ? { ...seat, ratingDismissed: true } : { ...seat, satisfaction },
+  )
+}
+
 export function setConceded(game: TabletopGame, index: number, conceded: boolean): TabletopGame {
   return updateSeat(game, index, (seat) => ({ ...seat, conceded }))
 }
@@ -448,6 +459,8 @@ export function turnOrder(game: TabletopGame): number[] {
 }
 
 export interface RecordDetails {
+  /** Ratings given in the finish dialog, by seat index; they override the seats' own. */
+  ratings?: Record<number, number>
   /** A seat index, or `"draw"`. */
   winner: number | "draw"
   durationMinutes: string
@@ -465,10 +478,12 @@ export function gamePayload(game: TabletopGame, details: RecordDetails) {
     win_condition: details.winCondition || null,
     seats: turnOrder(game).map((index, order) => {
       const seat = game.seats[index]!
+      const satisfaction = details.ratings?.[index] ?? seat.satisfaction
       return {
         player_id: seat.occupant?.kind === "player" ? seat.occupant.id : null,
         deck_id: seat.deck?.id ?? null,
         seat: order + 1,
+        ...(satisfaction ? { satisfaction } : {}),
         result:
           details.winner === "draw"
             ? ("draw" as const)

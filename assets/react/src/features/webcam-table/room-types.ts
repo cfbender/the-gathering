@@ -18,6 +18,8 @@ export interface TableParticipant extends SeatCounters, Partial<SharedTrackers> 
   shares_corrections?: boolean
   reveal_to?: string | null
   eliminated: boolean
+  /** How much the player enjoyed this game, 1 (awful) to 5 (rad), once they rated it. */
+  satisfaction?: number | null
   spectator?: boolean
   /** Presence only: this connection holds the table controls (the host or a seated admin). */
   host?: boolean
@@ -31,7 +33,7 @@ export interface TableParticipant extends SeatCounters, Partial<SharedTrackers> 
 export type SeatStatus = Partial<
   Pick<
     TableParticipant,
-    "life" | "camera_off" | "camera_height" | "shares_corrections" | "eliminated"
+    "life" | "camera_off" | "camera_height" | "shares_corrections" | "eliminated" | "satisfaction"
   > &
     SeatCounters &
     SharedTrackers

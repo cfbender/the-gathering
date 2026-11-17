@@ -276,6 +276,8 @@ pub struct Seat {
     pub mvp_card_name: Option<String>,
     /// Notes.
     pub notes: Option<String>,
+    /// How much the player enjoyed the game, 1 (awful) to 5 (rad); rated by that player.
+    pub satisfaction: Option<i64>,
     /// Created.
     pub inserted_at: UtcDateTime,
     /// Updated.
@@ -301,6 +303,7 @@ impl Default for Seat {
             mvp_card_id: None,
             mvp_card_name: None,
             notes: None,
+            satisfaction: None,
             inserted_at: UtcDateTime::default(),
             updated_at: UtcDateTime::default(),
             player: Player::default(),
@@ -518,7 +521,7 @@ async fn load_seats(
 ) -> Result<HashMap<i64, Vec<Seat>>, sqlx::Error> {
     let rows = sqlx::query!(
         r#"SELECT s.id AS "id!", s.game_id, s.player_id, s.deck_id, s.seat, s.result AS "result: GameResult",
-                  s.kills, s.eliminated_turn, s.eliminated_by_player_id, s.mvp_card_id, s.mvp_card_name, s.notes,
+                  s.kills, s.eliminated_turn, s.eliminated_by_player_id, s.mvp_card_id, s.mvp_card_name, s.notes, s.satisfaction,
                   s.inserted_at AS "inserted_at: UtcDateTime", s.updated_at AS "updated_at: UtcDateTime",
                   p.playgroup_id AS player_playgroup_id, p.name AS player_name, p.user_id AS player_user_id,
                   p.discord_id AS player_discord_id,
@@ -580,6 +583,7 @@ async fn load_seats(
             mvp_card_id: row.mvp_card_id,
             mvp_card_name: row.mvp_card_name,
             notes: row.notes,
+            satisfaction: row.satisfaction,
             inserted_at: row.inserted_at,
             updated_at: row.updated_at,
             player: Player {

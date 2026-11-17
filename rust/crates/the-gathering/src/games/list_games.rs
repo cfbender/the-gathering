@@ -68,6 +68,8 @@ pub struct GameFilters {
     pub min_duration: Option<i64>,
     /// At most this many minutes.
     pub max_duration: Option<i64>,
+    /// Table mood, 1 (awful) to 5 (rad): the average rating, to one decimal, rounds to it.
+    pub mood: Option<i64>,
     /// First day (`YYYY-MM-DD`, inclusive).
     pub date_from: Option<String>,
     /// Last day (`YYYY-MM-DD`, inclusive).
@@ -317,6 +319,20 @@ pub async fn list_games(
         if let Some(bound) = positive(bound) {
             qb.push(" AND ").push(column).push(op).push_bind(bound);
         }
+    }
+    if let Some(mood) = in_range(opts.mood, 1..=5)
+        .and_then(|mood| u8::try_from(mood).ok())
+        .map(f64::from)
+    {
+        // The same rounding as the average shown on each game and the face it picks.
+        qb.push(
+            " AND g.id IN (SELECT game_id FROM game_players WHERE satisfaction IS NOT NULL \
+             GROUP BY game_id HAVING round(avg(satisfaction), 1) >= ",
+        )
+        .push_bind(mood - 0.5)
+        .push(" AND round(avg(satisfaction), 1) < ")
+        .push_bind(mood + 0.5)
+        .push(")");
     }
     if let Some(start) = opts
         .date_from

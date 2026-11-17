@@ -30,6 +30,7 @@ import {
   landscape,
   lastStanding,
   passTurn,
+  rateSeat,
   recordBlocker,
   recordBlockerMessage,
   remainingSeats,
@@ -170,6 +171,7 @@ export function TabletopBoard({ game }: { game: TabletopGame }) {
   }
 
   const actionsFor = (index: number): SeatActions => ({
+    onRate: (satisfaction) => setGame((current) => rateSeat(current, index, satisfaction)),
     onLife: (delta) => setGame((current) => changeLife(current, index, delta)),
     onPoison: (delta) => setGame((current) => changePoison(current, index, delta)),
     onConcede: (conceded) => setGame((current) => setConceded(current, index, conceded)),

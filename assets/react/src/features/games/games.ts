@@ -35,6 +35,8 @@ export interface Seat {
   mvp_image_url?: string | null
   mvp_art_crop_url: string | null
   notes: string | null
+  /** How much the player enjoyed the game, 1 (awful) to 5 (rad), when they rated it. */
+  satisfaction: number | null
   player: PlayerSummary
   deck: DeckSummary | null
 }
@@ -50,6 +52,8 @@ export interface Game {
   source: "manual" | "csv" | "mythic_track" | "discord"
   external_id: string | null
   created_by_user_id: number | null
+  /** Mean of the seats' ratings, one decimal; null when nobody rated the game. */
+  average_satisfaction: number | null
   seats: Seat[]
 }
 

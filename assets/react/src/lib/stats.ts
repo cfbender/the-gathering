@@ -143,8 +143,50 @@ export interface OverviewStats {
   })[]
 }
 
+/** Satisfaction ratings, 1 (awful) to 5 (rad); `counts[i]` is how many rated `i + 1`. */
+export interface SatisfactionSummary {
+  ratings: number
+  average: number | null
+  counts: [number, number, number, number, number]
+}
+
+/** A player's or deck's own ratings, and how the rest of the table rated those games. */
+export interface SeatSatisfaction extends SatisfactionSummary {
+  opponents: SatisfactionSummary
+}
+
+/** How a player or commander's pilots rated their games, and how their opponents did. */
+export interface SaltRow {
+  games: number
+  ratings: number
+  average: number | null
+  opponent_ratings: number
+  opponent_average: number | null
+}
+
+export interface SaltStats {
+  games_count: number
+  rated_games: number
+  summary: SatisfactionSummary
+  by_month: (SatisfactionSummary & { month: string })[]
+  /** The lowest average among games at least two players rated. */
+  saltiest_game: { id: number; played_at: string; average: number; ratings: number } | null
+  /** Lowest own average first. */
+  players: (SaltRow & { id: number; name: string })[]
+  /** Lowest opponent average first. */
+  commanders: (SaltRow & {
+    id: string
+    name: string
+    art_crop_url: string | null
+    image_url?: string | null
+    color_identity: string | null
+    game_changer?: boolean
+  })[]
+}
+
 export interface PlayerStats {
   detailed_stats_from: string | null
+  satisfaction: SeatSatisfaction
   record: RecordCounts
   /** Only this player's wins; missing and unknown conditions do not enter the breakdown. */
   win_conditions: WinConditionStats
@@ -188,6 +230,7 @@ export interface PlayerStats {
 
 export interface DeckStats {
   detailed_stats_from: string | null
+  satisfaction: SeatSatisfaction
   record: RecordCounts
   average_duration_minutes: number | null
   average_turns: number | null
@@ -246,6 +289,8 @@ export const getDeckStats = (id: string, params?: StatsRangeParams) =>
   data<DeckStats>(`/api/stats/decks/${id}`, params)
 export const getCommanderStats = (params?: StatsRangeParams) =>
   data<CommanderSummary[]>("/api/stats/commanders", params)
+export const getSaltStats = (params?: StatsRangeParams) =>
+  data<SaltStats>("/api/stats/salt", params)
 export const getCommanderDetail = (id: string, params?: StatsRangeParams) =>
   data<CommanderStats>(`/api/stats/commanders/${encodeURIComponent(id)}`, params)
 

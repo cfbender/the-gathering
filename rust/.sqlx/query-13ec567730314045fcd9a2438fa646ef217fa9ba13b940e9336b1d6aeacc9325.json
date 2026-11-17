@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE game_players SET satisfaction = ?, updated_at = ?\n         WHERE id = ? AND game_id = ? AND satisfaction IS NOT ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "13ec567730314045fcd9a2438fa646ef217fa9ba13b940e9336b1d6aeacc9325"
+}

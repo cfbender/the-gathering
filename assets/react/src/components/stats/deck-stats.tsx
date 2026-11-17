@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Clock3, RotateCcw, Target } from "lucide-react"
 import { BarChart, LineChart } from "./charts"
+import { SatisfactionStats } from "./satisfaction-stats"
 import { StatCard } from "./stat-card"
 import { StatsRangeToggle } from "./stats-range-toggle"
 import { getDeckStats, sinceLabel, statsQueryKey } from "@/lib/stats"
@@ -57,6 +58,7 @@ export function DeckStats({ deckId }: { deckId: string }) {
           <BarChart rows={stats.opponents.slice(0, 6)} value="games" />
         </div>
       </div>
+      <SatisfactionStats satisfaction={stats.satisfaction} own="Pilot's mood" />
     </section>
   )
 }

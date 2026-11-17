@@ -7,6 +7,7 @@ import type { GameTimerState, TimerSample } from "./game-timer"
 import type { RoomLink } from "./room-link"
 import type { BoardCard, Monarch, SeatStatus, TableParticipant } from "./room-types"
 import { EMPTY_COUNTERS, changeCounter, type Counter } from "./seat-counters"
+import { requestGameRating } from "@/features/satisfaction/satisfaction"
 import {
   orderBySeats,
   retainEliminatedSeats,
@@ -77,6 +78,9 @@ export function useTableGameState(
   const [boards, setBoards] = useState<TableBoards>({})
   /** Bumped when a rematch resets this seat, so a virtual board can deal a new game. */
   const [seatResets, setSeatResets] = useState(0)
+  /** The game last recorded at this table, and whether this seat has yet to rate it. */
+  const [recordedGame, setRecordedGame] = useState<number | null>(null)
+  const [unratedGame, setUnratedGame] = useState<number | null>(null)
   // Your own life is tracked locally so rapid ± clicks compound before presence
   // echoes the new total back; presence stays the source for everyone else.
   const lifeRef = useRef(STARTING_LIFE)
@@ -185,13 +189,22 @@ export function useTableGameState(
       )
       room.on("timer_state", receiveTimer)
       room.on("roll", setRoll)
+      // Someone recorded the game; a seat that has not rated it is asked to, here after a
+      // rematch or on the game's page once the table closes.
+      room.on("game_recorded", ({ game_id }: { game_id: number }) => {
+        setRecordedGame(game_id)
+        const mine = link.participants.find((seat) => seat.peer_id === link.peerId)
+        if (!mine || mine.satisfaction) return
+        requestGameRating(game_id)
+        setUnratedGame(game_id)
+      })
       // A rematch reset this seat; the new table_state and table_log arrive as broadcasts.
       room.on("seat_reset", ({ participant }: { participant: TableParticipant }) => {
         restoreSeat(participant)
         setSeatResets((resets) => resets + 1)
       })
     },
-    [queryClient, receiveTimer, restoreSeat, syncMonarch],
+    [link, queryClient, receiveTimer, restoreSeat, syncMonarch],
   )
 
   /** Everyone present, from presence; spectators do not take seats but are listed apart. */
@@ -370,6 +383,7 @@ export function useTableGameState(
   function finishGame(
     event: "end_game" | "rematch",
     messages: { offline: string; timeout: string },
+    gameId?: number,
   ): Promise<boolean> {
     return new Promise((resolve) => {
       const channel = link.channel
@@ -379,7 +393,7 @@ export function useTableGameState(
         return
       }
       channel
-        .push(event, {})
+        .push(event, gameId ? { game_id: gameId } : {})
         .receive("ok", () => resolve(true))
         .receive("error", ({ reason }: ErrorReply) => {
           setError(reason)
@@ -393,20 +407,37 @@ export function useTableGameState(
   }
 
   /** Owner closes the table for every seat; resolves whether the server accepted. The server
-   * then sends each connection, this one included, `table_closed`. */
-  const endGame = () =>
-    finishGame("end_game", {
-      offline: "Reconnect to the table before ending the game",
-      timeout: "Ending the game timed out; try again",
-    })
+   * then sends each connection, this one included, `table_closed`, after `game_recorded` when
+   * the game was recorded as `gameId`. */
+  const endGame = (gameId?: number) =>
+    finishGame(
+      "end_game",
+      {
+        offline: "Reconnect to the table before ending the game",
+        timeout: "Ending the game timed out; try again",
+      },
+      gameId,
+    )
 
   /** Owner resets the same room to a fresh lobby for a rematch; resolves whether the server
    * accepted. Every seat stays connected and receives the reset table state. */
-  const rematch = () =>
-    finishGame("rematch", {
-      offline: "Reconnect to the table before starting the rematch",
-      timeout: "Starting the rematch timed out; try again",
-    })
+  const rematch = (gameId?: number) =>
+    finishGame(
+      "rematch",
+      {
+        offline: "Reconnect to the table before starting the rematch",
+        timeout: "Starting the rematch timed out; try again",
+      },
+      gameId,
+    )
+
+  /** Rates the game in progress; the rating is recorded with the game. */
+  const rateGame = useCallback(
+    (satisfaction: number) => {
+      if (!link.spectator) link.channel?.push("update_status", { satisfaction })
+    },
+    [link],
+  )
 
   function setEliminated(peerId: string, eliminated: boolean) {
     link.channel
@@ -452,6 +483,10 @@ export function useTableGameState(
     monarch,
     boards,
     seatResets,
+    recordedGame,
+    unratedGame,
+    clearUnratedGame: useCallback(() => setUnratedGame(null), []),
+    rateGame,
     life,
     counters,
     bindChannel,

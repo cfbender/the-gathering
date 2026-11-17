@@ -4,6 +4,7 @@ import { CommanderArt } from "@/components/commander-art"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
+import { SatisfactionBadge } from "@/features/satisfaction/satisfaction"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/cn"
 import { formatDate, type Game, type Seat } from "./games"
@@ -91,6 +92,9 @@ export function GameTable({ games }: { games: Game[] }) {
               <th scope="col" className="text-right">
                 Duration
               </th>
+              <th scope="col" className="text-right">
+                Mood
+              </th>
             </tr>
           </thead>
           <tbody className="block sm:table-row-group">
@@ -99,7 +103,7 @@ export function GameTable({ games }: { games: Game[] }) {
               return (
                 <tr
                   key={game.id}
-                  className="hover:bg-base-content/5 border-base-content/5 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 px-4 py-3 not-last:border-b sm:table-row sm:border-0 sm:p-0 max-sm:*:border-0"
+                  className="hover:bg-base-content/5 border-base-content/5 grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-4 px-4 py-3 not-last:border-b sm:table-row sm:border-0 sm:p-0 max-sm:*:border-0"
                 >
                   <th scope="row" className="col-start-1 row-start-1 font-normal max-sm:p-0">
                     <Link
@@ -116,7 +120,7 @@ export function GameTable({ games }: { games: Game[] }) {
                       <span className="sr-only"> · Game {game.id}</span>
                     </Link>
                   </th>
-                  <td className="col-span-3 max-sm:p-0 max-sm:pt-2 sm:py-2">
+                  <td className="col-span-4 max-sm:p-0 max-sm:pt-2 sm:py-2">
                     <ul
                       aria-label={`${game.seats.length} players`}
                       className="flex flex-wrap gap-1 sm:w-max sm:flex-nowrap"
@@ -171,6 +175,22 @@ export function GameTable({ games }: { games: Game[] }) {
                       <span aria-label="Not recorded">—</span>
                     ) : (
                       `${game.duration_minutes} min`
+                    )}
+                  </td>
+                  <td
+                    className={cn(
+                      "col-start-4 row-start-1 text-right whitespace-nowrap max-sm:p-0",
+                      game.average_satisfaction === null && "max-sm:hidden",
+                    )}
+                  >
+                    {game.average_satisfaction === null ? (
+                      <span aria-label="Not rated">—</span>
+                    ) : (
+                      <SatisfactionBadge
+                        average
+                        value={game.average_satisfaction}
+                        ratings={game.seats.filter((seat) => seat.satisfaction !== null).length}
+                      />
                     )}
                   </td>
                 </tr>

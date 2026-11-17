@@ -76,3 +76,143 @@ async fn stats_routes_wrap_the_views_and_404_unknown_records() {
     app.clear_cookies();
     app.get("/api/stats/overview").await.assert_json(401);
 }
+
+#[tokio::test]
+async fn salt_stats_rank_players_and_commanders_by_satisfaction() {
+    let app = TestApp::new().await;
+    let user = app.unique_member().await;
+    app.log_in(&user).await;
+    app.card("kangee", "Kangee, Sky Warden", &["W", "U"], json!({}), true)
+        .await;
+    app.card(
+        "atraxa",
+        "Atraxa, Praetors' Voice",
+        &["W", "U", "B", "G"],
+        json!({}),
+        false,
+    )
+    .await;
+    let alice = app.player("Alice").await;
+    let bob = app.player("Bob").await;
+    let cara = app.player("Cara").await;
+    let kangee = app
+        .deck_with(json!({"player_id": alice.id, "name": "Birds", "commander_card_id": "kangee", "commander_name": "Kangee, Sky Warden"}))
+        .await;
+    let atraxa = app
+        .deck_with(json!({"player_id": bob.id, "name": "Counters", "commander_card_id": "atraxa", "commander_name": "Atraxa, Praetors' Voice"}))
+        .await;
+    let seat = |player: i64, deck: Option<i64>, number: i64, result: &str, rating: Option<i64>| json!({"player_id": player, "deck_id": deck, "seat": number, "result": result, "satisfaction": rating});
+    let mut games = Vec::new();
+    for (played_at, seats) in [
+        (
+            "2026-09-19T18:00:00Z",
+            vec![
+                seat(alice.id, Some(kangee.id), 1, "win", Some(5)),
+                seat(bob.id, Some(atraxa.id), 2, "loss", Some(2)),
+                seat(cara.id, None, 3, "loss", Some(1)),
+            ],
+        ),
+        (
+            "2026-10-03T18:00:00Z",
+            vec![
+                seat(alice.id, Some(kangee.id), 1, "win", Some(4)),
+                seat(cara.id, None, 2, "loss", Some(4)),
+            ],
+        ),
+        (
+            "2026-10-10T18:00:00Z",
+            vec![
+                seat(alice.id, Some(kangee.id), 1, "loss", None),
+                seat(bob.id, Some(atraxa.id), 2, "win", None),
+            ],
+        ),
+    ] {
+        games.push(
+            app.game(json!({"played_at": played_at, "seats": seats}), None)
+                .await,
+        );
+    }
+
+    let salt = app.get("/api/stats/salt").await.assert_json(200)["data"].clone();
+    assert_eq!(salt["games_count"], 3);
+    assert_eq!(salt["rated_games"], 2);
+    assert_eq!(
+        salt["saltiest_game"],
+        json!({"id": games[0].id, "played_at": "2026-09-19T18:00:00Z", "average": 2.7, "ratings": 3})
+    );
+    assert_eq!(
+        salt["summary"],
+        json!({"ratings": 5, "average": 3.2, "counts": [1, 1, 0, 2, 1]})
+    );
+    let months: Vec<(Value, Value)> = salt["by_month"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|month| (month["month"].clone(), month["average"].clone()))
+        .collect();
+    assert_eq!(
+        months,
+        [
+            (json!("2026-09"), json!(2.7)),
+            (json!("2026-10"), json!(4.0))
+        ]
+    );
+    // Saltiest player first: their own average rating.
+    let players: Vec<(Value, Value, Value)> = salt["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            (
+                row["name"].clone(),
+                row["average"].clone(),
+                row["opponent_average"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        players,
+        [
+            (json!("Bob"), json!(2.0), json!(3.0)),
+            (json!("Cara"), json!(2.5), json!(3.7)),
+            (json!("Alice"), json!(4.5), json!(2.3)),
+        ]
+    );
+    // Saltiest commander first: how the rest of the table rated games against it.
+    let commanders: Vec<(Value, Value, Value, Value)> = salt["commanders"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            (
+                row["id"].clone(),
+                row["games"].clone(),
+                row["average"].clone(),
+                row["opponent_average"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        commanders,
+        [
+            (json!("kangee"), json!(3), json!(4.5), json!(2.3)),
+            (json!("atraxa"), json!(2), json!(2.0), json!(3.0)),
+        ]
+    );
+
+    let player = app
+        .get(&format!("/api/stats/players/{}", alice.id))
+        .await
+        .assert_json(200);
+    assert_eq!(
+        player["data"]["satisfaction"],
+        json!({"ratings": 2, "average": 4.5, "counts": [0, 0, 0, 1, 1],
+               "opponents": {"ratings": 3, "average": 2.3, "counts": [1, 1, 0, 1, 0]}})
+    );
+    let deck = app
+        .get(&format!("/api/stats/decks/{}", atraxa.id))
+        .await
+        .assert_json(200);
+    assert_eq!(deck["data"]["satisfaction"]["average"], 2.0);
+    assert_eq!(deck["data"]["satisfaction"]["opponents"]["average"], 3.0);
+}

@@ -115,6 +115,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/stats/players/{id}", get(stats::player))
         .route("/api/stats/decks/{id}", get(stats::deck))
         .route("/api/stats/commanders", get(stats::commanders))
+        .route("/api/stats/salt", get(stats::salt))
         .route("/api/stats/commanders/{id}", get(stats::commander))
         .route("/api/deck-chooser", get(games::deck_chooser_show))
         .route(
@@ -163,6 +164,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/decks/{id}/decklist", get(games::decklist_show))
         .route("/api/games/{id}/summary", get(games::games_summary))
+        .route(
+            "/api/games/{id}/satisfaction",
+            put(games::games_satisfaction),
+        )
         .route(
             "/api/games",
             get(games::games_index).post(games::games_create),

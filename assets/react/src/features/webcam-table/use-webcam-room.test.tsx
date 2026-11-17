@@ -287,6 +287,34 @@ it("a rematch keeps the seat connected and resets its local life, counters and t
   expect(payloads("update_status").at(-1)).toEqual({ life: 39 })
 })
 
+it("rates the game in play and asks to rate a recorded game only when this seat has not", async () => {
+  const { result } = await joinedRoom()
+  const self = { ...saved, peer_id: result.current.peerId }
+  act(() => wire.presence([{ ...self, eliminated: true }]))
+  act(() => result.current.rateGame(2))
+  expect(payloads("update_status").at(-1)).toEqual({ satisfaction: 2 })
+
+  // The recorder names the game it saved when it ends or rematches the table.
+  act(() => {
+    void result.current.rematch(41)
+  })
+  expect(wire.pushes.at(-1)).toMatchObject({ event: "rematch", payload: { game_id: 41 } })
+
+  act(() => wire.presence([{ ...self, satisfaction: 2 }]))
+  act(() => wire.emit("game_recorded", { game_id: 41 }))
+  expect(result.current.recordedGame).toBe(41)
+  expect(result.current.unratedGame).toBeNull()
+
+  act(() => wire.presence([self]))
+  act(() => wire.emit("game_recorded", { game_id: 42 }))
+  expect(result.current.recordedGame).toBe(42)
+  expect(result.current.unratedGame).toBe(42)
+  // A closing table sends the seat to the game's page, which then asks too.
+  expect(sessionStorage.getItem("the-gathering:rate-game")).toBe("42")
+  act(() => result.current.clearUnratedGame())
+  expect(result.current.unratedGame).toBeNull()
+})
+
 it.each(["removed", "join denied"])("stops media and reconnects when %s", async (source) => {
   const { result, connection } = await roomWithTheo()
   const stream = result.current.localStream!

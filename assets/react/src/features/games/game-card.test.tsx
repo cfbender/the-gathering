@@ -22,6 +22,7 @@ function seat(id: number, name: string, result: Seat["result"]): Seat {
     mvp_card_name: null,
     mvp_art_crop_url: null,
     notes: null,
+    satisfaction: null,
     player: { id, name, user_id: null, avatar_url: null, archived_at: null },
     deck: {
       id,
@@ -60,6 +61,7 @@ async function renderCard(
     source: "manual",
     external_id: null,
     created_by_user_id: null,
+    average_satisfaction: null,
     seats,
   }
   const router = createRouter({

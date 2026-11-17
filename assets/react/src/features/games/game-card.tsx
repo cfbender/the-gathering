@@ -3,6 +3,7 @@ import { Clock, RotateCw, Trophy, UsersRound } from "lucide-react"
 import { CommanderArt } from "@/components/commander-art"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
+import { SatisfactionBadge } from "@/features/satisfaction/satisfaction"
 import { formatDate, winConditionLabel, type Game, type Seat } from "./games"
 import { formatLabel } from "./game-format"
 
@@ -66,6 +67,12 @@ export function GameCard({ game }: { game: Game }) {
               {game.duration_minutes} min
             </span>
           )}
+          <SatisfactionBadge
+            average
+            value={game.average_satisfaction}
+            ratings={game.seats.filter((seat) => seat.satisfaction !== null).length}
+            className="text-base-content"
+          />
         </div>
       </div>
 

@@ -253,9 +253,14 @@ async fn the_owner_ends_the_table_for_everyone_and_its_seats_leave_instead_of_re
     t.alice
         .refused("end_game", json!({ "extra": true }), "invalid end game")
         .await;
+    t.alice
+        .refused("end_game", json!({ "game_id": 0 }), "invalid end game")
+        .await;
 
-    t.alice.ok("end_game", json!({})).await;
+    // Ending after recording tells every seat which game to rate.
+    t.alice.ok("end_game", json!({ "game_id": 42 })).await;
     for client in [&mut t.alice, &mut bob] {
+        assert_eq!(client.expect("game_recorded").await["game_id"], 42);
         client.expect("table_closed").await;
         client.refute("rejoin").await;
     }
@@ -434,6 +439,13 @@ async fn a_rematch_resets_the_same_room_to_a_lobby_keeping_present_seats_connect
         .await;
     bob.ok("pass_turn", json!({ "revision": 1 })).await;
     t.alice
+        .err("update_status", json!({ "satisfaction": 6 }))
+        .await;
+    t.alice
+        .ok("update_status", json!({ "satisfaction": 4 }))
+        .await;
+    assert_eq!(t.seat(PEER_A).await.satisfaction, Some(4));
+    t.alice
         .ok(
             "set_eliminated",
             json!({ "peer_id": PEER_C, "eliminated": true }),
@@ -479,7 +491,8 @@ async fn a_rematch_resets_the_same_room_to_a_lobby_keeping_present_seats_connect
     assert_eq!(t.snapshot().await.cards.len(), 1);
 
     let previous_revision = t.snapshot().await.turns.revision;
-    t.alice.ok("rematch", json!({})).await;
+    t.alice.ok("rematch", json!({ "game_id": 7 })).await;
+    assert_eq!(bob.expect("game_recorded").await["game_id"], 7);
     let state = t
         .alice
         .expect_where("table_state", |state| {
@@ -543,8 +556,14 @@ async fn a_rematch_resets_the_same_room_to_a_lobby_keeping_present_seats_connect
         .find(|seat| seat.player_id == t.player)
         .unwrap();
     assert_eq!(
-        (alice.life, alice.poison, alice.eliminated, alice.deck_id),
-        (40, 0, false, Some(t.deck))
+        (
+            alice.life,
+            alice.poison,
+            alice.eliminated,
+            alice.deck_id,
+            alice.satisfaction
+        ),
+        (40, 0, false, Some(t.deck), None)
     );
     assert!(alice.commander_casts.is_empty());
 

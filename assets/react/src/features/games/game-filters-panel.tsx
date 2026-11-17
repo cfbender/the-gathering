@@ -16,6 +16,7 @@ import {
   type GameFilters,
   type GamesSearch,
 } from "./game-filters"
+import { SATISFACTION_LEVELS } from "@/features/satisfaction/satisfaction"
 import { WIN_CONDITIONS, getPlayers, winConditionLabel, type WinCondition } from "./games"
 
 const seatCounts = ["2", "3", "4", "5", "6"]
@@ -247,7 +248,7 @@ export function GameFiltersPanel({
           </button>
         )}
         {moreOpen && (
-          <div id="more-game-filters" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div id="more-game-filters" className="grid grid-cols-2 gap-3 lg:grid-cols-6">
             <Field label="With player">
               <select
                 className="select select-bordered select-sm w-full"
@@ -310,6 +311,20 @@ export function GameFiltersPanel({
                 {Array.from({ length: 24 }, (_, hour) => (
                   <option key={hour} value={hour}>
                     {hourLabel(hour)}–{hourLabel((hour + 1) % 24)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Table mood">
+              <select
+                className="select select-bordered select-sm w-full"
+                value={filters.mood}
+                onChange={(event) => onChange({ mood: event.target.value })}
+              >
+                <option value="">Any mood</option>
+                {SATISFACTION_LEVELS.map((level) => (
+                  <option key={level.value} value={level.value}>
+                    {level.label[0]!.toUpperCase() + level.label.slice(1)}
                   </option>
                 ))}
               </select>

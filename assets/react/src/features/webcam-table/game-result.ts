@@ -57,6 +57,7 @@ export function buildGamePayload(
         player_id: participant.player_id,
         deck_id: participant.deck_id ?? null,
         seat: index + 1,
+        ...(participant.satisfaction ? { satisfaction: participant.satisfaction } : {}),
         result:
           details.winner === "draw"
             ? ("draw" as const)

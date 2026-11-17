@@ -172,6 +172,7 @@ struct StatusChanges {
     eliminated: Option<bool>,
     custom_counters: Option<Vec<CustomCounter>>,
     combat_effects: Option<Vec<CombatEffect>>,
+    satisfaction: Option<i64>,
 }
 
 impl StatusChanges {
@@ -206,6 +207,10 @@ impl StatusChanges {
                 "eliminated" => changes.eliminated = Some(value.as_bool()?),
                 "custom_counters" => changes.custom_counters = Some(custom_counters(value)?),
                 "combat_effects" => changes.combat_effects = Some(combat_effects(value)?),
+                "satisfaction" => {
+                    changes.satisfaction =
+                        Some(int(Some(value)).filter(|rating| (1..=5).contains(rating))?);
+                }
                 _ => return None,
             }
         }
@@ -246,7 +251,21 @@ impl StatusChanges {
         if let Some(effects) = self.combat_effects {
             seat.combat_effects = effects;
         }
+        if let Some(rating) = self.satisfaction {
+            seat.satisfaction = Some(rating);
+        }
     }
+}
+
+/// `end_game` and `rematch` take `{}` or the recorded game's `{"game_id": id}`; `None` when
+/// the payload is neither.
+#[allow(clippy::option_option)]
+fn recorded_game(payload: &Value) -> Option<Option<i64>> {
+    if empty(payload) {
+        return Some(None);
+    }
+    let id = exactly(payload, 1).and_then(|map| int(map.get("game_id")))?;
+    (id > 0).then_some(Some(id))
 }
 
 fn counts(value: &Value) -> Option<BTreeMap<String, i64>> {
@@ -880,17 +899,33 @@ impl Channel {
             "seat_order" | "arrange_seats" => self.seat_order(event, payload).await,
             "set_mode" => self.set_mode(payload).await,
             "adjust_team_life" => self.adjust_team_life(payload).await,
-            "end_game" if empty(payload) => {
-                // Closes the table for every seat; each connection then gets table_closed.
-                self.tables().close(&self.room_id).await?;
+            "end_game" | "rematch" => {
+                let Some(game_id) = recorded_game(payload) else {
+                    return error(if event == "end_game" {
+                        "invalid end game"
+                    } else {
+                        "invalid rematch"
+                    });
+                };
+                // Every seat learns which game was recorded, so players who have not rated it
+                // yet are asked to.
+                if let Some(game_id) = game_id {
+                    let _ = self
+                        .socket
+                        .state
+                        .io
+                        .to(self.topic.clone())
+                        .emit("game_recorded", &json!({ "game_id": game_id }))
+                        .await;
+                }
+                if event == "end_game" {
+                    // Closes the table for every seat; each connection then gets table_closed.
+                    self.tables().close(&self.room_id).await?;
+                } else {
+                    self.tables().rematch(&self.room_id).await?;
+                }
                 reply(Reply::ok())
             }
-            "end_game" => error("invalid end game"),
-            "rematch" if empty(payload) => {
-                self.tables().rematch(&self.room_id).await?;
-                reply(Reply::ok())
-            }
-            "rematch" => error("invalid rematch"),
             "start_game" => self.start_game(payload).await,
             "turn_settings" => {
                 match exactly(payload, 1).and_then(|map| map.get("auto_randomize")?.as_bool()) {

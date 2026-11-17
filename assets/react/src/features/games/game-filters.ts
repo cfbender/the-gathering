@@ -1,3 +1,4 @@
+import { SATISFACTION_LEVELS } from "@/features/satisfaction/satisfaction"
 import { COLOR_NAMES, colorIdentityName } from "@/lib/color-identities"
 
 /**
@@ -16,6 +17,8 @@ const numericKeys = [
   "max_turns",
   "min_duration",
   "max_duration",
+  /** The face a game's average rating rounds to, 1 (awful) to 5 (rad). */
+  "mood",
 ] as const
 /** Zero-based clock filters in the viewer's local time: Sunday is weekday 0, midnight hour 0. */
 const clockKeys = { weekday: 6, hour: 23 } as const
@@ -59,7 +62,7 @@ export function parseGamesSearch(search: Record<string, unknown>): GamesSearch {
   const result: GamesSearch = {}
   for (const key of numericKeys) {
     const value = integer(search[key])
-    if (value !== undefined && value > 0) result[key] = value
+    if (value !== undefined && value > 0 && (key !== "mood" || value <= 5)) result[key] = value
   }
   for (const [key, max] of Object.entries(clockKeys) as [keyof typeof clockKeys, number][]) {
     const value = integer(search[key])
@@ -169,6 +172,7 @@ export const moreFilterKeys = [
   "winner_seat",
   "weekday",
   "hour",
+  "mood",
 ] as const satisfies readonly GameFilterKey[]
 
 export const WEEKDAY_NAMES = [
@@ -203,6 +207,7 @@ const chipOrder = [
   "max_turns",
   "min_duration",
   "max_duration",
+  "mood",
   "date_from",
   "date_to",
   "weekday",
@@ -265,6 +270,8 @@ export function gameFilterChips(
         return `At least ${value} min`
       case "max_duration":
         return `At most ${value} min`
+      case "mood":
+        return `Mood: ${SATISFACTION_LEVELS[Number(value) - 1]?.label ?? value}`
       case "date_from":
         return `From ${formatFilterDate(String(value))}`
       case "date_to":

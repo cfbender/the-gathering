@@ -12,6 +12,13 @@ import { GameChangerBadge } from "@/components/game-changer-badge"
 import { DeckCommanders } from "@/features/decks/deck-commanders"
 import { useCurrentUser } from "@/lib/auth"
 import { formatLabel } from "@/features/games/game-format"
+import {
+  SatisfactionBadge,
+  SatisfactionPicker,
+  SatisfactionPrompt,
+  useGameRatingRequest,
+  useRateGame,
+} from "@/features/satisfaction/satisfaction"
 
 export const Route = createFileRoute("/games/$gameId")({ component: GameDetailPage })
 
@@ -19,6 +26,8 @@ function GameDetailPage() {
   const { gameId } = Route.useParams()
   const query = useQuery({ queryKey: ["games", gameId], queryFn: () => getGame(gameId) })
   const viewer = useCurrentUser()
+  const rate = useRateGame(Number(gameId))
+  const [ratingRequested, clearRatingRequest] = useGameRatingRequest(Number(gameId))
   if (query.isPending)
     return (
       <div className="flex justify-center py-16">
@@ -27,6 +36,7 @@ function GameDetailPage() {
     )
   if (query.isError) return <div className="alert alert-error">Game not found.</div>
   const game = query.data
+  const mySeat = game.seats.find((seat) => viewer.data && seat.player.user_id === viewer.data.id)
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <PageHeader
@@ -46,13 +56,24 @@ function GameDetailPage() {
         {game.format !== "commander" && (
           <span className="badge badge-outline mt-3">{formatLabel(game.format)}</span>
         )}
-        {(game.turns || game.duration_minutes) && (
-          <p className="text-base-content/60 mt-3 flex gap-4 text-sm">
+        {(game.turns || game.duration_minutes || game.average_satisfaction !== null) && (
+          <p className="text-base-content/60 mt-3 flex flex-wrap items-center gap-4 text-sm">
             {game.turns && <span>{game.turns} turns</span>}
             {game.duration_minutes && (
               <span className="flex items-center gap-1">
                 <Clock className="size-4" />
                 {game.duration_minutes} minutes
+              </span>
+            )}
+            {game.average_satisfaction !== null && (
+              <span className="flex items-center gap-1">
+                Table mood
+                <SatisfactionBadge
+                  average
+                  value={game.average_satisfaction}
+                  ratings={game.seats.filter((seat) => seat.satisfaction !== null).length}
+                  className="text-base-content"
+                />
               </span>
             )}
           </p>
@@ -87,6 +108,20 @@ function GameDetailPage() {
                         ? "Kills unknown"
                         : `${seat.kills} ${seat.kills === 1 ? "kill" : "kills"}`}
                     </span>
+                    {seat === mySeat ? (
+                      <SatisfactionPicker
+                        size="sm"
+                        value={seat.satisfaction}
+                        disabled={rate.isPending}
+                        onRate={(value) => rate.mutate(value)}
+                        className="bg-base-100/80 rounded-full px-1"
+                      />
+                    ) : (
+                      <SatisfactionBadge
+                        value={seat.satisfaction}
+                        className="bg-base-100/80 rounded-full p-0.5"
+                      />
+                    )}
                   </div>
                   {seat.result === "win" && (
                     <span className="bg-base-100 text-accent flex items-center gap-1 rounded-full px-2 py-1 text-sm font-bold">
@@ -171,6 +206,15 @@ function GameDetailPage() {
         </section>
       )}
       <MoveGame game={game} />
+      {ratingRequested && mySeat?.satisfaction === null && (
+        <SatisfactionPrompt
+          onRate={(value) => {
+            rate.mutate(value)
+            clearRatingRequest()
+          }}
+          onDismiss={clearRatingRequest}
+        />
+      )}
     </div>
   )
 }

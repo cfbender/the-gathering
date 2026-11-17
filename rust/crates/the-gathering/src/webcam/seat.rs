@@ -97,6 +97,9 @@ pub struct Seat {
     /// Knocked out.
     #[serde(default)]
     pub eliminated: bool,
+    /// How much the player enjoyed this game, 1 (awful) to 5 (rad), once they rated it.
+    #[serde(default)]
+    pub satisfaction: Option<i64>,
     /// Watching a started game rather than playing.
     #[serde(default)]
     pub spectator: bool,
@@ -129,6 +132,7 @@ impl Seat {
             combat_effects: Vec::new(),
             reveal_to: None,
             eliminated: false,
+            satisfaction: None,
             spectator: false,
             deck_id: None,
             deck_name: None,
@@ -156,6 +160,7 @@ impl Seat {
             custom_counters: Vec::new(),
             combat_effects: Vec::new(),
             eliminated: false,
+            satisfaction: None,
             ..self
         }
     }

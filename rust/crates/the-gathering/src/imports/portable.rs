@@ -64,7 +64,7 @@ const GAME_FIELDS: [&str; 9] = [
     "source",
     "external_id",
 ];
-const SEAT_FIELDS: [&str; 10] = [
+const SEAT_FIELDS: [&str; 11] = [
     "player_id",
     "deck_id",
     "seat",
@@ -75,6 +75,7 @@ const SEAT_FIELDS: [&str; 10] = [
     "mvp_card_id",
     "mvp_card_name",
     "notes",
+    "satisfaction",
 ];
 const SOURCES: [&str; 4] = ["manual", "csv", "mythic_track", "discord"];
 const INVALID_FILE: &str = "Choose a valid The Gathering JSON export (format version 1). Records need unique IDs and games need 2–6 seats.";
@@ -255,6 +256,7 @@ pub async fn export(state: &AppState, playgroup_id: i64) -> Result<Value, sqlx::
                     "mvp_card_id": seat.mvp_card_id,
                     "mvp_card_name": seat.mvp_card_name,
                     "notes": seat.notes,
+                    "satisfaction": seat.satisfaction,
                 })).collect::<Vec<_>>(),
             })
         }).collect::<Vec<_>>(),
