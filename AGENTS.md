@@ -56,7 +56,7 @@ In development the Vite dev server (port 5173, or `VITE_PORT`) is the browser en
 
 Never edit or renumber a migration that has shipped; existing databases have recorded its version.
 
-Production/container commands are documented in `README.md`.
+Installation, configuration, and production/container commands are documented in `docs/installation.md` (kept complete enough for an agent to set up a server from it); feature behavior is in `docs/features.md` and administrator tools in `docs/administration.md`. `README.md` shows the product with screenshots from `docs/images/` and links to those pages.
 
 ## Development Notes
 

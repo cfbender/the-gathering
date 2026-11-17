@@ -39,7 +39,7 @@ The task:
 - generates `CHANGELOG.md`
 - bumps the `rust/crates/the-gathering/Cargo.toml` version (and `rust/Cargo.lock`) and the
   `package.json` version
-- updates the README Docker tag example
+- updates the Docker tag examples in `docs/installation.md`
 - commits `chore: release vX.Y.Z`
 - creates an annotated `vX.Y.Z` tag
 - pushes the current branch and the tag to `origin`

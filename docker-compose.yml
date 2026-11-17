@@ -19,6 +19,9 @@ services:
       THE_GATHERING_SECRET_KEY: ${THE_GATHERING_SECRET_KEY:-}
       # Public address users reach the app at, used for generated URLs.
       THE_GATHERING_PUBLIC_URL: ${THE_GATHERING_PUBLIC_URL:-}
+      # Optional: create this administrator at startup when it does not exist yet.
+      THE_GATHERING_ADMIN_USERNAME: ${THE_GATHERING_ADMIN_USERNAME:-}
+      THE_GATHERING_ADMIN_PASSWORD: ${THE_GATHERING_ADMIN_PASSWORD:-}
       # Names used by releases up to 0.2; still read (with a warning) when the ones above are unset.
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-}
       PHX_HOST: ${PHX_HOST:-}

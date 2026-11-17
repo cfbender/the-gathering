@@ -159,7 +159,7 @@ function methodDescription(method: SoftwareUpdateStatus["method"] | undefined) {
     case "watchtower":
       return "Updating asks Watchtower to pull the newest image and recreate the container with the same settings."
     default:
-      return "Updates cannot be started from here. In the Proxmox LXC, run `update` once so the updater installs its systemd hook; with Docker Compose, enable the self-update profile described in the README."
+      return "Updates cannot be started from here. In the Proxmox LXC, run `update` once so the updater installs its systemd hook; with Docker Compose, enable the self-update profile described in docs/installation.md."
   }
 }
 

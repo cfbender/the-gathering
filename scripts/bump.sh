@@ -6,7 +6,7 @@ usage() {
 Usage: mise run release -- major|minor|patch
 
 Increments the server version in rust/crates/the-gathering/Cargo.toml and
-package.json, updates README Docker tag examples, commits the
+package.json, updates the Docker tag examples in docs/installation.md, commits the
 release files, creates an annotated tag, then pushes the current branch and tag
 to origin.
 
@@ -30,7 +30,7 @@ major | minor | patch) ;;
 esac
 
 version_file="rust/crates/the-gathering/Cargo.toml"
-readme_file="README.md"
+readme_file="docs/installation.md"
 package_file="package.json"
 current=$(perl -ne 'if (/^version = "([0-9]+\.[0-9]+\.[0-9]+)"/) { print "$1\n"; exit }' "$version_file")
 
