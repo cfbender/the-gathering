@@ -1,486 +1,229 @@
 # Discord integration
 
-This document records the September 2026 research behind the Discord client and
-the intended boundary with the games domain.
-
-## Member sign-in
-
-Members authenticate with Discord OAuth. The first, administrator account is
-bootstrapped with a username and password; after that, password registration is
-disabled. An unknown Discord identity creates a member only while **Admin →
-Users → Open registration** is enabled. Existing linked members can sign in
-while registration is closed, but disabled accounts cannot.
-
-Use the same Discord application for OAuth and the optional game-tracking bot:
-
-1. In the [Discord Developer Portal](https://discord.com/developers/applications),
-   open the application and copy its **Application ID** and OAuth2 client secret
-   into `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`. For the **App Icon**,
-   upload `priv/static/images/discord-app-icon.png`; it is the app logo on a
-   full-bleed square because Discord applies its own circular crop.
-2. Under **OAuth2**, register
-   `<THE_GATHERING_PUBLIC_URL>/auth/discord/callback` (for example,
-   `https://games.example.com/auth/discord/callback`). The application derives
-   this URL from that setting.
-3. Restart the app. The login page shows **Continue with Discord** when both
-   credentials are present. Authorization requests the `identify email` scopes;
-   email is not persisted.
-
-The callback links the Discord ID to both the account and its `players` row.
-
-If the login page shows **Discord sign-in is not configured**, the running
-container has no `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` pair. The app logs
-`Discord OAuth sign-in enabled; redirect URI is …` or `Discord OAuth sign-in
-disabled: …` at every start, and `docker compose exec the-gathering env | grep -c
-DISCORD_CLIENT` should print `2`. Common causes:
-
-- `docker-compose.yml` predates member sign-in and lacks the `DISCORD_CLIENT_ID`
-  and `DISCORD_CLIENT_SECRET` passthrough lines; copy the current file from the
-  repository. Compose only forwards variables listed under `environment`.
-- `.env` was edited after the container was created. `docker compose restart`
-  keeps the old environment; run `docker compose up -d` to recreate it.
-- Only one of the two variables is set. The app warns about this at boot.
-
-Sign-in failures redirect to `/login` with a one-time message; the message is
-dropped from the URL once shown, so a member who was turned away while
-registration was closed must click **Continue with Discord** again after the
-administrator opens it (reloading the old page does not retry). The server logs
-the cause of every rejected callback: `Discord sign-in rejected an unknown
-account because registration is closed` at `info`, and `Discord sign-in failed:
-…` (with Discord's error response) at `warning` for credential or redirect-URI
-problems.
-Discord reauthorization also supplies the ten-minute confirmation required for
-sensitive actions. `DISCORD_CLIENT_SECRET` and `DISCORD_BOT_TOKEN` are separate
-secrets even when they belong to the same application.
-
-## Findings
-
-### SpellBot starts games; it does not normally finish them
-
-`/lfg` creates or joins a pending queue. When the queue fills (or `/start`
-shrinks it), SpellBot creates the remote table, copies queued users to durable
-`Play` rows, marks the game `STARTED`, and edits the existing queue message to
-say **Your game is ready!**. The admin-only `/game` command creates a fully
-seated game and follows the same start path. Relevant upstream code:
-
-- [`/lfg` and `/game` command definitions](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/cogs/lfg_cog.py#L58-L114),
-  [`/game`](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/cogs/events_cog.py#L27-L61)
-- [queue-to-start transition](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/services/games.py#L651-L723)
-- [the existing Discord post is edited](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/actions/lfg_action.py#L691-L785)
-
-The core state machine has only `PENDING` and `STARTED`; `Game` has no winner or
-finished-at column. `Play` stores the Discord user ID, game/guild IDs, timestamps,
-a tracking PIN, and verification time—not a commander, deck, result, or points.
-See the [`Game` model](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/models/game.py#L25-L190)
-and [`Play` model](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/models/play.py#L24-L90).
-SpellBot removed its experimental points/ELO data in 2025; `/record` is not a
-score system ([cleanup migration](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/migrations/versions/d97abaf70fcf_delete_score_elo_record_cruft.py#L22-L28)).
-
-After start, SpellBot reliably knows:
-
-- SpellBot game ID, format, service, status, rules/bracket, and created/started
-  timestamps;
-- guild/channel/post IDs and each player's Discord ID and cached display name;
-- the service table link (Convoke, Table Stream, and others), though it may be
-  shown only in player DMs;
-- arbitrary post-game metadata, but only when another tracker supplies it.
-
-The ready embed exposes the roster, format, start timestamp, service, and game
-ID. Its exact builder is [`GameData.to_embed`](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/data/game_data.py#L178-L267),
-with players rendered as mentions and the footer rendered as
-`SpellBot Game ID: #SB… — Service: …` ([players](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/data/game_data.py#L382-L420)).
-The fixture in `test/fixtures/discord/spellbot_game_ready.json` is adapted from
-SpellBot's [upstream embed assertion](https://github.com/lexicalunit/spellbot/blob/main/tests/cogs/test_lfg_cog.py#L104-L176)
-with invented IDs and names.
-
-SpellBot has a public per-game HTML page, but no documented public per-game JSON
-read API or subscriber webhook. Its authenticated API lets approved integrations
-`POST /api/game/{id}/verify`, `/record`, or `/metadata`; metadata can include
-winner, commander, duration, turns, and tracker links. `/record` sends DMs but
-does not persist its supplied winner/commanders. See [SpellBot's API documentation](https://github.com/lexicalunit/spellbot/blob/main/API.md#L156-L307)
-and [REST handlers](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/web/api/rest.py#L250-L379).
-The generic Castlog forwarding hook is configured by SpellBot itself, not a
-public webhook-subscription API.
-
-“Verified” means an individual player proved possession of their secret game
-PIN. It does not mean the game result or winner was verified
-([verification handler](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/services/plays.py#L357-L386)).
-
-### Convoke and Mythic Track
-
-[Convoke](https://convoke.games/en/what-is-convoke) is a hosted webcam Magic
-table with life/game context, card recognition, and deck features. Its
-[official Mythic Track partner page](https://convoke.games/en/partners/mythic-track)
-says a player adds a Mythic Track API key in Convoke's Plugins UI; when selected
-for a game, Convoke submits completed match data including Discord identity,
-winner, win condition, mulligans, and key cards directly to Mythic Track.
-
-No public Convoke developer API, webhook registration, plugin SDK, or payload
-schema for third parties was found in its public site or documentation. The
-available evidence describes a named partner integration, not a generally
-available hook. A direct Convoke integration therefore requires a partnership
-or private API access and is not an MVP dependency.
-
-### Discord delivery options
-
-| Option | Benefits | Costs / blockers |
-| --- | --- | --- |
-| Gateway bot | Sees SpellBot's message create/update events and receives slash commands; no public URL required. | Persistent WebSocket, bot token, `GUILDS` + `GUILD_MESSAGES`, and privileged `MESSAGE_CONTENT` intent because embeds are message content. |
-| Interactions-only HTTP | No gateway or Message Content intent; the server can verify Discord's Ed25519 signatures. | Requires a stable public HTTPS endpoint and cannot passively see SpellBot's roster. Discord requires every request signature to be verified. |
-| Poll channel history | Can recover games after downtime. | Requires Read Message History, polling/state, rate-limit handling, and still needs Message Content access; it cannot discover winners. |
-
-Discord documents the mutually exclusive [gateway and HTTP interaction delivery modes](https://docs.discord.com/developers/interactions/overview),
-the public endpoint and Ed25519 requirements for HTTP interactions, and that
-message `content`, `embeds`, `attachments`, and `components` require the
-[Message Content intent](https://docs.discord.com/developers/events/gateway#message-content-intent).
-
-The gateway client is [twilight-gateway](https://crates.io/crates/twilight-gateway),
-which handles identify, resume, heartbeats, and reconnects. REST calls go through a small
-`reqwest` client behind the `DiscordApi` trait (tests swap in a recording fake), so the bot
-does not depend on a full Discord framework.
-
-## Recommended MVP
-
-**Primary:** run a gateway bot inside the server. Accept only messages authored
-by the configured SpellBot user ID, then require the known started color, title,
-footer, start timestamp, and player field. Emit an incomplete normalized report
-when a game starts. Any server member finishes it with `/log`, which defaults to
-the most recently started game the bot has seen in that channel, or
-`/log game:SB12345` to pick a specific one. The ephemeral reply opens the regular
-web game form; optionally mention `winner:@player` to preselect the winner.
-
-This fills the exact gap SpellBot leaves while avoiding screen-scraping its HTML
-or depending on private Convoke APIs. It also keeps the integration usable for
-SpellBot games launched on services other than Convoke.
-
-**Fallback:** pursue a direct Convoke partnership. Its completion event has the
-best data (winner, commanders/decks and richer outcomes), and could feed the same
-`GameReport`/sink boundary. Until such access exists, a message-history backfill
-can improve missed-roster recovery but cannot recover winners.
-
-Reactions were rejected for the initial UX: they are easy to place on the wrong
-message, add reaction intent/permission complexity, and still require a policy
-for who may choose another player's winner. `/log` is explicit and attributable.
-
-## Implemented flow
-
-```text
-SpellBot edits ready embed
-        │
-        ▼
-Discord gateway (MESSAGE_UPDATE / MESSAGE_CREATE)
-        │ author ID + embed contract validation
-        ▼
-GameReport (winner_discord_ids: [])
-        │ staged in SQLite
-        ▼
-Member runs /log [winner:@player] [game:SB12345]
-        │
-        ▼
-server check + private web link
-        │ sign in, complete game form
-        ▼
-Save → atomic game creation + consume pending report
-```
-
-`GameReport` contains `external_id` (`spellbot:SB12345`), `source`
-(`discord`), `played_at`, guild/channel IDs, players with Discord ID/display
-name/nullable commander, winner Discord IDs, and scrub-safe raw embed data.
-Commanders are `nil` because the ready embed does not contain them.
-
-### Recording a result with `/log`
-
-Any member of the game's server can run `/log`, even if they did not play.
-Use `/log winner:@player` to preselect a roster member, and optionally add
-`game:SB12345`. The reply, including errors, is visible only to the command
-runner. **Open game log** opens `/games/new` with a private draft ID. Sign in
-with the same Discord account; administrators can also access drafts. The link
-does not bypass registration or disabled-account restrictions.
-
-The web form prefills the roster, date, estimated duration, and optional winner.
-Without a winner mention, choose a winner or draw before saving. Edit or clear
-the duration when reporting an older game. Use the normal web controls for
-**decks/commanders per player, win condition, turns, kills, MVP cards, and notes**.
-The SpellBot roster is fixed, but seats can be reordered. Blank kills record as
-`0`.
-
-Card search tolerates case, accents, omitted apostrophes and commas: `Jeskas
-will`, `sephiroth fabled soldier`, and `Terra magical adept` find the catalog
-names. Leading names such as `Bello` rank ahead of broad substring matches.
-Choose from the web search results rather than typing names into Discord modals.
-
-Opening the link creates no players, decks, or games. Nothing is recorded until
-**Save game**. Drafts persist across restarts for one hour and are bound to the
-runner and original roster/start time. Changed or expired drafts must be
-reopened with `/log`. Saving resolves players by the staged Discord identities,
-validates deck ownership, creates the game, and consumes the pending report in
-one transaction; competing drafts cannot overwrite it. Failed validation rolls
-back new players and decks as well. The authenticated submitter is the creator.
-Already recorded games must be edited in the web app. To remove a test game,
-open its game-detail page and choose **Delete game**, then confirm. Admins,
-the creator, and linked participants have the same deletion permission as Edit.
-Deletion removes the game and seats, not the players or decks, and cannot be undone.
-
-Winnerless reports are staged in SQLite, so `/log` continues to work after an
-application or Tracker restart. Re-observing the same SpellBot external ID
-updates its staged timestamp, roster, commander names, and scrub-safe normalized
-data rather than creating a duplicate. Without a `game` option, `/log` queries
-the latest staged report in the invoking channel that does not already have a
-recorded Discord game with the same external ID. This skips games whose winners
-were previously recorded but which a later SpellBot edit re-staged, and reports
-that no game is available when every staged game in the channel is already
-recorded. An explicit ID may select a game from another channel in the same
-server. The authenticated API is `GET`/`POST /api/discord/result-drafts/:id`.
-
-Administrators can review staged reports under **Admin → Pending Discord games**,
-which applies the same winnerless filter so re-staged games that already have a
-recorded winner are hidden. They can choose any listed player as the winner, or
-discard a report that should not be recorded. The corresponding sudo-protected
-API is `GET /api/admin/discord/pending`, `PATCH
-/api/admin/discord/pending/:id`, and `DELETE /api/admin/discord/pending/:id`.
-Pending reports are retained for 30 days after their latest observation.
-`discord/pending.rs` owns staging, resolution, and discard, and the `discord`
-module is the entry point used by both Tracker and the admin API. Tracker explicitly
-prunes stale rows after staging; reading the pending list never writes. Game
-persistence and pending-row consumption occur in one transaction. This bounds
-storage while leaving a month for `/log` or administrator recovery. The staged
-data is normalized; raw Discord payloads are never stored in full or logged.
-
-## Game tracking
-
-The bot records games through `GamesSink` (`discord/sink.rs`) by default. A
-winnerless SpellBot start remains in durable staging rather than being recorded
-as a draw. `/log` hands off to the web game draft (`discord/web_draft.rs`), which creates or
-reuse players by Discord ID and record `source: "discord"` with the SpellBot ID
-as `external_id`. The submitted seat order, results, decks, win condition,
-turns, duration, notes, kills, and MVP cards are saved through the games context.
-The ready embed itself supplies no commander. Legacy reports that supply only
-a commander name retain their name-only deck fallback in the games sink.
-
-Repeated sink reports are idempotent by `{source, external_id}`. A completed replay
-replaces the existing game's timestamp, seats, decks, and results, so corrected
-seat order or winner data does not create a duplicate. The `/log` flow rejects
-already recorded games before reaching this sink. Validation failures are
-logged without raw Discord payloads and returned to the tracker without
-crashing the gateway consumer.
-
-## Configuration and self-host setup
-
-### Webcam-table queues with `/newgame`
-
-`/newgame` is guild-only and accepts four **optional** options:
-
-| Option | Type | Meaning |
-| --- | --- | --- |
-| `start` | string, max 100 characters | `8pm`, `20:30`, `in 45m`, `in 2h`, `tomorrow 7pm`, or Discord `<t:unix>` / `<t:unix:F>` / `<t:unix:R>`. Omit to start when filled. |
-| `min_players` | integer 2–10 | Minimum roster size; defaults to 3. |
-| `title` | string, max 100 characters | Defaults to `Commander game`. |
-| `format` | string, max 100 characters | Free text; defaults to `Commander`. |
-
-The public embed shows the title, start time, minimum, format and roster. Join
-and Leave update it in place and privately confirm the action. Repeated clicks
-do not duplicate players; the roster caps at ten. **Maybe** puts a member on a
-separate maybe list (also capped at ten) that does not count toward the minimum;
-Join and Maybe move a member between the lists, and Leave removes them from both. **The host must click Join to
-play**, just like everyone else. Cancel is a button, not a slash subcommand;
-only the host or a Discord **Administrator** (including the guild owner) can
-cancel. The same people can click **Change time**, which opens a form that
-accepts the `start` syntax below; leave it blank to start as soon as the minimum
-joins (immediately, if the roster is already full enough). The app's admin role
-and Discord Manage Guild alone do not grant these permissions. Administrator is read from the member
-permissions Discord computes for each interaction, so no guild cache is needed. All buttons are bound to the queue's
-guild, thread (or channel) and message, and disabled once started, cancelled or expired.
-
-The bot starts a thread on its `/newgame` reply and posts the queue embed and
-its buttons inside the thread; the reply in the channel becomes a short "sign
-up in the thread below" pointer. The thread stays listed under the channel while
-chat moves on. It is named after the game title and its date in
-`DISCORD_DEFAULT_TIMEZONE` (for example `Friday pod · Sep 24`; games without a
-start time use the day they were posted), and is renamed when Change time moves
-the game to another day. Running `/newgame` inside a game thread posts the new
-queue in that thread instead of starting another one, and renames the thread
-for the new game.
-
-The host is added to the thread, and so is anyone who clicks Join or Maybe;
-Leave does not remove anyone. The ready announcement and maybe ping are posted
-in the thread, which also adds any mentioned member who is not already in it.
-The thread archives itself after seven days without messages.
-
-Discord lists a thread in someone's channel sidebar only once they are a
-member of it; everyone else reaches it from the pointer post or the channel's
-Threads button. To add interested members up front, create an opt-in role
-(for example "Game alerts"), turn on **Allow anyone to @mention this role** in
-its settings (or give the bot **Mention @everyone, @here, and All Roles**), and
-set `DISCORD_NEWGAME_ROLE_ID` to its ID. The bot then mentions the role in the
-thread each time a game is posted there, which adds the role's members to the
-thread and notifies them. Discord does this only for roles with fewer than 100
-members, and a thread holds at most 1,000. Members run **`/alerts`** to give
-themselves the role, and again to remove it; the reply is private. For that,
-the bot needs **Manage Roles**, and its own role must sit above the alerts role
-in the server's role list.
-
-Run **`/close`** inside a game thread to close (archive) it; a new message in
-it reopens it. Only the host of the thread's newest game or a Discord
-**Administrator** can close it, and its open games are cancelled at the same
-time. `/close` anywhere else replies privately. Discord requires **Manage
-Threads** for the bot to close or rename a thread.
-
-Threads are best effort. Without the thread permissions (step 3 below), or when
-`/newgame` runs in a channel that cannot hold threads, the queue works without
-one: the reply shows the queue and its pings are posted in the channel. A ping
-the thread refuses (for example, after a moderator deleted the thread) is
-posted in the channel instead. If the bot cannot close the thread, `/close`
-says so and can be run again.
-
-Any member of the server can queue, without first linking an app account. To
-enter the actual table, players must sign in with Discord; normal registration
-and disabled-account restrictions still apply. The roster is coordination, not
-a seat reservation or room access list. The lobby URL uses the configured
-`THE_GATHERING_PUBLIC_URL`; it identifies a UUID room without
-creating presence. It appears in active tables only after someone enters.
-
-Bare clock times use `DISCORD_DEFAULT_TIMEZONE` (IANA, default
-`America/New_York`), choosing today if still future, otherwise tomorrow.
-`tomorrow` means the next local calendar day, not 24 elapsed hours. Invalid or
-past explicit timestamps are rejected privately. Nonexistent or ambiguous DST
-clock times are rejected with a request for a Discord timestamp. The `tz`
-dependency supplies bundled IANA rules; update it with app releases (no runtime
-timezone downloads). Discord `<t:unix:F>` and `<t:unix:R>` echoes show the parsed
-time in each viewer's timezone. `in Nm` / `in Nh` mean elapsed time.
-
-The supervised scheduler scans SQLite on boot and every five seconds, in batches
-of 100; Discord request/rate-limit delays can extend that interval. At the deadline
-the existing roster starts if its minimum is met. If it is short and the maybe
-list is empty, it expires, and a click at or after the deadline cannot rescue it.
-If it is short and anyone said Maybe, the bot posts one message mentioning only
-the maybe list, links the game, and keeps the queue open for 15 more minutes: it
-starts as soon as the minimum joins, otherwise it expires. Changing the time
-re-arms the maybe ping for the new deadline. Unscheduled queues never ping maybes. Unscheduled queues
-wait indefinitely until filled or cancelled. Overdue queues are processed on
-restart, even after a long outage. Records and rosters are retained, not deleted.
-The status transition is an atomic `UPDATE ... WHERE status = 'open'`; the room
-UUID cannot be replaced by a second start. Roster changes and message edits are
-serialized by the scheduler; API calls happen outside database transactions.
-
-A ready message mentions only joined players and posts the lobby link. Failed
-notifications stay pending in SQLite and retry; the announcement ID is saved
-before updating the original embed so an edit failure does not repeat the ping.
-A stable Discord nonce also deduplicates short-window announcement retries.
-Discord does **not** offer permanent nonce deduplication: a crash after Discord
-accepts a post but before its ID is saved, followed by a long outage, can repeat
-the announcement, but never creates a second room. Initial slash-response
-placeholder failures are not retried automatically; rerun `/newgame`. The message
-ID is saved before exposing buttons, so the first actionable queue edit can be
-retried after a restart. A crash before saving that ID leaves only a placeholder
-and requires a new command. Deleted messages or revoked channel permissions leave pending work
-and warning logs until access is restored; records are preserved for diagnosis.
-
-### Rendered game summaries
-
-`/summary` posts a PNG recap of the **latest recorded game across the instance**,
-ordered by played date (then game ID). It does not look at unfinished SpellBot
-tables or limit the result to the current channel. Use `/summary game:123` for a
-Gathering game ID or `/summary game:SB12345` for a recorded SpellBot game. The
-`SB` prefix disambiguates the two ID namespaces; lowercase `sb` and `#SB` work too.
-
-The image includes winner artwork, commander/partner portraits, the table's
-kills, win condition, date/time (explicitly UTC), duration, turns, and a bounded
-notes excerpt. Unknown kills display as `—`, not zero. Draws and missing artwork
-have fallback layouts. The message includes a link to the full game and image
-alt text; the image is uploaded directly to Discord, not exposed at a public
-image URL. Long text is truncated in the image, not in the saved game.
-
-Only active users who have signed into this instance with Discord can invoke it.
-DMs are rejected; when `DISCORD_GUILD_ID` is set, other servers are rejected too.
-The recap is **public in the invoking channel**, including its notes. Restrict
-the command's channels/roles in Discord's integration settings if necessary.
-Errors before rendering are private. Rendering is deferred to meet Discord's
-three-second acknowledgement deadline, with a server-wide cap of 30 renders
-per minute. An acknowledgement failure is not retried to avoid duplicate posts.
-
-Summary uploads use a direct HTTPS interaction-webhook request with a 15-second
-request timeout and three-second connection/pool limits, rather than a
-shared, indefinitely waiting REST queue. Uploads do not follow redirects or retry,
-including on rate limits. Logs separately mark rendering, rendered PNG size/time,
-and upload start/completion; failures include safe HTTP/Discord codes or timeout
-reasons, never interaction tokens or response bodies.
-
-The runtime needs `rsvg-convert` and DejaVu fonts. The Docker image includes
-Alpine's `rsvg-convert` and `font-dejavu`; Debian development hosts need
-`sudo apt-get install librsvg2-bin fonts-dejavu-core`. Orb setup and CI install
-these too. Only HTTPS artwork on `cards.scryfall.io` is fetched, with redirects
-disabled, size/time limits and raster-only data embedded in the SVG. Temporary
-render files are deleted after conversion. Art failures do not prevent summaries.
-
-Signed-in members can preview the exact PNG at `GET /api/games/:id/summary`.
-This endpoint remains session-protected with `private, no-store` caching; it is
-also subject to the render cap. No summary request modifies the game.
-
-| Variable | Required | Meaning |
-| --- | --- | --- |
-| `DISCORD_CLIENT_ID` | yes for member sign-in | Discord application ID. |
-| `DISCORD_CLIENT_SECRET` | yes for member sign-in | OAuth2 client secret. |
-| `DISCORD_BOT_TOKEN` | yes to enable | Secret bot token. Unset/empty means no Discord process starts. |
-| `DISCORD_GUILD_ID` | no | Register `/log`, `/summary`, `/newgame`, and `/close` immediately in one server; omit for global commands, which can take up to an hour to appear. Also restricts invocation to that server. |
-| `DISCORD_DEFAULT_TIMEZONE` | no | IANA timezone for `/newgame` clock times; defaults to `America/New_York`. |
-| `DISCORD_NEWGAME_ROLE_ID` | no | Role mentioned in each `/newgame` thread so its members are added to it. See below. |
-| `DISCORD_SPELLBOT_USER_ID` | no | Trusted SpellBot bot user ID; defaults to production SpellBot (`725510263251402832`). |
-
-1. In the [Discord Developer Portal](https://discord.com/developers/applications),
-   create an application and add a bot.
-2. On **Bot**, enable **Message Content Intent**. No Guild Members or Presence
-   intent is needed.
-3. On **OAuth2 → URL Generator**, select `bot` and `applications.commands`.
-   Grant **View Channels**, **Send Messages**, **Embed Links**, **Attach Files**,
-   **Create Public Threads**, **Send Messages in Threads**, **Manage Threads**, and
-   **Manage Roles** (`permissions=326686002176`) for queues, their threads,
-   `/close` and `/alerts`, and public image summaries. Ensure the bot can view the
-   specific channel where SpellBot posts games. It does not need Read Message History.
-4. Invite the bot with a URL shaped like
-   `https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=326686002176`.
-   A bot invited before game threads keeps its old permissions: re-invite it with
-   this URL, or grant the thread permissions and Manage Roles to its role.
-5. Put the token and optional IDs in `.env`, then restart the container. Never
-   paste the token into logs or support messages.
-6. Start a SpellBot game and confirm the container logs
-   `Discord observed SpellBot game spellbot:SB… with N player(s)`; raw message
-   content is never logged. Any member then runs `/log` in the game's channel
-   (or `/log game:SB…` from another channel in the same server), opens the private
-   link, completes the web form, and clicks **Save game**. `/summary` can then
-   share the recap publicly.
-
-Registration replaces `/won` with `/log` in the configured command scope while
-preserving unrelated commands. Existing modal drafts remain supported briefly
-for users who opened them before upgrading. Set `THE_GATHERING_PUBLIC_URL` to the public app
-address so the generated links work externally.
-
-What the bot sees during a SpellBot game, per the [SpellBot source](https://github.com/lexicalunit/spellbot/blob/main/src/spellbot/actions/lfg_action.py):
-`/lfg` and `/game` are deferred, so the first `MESSAGE_CREATE` is an empty
-"thinking" placeholder; SpellBot then sends the waiting/seated game post as an
-interaction followup, and answers validation problems with plain text. When an
-`/lfg` game fills, SpellBot **edits the existing post** into `Your game is
-ready!`, so the report is parsed from a `MESSAGE_UPDATE`. Only that edit (or a
-`/game` post that starts fully seated) produces the `observed` log line; the
-other messages are ignored silently.
-
-### Troubleshooting
-
-The bot logs each step at `info`, so `docker compose logs the-gathering` shows
-how far it got. Read the log from the top of the last start:
-
-| Log line | Meaning / fix |
+The Gathering uses one Discord application for two things:
+
+- **Sign-in.** Members sign in with Discord OAuth. Only the first administrator has a password.
+- **An optional bot.** It gathers players for webcam tables with `/newgame`, picks up SpellBot
+  games so members can log their results with `/log`, and posts game recaps with `/summary`.
+
+The environment variables are listed in the installation guide's
+[configuration reference](installation.md#configuration-reference).
+
+## Set up
+
+### Sign-in
+
+Follow [Let members sign in (Discord)](installation.md#6-let-members-sign-in-discord). How sign-in
+behaves after that:
+
+- A Discord account the app has not seen before becomes a member only while **Admin → Settings →
+  Open registration** is on, or when the member arrives through a playgroup invite link. Linked
+  members can sign in while registration is closed; disabled accounts cannot.
+- Sign-in requests the `identify email` scopes. Signing in links the Discord ID to the account
+  and to its player.
+- A rejected sign-in returns to `/login` with a one-time message. A member turned away while
+  registration was closed must click **Continue with Discord** again once it opens; reloading
+  the old page does not retry.
+- The server logs every rejected callback: `Discord sign-in rejected an unknown account because
+  registration is closed` at `info`, and `Discord sign-in failed: …` at `warning` for credential,
+  state, or redirect problems.
+- Signing in with Discord again also unlocks sensitive admin actions for ten minutes.
+
+### Bot
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), open the same
+   application. On **Bot**, reset the token and copy it into `DISCORD_BOT_TOKEN`. It is a
+   separate secret from `DISCORD_CLIENT_SECRET`; never paste it into logs or support messages.
+2. On **Bot**, enable **Message Content Intent**. The bot needs no Server Members or Presence
+   intent.
+3. Invite the bot with the URL in the installation guide. It requests the `bot` and
+   `applications.commands` scopes and these permissions (`326686002176`):
+
+   | Permission | Used for |
+   | --- | --- |
+   | View Channels | Seeing SpellBot posts and the channels commands run in |
+   | Send Messages, Embed Links | Queue posts, pings, and announcements |
+   | Attach Files | `/summary` images |
+   | Create Public Threads, Send Messages in Threads | `/newgame` threads |
+   | Manage Threads | Renaming threads and `/close` |
+   | Manage Roles | `/alerts` |
+
+   The bot must be able to view each channel where SpellBot posts games. It does not need Read
+   Message History. A bot invited before game threads existed keeps its old permissions:
+   invite it again with the current URL, or grant the missing permissions to its role.
+4. Set `DISCORD_GUILD_ID` to your server's ID so commands appear immediately. Without it the
+   commands are global, can take up to an hour to appear, and work in every server the bot is
+   in. With it, the bot refuses its commands in other servers.
+5. Restart the server. The log shows `Discord bot connected as <name> in N guild(s)` and then
+   `Discord registered /log, /summary, /newgame, /close, and /alerts in guild …`.
+   Registration also removes the old `/won` command and leaves other commands alone.
+
+To serve several Discord servers from one bot, leave `DISCORD_GUILD_ID` unset and set each
+server's ID on its playgroup (**Admin → Playgroups**). Games from a server that no playgroup
+claims go to the default playgroup.
+
+## Webcam-table queues with `/newgame`
+
+`/newgame` posts a public queue for a webcam table. Any member of the server can run it or join,
+without an app account. Every option is optional:
+
+| Option | Meaning |
 | --- | --- |
-| `Discord bot disabled: DISCORD_BOT_TOKEN is not set` | The token did not reach the container. Check `.env` and that `docker compose up` was re-run after editing it. |
-| `Discord bot could not start … Authentication rejected, invalid token` | The token is wrong or was reset in the Developer Portal. The web app keeps running without Discord; fix the token and restart. |
-| `Shard websocket closed (errno 4014, …)` repeating, no `READY` | Discord rejected the requested intents. Enable **Message Content Intent** on the **Bot** page. |
-| `Discord bot connected as <bot> in 0 guild(s)` | The bot was never invited to the server. Use the invite URL from step 4. |
-| `Discord bot connected …` but the bot looks offline in Discord | The bot sets an online presence ("Watching the battlefield") right after this line. If the member list still shows it offline, the gateway session dropped afterwards; look for `Shard websocket closed` lines below it. |
-| `Discord registered /log, /summary, /newgame, /close, and /alerts in guild …` but commands are missing | The invite lacked the `applications.commands` scope. Re-invite with the URL from step 4 (re-inviting keeps existing permissions). |
-| `Discord registered /log, /summary, /newgame, /close, and /alerts globally` but commands are missing | Global commands can take up to an hour to appear. Set `DISCORD_GUILD_ID` for immediate registration in one server. |
-| `Discord newgame N thread could not be started: HTTP 403, Discord code 50013` | The bot lacks **Create Public Threads** in that channel; the queue still works without a thread. Grant the thread permissions from step 3. |
-| `Could not register Discord commands: …` | The API error is included; a `403` usually means the `applications.commands` scope is missing. |
-| No `Discord observed SpellBot game …` line when a game starts | The line appears only once the post reads **Your game is ready!** (see the message flow above). Otherwise the bot cannot see the channel (grant **View Channels** there), or the message is from a different SpellBot deployment: set `DISCORD_SPELLBOT_USER_ID` to that bot's user ID. Set `LOG_LEVEL=debug` to log why each SpellBot message was ignored. |
+| `start` | When to start: `8pm`, `20:30`, `930pm`, `in 45m`, `in 2h`, `tomorrow 7pm`, or a Discord timestamp such as `<t:1790000000:F>`. Omit it to start as soon as the minimum joins. |
+| `min_players` | Minimum roster, 2–10. Default 3. |
+| `title` | Up to 100 characters. Default `Commander game`. |
+| `format` | Free text, up to 100 characters. Default `Commander`. |
 
-A real Discord smoke test was not run in the orb because no throwaway
-application/server credentials were available. The test suite uses the scrubbed
-upstream-shaped payload and performs no network calls.
+### Buttons
+
+The queue shows the title, start time, minimum, format, roster, and maybe list.
+
+- **Join** adds you to the roster (at most ten players). The host is not added automatically and
+  must click Join to play.
+- **Maybe** puts you on a separate list of up to ten that does not count toward the minimum.
+  Join and Maybe move you between the lists.
+- **Leave** removes you from both lists.
+- **Change time** opens a form that takes the same syntax as `start`. Leave it blank to start as
+  soon as the minimum joins (at once, if it already has).
+- **Cancel** cancels the game.
+
+Only the host or a member with Discord's **Administrator** permission (the server owner has it)
+can use Change time and Cancel. The app's admin role and Discord's Manage Server permission do
+not count. Every reply to a button is private. The buttons are disabled once the game starts,
+expires, or is cancelled.
+
+### Start times
+
+Clock times use `DISCORD_DEFAULT_TIMEZONE` (default `America/New_York`). A bare time means today
+if it is still ahead, otherwise tomorrow. `tomorrow` means the next calendar day, not 24 hours
+later. `in 45m` and `in 2h` count elapsed time. Times in the past are rejected, and so are clock
+times that a daylight-saving change skips or repeats; use a Discord timestamp for those.
+
+### Starting, expiring, and maybe pings
+
+The bot checks queues at boot and every five seconds after that.
+
+- A queue without a start time starts as soon as the minimum joins and otherwise waits until it
+  fills or is cancelled.
+- At its start time, a scheduled queue starts if the minimum has joined.
+- If it is short and nobody said Maybe, it expires.
+- If it is short and someone said Maybe, the bot pings only the maybe list and keeps the queue
+  open for 15 more minutes. It starts as soon as the minimum joins, or expires after that.
+  Changing the time arms the ping again for the new start.
+
+When a game starts, the bot pings the roster with a link to a new webcam table
+(`<THE_GATHERING_PUBLIC_URL>/table/<id>`). Players sign in with Discord to enter it; the normal
+registration and disabled-account rules apply. The roster coordinates players; it does not
+reserve seats or restrict who can enter.
+
+Queues live in the database, so they survive restarts. Queues that came due while the server was
+down are settled at the next boot. A failed ping or queue edit is retried on the next check, and
+a game can only start once. If the bot's first reply to `/newgame` fails, the queue is cancelled;
+run `/newgame` again.
+
+### Threads
+
+The bot starts a thread on its `/newgame` reply and moves the queue into it. The reply becomes a
+"sign up in the thread below" pointer. The thread is named after the title and the game's date
+in `DISCORD_DEFAULT_TIMEZONE`, for example `Friday pod · Sep 24` (games without a start time use
+the day they were posted). It is renamed when Change time moves the game to another day, and it
+archives after seven days without messages.
+
+- The host is added to the thread, and so is anyone who clicks Join or Maybe. Leave does not
+  remove anyone.
+- The ready and maybe pings are posted in the thread, which also adds anyone they mention.
+- Running `/newgame` inside a game thread posts the new queue in that thread and renames it.
+- **`/close`** inside a game thread archives it and cancels its open games. Only the host of the
+  thread's newest game or a Discord Administrator can run it. A new message reopens the thread.
+
+Threads are optional. Without the thread permissions, or in a channel that cannot hold threads,
+the reply itself shows the queue and pings go to the channel. A ping the thread refuses (for
+example, because it was deleted) also goes to the channel.
+
+### Game alerts role
+
+Discord shows a thread in someone's channel list only after they join it. To bring interested
+members in automatically:
+
+1. Create a role such as "Game alerts". Turn on **Allow anyone to @mention this role**, or give
+   the bot **Mention @everyone, @here, and All Roles**.
+2. Move the bot's own role above it in the server's role list.
+3. Set `DISCORD_NEWGAME_ROLE_ID` to the role's ID and restart.
+
+The bot then mentions the role in each new game's thread, which adds the role's members to it.
+Discord does this only for roles with fewer than 100 members. Members run **`/alerts`** to give
+themselves the role and again to remove it; the reply is private.
+
+## SpellBot tracking
+
+[SpellBot](https://github.com/lexicalunit/spellbot) seats players and starts games, but it never
+learns the result. The bot fills that gap:
+
+1. When SpellBot edits its queue post into **Your game is ready!**, the bot reads the roster,
+   start time, and SpellBot game ID and logs `Discord observed SpellBot game spellbot:SB… with N
+   player(s)`. It accepts only posts from `DISCORD_SPELLBOT_USER_ID` (default: the public
+   SpellBot) and only games of two to six players. It never logs message text.
+2. The game waits in the database without a winner. Seeing the same game again updates it
+   instead of adding a second copy. A waiting game is dropped 30 days after it was last seen.
+3. Any member of that server runs **`/log`** in the game's channel. `/log` picks the newest
+   unlogged game in that channel; `/log game:SB12345` picks one from any channel in the same
+   server. `winner:@player` preselects a winner, who must be in the game. Replies are private.
+4. **Open game log** opens `/games/new` with the roster, date, estimated duration, and winner
+   filled in. Sign in with the same Discord account (administrators can open anyone's link).
+   Fill in decks, the winner or a draw, and anything else, then click **Save game**.
+
+Nothing is created until **Save game**. The link expires after one hour and stops working if
+the game changes or is logged by someone else; run `/log` again for a new one. Saving matches
+players by their Discord IDs, records the game with its SpellBot ID, and removes it from the
+waiting list in one step. The member who saves it is its creator. To change a logged game, edit
+it in the web app.
+
+Administrators see waiting games under **Admin → Discord**, where they can pick a
+winner from the roster or discard the game.
+
+## Other commands
+
+**`/summary`** posts a PNG recap of a recorded game in the channel, publicly, including its notes.
+Without an option it shows the newest game of the server's playgroup. `game:123` picks a
+Gathering game ID and `game:SB12345` a logged SpellBot game. Only members who have signed in to
+the app with Discord and are not disabled can run it. Errors before rendering are private.
+Rendering is limited to 30 images a minute across the server, and needs the DejaVu fonts (the
+Docker image includes them). Commander art comes only from Scryfall's image CDN; a summary still
+renders when art fails. Signed-in members can preview the same image at
+`GET /api/games/:id/summary`. To keep recaps out of some channels, restrict the command in
+Discord's **Server Settings → Integrations**.
+
+## Troubleshooting
+
+Sign-in problems are covered in the installation guide's
+[troubleshooting table](installation.md#troubleshooting). For the bot, read the server log from
+the last start (`docker compose logs the-gathering`, or **Admin → Server logs**):
+
+| Log line or symptom | Cause and fix |
+| --- | --- |
+| `Discord bot disabled: DISCORD_BOT_TOKEN is not set` | The token did not reach the server. Check `.env` and recreate the container with `docker compose up -d`. |
+| `Discord bot could not start; … close code 4004 …` | The token is wrong or was reset. The web app keeps running; fix the token and restart. |
+| `Discord bot could not start; … close code 4014 …` | Discord refused the intents. Enable **Message Content Intent** on the **Bot** page and restart. |
+| `Discord bot connected as <name> in 0 guild(s)` | The bot is not in any server. Invite it (step 3). |
+| Bot shows offline after `Discord bot connected …` | The gateway session dropped later. Look for `Discord gateway error` or `Discord gateway connection ended` below it. |
+| `Could not register Discord commands: HTTP 403, …` | The invite lacked the `applications.commands` scope. Invite the bot again; it keeps its permissions. |
+| `… registered … globally; new commands can take up to an hour to appear` | Wait, or set `DISCORD_GUILD_ID` for immediate registration. |
+| `Discord newgame N thread could not be opened: HTTP 403, Discord code 50013` | The bot lacks the thread permissions in that channel. The queue still works without a thread. |
+| `/close` says the thread could not be closed | Give the bot **Manage Threads**, then run `/close` again. |
+| `/alerts` says alerts could not be changed | Give the bot **Manage Roles** and move its role above the alerts role. |
+| No `Discord observed SpellBot game …` line | The line appears only once SpellBot's post reads **Your game is ready!**. Otherwise the bot cannot view that channel, or the game came from another SpellBot: set `DISCORD_SPELLBOT_USER_ID` to its user ID. `LOG_LEVEL=debug` logs why each SpellBot message was ignored. |
+| `Could not record Discord game spellbot:SB…: …` | The game could not be staged, for example because it had more than six players. |
+
+## Why it works this way
+
+SpellBot only starts games: it has no result API or webhook to subscribe to, so the bot reads
+SpellBot's ready embed from the gateway. Embeds count as message content, which is why the bot
+needs Discord's
+[Message Content intent](https://docs.discord.com/developers/events/gateway#message-content-intent).
+Convoke, the webcam table SpellBot often links to, offers no public hook for game results either,
+so the result is entered in the app through `/log`.
+
+For contributors: the bot lives in `rust/crates/the-gathering/src/discord/` (`mod.rs` describes
+the modules). Tests drive it through a fake `DiscordApi` and need no network. The SpellBot parser
+test uses `rust/crates/the-gathering/tests/fixtures/discord/spellbot_game_ready.json`, an
+upstream-shaped embed with invented IDs and names.

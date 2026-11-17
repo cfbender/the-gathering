@@ -1,27 +1,15 @@
 # CSV game import
 
-Administrators can import past games at **Import** in the main navigation. The flow has two phases:
+Administrators import past games at **Import** in the main navigation:
 
-1. Upload a `.csv` file or paste its contents, then preview it. The preview identifies existing and new players/decks and reports errors by CSV line.
-2. Confirm a valid preview. The entire file is committed in one database transaction; if any game fails, none of its players, decks, or games are saved.
+1. Upload a `.csv` file or paste its contents, then preview it. The preview shows which
+   players and decks exist and which will be created, and reports errors by CSV line.
+2. Confirm a valid preview. The whole file is saved in one transaction: if any game fails,
+   nothing is saved.
 
-The API routes are `POST /api/imports/csv/preview`, `POST /api/imports/csv`, and `GET /api/imports/csv/sample`. The POST routes accept JSON shaped as `{"csv":"..."}`. They are restricted to administrators; committing an import also requires reauthentication within the previous ten minutes.
-
-## Transfer between The Gathering instances
-
-Any signed-in member can open the **…** menu on the **Games** page and choose **Export history (JSON)** to download a versioned JSON file. On another instance running a version that supports portable transfers, an administrator opens **Import → Transfer**, chooses the file, and selects **Preview transfer**. Review the new/existing player, deck and game counts, then confirm. No CSV conversion or manual ID mapping is needed.
-
-The export includes all players, decks and games, including unused/archived records, deck selection settings, notes, kills (preserving zero versus unknown), results, seat order, eliminations, duration, turns and MVPs. It also includes referenced card metadata, selected printings and Google Sheet reconciliation receipts. Artwork URLs are preserved; image files are not embedded.
-
-This is a gameplay transfer, **not a full database/account backup**. It excludes accounts, passwords, sessions, Discord IDs, account links, server settings and audit timestamps. New players are unlinked and can be linked to accounts afterward. Keep exports private: player names and notes are included.
-
-Imports are additive and atomic. Preview validates the entire file in a rolled-back transaction; confirmation revalidates and saves everything together or nothing. Existing records are never overwritten or deleted:
-
-- Players match by case-insensitive name; decks match by owner and case-insensitive deck name. Existing settings are kept. A same-name deck with different commanders blocks the transfer; rename one first. Review names before combining unrelated playgroups.
-- Games retain a stable portable UUID, so repeat transfers do not duplicate games, even if they were edited afterward. Original CSV/Mythic Track/Discord identities are also checked to recognize games already imported independently. Manual games recorded independently on both instances cannot be automatically recognized as the same game.
-- Selected card metadata is restored locally without fetching Scryfall. Existing cached metadata is retained. Sheet receipts prevent unchanged sheet rows from being applied again after transfer.
-
-`GET /api/exports/portable` downloads the document for any signed-in user. `POST /api/imports/portable/preview` and `POST /api/imports/portable` require admin access and accept `{"json":"<export file text>"}`; confirmation also requires recent reauthentication. Files declare `format: "the-gathering"` and `version: 1`; unknown format versions are rejected rather than guessed.
+The API routes are `POST /api/imports/csv/preview`, `POST /api/imports/csv`, and
+`GET /api/imports/csv/sample`. The POST routes take `{"csv": "..."}`. All three need an
+administrator, and committing also needs a password confirmation within the last ten minutes.
 
 ## Native format
 
@@ -29,25 +17,29 @@ Imports are additive and atomic. Preview validates the entire file in a rolled-b
 
 | Column | Required | Meaning |
 | --- | --- | --- |
-| `game_id` | yes | A value that groups all seats from one game. It only needs to be unique within the file. |
-| `date` | yes | ISO 8601 date/time or `YYYY-MM-DD`. A date without a time becomes noon UTC. |
-| `player` | yes | Player name. Matching is case-insensitive; a missing player is created. |
-| `deck` | yes | Deck name, unique for that player. An existing deck is reused when its name matches, or when the same player already has a deck with the same commander (and partner). Otherwise the deck is created. |
-| `commander` | yes | Commander name used when creating the deck. |
-| `seat` | yes | Consecutive number from 1 through the number of players. |
-| `result` | yes | `win`, `loss`, or `draw`. A game has one winner and all other players lose, or every player draws. |
-| `mvp_card` | no | MVP/key card for this seat. |
-| `duration_minutes` | no | Positive whole number. Use the same value on every row for a game. |
-| `turns` | no | Positive whole number. Use the same value on every row for a game. |
-| `notes` | no | Game notes. Use the same value on every row for a game. |
-| `kills` | no | Per-player total, 0–5. Zero is known zero; blank is unknown on creation and preserves the existing value on update. |
+| `game_id` | yes | Groups the rows of one game. It only needs to be unique within the file. |
+| `date` | yes | ISO 8601 date and time, or `YYYY-MM-DD`. A date without a time becomes noon UTC. |
+| `player` | yes | Player name, matched case-insensitively. A missing player is created. |
+| `deck` | yes | Deck name. The player's deck with that name is reused, else their deck with the same commander (and partner), else a new deck. |
+| `commander` | yes | Commander name, used when creating the deck. |
+| `seat` | yes | Turn order, numbered 1 through the number of players. |
+| `result` | yes | `win`, `loss`, or `draw`. A game has one winner and the rest lose, or every player draws. |
+| `mvp_card` | no | MVP card for this seat. |
+| `duration_minutes` | no | Positive whole number, the same on every row of a game. |
+| `turns` | no | Positive whole number, the same on every row of a game. |
+| `notes` | no | Game notes, the same on every row of a game. |
+| `kills` | no | The player's kill total, 0–5. `0` is a known zero; blank is unknown on create and keeps the stored value on update. |
 | `partner` | no | Partner commander name. |
-| `win_condition` | no | One of the enum keys below; identical on every row for a game. |
+| `win_condition` | no | One of the keys below, the same on every row of a game. |
 | `action` | no | `create` (default), `update`, or `skip`. |
-| `source`, `external_id` | for source-linked updates | The existing game's original identity, e.g. `mythic_track` and its exported GUID. Both are required together. |
-| `portable_id` | alternative update identity | UUID from a portable JSON export. Never use an instance-local numeric game ID. |
+| `source`, `external_id` | for updates | The existing game's original identity, such as `mythic_track` and its GUID. Give both. |
+| `portable_id` | for updates | The game's UUID from a portable export. Never use a server's numeric game ID. |
 
-Each game needs 2–6 rows. A player can only appear once in a game.
+Each game has 2–6 rows, and a player appears once per game.
+
+Win-condition keys: `damage`, `infinite_combo`, `mill`, `poison`, `alternate_win_con`,
+`hard_lock`, `commander_damage`, `draw`, `non_combat_damage`, `combat_damage`, `concede`,
+`unknown`. Leave it blank when not recorded, and put details such as the combo in the notes.
 
 ```csv
 game_id,date,player,deck,commander,seat,result,mvp_card,duration_minutes,turns,notes
@@ -57,43 +49,97 @@ friday-001,2026-09-18,Bob,Goblins,Krenko Mob Boss,2,loss,,75,10,Friday Commander
 
 ## Mythic Track spreadsheet
 
-The importer also recognizes the headers from Mythic Track's official [spreadsheet import template](https://docs.google.com/spreadsheets/d/1f-ekY6JZ5N92MBYYl0yMuyOvtyvm-YxfWlw6MTB7RqQ/edit?usp=sharing). Export the `Games` sheet starting with its header row (`Date`, `Player1`, `Player1Commander`, and so on), then upload that CSV directly.
+The importer also reads the `Games` sheet of Mythic Track's
+[spreadsheet import template](https://docs.google.com/spreadsheets/d/1f-ekY6JZ5N92MBYYl0yMuyOvtyvm-YxfWlw6MTB7RqQ/edit?usp=sharing).
+Export it as CSV starting at its header row (`Date`, `Player1`, `Player1Commander`, and so on)
+and upload it as is.
 
-Mythic Track's published template has commander columns but no deck-name columns, so each imported deck uses its commander name as the deck name. Its blank `Winner` value is imported as an all-player draw. The template supports up to four players; the native format supports up to six.
+The template has no deck names, so each deck is named after its commander. A blank `Winner`
+imports as a draw for every player. The template holds up to four players. For exports from
+Mythic Track itself, see [Mythic Track import](mythic-track-import.md).
 
 ## Re-importing
 
-Imported games have source `csv`. The importer hashes each normalized game group into a deterministic external ID. Re-importing the same file skips games already present and reports the created/skipped counts. Changing a game's data changes its identity and creates a new game rather than editing the earlier import.
+Imported games have source `csv` and an external ID hashed from the game's rows. Importing the
+same file again skips games already present and reports created and skipped counts. A game whose
+rows changed gets a new identity and is created as a new game. To change an imported game, use
+an update.
 
 ## Correcting existing games
 
-Use the **normal CSV importer** with `action=update` and either `source` + `external_id` or `portable_id`. This is an explicit correction to that game, independent of dates or participant names. `game_id` only groups rows within the file. If both identities are supplied, they must resolve to the same game. Missing targets, conflicting identities and two groups targeting one game block the batch; updates never fall back to creating a game.
+Set `action=update` and identify the game with `source` + `external_id` or with `portable_id`.
+If you give both, they must point to the same game. A missing target, conflicting identities,
+or two groups targeting one game block the whole file; an update never creates a game.
 
-Supply the complete corrected seat list and date. Preview shows actual before/after changes and separates creates, updates and unchanged games. Game IDs, source identities and portable IDs survive corrections. Retained players keep their seat IDs, seat notes, MVPs and elimination details; removing a participant removes their seat, and clears any remaining elimination attribution to them. Seat order can be corrected. Decks are reused by owner/name or commander pair; a same-name deck with conflicting commanders blocks the import instead of changing a shared deck. Give the replacement deck a different name.
+Give the complete corrected seat list and date. The preview shows before and after values and
+separates creates, updates, and unchanged games. Corrections keep the game's ID, source
+identity, and portable ID. Players who stay keep their seat notes, MVPs, and eliminations; a
+removed player's seat is deleted, along with eliminations credited to them. Seat order can
+change. A deck name that matches the player's deck with different commanders blocks the
+import; give the new deck a different name.
 
-Blank optional game/seat fields preserve existing values during updates; explicit `0` kills replaces the count. A supplied notes value replaces game notes, so include any old notes you want to retain. This format does not provide an explicit-clear operation. Dates without a time become noon UTC; full timestamps retain their supplied instant. When repairing a date-only historical record stored at midnight UTC, supply `YYYY-MM-DD` to avoid the usual previous-day display in American timezones. This is not a general timezone conversion.
+Blank optional fields keep the stored values. A given `notes` value replaces the game's notes,
+so include any old notes you want to keep. There is no way to clear a field from CSV. A
+date-only value becomes noon UTC; supply `YYYY-MM-DD` to repair a date-only game stored at
+midnight UTC, which shows as the previous day in American time zones.
 
-Preview validates persistence in a rolled-back transaction. Confirmation revalidates atomically and requires the returned `revision` alongside `csv` when any group has `action=update`. A changed CSV or database invalidates that revision. Repeating an unchanged correction skips it without rewriting the game. Take a fresh export before repairing production history, especially if it has edits not present in the original source.
+The preview returns a `revision`. When any group is an update, confirm with `csv` and that
+`revision`; if the file or the database changed since the preview, preview again. Repeating an
+unchanged correction skips the game. Export a backup before correcting production history.
 
-Win-condition keys: `damage`, `infinite_combo`, `mill`, `poison`, `alternate_win_con`, `hard_lock`, `commander_damage`, `draw`, `non_combat_damage`, `combat_damage`, `concede`, `unknown`. Leave blank when not recorded. Specific descriptions such as a card combo belong in notes; the category is not free text.
+## Transfer between servers
 
-## Reconciling the original Google Sheet
+Any member can download the playgroup's history from the **…** menu on the **Games** page with
+**Export history (JSON)**. On the other server, an administrator opens **Import → Transfer**,
+chooses the file, and selects **Preview transfer**, then confirms after reviewing the new and
+existing player, deck, and game counts.
 
-The group-specific Google Sheet screen has been retired in favor of the generic CSV workflow above. Transform a sheet into seat-per-row CSV, resolving aliases and matching source IDs before upload. Do not guess missing opponents or commanders. The following describes the legacy sheet API, retained for compatibility.
+The export holds every player, deck, and game, including unused and archived ones: deck
+chooser settings, notes, kills (keeping zero apart from unknown), results, seat order,
+eliminations, duration, turns, MVPs, the referenced card metadata and chosen printings, and
+Google Sheet reconciliation receipts. Artwork is kept as URLs, not files.
 
-It accepts the one-game-per-row sheet with `Date`, `Winner`, `Deck`, named kill columns, `Win Con`, `Other Decks`, and `Notes`. A decorative `K I L L S` row is allowed. Dates accept `M/D/YY` (2000–2099), `M/D/YYYY`, and ISO dates.
+It is not a backup. It leaves out accounts, passwords, sessions, Discord IDs, account links,
+server settings, and audit history, so imported players start unlinked. Keep exports private:
+they include player names and notes.
 
-1. Read the sheet. The preview automatically matches games by mapped participants and date, preferring the exact UTC day and falling back to the preceding/following day. When multiple games qualify, a unique best deck-name/commander match can distinguish them; winners are not used to hide result discrepancies. Ambiguous matches and invalid rows stay skipped for review. Nothing is saved until confirmation.
-2. Map player aliases to existing players. Mappings apply to both participants and kill-column headers. Missing players require an explicit create choice. Deck mappings apply to the same sheet player/deck pair throughout the batch.
-3. Review actual **before → after** values. Matching games with changes are selected together; unchanged games are skipped. Filters separate result/deck corrections from kills/notes-only changes, unresolved rows, and unchanged games. Preserved fields and deck nicknames do not count as changes. All selected rows are confirmed, including rows hidden by a filter. You can skip any match, choose another game, or explicitly create a missing game. An update must have the same mapped player set. Repair differing participants in the sheet or game editor first.
-4. Refresh the preview after changing any choice, then confirm selected changes. Invalid skipped rows do not block other rows. Invalid selected rows block the entire batch. Commits require admin and recent password authentication.
+Transfers only add. The preview checks the whole file in a rolled-back transaction, and
+confirming checks it again and saves everything or nothing. Existing records are never
+overwritten or deleted:
 
-Updates retain game/seat IDs, original source/external ID, timestamps, turn order, duration, turns, MVPs and seat notes. Existing deck links are retained unless explicitly mapped. Sheet results and nonempty notes (including `Win con:`) replace existing values. Empty notes leave existing notes intact. No games outside the selected targets are removed or changed.
+- Players match by case-insensitive name, and decks by owner and case-insensitive name;
+  existing settings win. A deck with the same name but different commanders blocks the
+  transfer until one is renamed. Check names before combining unrelated playgroups.
+- Games keep a portable UUID, so a repeated transfer does not duplicate them, even after edits.
+  Games imported on both servers from the same CSV, Mythic Track, or Discord source are also
+  recognized. Games logged by hand on both servers are not.
+- Card metadata is restored without contacting Scryfall, and existing metadata is kept. Sheet
+  receipts stop unchanged sheet rows from being applied again.
 
-Kills are per-player totals, not victim assignments. In this Google Sheet, blank cells mean **zero**, including participants without a kill column. Both blank and explicit zero replace existing counts. Existing games can still have unknown kills (or clear them to unknown in the game editor). Fewer kills than opponents are allowed (scoops and alternate wins). Impossible totals, alias collisions, malformed opponents and missing participants require repair. Blank/`N/A` winners produce draws for every listed player; prose notes never infer results.
+`GET /api/exports/portable` downloads the file for any signed-in member.
+`POST /api/imports/portable/preview` and `POST /api/imports/portable` need an administrator
+and take `{"json": "<file contents>"}`; confirming also needs a recent password confirmation.
+Files declare `"format": "the-gathering"` and `"version": 1`; other versions are rejected.
 
-New games use noon UTC and sheet ordering as placeholder seat order; the sheet does not record time or turn order. Missing decks need explicit mapping or creation; creation uses the sheet text as the deck and unverified commander name, without guessing card identity. Prefer mappings to cleaned-up decks.
+## Google Sheet reconciliation API
 
-Reconciliation receipts remember each imported row independently of the game's original source. Re-uploading the same rows skips them, even after subsequent game edits. Edited sheet content is a new row to review, not permission to overwrite automatically. Two rows cannot target one game in a batch. A database change after preview invalidates confirmation; refresh instead. Selected changes and receipts commit in one transaction or roll back together. Back up the database before reconciling production history.
+The app no longer has a screen for reconciling a one-game-per-row Google Sheet; transform such
+a sheet into the seat-per-row CSV above instead. The API remains:
+`POST /api/imports/sheet/preview` with `{text, players, decks, actions}`, then
+`POST /api/imports/sheet` with the same body plus the preview's `revision` (administrator and
+recent password confirmation).
 
-The admin API is `POST /api/imports/sheet/preview` with `{text, players, decks, actions}`. `players` maps raw names to player IDs or `"new"`; `decks` maps JSON-encoded `[rawPlayer, rawDeck]` keys to deck IDs or `"new"`; `actions` maps preview row keys to existing game IDs, `"create"`, or `"skip"`. Commit to `POST /api/imports/sheet` with the same input plus the returned `revision`.
+- `text` is the pasted sheet with `Date`, `Winner`, `Deck`, one kill column per player,
+  `Win Con`, `Other Decks`, and `Notes`. Dates may be `M/D/YY` (2000–2099), `M/D/YYYY`, or ISO.
+- `players` maps sheet names (participants and kill-column headers) to player IDs or `"new"`.
+- `decks` maps JSON-encoded `[sheetPlayer, sheetDeck]` keys to deck IDs or `"new"`.
+- `actions` maps preview row keys to a game ID, `"create"`, or `"skip"`.
+
+The preview matches each row to a game with the same mapped players on the same UTC day, then
+the day before or after, using deck names or commanders to break ties. Ambiguous and invalid
+rows are skipped for review. Updates keep the game's IDs, source identity, turn order,
+duration, turns, MVPs, and seat notes; sheet results and non-empty notes replace the stored
+values. In the sheet a blank kill cell means zero, and a blank or `N/A` winner means every
+listed player drew. New games are placed at noon UTC in sheet order. Receipts remember each
+applied row, so the same row is never applied twice, and a database change after the preview
+invalidates the `revision`.

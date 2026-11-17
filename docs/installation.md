@@ -191,7 +191,7 @@ it finishes, and **Admin → Catalog** shows its state.
 
 If you did not set the administrator variables in step 3, open the public URL in a browser.
 With no accounts yet, the app sends you to **/register**: the first account created there is the
-administrator, and it is the only password account the server will ever have. Afterwards
+administrator, and the only password account the browser can create. Afterwards
 `/api/registration` reports `"bootstrap":false`.
 
 ## 6. Let members sign in (Discord)
@@ -207,7 +207,7 @@ Members sign in with Discord. One Discord application covers both sign-in and th
    `DISCORD_CLIENT_SECRET`, then restart (`docker compose up -d` or `systemctl restart`).
 4. Check: the log shows `Discord OAuth sign-in enabled; redirect URI is …` (with the URL from
    step 2), and `/api/registration` shows `"discord_configured":true`.
-5. Signed in as the administrator, turn on **Admin → Users → Open registration** so new Discord
+5. Signed in as the administrator, turn on **Admin → Settings → Open registration** so new Discord
    accounts are accepted, or send members a playgroup invite link from **Admin → Playgroups**.
    Turn open registration off again once everyone has joined.
 
@@ -402,7 +402,7 @@ by a restart moves them to the host's zone.
 | Sign-in form accepts the password but you land back on the login page | The public URL is `https://` but you are browsing over `http://`. Use the public URL. |
 | Login page says **Discord sign-in is not configured** | Both `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` must reach the server. With Docker, run `docker compose exec the-gathering env \| grep -c DISCORD_CLIENT` (should print `2`) and recreate with `docker compose up -d`. |
 | Discord sign-in fails with a redirect error | The redirect in the Discord portal must equal `<THE_GATHERING_PUBLIC_URL>/auth/discord/callback`, as printed at startup. |
-| "Registration is closed" for a new member | Turn on **Admin → Users → Open registration**, or send an invite link from **Admin → Playgroups**. |
+| "Registration is closed" for a new member | Turn on **Admin → Settings → Open registration**, or send an invite link from **Admin → Playgroups**. |
 | Webcam tiles stay at "Connecting…" for remote players | The UDP range is not reachable. Forward it and set `WEBRTC_SFU_PUBLIC_IP`, or switch to relay mode ([step 8](#8-webcam-video-from-outside-your-network)). |
 | Browser never asks for the camera | The page is not on HTTPS (or `localhost`). |
 | Card search is empty | The first catalog sync is still running or failed. **Admin → Catalog** shows its state; **Sync now** retries. Needs outbound HTTPS to Scryfall. |

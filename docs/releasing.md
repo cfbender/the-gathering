@@ -1,55 +1,46 @@
 # Releasing The Gathering
 
-Releases use the same helper as ManaVault: `git-cliff` generates `CHANGELOG.md` from the
-Conventional Commits since the previous `vX.Y.Z` tag, and a script bumps the version, tags, and
-pushes.
+`git-cliff` writes `CHANGELOG.md` from the Conventional Commits since the previous `vX.Y.Z`
+tag, and `scripts/bump.sh` bumps the version, tags, and pushes. `mise install` installs
+`git-cliff`.
 
-## Prerequisites
-
-Release tooling is managed by `mise.toml`:
-
-```sh
-mise install
-```
-
-## Generate Or Update The Changelog
+## Changelog
 
 Preview or regenerate the changelog for the next version:
 
 ```sh
-mise run changelog -- patch
-mise run changelog -- minor
-mise run changelog -- major
+mise run changelog -- patch   # or minor, major
 ```
 
-The script reads the current version from `rust/crates/the-gathering/Cargo.toml`, calculates the
-next version, and writes a section for the `vX.Y.Z` tag at the top of `CHANGELOG.md` (replacing
-that version's section from an earlier run). Edit the generated section before releasing if needed.
+The script reads the version from `rust/crates/the-gathering/Cargo.toml` and computes the next
+one. When that version is already ahead of the latest tag, it is used as is. It writes the
+`vX.Y.Z` section at the top of `CHANGELOG.md`, replacing that section from an earlier run.
+Edit the section before releasing if needed.
 
-## Cut A Release
+## Cut a release
 
-Run the release task from a clean `main` branch after the desired changes are committed:
+Commit the changes to release, then run from `main`:
 
 ```sh
-mise run release -- patch
+mise run release -- patch   # or minor, major
 ```
 
-The task:
+The working tree must be clean apart from `CHANGELOG.md`. The task:
 
-- generates `CHANGELOG.md`
-- bumps the `rust/crates/the-gathering/Cargo.toml` version (and `rust/Cargo.lock`) and the
-  `package.json` version
-- updates the Docker tag examples in `docs/installation.md`
-- commits `chore: release vX.Y.Z`
-- creates an annotated `vX.Y.Z` tag
-- pushes the current branch and the tag to `origin`
+- regenerates `CHANGELOG.md`
+- sets the version in `rust/crates/the-gathering/Cargo.toml`, `rust/Cargo.lock`, and
+  `package.json`
+- updates the pinned Docker tag examples in `docs/installation.md`
+- commits `chore: release vX.Y.Z` and creates an annotated `vX.Y.Z` tag
+- pushes the branch and the tag to `origin`
 
-The tag push triggers `.github/workflows/release.yml`, which builds the release tarball and
-publishes the GitHub release that the Proxmox LXC installer and the admin update check use, and
-`.github/workflows/container.yml`, which publishes the `X.Y.Z` and `X.Y` container images to GitHub
-Container Registry.
+The tag starts two workflows. `.github/workflows/release.yml` builds the release tarball and
+publishes the GitHub release that the Proxmox LXC installer and the admin update check read.
+`.github/workflows/container.yml` publishes the `X.Y.Z` and `X.Y` images to GitHub Container
+Registry.
 
-Dry run:
+To print the planned version and changelog range without writing, committing, tagging, or
+pushing:
 
 ```sh
 THE_GATHERING_RELEASE_DRY_RUN=1 mise run release -- patch

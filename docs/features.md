@@ -1,271 +1,219 @@
 # Features
 
-How each part of The Gathering behaves. For installing and configuring a server, see
-[Installation](installation.md); for administrator tools, see [Administration](administration.md).
+How each part of The Gathering behaves for the people using it. For installing and configuring a
+server, see [Installation](installation.md); for administrator tools, see
+[Administration](administration.md).
 
 ## Webcam table
 
-**Games → Play** opens a temporary room for up to ten signed-in members who share their
-board cameras through a WebRTC SFU built into the server (each browser uploads one simulcast
-stream and receives every other board at the resolution it is drawn) and record the result
-when the game ends. The SFU listens on the UDP range `WEBRTC_SFU_PORT_RANGE`; forward it to the
-host and set `WEBRTC_SFU_PUBLIC_IP`, or set `WEBRTC_SFU_RELAY_ONLY=true` to carry media over the
-configured TURN servers instead (see `docs/webcam-table.md`).
+**Games → Play** opens a room for up to ten signed-in members. Each player points a camera at
+their board and everyone sees every board. When the game ends, **Record game result** saves it to
+game history. Video runs through a media server built into The Gathering; players outside your
+network need the setup in [Installation](installation.md#8-webcam-video-from-outside-your-network).
+How the table works inside is in [Webcam table design](webcam-table.md).
 
-**Reveal hand to** privately sends your camera to one chosen player; everyone else receives no
-video until you end the reveal or the target leaves.
+Your seat menu has:
 
-Clicking a card on any board identifies it with the recognizer bundle published from
-[Oracle](https://github.com/cfbender/oracle) (see its README, "Shipping"): the server downloads the newest `scanner-bundle-*` release of this
-repository at boot and every six hours (`CARDID_BUNDLE_SOURCE`), serves `DATA_DIR/cardid/current/*`
-at `/api/cardid/*`, and the browser runs the models itself. A recognized card opens with its rules text and
-rulings (from the local catalog) and lands in that board's card tray for every seat.
-Without a published bundle the table still works and offers the player's commanders as
-suggestions instead.
+- **Reveal hand…** sends your camera to one chosen player only. Everyone else sees no video from
+  you until you end the reveal or that player leaves.
+- **Use virtual board** replaces your camera with a virtual tabletop dealt from your deck's linked
+  list. Other players see your board, with your hand and library as counts.
 
-When a seated player's chosen deck links to a list, every seat loads it
-and warms its card images, **Decks → View decklist** shows your own list, and the recognizer
-favours cards in the clicked board owner's list (see Oracle's README, "Deck-list prior").
-Opponents' lists are not shown in the UI but are visible in the browser's network tab.
+**Trackers** over your own camera keep free-form counters from 0 to 100 ("Lands", "Creatures in
+graveyard") and a combat-math list. Enter each anthem or combat buff with its conditions
+(attacking, blocking, flying, tokens, nontoken, or any creature type), and the overlay shows the
+combined bonus for each kind of creature ("Attacking token creatures +4/+4 · vigilance"). Each
+counter and the buff list has its own **Show to table** switch. Shared trackers appear on your seat
+for everyone, and changes to shared counters go into the table log. Private ones stay in your
+browser.
 
-**Use virtual board** in your seat menu replaces your camera with a virtual tabletop dealt
-from your deck's linked list; other players see the board, with your hand and library as counts.
+### Identifying cards
 
-**Trackers** over your own camera keep free-form 0–100 counters ("Lands", "Creatures in graveyard")
-and a combat-math list: enter each anthem or combat buff with its conditions (attacking, blocking,
-flying, tokens, nontoken, or any creature type) and the overlay shows the combined bonus for every
-kind of creature ("Attacking token creatures +4/+4 · vigilance"). Each counter and the buff list has
-its own "Show to table" switch; shared ones appear on your seat for everyone and shared counter
-changes are logged, while private ones stay in your browser.
+Click a card on any board to identify it. The card opens with its rules text and rulings and lands
+in that board's card tray for every seat. Recognition runs in each browser with a model bundle the
+server downloads (see [Installation](installation.md#9-optional-features)). Without a bundle the
+table still works and offers the player's commanders as suggestions instead.
 
-**Rules** asks an AI judge for a ruling. The server sends the question, the earlier turns of the
-conversation, and (when the player ticks the box) the commanders and identified cards at the table to a model on
-[OpenRouter](https://openrouter.ai), which answers with tools that search and read the Magic
-Comprehensive Rules and look cards up in the local catalog (current Oracle text plus Scryfall's
-rulings). Answers cite rule numbers, show the cited rules' text, and preview named cards on hover.
-The conversation stays in the browser tab. An administrator enables it under **Admin → Settings →
-AI rulings** with an OpenRouter API key (stored encrypted) and any model ID that supports tool
-calling; saving checks both with OpenRouter. Every question's cost, as OpenRouter reports it, is
-recorded per member: set **Monthly limit per member (USD)** to cap each member's spending per
-calendar month (UTC); administrators are not limited. This month's spending per member is on the same page. Questions are also
-limited to 30 per member per 10 minutes. Requests mark prompt-cache breakpoints and keep each
-conversation on one provider, so models that support prompt caching bill the repeated system prompt,
-tools, and earlier lookups at their cheaper cached rate; the cached token counts are recorded with
-each question's cost.
+When a seated player's deck links to a Moxfield, Archidekt, or ManaVault list, every seat loads
+that list, and recognition favours cards from the list of the board that was clicked. **View
+decklist** in the table's **Decks** tab shows your own list. Opponents' lists are not shown in the
+app, but anyone can read them in the browser's network tab.
 
-The server downloads the Comprehensive Rules from the text file linked on
-[magic.wizards.com/en/rules](https://magic.wizards.com/en/rules) shortly after boot, then checks that
-page daily and installs each new release (`RULES_SYNC_ENABLED=false` turns the checks off). **Admin →
-Catalog → Comprehensive Rules** shows the installed release and checks now.
+### AI rulings
 
-Design notes are in [Webcam table design](webcam-table.md); to improve recognition or contribute training data,
-see Oracle's [CONTRIBUTING.md](https://github.com/cfbender/oracle/blob/main/CONTRIBUTING.md).
+The table's **Rules** tab asks an AI judge. It searches the Magic Comprehensive Rules and looks up
+cards in the local catalog (current Oracle text and Scryfall rulings), then answers with the rule
+numbers it used. Cited rules show their text, and named cards preview on hover. Tick the box to
+include the cards in play, and the question also sends the table's commanders and identified
+cards. The conversation stays in your browser tab; the last few turns go with each question. AI
+can be wrong, so check the cited rules when it matters.
+
+The judge is a model on [OpenRouter](https://openrouter.ai). An administrator turns it on under
+**Admin → Settings → AI rulings** with an OpenRouter API key and any model that supports tool
+calling; saving checks both with OpenRouter, and the key is stored encrypted. Each question's cost
+is recorded per member, and the same page shows this month's spending. **Monthly limit per member
+(USD)** caps each member's spending per calendar month (UTC); administrators have no cap. Each
+member can also ask at most 30 questions every 10 minutes.
+
+The server downloads the Comprehensive Rules from Wizards of the Coast shortly after it starts and
+checks for a new release daily. **Admin → Catalog → Comprehensive Rules** shows the installed
+release, and **Check for new rules** checks now. `RULES_SYNC_ENABLED=false` turns the downloads
+off.
 
 ### Scheduling games from Discord
 
-Use `/newgame [start] [min_players] [title] [format]` to post a public Join/Maybe/Leave
-queue. The default minimum is three (configurable from two to ten). Without
-`start`, it opens a webcam-table link as soon as the minimum joins; scheduled
-queues start or expire at the requested time. Maybe doesn't count toward the
-minimum, but if a scheduled game is short at its start time the bot pings the
-maybe list and waits 15 minutes for them to join. The host or a Discord Administrator
-can Change time or Cancel. The queue and its buttons live in a thread on the
-`/newgame` reply, where the ready and maybe pings land too; the host or an Administrator runs `/close` in it to
-close it. See [Discord integration](discord-integration.md#webcam-table-queues-with-newgame)
-for time syntax, permissions, and restart/delivery behavior.
+With the Discord bot set up, `/newgame [start] [min_players] [title] [format]` posts a queue with
+**Join**, **Maybe**, and **Leave** buttons in a thread. The minimum is three players unless set
+(two to ten). Without `start`, the bot posts a webcam-table link as soon as the minimum joins. A
+scheduled queue starts or expires at its start time; if it is short, the bot pings the Maybe list
+and waits 15 minutes. The host or a Discord Administrator can change the time, cancel, or run
+`/close` in the thread. See
+[Discord integration](discord-integration.md#webcam-table-queues-with-newgame) for time syntax,
+permissions, and alerts.
 
 ## Tabletop
 
-**Games → Tabletop** (`/tabletop`) turns one device into a life counter for a table where
-everyone plays in person. Pick a format, two to six players, how they sit around the device,
-and starting life; then each player taps their seat to sit down as a playgroup member (with one
-of their decks) or as a guest. Tap the left half of a seat to lose life and the right half to
-gain it; hold to change it by ten. Each seat's counters button tracks poison and conceding, and
-while it is open every opponent's seat turns into a commander damage counter: tap an opposing
-commander to add the damage it dealt (which also comes off life). Two players can also share
-one edge of the device (**Same side**), so a sideways phone reads like an ordinary landscape
-life counter. The hub in the middle rolls for the first player, tracks turns and the game clock,
-and ends the game.
+**Games → Tabletop** turns one phone or tablet into the life counter for a table that plays in
+person. Pick a format, two to six players, how they sit around the device, and starting life. Each
+player then taps their seat to sit down as a playgroup member (with one of their decks) or as a
+guest. **Same side** puts two players on one edge, so a sideways phone reads like an ordinary
+landscape life counter.
 
-A game is recorded in game history only when every seat is a member and the format is one
-history records; a game with any guest (or empty seat), or in Standard, Pauper, or Canadian
-Highlander, just ends. The game in progress is saved in the browser, so a reload or reopening
-the installed app picks it up again, and the screen stays awake while the board is open.
+Tap the left half of a seat to lose life and the right half to gain it; hold to change it by ten.
+Each seat's counters button tracks poison and conceding. While it is open, every opponent's seat
+becomes a commander damage counter: tap an opposing commander to add the damage it dealt, which
+also comes off life. The hub in the middle rolls for the first player, tracks turns and the game
+clock, and ends the game.
+
+A finished game goes into game history only when every seat is a member and the format is one
+history records. Games with a guest or an empty seat, and Standard, Pauper, or Canadian Highlander
+games, just end. The game in progress is saved in the browser, so a reload or reopening the
+installed app picks it up again. The screen stays awake while the board is open.
 
 ## Game history
 
-### Kill tracking
+### Kills
 
-When logging or editing a game, use each player's **Kills** dropdown to select who they
-killed. **Total kills** includes those selections; enter a larger total (or only a total)
-when some names are unknown. When logging a game, leaving **Total kills** blank records
-`0`; when editing an existing game, leaving it blank preserves or clears the count to
-unknown.
-Game details show named victims and any unknown remainder. A victim can have only one killer.
-Totals, including CSV corrections, cannot be lower than the number of named victims.
-The live table's **Record game result** modal also offers optional kills and MVP cards for
-each player, saved with either **Record result** or **Record and rematch**.
-Player rivalries show who you killed most, who killed you most, and directional kill counts
-for each opponent in the selected date range. These count named victims only; number-only
-kills stay unattributed, and win/loss rivalry rankings are unchanged.
-On player profiles, rivalry cards and head-to-head counts open the matching games, retaining
-the date range. Commander rivalry counts also link to games with that opposing commander;
-mirror matches can contribute multiple seats to a count, but the list shows each game once.
+When logging or editing a game, use each player's **Kills** picker to select who they killed. A
+victim can have only one killer. **Total kills** counts those selections; enter a larger total, or
+only a total, when some victims are unknown. The total can't be lower than the number of named
+victims. When logging a game, a blank total records 0; when editing, a blank total means unknown.
+Game details show named victims and any unknown remainder. The table's **Record game result**
+dialog has the same kill and MVP card fields.
 
-On upgrade, existing games with a sole winner who recorded exactly one kill per opponent
-are attributed to that winner, unless existing attribution contradicts it. Other totals
-remain unchanged and unattributed. This inference runs once on historical games, not on
-new count-only entries. Portable exports retain both totals and attribution.
-
+On a player's profile, **Kill rivalries** show who they killed most and who killed them most in the
+selected date range, counting named victims only. Rivalry cards and head-to-head counts open the
+matching games with the same date range. Commander rivalry counts open the games against that
+commander; a mirror match counts each matching seat but lists the game once.
 
 ## Playgroups
 
-Every player, deck, and game belongs to one playgroup. Existing servers get a single
-playgroup named **Main** holding everything recorded so far, with every existing user as
-a member. Playgroups are private: a member only sees the playgroups they belong to, and can
-belong to several. The switcher next to the logo picks the playgroup being viewed, saved
-to the account; games logged, imported, or played at a table go into the viewed playgroup.
-A user who belongs to no playgroup sees an empty state until an administrator adds them
-or they accept an invite link.
+Every player, deck, and game belongs to one playgroup. Playgroups are private: members see only the
+playgroups they belong to, and a member can belong to several. The switcher next to the logo
+picks the playgroup you are viewing, and the choice is saved to your account. Games you log,
+import, or play at a table go into that playgroup. A member of no playgroup sees an empty page
+until an administrator adds them or they accept an invite link.
 
-Administrators manage playgroups under **Administration → Playgroups** (sudo required):
-create (the creator becomes the first member), rename, add and remove members, and
-delete. Administrators see every playgroup on that page but still only view the ones
-they belong to. Deleting removes the playgroup's players and memberships, so it is only
-allowed once it has no games and no decks, and the last playgroup can't be deleted.
+Administrators manage playgroups under **Admin → Playgroups**: create (the creator becomes the first
+member), rename, add and remove members, and delete. Administrators see every playgroup there but
+can view only the ones they belong to. A playgroup can be deleted only when it has no games and no
+decks, and the last playgroup can't be deleted. Deleting removes its players and memberships.
 
-A game recorded in the wrong playgroup can be moved from its page (administrators, sudo
-required) into another playgroup the administrator belongs to. Each seat is re-pointed to
-that playgroup's player with the same account, Discord identity, or name (created when
-missing) and to their deck of the same name (copied when missing); the original players
-and decks stay where they are. The move is refused when a seat's name matches a player
-there who is linked to a different account or Discord identity.
+**Move to another playgroup** on a game's page (administrators only) moves a game logged in the
+wrong playgroup into another one the administrator belongs to. Each seat is matched to a player
+there by account, then Discord identity, then name, and to that player's deck with the same name;
+missing players and decks are created. The original players and decks stay where they were. The
+move is refused when a seat's name matches a player there who is linked to a different account or
+Discord identity.
 
-A playgroup can claim a Discord server ID so the bot records that server's games there;
-servers no other playgroup claims record into the oldest playgroup. To serve several
-Discord servers from one bot, leave `DISCORD_GUILD_ID` unset (commands register globally)
-and set each server's ID on its playgroup. `DISCORD_NEWGAME_ROLE_ID` holds a single role
-ID, so `/newgame` alerts only work in one server.
+A playgroup can claim a **Discord server ID** so the bot records that server's games into it.
+Games from a server no playgroup claims go to the oldest playgroup. To serve several Discord
+servers from one bot, leave `DISCORD_GUILD_ID` unset and set each server's ID on its playgroup.
+`DISCORD_NEWGAME_ROLE_ID` holds one role, so `/newgame` alert pings work in only one server.
 
-## Invite members with a playgroup link
+### Invite links
 
-Each playgroup card under **Administration → Playgroups** has a **Shareable invite link**
-for Discord sign-in. Copy and save it before leaving the page: only its hash is stored, so
-the secret cannot be retrieved later. Anyone with the link joins that playgroup, as a new
-member even with **Open registration** off, or as an additional playgroup when they already
-have an account (a signed-in user is added and switched immediately). Links do not expire
-or limit uses. Discord-identified accounts get a player in the playgroup automatically;
-password accounts are linked to a player by an administrator.
+Each playgroup on **Admin → Playgroups** has an invite link for Discord sign-in. **Create link**
+shows it once: copy it before leaving the page, because the server keeps only a hash. Anyone with
+the link joins that playgroup:
 
-**Rotate link** generates a replacement and immediately revokes the old link's
-registration permission, including OAuth sign-ups that have not completed yet.
-Already registered users keep their access; disabled accounts remain blocked.
-Normal open registration (which joins the oldest playgroup) and the initial password
-administrator setup are unchanged.
-Creating or rotating links requires administrator sudo authentication. The secret
-uses a URL fragment (not a logged request path or query), then a signed session
-carries its digest through Discord OAuth. Treat the full link as a credential.
+- someone new gets an account, even with **Open registration** off;
+- a signed-in member is added to the playgroup and switched to it at once.
 
-## Deck-list links
+Links do not expire and have no use limit, so treat a link like a password. Accounts that sign in
+with Discord get a player in the playgroup automatically; an administrator links a password account
+to a player. **Rotate link** replaces the link and revokes the old one immediately, including
+Discord sign-ups still in progress. Members who already joined keep their access, and disabled
+accounts stay blocked. The secret travels in the URL fragment, so it does not appear in server or
+proxy request logs.
 
-`POST /api/decklists/resolve` accepts `{"url":"..."}` for a public Moxfield,
-Archidekt, or self-hosted ManaVault deck (when `MANAVAULT_URL` is set). Successful responses contain the canonical
-URL, deck name, commanders, commander color identity, author when exposed, card
-count, and fetch timestamp under `data`. Successful lookups are cached in memory
-for five minutes; errors are never cached.
+## Decks
 
-`GET /api/decks/:id/decklist` returns the playable card list behind a deck's linked
-Moxfield, Archidekt, or ManaVault page: each card's name, quantity, zone
-(`commander` or `mainboard`; maybe-, side- and ManaVault "considering" boards are left
-out), the exact Scryfall printing when the list records one, and type, mana cost and
-cached images from the local catalog. It reuses the same live fetch and five-minute
-cache; decks without a supported link, and missing or private lists, return 404. The
-app keeps no copy of the list.
+### Deck-list links
 
-Each user can also save a Moxfield username, Archidekt username, and ManaVault
-instance URL plus personal API key under **Settings → Profile → Deck hosts**.
-`PATCH /api/session/user` accepts these as `moxfield_username`, `archidekt_username`,
-`manavault_url`, and `manavault_api_key`. The API key is write-only: it is stored
-encrypted with `THE_GATHERING_SECRET_KEY` (keys stored by 0.2 and earlier are re-encrypted in the
-current format at startup), never returned (user JSON exposes only
-`has_manavault_api_key`), a blank value keeps the saved key, and `null` removes it.
-`GET /api/session/remote-decks` returns the signed-in user's normalized public decks
-(`name`, commanders, color identity, URL, source, and upstream update time) plus a
-status for each source. Results, including source errors, are cached in memory for
-five minutes. The user's player page links these decks, and the new-game form can
-resolve one into a new deck with a quick pick.
+A deck can link to a public Moxfield or Archidekt deck, or to a deck on a self-hosted ManaVault
+when the server sets `MANAVAULT_URL`. Pasting a link previews the deck, and **Use these details**
+fills in its name, commanders, and color identity. ManaVault links from any other address are not
+fetched and stay plain links. The server reads the list live from the host each time (cached for
+five minutes) and keeps no copy. Commander and mainboard cards count; sideboards and maybeboards
+are left out. Private or deleted lists, and decks without a supported link, have no list. Moxfield
+has no supported public API and sometimes blocks server requests.
 
-The integrations use the upstream services' public interfaces:
+### Deck hosts
 
-- Moxfield: `GET https://api2.moxfield.com/v3/decks/all/:id`. The request sends a
-  descriptive User-Agent, but Moxfield does not publish API limits or a supported
-  third-party API contract and may reject server traffic with Cloudflare 403s. User
-  listings use the unofficial `GET https://api2.moxfield.com/v2/decks/search-sfw`
-  endpoint and report upstream blocking without failing the rest of the list.
-- Archidekt: `GET https://archidekt.com/api/decks/:id/`. No authentication or
-  documented public rate limit is currently required. User listings use the
-  unofficial `GET https://archidekt.com/api/decks/v3/?ownerUsername=...` endpoint,
-  then fetch public deck details to identify commanders.
-- ManaVault: `POST $MANAVAULT_URL/share/graphql` against the ManaVault instance you
-  configure. No authentication is required; ManaVault's default limit is 120
-  requests per IP per minute. Author is not exposed by its public schema. Only the
-  configured origin is recognized; other origins are intentionally not fetched to
-  avoid SSRF. Without `MANAVAULT_URL`, ManaVault links are stored as plain deck links.
-  Listing a user's ManaVault decks uses their own instance URL and personal API key
-  (`GET <instance>/api/v1/decks` with `Authorization: Bearer <key>`, paginated with
-  `page`/`per_page`); the URL must be an HTTPS origin with no path, credentials,
-  query, or fragment. Private, loopback, link-local, and Tailscale destinations are
-  blocked unless the exact hostname is listed in `MANAVAULT_ALLOWED_HOSTS`; those
-  explicitly trusted hosts may also use HTTP. `MANAVAULT_ALLOW_INSECURE_URLS=true`
-  permits HTTP for otherwise-public hosts without permitting private destinations.
-  Redirects are not followed. The key is created under ManaVault's **Settings →
-  Personal API keys**. Listings stop after 20 pages, 500 decks, 2 MB of responses,
-  or 15 seconds per source and report truncation in that source's status. Because
-  an authenticated listing may include unshared decks,
-  quick picks from it prefill the deck form directly rather than re-resolving a public
-  share link. Without a key, the source reports that one is needed and individual
-  public share links continue to resolve normally.
+Under **Settings → Profile → Deck hosts**, members can save a Moxfield username, an Archidekt
+username, and a ManaVault instance URL with a personal API key (created under ManaVault's
+**Settings → Personal API keys**). Your decks on those hosts then appear under **Quick pick from my
+hosted decks** in deck forms. Listings are cached for five minutes, and a host that fails to list
+reports why without hiding the others. Each host's listing stops after 20 pages, 500 decks, 2 MB,
+or 15 seconds and says so.
 
-## Appearance
+The ManaVault API key is stored encrypted and is never shown again. Leave the field blank to keep
+it, or use **Remove key** to delete it. Because a keyed listing can include unshared decks, a quick
+pick from it fills the form directly instead of fetching a public share link.
 
-**Settings → Appearance** picks a color palette (Claret, Nord, Catppuccin, Tokyo Night,
-Gruvbox, Everforest, Kanagawa, Night Owl, Dracula, Rosé Pine, Solarized, or Monochrome) and a surface style (Liquid glass or
-Classic). Both are saved on the user account through `PATCH /api/session/appearance`
-(`{"palette": "...", "theme_style": "glass" | "classic"}`), returned in user
-JSON, and rendered onto `<html>` by the SPA shell so the first paint already matches on
-any device. Light/dark mode stays a per-device preference on the navigation toggle.
+The server only contacts a member's ManaVault instance at an `https://` origin with no path.
+Private, loopback, link-local, and Tailscale (100.64.0.0/10) addresses are blocked unless the
+exact host name is in `MANAVAULT_ALLOWED_HOSTS`, which also allows `http://` for that host.
+`MANAVAULT_ALLOW_INSECURE_URLS=true` allows `http://` for public hosts only. Redirects are not
+followed.
+
+**Sync hosted decks**, on your player profile and the deck chooser once a deck host is saved, adds
+your hosted decks marked as Commander to your player's decks; other or unknown formats are
+skipped. A hosted deck matches a local deck with the same deck-list link, then the same name, then
+an unlinked deck with the same commanders; anything else becomes a new deck. Matched decks keep
+their local name, commanders, art, colors, archive status, and chooser setting, and only gain a
+deck-list link if they had none. Sync never removes decks.
+
+### Commander printings and Game Changers
+
+On a deck's page, **Choose printing** under the commander or partner picks the printing that
+matches your card's artwork; **Save deck** keeps it and **Use catalog default** removes it. The
+choice changes only the art, survives catalog refreshes, and is cleared when that commander
+changes.
+
+A **Game Changer** badge marks a commander on the Commander Brackets Game Changers list, from
+Scryfall's flag in the local catalog. No badge means the catalog has no positive flag. Badges are
+per commander; the app keeps no deck lists, so it can't count a whole deck's Game Changers.
 
 ## Deck chooser
 
-**Decks → Choose a deck** picks from the signed-in user's linked player's active
-decks. Selection uses ManaVault's weighting: hours since last played, multiplied by
-current skips plus one, divided by recorded plays plus one. Never-played decks get a
-30-day boost beyond the stalest played deck. Plays and last-played dates come from
-game seats; only the current skip count and per-deck chooser inclusion setting are
-stored. Skipping records the skip before rerolling, while choosing clears that deck's
-skips.
+**Decks → Choose a deck** picks one of your player's active decks. Decks you haven't played lately,
+have skipped, or have played less are more likely: each deck's weight is hours since it was last
+played, times its skips plus one, divided by its plays plus one. Never-played decks count as 30
+days staler than the stalest played deck. **Skip** counts a skip and picks again; choosing a deck
+clears its skips. Plays and last-played dates come from game history.
 
-Members can replace that weighting with their own Lua script under **Choose a deck →
-Customize**. A script defines `weight(deck, ctx)` and sees each deck's plays, skips,
-results, recent games, and colors, plus the local time, games played today and tonight,
-and the member's recent history. The editor previews every deck's chance under the draft
-before saving. Scripts run sandboxed on the server with memory, instruction, and time
-limits, and a script that fails falls back to the built-in weights for that pick. See
-[Deck chooser scripts](deck-chooser-scripts.md) for the contract, every field,
-and the examples.
+**Customize** replaces those weights with your own Lua script. A script defines
+`weight(deck, ctx)` and sees each deck's plays, skips, results, recent games, and colors, plus the
+local time, games played today and tonight, and your recent history. The editor previews every
+deck's chance before you save. Scripts run sandboxed on the server with memory, instruction, and
+time limits; a script that fails falls back to the built-in weights for that pick. See
+[Deck chooser scripts](deck-chooser-scripts.md) for every field and the examples.
 
-Hosted decks are not listed separately: **Sync hosted decks** (on your player profile
-and the chooser, shown once any deck host is configured) calls `POST
-/api/session/remote-decks/sync`, which folds only decks explicitly marked as Commander
-by Moxfield, Archidekt, or ManaVault into your player's deck list. Other formats and
-decks with missing or unknown formats are skipped, even if they have commanders.
-Previously imported decks are not removed, and individual deck-link imports are
-unaffected. A remote deck matches the local deck
-with the same deck-list URL or name, then an unlinked local deck with the same
-commander pair; otherwise it is added as a new deck using the host's details.
-Existing decks keep their local names, commanders, selected art, colors, archive
-status, and chooser inclusion. Sync only adds a missing deck-list link; it never
-re-points an existing link. The response's `updated` count includes all matched
-existing decks, even when nothing changed. Hosts that fail to list are skipped and
-reported in the response's `errors`.
+## Appearance
 
+**Settings → Appearance** picks a color palette (Claret, Nord, Catppuccin, Tokyo Night, Gruvbox,
+Everforest, Kanagawa, Night Owl, Dracula, Rosé Pine, Solarized, or Monochrome) and a surface style
+(**Liquid glass** or **Classic**). Both are saved to your account, so every device shows them from
+the first paint. Light or dark mode is set per device with the toggle in the navigation.

@@ -4,17 +4,18 @@ Members can read game history from scripts, spreadsheets, and other tools with a
 key. Create one under **Settings → API keys**. The key is shown once; only its SHA-256 digest is
 stored, along with a short prefix so you can tell keys apart.
 
-A key has no permissions of its own. Each request runs as the key's owner, using their current
-account, so it sees exactly what they see when signed in. If an administrator disables the account,
-its keys stop working immediately. Deleting the account deletes its keys. Keys never count as
-recent password authentication, so they cannot perform actions that require it. Keys do not
-expire. Revoke a key from Settings to stop it working.
+A key has no permissions of its own. Each request runs as the key's owner and sees what they
+see when signed in. If an administrator disables the account, its keys stop working
+immediately. Deleting the account deletes its keys. Keys never count as recent password
+authentication, so they cannot perform actions that require it. Keys do not expire. Revoke a
+key from Settings to stop it working.
 
 Key-authenticated requests are limited to 120 per minute per owner.
 
 ## `GET /api/v1/games`
 
-Lists games newest first. The request carries the key in the `Authorization` header:
+Lists games in the owner's active playgroup, newest first. Send the key in the
+`Authorization` header:
 
 ```sh
 curl -H "Authorization: Bearer tg_…" \
@@ -40,7 +41,7 @@ The response matches the app's own game list:
       "played_at": "2026-09-20T23:15:00Z",
       "format": "commander",
       "turns": 9,
-      "win_condition": "combat",
+      "win_condition": "combat_damage",
       "seats": [
         { "seat": 1, "result": "win", "player": { "id": 3, "name": "Cody" }, "deck": { "…": "…" } }
       ]
@@ -58,5 +59,4 @@ Errors use the rest of the API's format, `{"errors": {"detail": "…"}}`:
 - `404`: `player_id=me`, but no player is linked to the owner's account.
 - `429`: the rate limit was exceeded. Wait for the number of seconds in the `retry-after` header.
 
-Keys only work on `/api/v1` routes. The app's other `/api` endpoints still require a browser
-session.
+Keys work only on `/api/v1` routes. The rest of `/api` needs a browser session.

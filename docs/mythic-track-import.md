@@ -1,53 +1,86 @@
 # Mythic Track import
 
-Administrators can move a playgroup's history from [Mythic Track](https://www.mythictrack.com/) at **Import → Mythic Track** in the main navigation. Mythic Track has no export feature, so the import page shows a short browser-console snippet that saves the game list its own client fetches.
+Administrators bring a playgroup's history over from [Mythic Track](https://www.mythictrack.com/)
+at **Import → Mythic Track**. Mythic Track has no export button, so the import page gives a
+browser-console snippet that downloads the game list Mythic Track's own site loads.
 
 ## Exporting from Mythic Track
 
 1. Sign in at mythictrack.com in a desktop browser.
-2. Open the developer console (F12, or ⌥⌘J on macOS) and paste the snippet from the import page. It calls `POST https://www.api.mythictrack.com/api/games/get` with your session cookie and downloads the response as `mythic-track-games.json`.
-3. Upload that file (or paste its contents) on the import page, preview, then confirm.
+2. Open the developer console (F12, or ⌥⌘J on macOS) and paste the snippet from the import
+   page. It calls `POST https://www.api.mythictrack.com/api/games/get` with your session and
+   downloads the result as `mythic-track-games.json`.
+3. Upload that file (or paste its contents) on the import page, preview, and confirm.
 
-The endpoint only returns games the signed-in user played in. Have each member of the playgroup export and import their own file if you want complete coverage; games already present are skipped, so overlapping exports are safe.
+Mythic Track returns only games the signed-in user played in. For full coverage, have each
+member export their own file and import them all. Games already imported are skipped, so
+overlapping files are safe.
 
-The API routes are `POST /api/imports/mythic_track/preview` and `POST /api/imports/mythic_track`, both accepting `{"json": "..."}` and restricted to administrators. Committing an import also requires reauthentication within the previous ten minutes. The preview response has the same shape as the CSV preview plus a `warnings` list for games that are skipped rather than rejected.
+The API routes are `POST /api/imports/mythic_track/preview` and `POST /api/imports/mythic_track`.
+Both take `{"json": "..."}` and need an administrator; committing also needs a password
+confirmation within the last ten minutes. The preview has the same shape as the CSV preview,
+plus a `warnings` list of skipped games.
 
 ## Mapping
 
 | Mythic Track | The Gathering |
 | --- | --- |
 | Game `id` (GUID) | `games.external_id` with `source = "mythic_track"`, so re-imports skip existing games |
-| `createdOn` | `played_at`; naive date-only midnight values are normalized to noon UTC, while actual times and explicit offsets are preserved |
+| `createdOn` | `played_at`. A date-only midnight value becomes noon UTC; real times and explicit offsets are kept. |
 | `gameTimeInMinutes`, `totalTurns` | `duration_minutes`, `turns` |
-| `winCondition` | Canonical win condition (`1` Damage through `11` Concede, with `8` Draw and `99`/unrecognized values Unknown), using the enum extracted from Mythic Track's public `MtgDataTracker.Shared` assembly |
+| `winCondition` | Win condition: `1` Damage through `11` Concede, `8` Draw, and `99` or any other value Unknown, following Mythic Track's own numbering |
 | `name` + `notes` | `notes`, joined when both are present |
-| Player `discordUserId`, then `name` | Existing player with that Discord ID; otherwise a case-insensitive name match; otherwise a new player. A name-matched player without a Discord ID gains the exported one. |
+| Player `discordUserId` | The player with that Discord ID, or a new player with it. A taken name gets a suffix such as `Alice (2)`. |
+| Player `name` (no Discord ID) | A case-insensitive name match, or a new player |
 | Commander `deckName`, else commander name(s) | Deck name, owned by that player |
-| Commander / partner `scryfallId`, `name`, `colors`, `decklistUrl` | Deck commander, partner, colour identity, and decklist link |
-| `turnOrder` | Seat, renumbered 1..n (missing values sort last) |
-| `isWinner` | One winner → win/loss; no winner → all draw; more than one winner → the game is skipped |
-| `keyCards` | The first key card becomes the winner's MVP card (name and Scryfall ID). Any further key cards, or all of them in a draw, are appended to notes as `Key cards: …` |
+| Commander and partner `scryfallId`, `name`, `colors`, `decklistUrl` | The deck's commander, partner, color identity, and deck link |
+| `turnOrder` | Seat, renumbered 1 through n (missing values sort last) |
+| `isWinner` | One winner: win and losses. No winner: every seat draws. More than one: the game is skipped. |
+| `keyCards` | The first key card becomes the winner's MVP card. Further key cards, or all of them in a draw, are added to the notes as `Key cards: …` |
 
-Only games with `gameStatus` 3 (complete) are imported; in-progress and unstarted games appear as warnings.
+Only games with `gameStatus` 3 (complete) are imported; unstarted and in-progress games are
+listed as warnings.
 
-Mythic Track writes a partner pair as one commander named `A || B (Partners)`. The importer splits that into the deck's commander and partner, and names the deck `A / B` when Mythic Track had no separate deck name.
+Mythic Track stores a partner pair as one commander named `A || B (Partners)`. The importer
+splits it into commander and partner, and names the deck `A / B` when Mythic Track had no
+deck name.
+
+## Skipped games
+
+The importer skips games with fewer than two or more than six players, a blank player name,
+the same player in two seats, or more than one winner. Each skipped game is a warning with
+its name, date, and players, for example
+`skipped: Daniel is listed twice (03/17/2025 - Commander (EDH) - Game 1, 2025-03-17, players: Daniel, Reality, Daniel, Matt)`,
+and the rest of the file still imports. Fix the game in Mythic Track and export again, or log
+it by hand. Only an entry that is not an object, a missing `id`, or an unreadable `createdOn`
+rejects the file.
 
 ## Linking cards to the catalog
 
-Imported decks and MVP cards arrive with card names but not always Scryfall IDs, so they have no art or colour identity until they are linked to the local card catalog. The link runs automatically after every import and after each catalog sync, matching names exactly (accents ignored) and falling back to the front face of double-faced cards. It fills missing commander, partner, and MVP card IDs, and fills an empty colour identity from the linked cards; existing colour identities are left alone. Run it again by hand from **Admin → Users → Link imported cards to the catalog** (also `POST /api/admin/catalog/backfill`) or with:
+Imported decks and MVP cards may arrive with names but no Scryfall IDs, and then have no art
+or color identity until they are linked to the local card catalog. Linking runs after every
+import and after each catalog sync. It matches names exactly (ignoring accents), falls back to
+one face of a multi-faced card, fills missing commander, partner, and MVP card IDs, and
+fills an empty color identity from the linked cards. Run it again from
+**Admin → Catalog → Link imported cards to the catalog** (`POST /api/admin/catalog/backfill`)
+or with:
 
 ```sh
 the-gathering catalog-backfill   # in the container: /app/bin/the-gathering catalog-backfill
 ```
 
-Names it cannot match are listed in the result so you can fix the deck by hand.
-
-## Skipped games
-
-Mythic Track lets you save games The Gathering cannot represent: fewer than two or more than six players, a blank player name, the same player in two seats, or several winners. Those games are listed as warnings with the game's name, date, and players (for example `Game 213: skipped: Daniel is listed twice (03/17/2025 - Commander (EDH) - Game 1, 2025-03-17, players: Daniel, Reality, Daniel, Matt)`) and the rest of the file still imports. Fix the game in Mythic Track and re-export, or log it by hand afterwards. Only a missing `id` or an unreadable `createdOn` rejects the whole file.
+The result lists names it could not match, so you can fix those decks by hand.
 
 ## Players and decks
 
-Nobody needs an account to appear in imported games. The preview lists the players it will create; each becomes a plain player record, and every commander a player used becomes a deck owned by that player so it can be suggested the next time a game is logged.
+Imported players do not need accounts. The preview lists the players it will create, and every
+commander a player used becomes one of their decks, so the deck is offered the next time a game
+is logged.
 
-When someone later signs in with Discord, they get their own player record. An administrator can point their account at the imported player instead from **Admin → Users** (the *Player* select on each user), which moves any games already logged under the account's player onto the imported one. Duplicates that Mythic Track kept apart (say `Drew` and `waxpoetik`) can be folded together from the *Merge into another player* card on a player's page; games, decks, and the account link all move to the chosen player. Merging refuses when both players sat in the same game.
+A member who signs in with Discord takes over the imported player that has their Discord ID.
+Otherwise they get a new player. An administrator can then link the account to the imported
+player from **Admin → Users** (the **Player** select on each user), which moves games logged
+under the account's player onto the imported one. To fold together players Mythic Track kept
+apart (say `Drew` and `waxpoetik`), use **Merge into another player** on a player's page: games,
+decks, and the account link move to the chosen player. A merge is refused when both players sat
+in the same game.
