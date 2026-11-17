@@ -4,14 +4,21 @@ import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { PlayerAvatar } from "@/components/player-avatar"
 import { UserPlus, Users } from "lucide-react"
 import { getPlayers } from "@/features/games/games"
+import { NewPlayerButton } from "@/features/games/new-player-dialog"
+import { useCurrentUser } from "@/lib/auth"
 
 export const Route = createFileRoute("/players/")({ component: PlayersPage })
 
 function PlayersPage() {
   const query = useQuery({ queryKey: ["players"], queryFn: getPlayers })
+  const viewer = useCurrentUser()
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader eyebrow="The regulars" title="Players" />
+      <PageHeader
+        eyebrow="The regulars"
+        title="Players"
+        actions={viewer.data?.role === "admin" && <NewPlayerButton />}
+      />
       {query.isPending && <span className="loading loading-spinner" />}
       {query.data?.length === 0 && (
         <EmptyPanel
