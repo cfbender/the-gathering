@@ -97,7 +97,7 @@ describe("GameTable", () => {
       "Result",
       "Turns",
       "Duration",
-      "Mood",
+      "Vibe",
     ])
     const players = within(screen.getByRole("list", { name: "3 players" }))
     expect(

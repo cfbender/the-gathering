@@ -1478,11 +1478,11 @@ async fn list_games_filters_by_the_face_the_average_rating_rounds_to() {
         .await;
     let unrated = app.game(game(&[None, None]), None).await;
 
-    assert_eq!(ids(&app, json!({"mood": 3})).await, [meh.id]);
-    assert_eq!(ids(&app, json!({"mood": 2})).await, [bad.id]);
-    assert!(ids(&app, json!({"mood": 1})).await.is_empty());
+    assert_eq!(ids(&app, json!({"vibe": 3})).await, [meh.id]);
+    assert_eq!(ids(&app, json!({"vibe": 2})).await, [bad.id]);
+    assert!(ids(&app, json!({"vibe": 1})).await.is_empty());
     assert_eq!(
-        ids(&app, json!({"mood": 6})).await,
+        ids(&app, json!({"vibe": 6})).await,
         [unrated.id, bad.id, meh.id]
     );
 }

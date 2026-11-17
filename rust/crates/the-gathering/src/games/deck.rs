@@ -403,7 +403,7 @@ pub async fn deck_seat_games(
     deck_id: i64,
 ) -> Result<Vec<SeatGame>, sqlx::Error> {
     Ok(sqlx::query!(
-        r#"SELECT s.game_id, s.result AS "result: GameResult", g.played_at AS "played_at: UtcDateTime",
+        r#"SELECT s.game_id, s.result AS "result: GameResult", s.satisfaction, g.played_at AS "played_at: UtcDateTime",
                   g.format AS "format: GameFormat"
            FROM game_players s JOIN games g ON g.id = s.game_id
            WHERE s.deck_id = ?
@@ -413,7 +413,7 @@ pub async fn deck_seat_games(
     .fetch_all(&mut *conn)
     .await?
     .into_iter()
-    .map(|row| SeatGame { game_id: row.game_id, played_at: row.played_at, format: row.format, result: row.result, deck: None })
+    .map(|row| SeatGame { game_id: row.game_id, played_at: row.played_at, format: row.format, result: row.result, satisfaction: row.satisfaction, deck: None })
     .collect())
 }
 

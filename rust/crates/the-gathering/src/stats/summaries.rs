@@ -44,6 +44,10 @@ pub fn recent_game(game: &Game, tracked: &[GameResult]) -> Object {
             .map_or(Value::Null, |winner| Value::Object(player(&winner.player))),
     );
     object.insert("players".into(), json!(game.seats.len()));
+    object.insert(
+        "average_satisfaction".into(),
+        json!(super::salt::Ratings::of(game.seats.iter().map(|seat| seat.satisfaction)).average),
+    );
     object
 }
 

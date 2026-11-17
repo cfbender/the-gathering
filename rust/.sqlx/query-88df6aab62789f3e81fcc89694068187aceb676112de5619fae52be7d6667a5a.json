@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT s.game_id, s.deck_id, s.result AS \"result: GameResult\", g.played_at AS \"played_at: UtcDateTime\",\n                  g.format AS \"format: GameFormat\"\n           FROM game_players s JOIN games g ON g.id = s.game_id\n           WHERE s.player_id = ?\n           ORDER BY g.played_at DESC",
+  "query": "SELECT s.game_id, s.deck_id, s.result AS \"result: GameResult\", s.satisfaction, g.played_at AS \"played_at: UtcDateTime\",\n                  g.format AS \"format: GameFormat\"\n           FROM game_players s JOIN games g ON g.id = s.game_id\n           WHERE s.player_id = ?\n           ORDER BY g.played_at DESC",
   "describe": {
     "columns": [
       {
@@ -37,8 +37,19 @@
         }
       },
       {
-        "name": "played_at: UtcDateTime",
+        "name": "satisfaction",
         "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_players",
+            "name": "satisfaction"
+          }
+        }
+      },
+      {
+        "name": "played_at: UtcDateTime",
+        "ordinal": 4,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -49,7 +60,7 @@
       },
       {
         "name": "format: GameFormat",
-        "ordinal": 4,
+        "ordinal": 5,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -66,9 +77,10 @@
       false,
       true,
       false,
+      true,
       false,
       false
     ]
   },
-  "hash": "ad376b5d25d5191964b35cf8b01b0fce8437fe6f32280295fd721efcf0d8a407"
+  "hash": "88df6aab62789f3e81fcc89694068187aceb676112de5619fae52be7d6667a5a"
 }

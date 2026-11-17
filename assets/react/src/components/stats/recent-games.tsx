@@ -3,6 +3,7 @@ import { UsersRound } from "lucide-react"
 import { CommanderArt } from "@/components/commander-art"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { formatDate } from "@/features/games/games"
+import { SatisfactionBadge } from "@/features/satisfaction/satisfaction"
 import { cn } from "@/lib/cn"
 import type { OverviewStats } from "@/lib/stats"
 
@@ -26,7 +27,10 @@ export function RecentGames({ games }: { games: OverviewStats["recent_games"] })
             params={{ gameId: String(game.id) }}
             className="border-base-300 bg-base-200/60 hover:border-primary/40 flex min-h-36 flex-col rounded-xl border p-4 transition-colors"
           >
-            <strong>{game.winner ? `${game.winner.name} won` : "Draw game"}</strong>
+            <span className="flex items-start justify-between gap-2">
+              <strong>{game.winner ? `${game.winner.name} won` : "Draw game"}</strong>
+              <SatisfactionBadge average value={game.average_satisfaction} />
+            </span>
             <p className="text-base-content/55 mt-1 text-sm">
               {formatDate(game.played_at)} · {game.players} players
               {game.duration_minutes ? ` · ${game.duration_minutes}m` : ""}

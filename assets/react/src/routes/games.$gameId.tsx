@@ -67,7 +67,7 @@ function GameDetailPage() {
             )}
             {game.average_satisfaction !== null && (
               <span className="flex items-center gap-1">
-                Table mood
+                Table vibe
                 <SatisfactionBadge
                   average
                   value={game.average_satisfaction}

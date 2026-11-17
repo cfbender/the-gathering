@@ -97,14 +97,14 @@ describe("clock filters", () => {
   })
 })
 
-describe("mood filter", () => {
+describe("vibe filter", () => {
   it("keeps the five faces and names the chosen one", () => {
-    expect(parseGamesSearch({ mood: "1" })).toEqual({ mood: 1 })
-    expect(parseGamesSearch({ mood: 5 })).toEqual({ mood: 5 })
-    expect(parseGamesSearch({ mood: 6 })).toEqual({})
-    expect(parseGamesSearch({ mood: 0 })).toEqual({})
-    expect(gameFilterChips({ mood: 2 }, { player: () => undefined, winCondition: String })).toEqual(
-      [{ key: "mood", label: "Mood: bad" }],
+    expect(parseGamesSearch({ vibe: "1" })).toEqual({ vibe: 1 })
+    expect(parseGamesSearch({ vibe: 5 })).toEqual({ vibe: 5 })
+    expect(parseGamesSearch({ vibe: 6 })).toEqual({})
+    expect(parseGamesSearch({ vibe: 0 })).toEqual({})
+    expect(gameFilterChips({ vibe: 2 }, { player: () => undefined, winCondition: String })).toEqual(
+      [{ key: "vibe", label: "Vibe: bad" }],
     )
   })
 })

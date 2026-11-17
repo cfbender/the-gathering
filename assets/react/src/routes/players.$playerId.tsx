@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
+import { SatisfactionBadge } from "@/features/satisfaction/satisfaction"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { PlayerAvatar } from "@/components/player-avatar"
 import { SudoPrompt } from "@/components/sudo-prompt"
@@ -68,11 +69,14 @@ function PlayerDetailPage() {
                   {game.deck?.name ?? "Unknown deck"}
                 </span>
               </span>
-              {game.result === "win" && (
-                <span className="text-success flex items-center gap-1 font-bold">
-                  <Trophy className="size-4" /> Win
-                </span>
-              )}
+              <span className="flex items-center gap-3">
+                <SatisfactionBadge value={game.satisfaction} />
+                {game.result === "win" && (
+                  <span className="text-success flex items-center gap-1 font-bold">
+                    <Trophy className="size-4" /> Win
+                  </span>
+                )}
+              </span>
             </Link>
           ))}
         </div>

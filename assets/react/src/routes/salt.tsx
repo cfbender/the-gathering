@@ -134,7 +134,7 @@ function SaltPage() {
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <StatCard
-              label="Average mood"
+              label="Average vibe"
               value={
                 <SatisfactionBadge
                   average
@@ -184,7 +184,7 @@ function SaltPage() {
               <SatisfactionDistribution summary={stats.summary} />
             </section>
             <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-              <h2 className="mb-4 font-bold">Mood by month</h2>
+              <h2 className="mb-4 font-bold">Vibe by month</h2>
               <ol className="grid gap-2">
                 {stats.by_month.slice(-8).map((month) => (
                   <li
@@ -229,8 +229,8 @@ function SaltPage() {
                 <thead>
                   <tr>
                     <th scope="col">Player</th>
-                    <th scope="col">Their mood</th>
-                    <th scope="col">Opponents' mood</th>
+                    <th scope="col">Their vibe</th>
+                    <th scope="col">Opponents' vibe</th>
                     <th scope="col" className="text-right">
                       Ratings
                     </th>

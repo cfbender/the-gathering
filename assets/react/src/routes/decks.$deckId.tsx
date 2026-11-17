@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import { PageHeader } from "@/components/app-shell"
+import { SatisfactionBadge } from "@/features/satisfaction/satisfaction"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { Archive, ExternalLink, Trophy } from "lucide-react"
 import { useState, type FormEvent } from "react"
@@ -97,11 +98,14 @@ function DeckDetailPage() {
               className="flex items-center justify-between p-4"
             >
               <strong>{formatDate(game.played_at)}</strong>
-              {game.result === "win" && (
-                <span className="text-success flex items-center gap-1 font-bold">
-                  <Trophy className="size-4" /> Win
-                </span>
-              )}
+              <span className="flex items-center gap-3">
+                <SatisfactionBadge value={game.satisfaction} />
+                {game.result === "win" && (
+                  <span className="text-success flex items-center gap-1 font-bold">
+                    <Trophy className="size-4" /> Win
+                  </span>
+                )}
+              </span>
             </Link>
           ))}
         </div>

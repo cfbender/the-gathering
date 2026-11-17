@@ -5,6 +5,7 @@ import { EmptyPanel, PageHeader } from "@/components/app-shell"
 import { CardArtBackground } from "@/components/card-art-background"
 import { GameChangerBadge } from "@/components/game-changer-badge"
 import { ColorIdentity } from "@/components/mana-symbols"
+import { SatisfactionBadge } from "@/features/satisfaction/satisfaction"
 import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/cn"
@@ -110,7 +111,14 @@ function CommandersPage() {
               <div className="card-body text-base-content relative z-10 gap-2 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <span className="text-primary text-xs font-bold uppercase">#{index + 1}</span>
-                  <ColorIdentity colors={commander.color_identity ?? ""} />
+                  <span className="flex items-center gap-2">
+                    <SatisfactionBadge
+                      average
+                      value={commander.opponent_average}
+                      className="bg-base-100/80 rounded-full px-1.5 py-0.5"
+                    />
+                    <ColorIdentity colors={commander.color_identity ?? ""} />
+                  </span>
                 </div>
                 <h2 className="truncate text-xl font-bold" title={commander.name}>
                   {commander.name}

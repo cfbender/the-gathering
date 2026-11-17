@@ -31,6 +31,8 @@ pub struct SeatGame {
     pub format: GameFormat,
     /// The seat's result.
     pub result: GameResult,
+    /// The seat's rating of the game, 1 (awful) to 5 (rad).
+    pub satisfaction: Option<i64>,
     /// The seat's deck, when loaded and present.
     pub deck: Option<Deck>,
 }
@@ -101,7 +103,7 @@ pub async fn get_player_detail(
         .fetch_all(&mut *conn)
         .await?;
     let rows = sqlx::query!(
-        r#"SELECT s.game_id, s.deck_id, s.result AS "result: GameResult", g.played_at AS "played_at: UtcDateTime",
+        r#"SELECT s.game_id, s.deck_id, s.result AS "result: GameResult", s.satisfaction, g.played_at AS "played_at: UtcDateTime",
                   g.format AS "format: GameFormat"
            FROM game_players s JOIN games g ON g.id = s.game_id
            WHERE s.player_id = ?
@@ -124,6 +126,7 @@ pub async fn get_player_detail(
             played_at: row.played_at,
             format: row.format,
             result: row.result,
+            satisfaction: row.satisfaction,
             deck,
         });
     }

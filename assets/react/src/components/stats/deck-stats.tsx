@@ -58,7 +58,7 @@ export function DeckStats({ deckId }: { deckId: string }) {
           <BarChart rows={stats.opponents.slice(0, 6)} value="games" />
         </div>
       </div>
-      <SatisfactionStats satisfaction={stats.satisfaction} own="Pilot's mood" />
+      <SatisfactionStats satisfaction={stats.satisfaction} own="Pilot's vibe" />
     </section>
   )
 }

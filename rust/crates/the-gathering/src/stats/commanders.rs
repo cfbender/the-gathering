@@ -244,6 +244,11 @@ fn commander_records(entries: &[Entry<'_>], extras: bool) -> Vec<Object> {
                 let last: Option<UtcDateTime> =
                     rows.iter().map(|entry| entry.at.game.played_at).max();
                 object.insert("last_played_at".into(), json!(last));
+                let opponents = Ratings::of(
+                    rows.iter()
+                        .flat_map(|entry| opponent_ratings(entry.at.game, entry.at.seat)),
+                );
+                object.insert("opponent_average".into(), json!(opponents.average));
             }
             Some(object)
         })
@@ -495,6 +500,7 @@ async fn detail(
         ),
         "partners": partners,
         "opponents": opponents,
+        "satisfaction": super::salt::seat_summary(seats.iter().map(|at| (at.game, at.seat))),
         "win_rate_over_time": super::records::cumulative_win_rate(
             trend.into_iter().map(|(played_at, _, results)| (played_at, results)),
         ),

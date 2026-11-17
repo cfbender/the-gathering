@@ -82,6 +82,8 @@ export interface RecentGame {
   id: number
   played_at: string
   result: Seat["result"]
+  /** This seat's rating of the game. */
+  satisfaction: number | null
   deck: DeckSummary | null
 }
 

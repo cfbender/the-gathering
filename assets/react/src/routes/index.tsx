@@ -13,6 +13,7 @@ import { RecentGames } from "@/components/stats/recent-games"
 import { StatCard } from "@/components/stats/stat-card"
 import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
 import { WinConditions } from "@/components/stats/win-conditions"
+import { SatisfactionBadge } from "@/features/satisfaction/satisfaction"
 import {
   LEADERBOARD_MIN_GAMES,
   getOverviewStats,
@@ -72,7 +73,7 @@ function HomePage() {
         </div>
       )}
 
-      <section aria-label="Highlights" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section aria-label="Highlights" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard
           label="Games played"
           value={stats.games_count}
@@ -97,6 +98,25 @@ function HomePage() {
           detail={since ?? "per game"}
           icon={<RotateCcw className="size-4" />}
         />
+        <Link to="/salt" className="col-span-2 lg:col-span-1">
+          <StatCard
+            label="Avg. vibe"
+            className="hover:border-primary/40 h-full transition-colors"
+            value={
+              stats.satisfaction.average === null ? (
+                "—"
+              ) : (
+                <SatisfactionBadge
+                  average
+                  value={stats.satisfaction.average}
+                  ratings={stats.satisfaction.ratings}
+                  className="[&_svg]:size-8 [&>span]:text-3xl"
+                />
+              )
+            }
+            detail={`${stats.satisfaction.ratings} ratings · see the salt`}
+          />
+        </Link>
       </section>
 
       <div className="space-y-4">

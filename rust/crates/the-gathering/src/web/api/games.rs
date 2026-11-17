@@ -91,6 +91,7 @@ pub fn seat_game(seat: &SeatGame, art: &ArtUrls) -> Value {
         "played_at": seat.played_at,
         "format": seat.format,
         "result": seat.result,
+        "satisfaction": seat.satisfaction,
         "deck": seat.deck.as_ref().map_or(Value::Null, |deck| deck_summary(deck, None, art)),
     })
 }

@@ -215,4 +215,44 @@ async fn salt_stats_rank_players_and_commanders_by_satisfaction() {
         .assert_json(200);
     assert_eq!(deck["data"]["satisfaction"]["average"], 2.0);
     assert_eq!(deck["data"]["satisfaction"]["opponents"]["average"], 3.0);
+
+    // The commander pages, overview, and recent game lists carry the same figures.
+    let commander = app
+        .get("/api/stats/commanders/kangee")
+        .await
+        .assert_json(200);
+    assert_eq!(commander["data"]["satisfaction"]["average"], 4.5);
+    assert_eq!(
+        commander["data"]["satisfaction"]["opponents"]["average"],
+        2.3
+    );
+    let listed = app.get("/api/stats/commanders").await.assert_json(200);
+    let atraxa_row = listed["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "atraxa")
+        .unwrap()
+        .clone();
+    assert_eq!(atraxa_row["opponent_average"], 3.0);
+    let overview = app.get("/api/stats/overview").await.assert_json(200);
+    assert_eq!(overview["data"]["satisfaction"]["average"], 3.2);
+    let averages: Vec<Value> = overview["data"]["recent_games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|game| game["average_satisfaction"].clone())
+        .collect();
+    assert_eq!(averages, [Value::Null, json!(4.0), json!(2.7)]);
+    let profile = app
+        .get(&format!("/api/players/{}", alice.id))
+        .await
+        .assert_json(200);
+    let ratings: Vec<Value> = profile["data"]["recent_games"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|game| game["satisfaction"].clone())
+        .collect();
+    assert_eq!(ratings, [Value::Null, json!(4), json!(5)]);
 }

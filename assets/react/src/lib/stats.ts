@@ -66,6 +66,8 @@ export interface RecentStatGame {
   players: number
   result: "win" | "loss" | "draw" | null
   winner: { id: number; name: string } | null
+  /** Mean of the seats' ratings, one decimal; null when nobody rated the game. */
+  average_satisfaction: number | null
 }
 
 export interface MatchupRow extends RecordCounts {
@@ -101,6 +103,7 @@ export interface KillStats {
 }
 
 export interface OverviewStats {
+  satisfaction: SatisfactionSummary
   /** ISO date; seat, timing, and MVP figures only include games from this date on. */
   detailed_stats_from: string | null
   games_count: number
@@ -249,6 +252,8 @@ export interface CommanderSummary extends RecordCounts {
   pilots: number
   decks: number
   last_played_at: string
+  /** How the rest of the table rated games against this commander. */
+  opponent_average: number | null
 }
 
 export interface CommanderStats {
@@ -264,6 +269,7 @@ export interface CommanderStats {
   decks: NamedRecordRow[]
   partners: NamedRecordRow[]
   opponents: (NamedRecordRow & { avatar_url: string | null; beaten: number })[]
+  satisfaction: SeatSatisfaction
   win_rate_over_time: TrendPoint[]
   recent_games: RecentStatGame[]
 }

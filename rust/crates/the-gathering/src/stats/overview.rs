@@ -63,6 +63,7 @@ pub async fn get(
         "win_conditions": outcomes::win_conditions(games.iter()),
         "average_duration_minutes": records::average(detailed.iter().map(|game| game.duration_minutes)),
         "average_turns": records::average(detailed.iter().map(|game| game.turns)),
+        "satisfaction": super::salt::Ratings::of(seats.iter().map(|seat| seat.satisfaction)).object(),
         "game_lengths": summaries::game_lengths(&detailed, &|_| None),
         "game_times": games.iter().map(|game| game.played_at).collect::<Vec<_>>(),
         "leaderboard": grouped_records(seats.iter().copied(), player_entity, |seat| seat.player_id),

@@ -100,14 +100,16 @@ webcam table a small prompt appears when your seat is knocked out, and again onc
 recorded if you have not rated it yet (on the game's page, or at the table after a rematch); the
 cross dismisses it. Ratings given at the table are saved with the game. On a game's page each
 player's face shows on their seat, your own seat has the five faces to rate or change your rating,
-and the header shows the table's average mood, which the games list shows per game too. The games
-list's **Table mood** filter (under More filters) shows only games whose average rounds to one face.
+and the header shows the table's average vibe, which the games list shows per game too. The games
+list's **Table vibe** filter (under More filters) shows only games whose average rounds to one face.
 
-**Salt** in the menu shows the playgroup's average mood, the saltiest game (the lowest average
-among games at least two players rated), how ratings spread, mood by month, the saltiest and least
+**Salt** in the menu shows the playgroup's average vibe, the saltiest game (the lowest average
+among games at least two players rated), how ratings spread, vibe by month, the saltiest and least
 salty commanders (ranked by how the rest of the table rated games against them,
 once they have three such ratings), and players ranked by how they rated their own games. Player
-profiles and deck pages show their own average and their opponents' average.
+profiles, deck pages, and commander pages show their own average and their opponents' average,
+and their recent games show each rating. The home page shows the playgroup's average vibe, and
+each commander on the Commanders page shows how opponents rated games against it.
 
 ### Kills
 

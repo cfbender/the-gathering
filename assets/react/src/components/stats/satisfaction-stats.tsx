@@ -42,7 +42,7 @@ export function SatisfactionDistribution({
   )
 }
 
-function Mood({ label, summary }: { label: string; summary: SatisfactionSummary }) {
+function Vibe({ label, summary }: { label: string; summary: SatisfactionSummary }) {
   return (
     <div>
       <p className="text-base-content/55 text-xs font-bold tracking-wider uppercase">{label}</p>
@@ -71,7 +71,7 @@ export function SatisfactionStats({
   own,
 }: {
   satisfaction: SeatSatisfaction
-  /** Label for the seat's own ratings, such as "Their mood". */
+  /** Label for the seat's own ratings, such as "Their vibe". */
   own: string
 }) {
   return (
@@ -90,8 +90,8 @@ export function SatisfactionStats({
       ) : (
         <div className="grid gap-5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
           <div className="flex gap-8 sm:flex-col sm:gap-4">
-            <Mood label={own} summary={satisfaction} />
-            <Mood label="Opponents' mood" summary={satisfaction.opponents} />
+            <Vibe label={own} summary={satisfaction} />
+            <Vibe label="Opponents' vibe" summary={satisfaction.opponents} />
           </div>
           <SatisfactionDistribution summary={satisfaction} />
         </div>

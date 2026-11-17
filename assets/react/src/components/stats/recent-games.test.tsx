@@ -20,6 +20,7 @@ it("shows commander portraits with accessible names and a fallback for absent or
           played_at: "2026-09-01T00:00:00Z",
           players: 2,
           duration_minutes: 43,
+          average_satisfaction: null,
           turns: null,
           result: null,
           winner: { id: 1, name: "Alice" },

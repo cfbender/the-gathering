@@ -8,6 +8,8 @@ import { GameChangerBadge } from "@/components/game-changer-badge"
 import { ColorIdentity } from "@/components/mana-symbols"
 import { BarChart, LineChart } from "@/components/stats/charts"
 import { CommanderRivalries } from "@/components/stats/rivalries"
+import { SatisfactionStats } from "@/components/stats/satisfaction-stats"
+import { SatisfactionBadge } from "@/features/satisfaction/satisfaction"
 import { StatCard } from "@/components/stats/stat-card"
 import { StatsRangeToggle } from "@/components/stats/stats-range-toggle"
 import { formatDate } from "@/features/games/games"
@@ -58,6 +60,7 @@ function CommanderPage() {
       </div>
 
       <CommanderRivalries opponents={stats.opponents} />
+      <SatisfactionStats satisfaction={stats.satisfaction} own="Pilots' vibe" />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Win rate over time">
@@ -113,7 +116,10 @@ function CommanderPage() {
                   {formatDate(game.played_at)} · {game.players} players
                 </span>
               </span>
-              <ResultBadge result={game.result} />
+              <span className="flex shrink-0 items-center gap-3">
+                <SatisfactionBadge average value={game.average_satisfaction} />
+                <ResultBadge result={game.result} />
+              </span>
             </Link>
           ))}
         </div>

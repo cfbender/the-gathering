@@ -315,13 +315,13 @@ export function GameFiltersPanel({
                 ))}
               </select>
             </Field>
-            <Field label="Table mood">
+            <Field label="Table vibe">
               <select
                 className="select select-bordered select-sm w-full"
-                value={filters.mood}
-                onChange={(event) => onChange({ mood: event.target.value })}
+                value={filters.vibe}
+                onChange={(event) => onChange({ vibe: event.target.value })}
               >
-                <option value="">Any mood</option>
+                <option value="">Any vibe</option>
                 {SATISFACTION_LEVELS.map((level) => (
                   <option key={level.value} value={level.value}>
                     {level.label[0]!.toUpperCase() + level.label.slice(1)}

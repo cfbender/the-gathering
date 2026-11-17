@@ -93,7 +93,7 @@ export function GameTable({ games }: { games: Game[] }) {
                 Duration
               </th>
               <th scope="col" className="text-right">
-                Mood
+                Vibe
               </th>
             </tr>
           </thead>

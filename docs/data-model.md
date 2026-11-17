@@ -123,7 +123,7 @@ delete. Indexes cover the active playgroup. `GET /api/players` and `GET /api/dec
   identity as WUBRG letters, `C` for colorless), `color` and `winner_color` (identity includes
   that color).
 - Games: `win_condition`, `player_count`, `min_turns`, `max_turns`, `min_duration`,
-  `max_duration`, and `mood` (1–5: the face the game's average rating, to one decimal, rounds to).
+  `max_duration`, and `vibe` (1–5: the face the game's average rating, to one decimal, rounds to).
 - Time: `date_from` and `date_to` (inclusive days), `weekday` (0 = Sunday), and `hour`
   (0–23), all read in the `tz` IANA zone (default UTC).
 
