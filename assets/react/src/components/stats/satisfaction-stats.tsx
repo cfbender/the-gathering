@@ -88,7 +88,7 @@ export function SatisfactionStats({
           ends.
         </p>
       ) : (
-        <div className="grid gap-5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
           <div className="flex gap-8 sm:flex-col sm:gap-4">
             <Vibe label={own} summary={satisfaction} />
             <Vibe label="Opponents' vibe" summary={satisfaction.opponents} />

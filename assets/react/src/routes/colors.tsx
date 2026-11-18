@@ -108,7 +108,7 @@ function ColorsPage() {
       )}
       {query.data && identities.length > 0 && (
         <>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <ColorWheel rows={query.data.color_exposure} eyebrow="Playgroup colors" games={games} />
             <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
               <p className="text-primary text-xs font-bold uppercase">By color</p>

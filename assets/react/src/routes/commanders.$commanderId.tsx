@@ -62,7 +62,7 @@ function CommanderPage() {
       <CommanderRivalries opponents={stats.opponents} />
       <SatisfactionStats satisfaction={stats.satisfaction} own="Pilots' vibe" />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel title="Win rate over time">
           <LineChart points={stats.win_rate_over_time} />
         </Panel>

@@ -19,7 +19,7 @@ export function EloSection({ players }: { players: OverviewStats["elo"] }) {
           Elo standings
         </h2>
       </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(18rem,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(18rem,1fr)]">
         <div className="border-base-300 bg-base-200/60 flex min-w-0 flex-col rounded-xl border p-5">
           <h3 className="mb-4 font-bold">Top players over time</h3>
           {chartSeries.length > 0 ? (

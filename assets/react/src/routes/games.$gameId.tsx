@@ -79,7 +79,7 @@ function GameDetailPage() {
           </p>
         )}
       </PageHeader>
-      <section className="grid gap-4 sm:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {game.seats.map((seat) => {
           const victims = game.seats.filter(
             (victim) => victim.eliminated_by_player_id === seat.player_id,

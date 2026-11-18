@@ -160,7 +160,7 @@ export function Rivalries({
         </h3>
         <p className="text-base-content/60 text-sm">Select a rivalry or count to see its games.</p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {callouts.map(({ label, row, value, result, kind, filters }) => {
           if (!row || value === undefined) return null
           const commander = kind === "commander" ? row : null
@@ -186,7 +186,7 @@ export function Rivalries({
             Named victims only, in the selected date range. Number-only kills are not attributed.
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {[
             {
               label: "Most killed",
@@ -302,7 +302,7 @@ export function CommanderRivalries({ opponents }: { opponents: CommanderStats["o
   )
 
   return (
-    <section className="grid gap-3 sm:grid-cols-2" aria-label="Commander rivalries">
+    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Commander rivalries">
       {nemesis && (
         <RivalryCallout
           label="Nemesis"

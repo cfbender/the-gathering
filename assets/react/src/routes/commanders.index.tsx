@@ -99,7 +99,7 @@ function CommandersPage() {
           }
         />
       )}
-      <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <ol className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {rows.map((commander, index) => (
           <li key={commander.id} className="min-w-0">
             <Link

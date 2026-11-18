@@ -83,7 +83,7 @@ export function PlayerStats({
         games={games}
       />
       <SatisfactionStats satisfaction={stats.satisfaction} own="Their vibe" />
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="border-base-300 bg-base-200/60 min-w-0 rounded-xl border p-5">
           <h3 className="mb-4 font-bold">Win rate over time</h3>
           <LineChart points={stats.win_rate_over_time} className="h-48" />
@@ -118,7 +118,7 @@ export function PlayerStats({
           }
         />
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ColorSection rows={stats.color_win_rates} eyebrow="Their colors" games={games} />
         <ColorWheel rows={stats.color_exposure} eyebrow="Their color mix" games={games} />
       </div>
@@ -144,7 +144,7 @@ export function PlayerStats({
               <span className="text-base-content/50 ml-2 text-sm font-medium">{since}</span>
             )}
           </h3>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {stats.mvp_cards.map((card) => (
               <CardHover
                 key={`${card.id ?? card.name}-${card.name}`}
@@ -174,7 +174,7 @@ export function PlayerStats({
         <p className="text-base-content/60 mb-3 text-sm">
           Kills count named victims only; zero means none attributed.
         </p>
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {stats.head_to_head.map((opponent) => (
             <div
               key={opponent.id}

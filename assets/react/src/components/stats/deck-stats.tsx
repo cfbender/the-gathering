@@ -48,7 +48,7 @@ export function DeckStats({ deckId }: { deckId: string }) {
           icon={<RotateCcw className="size-4" />}
         />
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
           <h3 className="mb-4 font-bold">Win rate over time</h3>
           <LineChart points={stats.win_rate_over_time} />

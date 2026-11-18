@@ -206,12 +206,12 @@ function HomePage() {
 
       <EloSection players={stats.elo} />
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <KillStats stats={stats.kills} />
         <WinConditions stats={stats.win_conditions} games={games} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <ColorSection
           rows={stats.color_win_rates}
           games={games}

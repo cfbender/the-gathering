@@ -111,7 +111,7 @@ function DeckDetailPage() {
         </div>
       </section>
       {canManageDeck(viewer.data, deck) && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <RetireDeckCard deck={deck} />
           <DeleteDeckCard deck={deck} />
         </div>

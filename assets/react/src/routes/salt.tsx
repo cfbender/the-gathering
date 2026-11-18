@@ -51,7 +51,7 @@ function CommanderList({
           Commanders need {MIN_RATINGS} opponent ratings to rank.
         </p>
       ) : (
-        <ol className="grid gap-2">
+        <ol className="grid grid-cols-1 gap-2">
           {rows.map((commander, index) => (
             <li key={commander.id}>
               <Link
@@ -178,7 +178,7 @@ function SaltPage() {
               }
             />
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <section className="border-base-300 bg-base-200/60 rounded-xl border p-5">
               <h2 className="mb-4 font-bold">How games felt</h2>
               <SatisfactionDistribution summary={stats.summary} />
@@ -204,7 +204,7 @@ function SaltPage() {
               </ol>
             </section>
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <CommanderList
               title="Saltiest commanders"
               description="How the rest of the table rated games against each commander, lowest first."
