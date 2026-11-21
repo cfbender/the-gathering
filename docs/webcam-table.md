@@ -99,8 +99,11 @@ and every mutation. Each mutation is saved to `webcam_table_sessions` before it 
 and broadcast, so nothing waits in a debounce window. The snapshot holds the whole game (seats,
 counters, turns, timer, cards, log, vote, virtual boards), never media.
 
-A room keeps running after its last connection leaves. Disconnecting never advances the turn or
-drops a seat. A crashed room disconnects only its own channels, which rejoin and reload the
+A room keeps running after its last connection leaves. Disconnecting never drops a seat, and a
+reload or a reconnect within the grace changes nothing. A player who stays away longer (Leave
+table, or a closed tab after the reconnect grace plus 10 s) is logged as leaving and, once the
+game has started, eliminated, which passes their turn; they can restore their seat if they
+come back. A crashed room disconnects only its own channels, which rejoin and reload the
 snapshot. This is a single-server design: there is no cross-node room coordination.
 
 ### Lifecycle

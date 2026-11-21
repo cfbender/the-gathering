@@ -3,7 +3,8 @@
 //!
 //! Each room loads its saved session on start and keeps running after its last connection
 //! leaves, until `close_if_idle` finds it empty and idle. Presence describes connections, not
-//! seats: disconnects never change turns or erase a game. Every mutation is saved before it is
+//! seats: a disconnect never erases a game, and only a departure past the grace from a started
+//! game changes it (the seat is eliminated). Every mutation is saved before it is
 //! broadcast and acknowledged, and broadcasts preserve update order.
 //!
 //! Connections (channel tasks) are "monitored" through their event sender: when the channel
@@ -1025,8 +1026,21 @@ impl Room {
                     .is_some_and(|(_, current)| *current == token)
                     && let Some((name, _)) = self.departing.remove(&player_id)
                 {
-                    self.commit(entry.log(vec![log::left(&name)]), Vec::new())
-                        .await?;
+                    let mut entry = entry.log(vec![log::left(&name)]);
+                    let mut events = Vec::new();
+                    // Leaving a started game knocks the seat out, so its turns are skipped and
+                    // the result records it; a player who comes back can restore their seat.
+                    if entry.timer.started_at.is_some()
+                        && let Some(seat) = entry
+                            .all_seats
+                            .get(&player_id)
+                            .filter(|seat| !seat.eliminated)
+                            .cloned()
+                    {
+                        entry = self.eliminate_seats(entry, vec![seat], true);
+                        events = vec![eliminated_seats_event(&entry), Broadcast::TableState];
+                    }
+                    self.commit(entry, events).await?;
                 }
             }
             RoomMsg::Join(..)

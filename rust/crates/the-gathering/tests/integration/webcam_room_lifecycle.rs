@@ -890,6 +890,40 @@ async fn a_seat_that_stays_away_past_the_grace_period_is_logged_as_leaving() {
         .expect_where("log_entry", |entry| entry["text"] == "Bob left the table")
         .await;
     assert_eq!(t.log().await[0].text, "Bob left the table");
+    // Leaving the lobby is not an elimination.
+    assert!(t.snapshot().await.eliminated_seats.is_empty());
+}
+
+#[tokio::test]
+async fn leaving_a_started_game_eliminates_the_seat_and_passes_its_turn() {
+    let mut t = Table::new().await;
+    let mut bob = t.join_player(PEER_B, "Bob").await;
+    let bob_id = bob.player_id();
+    t.alice
+        .ok("seat_order", json!({ "peer_ids": [PEER_A, PEER_B] }))
+        .await;
+    t.alice
+        .ok("start_game", json!({ "randomize": false }))
+        .await;
+    t.alice.ok("pass_turn", json!({ "revision": 1 })).await;
+    assert_eq!(t.snapshot().await.turns.active_player_id, Some(bob_id));
+
+    // Within the grace (a reload) the seat is still in the game.
+    t.server.disconnect(&mut bob, &t.room).await;
+    assert!(t.snapshot().await.eliminated_seats.is_empty());
+
+    let tables = t.server.state().webcam_tables.clone();
+    let (_, token) = tables.debug(&t.room).await.unwrap().departing[&bob_id].clone();
+    tables.depart(&t.room, bob_id, token);
+    t.alice
+        .expect_where("eliminated_seats", |payload| {
+            payload["participants"][0]["player_id"] == bob_id
+        })
+        .await;
+    let snapshot = t.snapshot().await;
+    assert_eq!(snapshot.turns.active_player_id, Some(t.player));
+    let texts: Vec<_> = t.log().await.into_iter().map(|entry| entry.text).collect();
+    assert_eq!(texts[..2], ["Bob was eliminated", "Bob left the table"]);
 }
 
 #[tokio::test]
