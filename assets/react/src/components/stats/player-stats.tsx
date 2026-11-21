@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Flame, Medal, Target } from "lucide-react"
+import { useState } from "react"
 import { CardArtBackground } from "@/components/card-art-background"
 import { CardHover } from "@/components/card-hover"
 import { GameChangerBadge } from "@/components/game-changer-badge"
@@ -15,10 +16,21 @@ import { SatisfactionStats } from "./satisfaction-stats"
 import { StatCard } from "./stat-card"
 import { StatsRangeToggle } from "./stats-range-toggle"
 import { PlayerWinConditions } from "./win-conditions"
-import { byWinRateThenName, getPlayerStats, sinceLabel, statsQueryKey } from "@/lib/stats"
+import {
+  byWinRateThenName,
+  getPlayerStats,
+  sinceLabel,
+  sortByMetric,
+  statsQueryKey,
+  type ColorMetric,
+} from "@/lib/stats"
 import { statsRangeDetails, useStatsRange } from "@/lib/stats-range"
 import { detailedScope, gamesLink } from "@/features/games/game-filters"
 import type { PlayerSummary } from "@/features/games/games"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { cn } from "@/lib/cn"
+
+const deckMetricLabels: Record<ColorMetric, string> = { games: "Games", win_rate: "Win rate" }
 
 export function PlayerStats({
   player,
@@ -27,6 +39,7 @@ export function PlayerStats({
 }) {
   const playerId = String(player.id)
   const { range, params } = useStatsRange()
+  const [deckMetric, setDeckMetric] = useState<ColorMetric>("games")
   const query = useQuery({
     queryKey: statsQueryKey(params, "players", playerId),
     queryFn: () => getPlayerStats(playerId, params),
@@ -91,16 +104,45 @@ export function PlayerStats({
         <EloTrendCard elo={stats.elo} />
       </div>
       <div className="border-base-300 bg-base-200/60 rounded-xl border p-5">
-        <div className="mb-4 flex items-baseline justify-between gap-3">
-          <h3 className="font-bold">Deck performance</h3>
-          <span className="text-base-content/60 text-xs">
-            {retiredDecks > 0
-              ? `Click a deck to see its games · ${retiredDecks} retired ${retiredDecks === 1 ? "deck" : "decks"} hidden`
-              : "Click a deck to see its games"}
-          </span>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold">
+              {deckMetric === "games" ? "Most played decks" : "Deck performance"}
+            </h3>
+            <span className="text-base-content/60 text-xs">
+              {retiredDecks > 0
+                ? `Click a deck to see its games · ${retiredDecks} retired ${retiredDecks === 1 ? "deck" : "decks"} hidden`
+                : "Click a deck to see its games"}
+            </span>
+          </div>
+          <ToggleGroup
+            type="single"
+            value={deckMetric}
+            onValueChange={(value) => value && setDeckMetric(value as ColorMetric)}
+            aria-label="Deck metric"
+            className="join"
+          >
+            {(Object.keys(deckMetricLabels) as ColorMetric[]).map((value) => (
+              <ToggleGroupItem
+                key={value}
+                value={value}
+                className={cn(
+                  "btn btn-xs join-item",
+                  deckMetric === value ? "btn-primary" : "btn-ghost",
+                )}
+              >
+                {deckMetricLabels[value]}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
         </div>
         <BarChart
-          rows={byWinRateThenName(activeDecks)}
+          rows={
+            deckMetric === "games"
+              ? sortByMetric(activeDecks, "games")
+              : byWinRateThenName(activeDecks)
+          }
+          value={deckMetric}
           columns={2}
           renderLabel={(row) => (
             <>
@@ -108,6 +150,12 @@ export function PlayerStats({
               {row.commander_name && !row.name.includes(row.commander_name) && (
                 <span className="text-base-content/70 font-normal"> · {row.commander_name}</span>
               )}
+              <span className="text-base-content/50 text-xs font-normal">
+                {" · "}
+                {deckMetric === "win_rate"
+                  ? `${row.games} ${row.games === 1 ? "game" : "games"}`
+                  : `${row.win_rate}% win rate`}
+              </span>
             </>
           )}
           linkTo={(row) =>
