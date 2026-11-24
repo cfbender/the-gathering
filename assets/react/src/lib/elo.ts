@@ -53,6 +53,35 @@ export function ratingToY(rating: number, minRating: number, maxRating: number, 
   return span === 0 ? height / 2 : height - ((rating - minRating) / span) * height
 }
 
+/** The rating a player held at the end of `date`, or null before their first rated game. */
+export function ratingOnDate(history: EloSeries["history"], date: string): number | null {
+  let rating: number | null = null
+  for (const point of history) {
+    if (point.date > date) break
+    rating = point.rating
+  }
+  return rating
+}
+
+/** The history date closest to `x`, a position along a plot `width` wide. */
+export function nearestEloDate(
+  series: EloSeries[],
+  bounds: EloChartBounds,
+  x: number,
+  width: number,
+): string {
+  let nearest = bounds.startDate
+  let nearestDistance = Number.POSITIVE_INFINITY
+  for (const point of series.flatMap((player) => player.history)) {
+    const distance = Math.abs(dateToX(point.date, bounds.startDate, bounds.endDate, width) - x)
+    if (distance < nearestDistance) {
+      nearest = point.date
+      nearestDistance = distance
+    }
+  }
+  return nearest
+}
+
 export function buildEloPath(
   history: EloSeries["history"],
   bounds: EloChartBounds,

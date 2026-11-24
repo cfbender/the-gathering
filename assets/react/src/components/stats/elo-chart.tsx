@@ -1,4 +1,13 @@
-import { buildEloPath, eloChartBounds, ratingToY, type EloSeries } from "@/lib/elo"
+import { useState, type PointerEvent } from "react"
+import {
+  buildEloPath,
+  dateToX,
+  eloChartBounds,
+  nearestEloDate,
+  ratingOnDate,
+  ratingToY,
+  type EloSeries,
+} from "@/lib/elo"
 
 const WIDTH = 600
 const HEIGHT = 210
@@ -15,6 +24,11 @@ const COLORS = [
   "var(--color-base-content)",
 ]
 
+const formatDate = (date: string) =>
+  new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" }).format(
+    new Date(`${date}T00:00:00Z`),
+  )
+
 export function EloChart({
   series,
   showLegend = true,
@@ -26,6 +40,7 @@ export function EloChart({
   highlightedId?: EloSeries["id"] | null
   onHighlightChange?: (id: EloSeries["id"] | null) => void
 }) {
+  const [hoveredDate, setHoveredDate] = useState<string | null>(null)
   const bounds = eloChartBounds(series)
   if (!bounds) return <p className="text-base-content/50 text-sm">No rating history yet.</p>
 
@@ -40,12 +55,37 @@ export function EloChart({
       ]
     : lines
 
+  const hoverAt = (event: PointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    if (rect.width === 0) return
+    const x = ((event.clientX - rect.left) / rect.width) * WIDTH - PADDING_X
+    setHoveredDate(nearestEloDate(series, bounds, x, PLOT_WIDTH))
+  }
+  const hoverX = hoveredDate
+    ? PADDING_X + dateToX(hoveredDate, bounds.startDate, bounds.endDate, PLOT_WIDTH)
+    : 0
+  const hoverPoints = hoveredDate
+    ? lines
+        .map(({ player, color }) => ({
+          player,
+          color,
+          rating: ratingOnDate(player.history, hoveredDate),
+        }))
+        .filter((point): point is typeof point & { rating: number } => point.rating !== null)
+        .sort((a, b) => b.rating - a.rating)
+    : []
+
   // The SVG stretches to whatever box it is given (the section grid may make it
   // taller than its 600x210 viewBox), so strokes are drawn in screen space and
   // the baseline label lives outside the SVG to avoid distortion.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="relative min-h-48 flex-1">
+      <div
+        className="relative min-h-48 flex-1"
+        onPointerMove={hoverAt}
+        onPointerDown={hoverAt}
+        onPointerLeave={() => setHoveredDate(null)}
+      >
         <svg
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           preserveAspectRatio="none"
@@ -105,6 +145,57 @@ export function EloChart({
         >
           1000
         </span>
+        {hoveredDate && (
+          <div data-elo-hover className="pointer-events-none absolute inset-0" aria-hidden="true">
+            <div
+              className="border-base-content/35 absolute inset-y-0 border-l border-dashed"
+              style={{ left: `${(hoverX / WIDTH) * 100}%` }}
+            />
+            {hoverPoints.map(({ player, color, rating }) => (
+              <span
+                key={player.id}
+                className={`ring-base-200 absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 transition-opacity ${
+                  highlighted && player.id !== highlightedId ? "opacity-25" : ""
+                }`}
+                style={{
+                  backgroundColor: color,
+                  left: `${(hoverX / WIDTH) * 100}%`,
+                  top: `${((PADDING_Y + ratingToY(rating, bounds.minRating, bounds.maxRating, PLOT_HEIGHT)) / HEIGHT) * 100}%`,
+                }}
+              />
+            ))}
+            <div
+              data-elo-tooltip
+              className={`border-base-300 bg-base-100/95 absolute top-0 z-10 min-w-36 rounded-lg border px-3 py-2 text-xs shadow-lg ${
+                hoverX / WIDTH > 0.6 ? "-translate-x-full -ml-3" : "ml-3"
+              }`}
+              style={{ left: `${(hoverX / WIDTH) * 100}%` }}
+            >
+              <p className="text-base-content/60 mb-1 font-semibold">{formatDate(hoveredDate)}</p>
+              <ul className="space-y-0.5">
+                {hoverPoints.map(({ player, color, rating }) => (
+                  <li
+                    key={player.id}
+                    className={`flex items-center gap-2 ${
+                      highlighted && player.id !== highlightedId
+                        ? "opacity-40"
+                        : highlighted
+                          ? "font-bold"
+                          : ""
+                    }`}
+                  >
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="truncate">{player.name}</span>
+                    <span className="ml-auto pl-3 tabular-nums">{rating}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
       <div className="text-base-content/50 flex justify-between text-xs">
         <span>{bounds.startDate}</span>

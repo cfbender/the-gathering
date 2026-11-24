@@ -87,3 +87,51 @@ it("shows each legend change from the rating carried into the range", () => {
 
   expect(screen.getByText("Alice").closest("li")?.textContent).toContain("1090 (-10)")
 })
+
+it("shows each player's rating on the date under the pointer", () => {
+  const { container } = render(
+    <EloChart
+      series={[
+        {
+          id: 1,
+          name: "Alice",
+          rating: 1030,
+          start: 1000,
+          history: [
+            { date: "2026-01-01", rating: 1016 },
+            { date: "2026-01-11", rating: 1030 },
+          ],
+        },
+        {
+          id: 2,
+          name: "Bob",
+          rating: 990,
+          start: 1000,
+          history: [{ date: "2026-01-06", rating: 990 }],
+        },
+      ]}
+    />,
+  )
+  const plot = container.querySelector("svg")!.parentElement!
+  plot.getBoundingClientRect = () => ({ left: 0, width: 600 }) as DOMRect
+
+  // x = 310 is the middle of the plot: Jan 6, after Alice's first game and on Bob's only one.
+  fireEvent.pointerMove(plot, { clientX: 310 })
+  const tooltip = container.querySelector("[data-elo-tooltip]")!
+  expect(tooltip.textContent).toContain(
+    new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(2026, 0, 6)),
+  )
+  expect([...tooltip.querySelectorAll("li")].map((row) => row.textContent)).toEqual([
+    "Alice1016",
+    "Bob990",
+  ])
+
+  // Near the start only Alice has played.
+  fireEvent.pointerMove(plot, { clientX: 20 })
+  expect(
+    [...container.querySelectorAll("[data-elo-tooltip] li")].map((row) => row.textContent),
+  ).toEqual(["Alice1016"])
+
+  fireEvent.pointerLeave(plot)
+  expect(container.querySelector("[data-elo-tooltip]")).toBeNull()
+})
