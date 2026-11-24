@@ -37,7 +37,7 @@ before `date_from`.
 ## `GET /api/stats/players/:id`
 
 The `player`, overall `record`, `elo` rating and rank, win and loss conditions, average
-duration and turns, `game_lengths`, current and longest `streaks`, `recent_form` (the last
+duration and turns, `game_lengths`, current win and loss and longest win `streaks`, `recent_form` (the last
 ten results), cumulative `win_rate_over_time`, deck records (retired decks are marked
 `retired: true`), `head_to_head` records with kills, `rival_commanders`, color records, seat
 win rates, `favorite_seat` and `best_seat`, and the most-mentioned `mvp_cards`. Responds 404

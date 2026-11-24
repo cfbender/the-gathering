@@ -208,7 +208,7 @@ export interface PlayerStats {
   average_duration_minutes: number | null
   average_turns: number | null
   game_lengths: GameLengths
-  streaks: { current_wins: number; longest_wins: number }
+  streaks: { current_wins: number; current_losses: number; longest_wins: number }
   recent_form: ("win" | "loss" | "draw")[]
   win_rate_over_time: TrendPoint[]
   /** Every deck the player has piloted; retired decks are flagged so the profile can fold them. */

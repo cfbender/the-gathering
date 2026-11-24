@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Flame, Medal, Target } from "lucide-react"
+import { Flame, Medal, Snowflake, Target } from "lucide-react"
 import { useState } from "react"
 import { CardArtBackground } from "@/components/card-art-background"
 import { CardHover } from "@/components/card-hover"
@@ -71,9 +71,17 @@ export function PlayerStats({
         />
         <StatCard
           label="Current streak"
-          value={stats.streaks.current_wins}
-          detail="consecutive wins"
-          icon={<Flame className="size-4" />}
+          {...(stats.streaks.current_wins === 0 && stats.streaks.current_losses > 0
+            ? {
+                value: stats.streaks.current_losses,
+                detail: "consecutive losses",
+                icon: <Snowflake className="size-4" />,
+              }
+            : {
+                value: stats.streaks.current_wins,
+                detail: "consecutive wins",
+                icon: <Flame className="size-4" />,
+              })}
         />
         <StatCard
           label="Best streak"

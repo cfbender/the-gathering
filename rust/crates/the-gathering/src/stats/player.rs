@@ -235,12 +235,18 @@ fn streaks(oldest_first: &[GameResult]) -> Value {
             run = 0;
         }
     }
-    let current = oldest_first
-        .iter()
-        .rev()
-        .take_while(|result| **result == GameResult::Win)
-        .count();
-    json!({"current_wins": current, "longest_wins": longest})
+    let current = |wanted: GameResult| {
+        oldest_first
+            .iter()
+            .rev()
+            .take_while(|result| **result == wanted)
+            .count()
+    };
+    json!({
+        "current_wins": current(GameResult::Win),
+        "current_losses": current(GameResult::Loss),
+        "longest_wins": longest,
+    })
 }
 
 async fn head_to_head(

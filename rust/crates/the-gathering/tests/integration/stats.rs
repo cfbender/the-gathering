@@ -514,11 +514,16 @@ async fn player_stats_compute_ordered_current_and_longest_streaks_plus_head_to_h
     );
     assert_eq!(
         stats["streaks"],
-        json!({"current_wins": 0, "longest_wins": 2})
+        json!({"current_wins": 0, "current_losses": 0, "longest_wins": 2})
     );
     assert_eq!(
         stats["recent_form"],
         json!(["draw", "loss", "win", "win", "loss", "win"])
+    );
+    let bob = f.player("Bob", json!({"date_to": "2026-03-01"})).await;
+    assert_eq!(
+        bob["streaks"],
+        json!({"current_wins": 0, "current_losses": 3, "longest_wins": 1})
     );
     assert_eq!(stats["favorite_seat"], 1);
     assert_eq!(stats["best_seat"], 1);
@@ -997,7 +1002,7 @@ async fn the_detailed_stats_cutoff_keeps_records_but_drops_earlier_seat_timing_a
     );
     assert_eq!(
         player["streaks"],
-        json!({"current_wins": 0, "longest_wins": 2})
+        json!({"current_wins": 0, "current_losses": 0, "longest_wins": 2})
     );
     let seat_one = find(&player["seat_win_rates"], "id", json!(1));
     assert_eq!(
